@@ -99,12 +99,18 @@
 //!   behind the bus is the only shape that keeps a supermemory/mem0/cognee
 //!   driver implementable** — a contract with `with_connection` in it is a
 //!   SQLite contract wearing a trait.
-//! - **Host policy living in the engine crate** (~14 files) —
+//! - **Host policy reached through the engine crate** (~14 files) —
 //!   `store::safety::{sanitize_text, sanitize_json, has_likely_secret}`,
-//!   `util::redact::redact`, `source_scope::*`. Pure functions and a
-//!   task-local. These want relocation to `tinymemory-api`, not bus methods;
-//!   they are the cheapest item on this list and they unblock nothing else,
-//!   which is exactly why they are worth doing first.
+//!   `util::redact::redact`, `source_scope::*`. This looked like the cheapest
+//!   item on the list and mostly is not, which is worth stating so the next
+//!   person does not re-derive it: `store::safety` is a **shim over
+//!   `crate::engine::backend::store::safety`**, so those scrubbers live in
+//!   tinycortex and relocating them is engine work rather than a contract
+//!   move. `source_scope` is a `tokio::task_local`, so hosting it in
+//!   `tinymemory-api` means adding tokio to a crate whose whole point is that
+//!   a caller can depend on it and compile almost nothing. Only
+//!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
+//!   `sha2` in the contract crate.
 //! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
 //!   ensure_reembed_backfill, requeue_failed_after_provider_change,
 //!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
@@ -112,13 +118,20 @@
 //!   `tinycortex::{memory_config_from, run_composio_connection,
 //!   load_composio_sync_state, HostSyncAdapter, CodingSession*}`. Named after
 //!   the engine, so no engine-neutral family can express them as they stand.
-//! - **Engine-owned types** — `rpc_models::*`, `store::trees::types::TreeKind`,
+//! - **Engine-owned types** — `store::trees::types::TreeKind`,
 //!   `store::chunks::types::SourceKind`, `store::{NamespaceDocumentInput,
 //!   NamespaceRetrievalContext, GraphRelationRecord}`. A type import links the
 //!   crate exactly as a call does, so the shed needs these in
 //!   `tinymemory-api`. `MemoryCategory`/`MemoryEntry`/`MemoryTaint` already
 //!   are — `tinymemory_core::traits` re-exports them — so those call sites can
 //!   name the contract today.
+//!
+//!   `rpc_models` was on this list and is **done**: all forty-five types were
+//!   named by this host and by nothing inside `tinymemory`, so they moved to
+//!   `memory::rpc_models` rather than into the contract. That is the shape to
+//!   look for first in what remains — a type the engine crate defines but only
+//!   the host uses does not need a contract to live in, it needs to come home.
+//!   `SourceKind` is emphatically **not** such a case (see the trap below).
 //! - **Chat, ingest pipeline and preferences** (~12 files) —
 //!   `chat::{ChatProvider, build_chat_provider, test_override}`,
 //!   `ingest_pipeline::{ingest_chat, ingest_document_with_scope}`,
@@ -293,7 +306,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/harness/artifact_offload/policy.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (store::safety::sanitize_text); belongs in tinymemory-api rather than gaining a bus method",
+        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/agent/harness/session/builder/factory.rs",
@@ -318,7 +331,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/harness/tool_result_artifacts/mod.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (store::safety); belongs in tinymemory-api rather than gaining a bus method",
+        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/agent/learning/linkedin_enrichment.rs",
@@ -348,7 +361,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/tools/save_preference.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (store::safety); belongs in tinymemory-api rather than gaining a bus method",
+        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/channels/controllers/ops/connect.rs",
@@ -398,7 +411,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/flows/tinyflows/memory_adapter.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (store::safety::has_likely_secret); belongs in tinymemory-api rather than gaining a bus method",
+        "host policy reached through the engine crate (store::safety::has_likely_secret); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/hosted/orchestration/effect_executor.rs",
@@ -433,7 +446,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/guard/audit.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (util::redact::redact); belongs in tinymemory-api rather than gaining a bus method",
+        "pure host-policy helper genuinely owned by the engine crate (util::redact::redact — 136 lines over `sha2` alone); relocatable to tinymemory-api, at the cost of adding `sha2` there, unlike its `store::safety` neighbours which only shim the engine's own scrubbers",
     ),
     (
         "src/openhuman/memory/guard/policy.rs",
@@ -513,7 +526,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/store_golden.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (global::client, rpc_models::QueryNamespaceRequest, store::UnifiedMemory::new, store::chunks); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "reaches engine storage below the contract (global::client, store::UnifiedMemory::new, store::chunks); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/sync/composio/bus.rs",
@@ -573,7 +586,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/security/approval/store.rs",
         Verdict::NeedsWiderSeam,
-        "pure host-policy helper living in the engine crate (store::safety::sanitize_text); belongs in tinymemory-api rather than gaining a bus method",
+        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/security/credentials/ops.rs",
