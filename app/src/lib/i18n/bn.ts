@@ -3163,6 +3163,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'রানটাইম তার কনফিগারেশন ফাইল পড়তে পারেনি। config.toml অন্য কোনো ব্যবহারকারী অ্যাকাউন্টের হতে পারে, অথবা অন্য কোনো কারণে রানটাইম প্রক্রিয়ার জন্য দুর্গম হতে পারে। রানটাইম পুনরায় চালু করুন, আর তাতে কাজ না হলে ওয়ার্কস্পেসের মালিকানা ঠিক করুন বা এর ভলিউম নতুন করে তৈরি করুন।',
   'welcome.localSessionErrorFallback': 'স্থানীয় সেশন শুরু করা যায়নি।',
+  'welcome.gatewaySessionErrorFallback':
+    'এই মুহূর্তে সাইন-ইন সম্পূর্ণ করা যায়নি। সেশন স্টোর সময়মতো সাড়া দেয়নি (বারবার চেষ্টা করেও)। অনুগ্রহ করে OpenHuman পুনরায় চালু করুন এবং আবার চেষ্টা করুন।',
   'welcome.localSessionDesc': 'একটি অফলাইন skips__ BR__Ans স্থানীয় প্রোফাইল ব্যবহার করে।',
   'chat.agentChatDesc': 'এজেন্টের সাথে সরাসরি চ্যাট সেশন খুলুন।',
   'chat.modelPlaceholder': 'gpt-4o',
@@ -7146,6 +7148,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'সেটিংস ফাইল পুনরুদ্ধার করা হয়েছে',
   'notifications.configRecovered.body':
     'আপনার সেটিংস ফাইল পড়া যায়নি, তাই এটি একটি ব্যাকআপ থেকে পুনরুদ্ধার করা হয়েছে বা ডিফল্টে রিসেট করা হয়েছে। অপঠনযোগ্য ফাইলটি, প্রয়োজনে ব্যবহারের জন্য, ".corrupted" প্রত্যয় সহ রাখা হয়েছে।',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'কোরটি অন্য কোথাও চালান',
+  'settings.gateway.description':
+    'কোর একটি কনটেইনারে, SSH দিয়ে অন্য একটি মেশিনে, বা অন্য মেশিনের কনটেইনারে চলতে পারে। OpenHuman সেটি চালু করে, সংযোগ করে, এবং আপনি অন্য কোথাও গেলে বন্ধ করে দেয়।',
+  'settings.gateway.add': 'একটি অবস্থান যোগ করুন',
+  'settings.gateway.save': 'অবস্থান সংরক্ষণ করুন',
+  'settings.gateway.remove': 'সরান',
+  'settings.gateway.use': 'এটি ব্যবহার করুন',
+  'settings.gateway.inUse': 'ব্যবহৃত হচ্ছে',
+  'settings.gateway.activating': 'সংযোগ করা হচ্ছে…',
+  'settings.gateway.activatingStep': 'সংযোগ করা হচ্ছে: {step}',
+  'settings.gateway.connected': '{endpoint}-এ সংযুক্ত',
+  'settings.gateway.failed': 'সংযোগ করা গেল না: {reason}',
+  'settings.gateway.nameLabel': 'নাম',
+  'settings.gateway.namePlaceholder': 'বিল্ড সার্ভার',
+  'settings.gateway.whereLegend': 'এটি কোথায় চলবে?',
+  'settings.gateway.where.here': 'এই কম্পিউটারে',
+  'settings.gateway.where.ssh': 'SSH দিয়ে অন্য একটি মেশিনে',
+  'settings.gateway.destinationLabel': 'SSH গন্তব্য',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'আপনার SSH কনফিগারেশনের একটি হোস্ট, বা ব্যবহারকারী@হোস্ট। সেখানে আগে থেকে ঠিক করা পোর্ট, কী এবং জাম্প হোস্ট যেমন আছে তেমনই ব্যবহার হয়।',
+  'settings.gateway.identityLabel': 'ব্যক্তিগত কী (ঐচ্ছিক)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'প্রথমবার সংযোগের সময় এই মেশিনকে বিশ্বাস করুন',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'আগে কখনও দেখা হয়নি এমন একটি হোস্ট কী গ্রহণ করে। বদলে যাওয়া কী তবুও প্রত্যাখ্যান করা হয়, কারণ সেটিই বোঝায় যে কিছু একটা গণ্ডগোল হয়েছে।',
+  'settings.gateway.containedLabel': 'একটি কনটেইনারের ভিতরে চালান',
+  'settings.gateway.imageLabel': 'কনটেইনার ইমেজ',
+  'settings.gateway.binaryLabel': 'openhuman-core-এর পথ',
+  'settings.gateway.kind.desktop': 'এই অ্যাপের ভিতরে',
+  'settings.gateway.kind.remote': 'কোনো URL-এ থাকা কোর',
+  'settings.gateway.kind.docker': 'এখানে একটি কনটেইনারে',
+  'settings.gateway.kind.ssh': 'অন্য একটি মেশিনে',
+  'settings.gateway.kind.ssh+docker': 'অন্য মেশিনের কনটেইনারে',
+  'settings.gateway.kind.local-process': 'এই কম্পিউটারে',
+  'settings.gateway.idRequired': 'এই অবস্থানটির একটি নাম দিন।',
+  'settings.gateway.idReserved': 'ওই নামটি অ্যাপের নিজস্ব কোরের জন্য সংরক্ষিত।',
+  'settings.gateway.destinationRequired': 'কোন মেশিনে সংযোগ করবেন তা লিখুন।',
+  'settings.gateway.imageRequired': 'কোন কনটেইনার ইমেজ চালাবেন তা লিখুন।',
+  'settings.gateway.binaryRequired': 'ওই মেশিনে openhuman-core-এর পথ লিখুন।',
+  'settings.gateway.portInvalid': 'SSH পোর্ট একটি সংখ্যা হতে হবে।',
+
+  'devOptions.gateway': 'অবস্থান',
+  'devOptions.provisionedCore': 'এই অ্যাপের চালু করা কোর',
+  'devOptions.gatewayId': 'অবস্থান',
 };
 
 export default messages;

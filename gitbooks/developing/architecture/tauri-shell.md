@@ -45,6 +45,10 @@ app/src-tauri/src/
 ├── main.rs                 # Binary entry
 ├── core_process.rs         # CoreProcessHandle — embedded core server task, RPC token, port conflict handling
 ├── core_rpc.rs             # Auth helpers + `relay_http_rpc` host-side HTTP relay
+├── gateway/                # Where the frontend's RPC goes: the core in this process, a
+│                           # core at a URL, or one this app provisions in a container /
+│                           # over SSH / both (tinybox). types · store · ops · registry ·
+│                           # commands
 ├── cdp/                    # Chrome DevTools Protocol plumbing for child webviews
 ├── cef_preflight.rs / cef_profile.rs / cef_singleton_wait.rs / cef_stale_reap.rs   # CEF cache/profile management
 ├── webview_accounts/       # Embedded provider account webviews (open/close/bounds/notifications)
@@ -107,13 +111,59 @@ All commands are registered in **`app/src-tauri/src/lib.rs`** inside `tauri::gen
 
 | Command                          | Purpose                                                                                                                                         |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core_rpc_url`                   | Return the local core JSON-RPC URL (`http://127.0.0.1:<port>/rpc`)                                                                              |
-| `core_rpc_token`                 | Return the per-launch bearer token for the embedded core                                                                                        |
+| `core_rpc_url`                   | Return the **active gateway's** JSON-RPC URL — the embedded core's `http://127.0.0.1:<port>/rpc` unless another gateway is active               |
+| `core_rpc_token`                 | Return the active gateway's bearer. Paired with `core_rpc_url`: a token minted for the embedded core is meaningless to a core in a container    |
 | `relay_http_rpc`                 | Host-side JSON-RPC POST (`{ url, token?, body }` → `{ status, body }`) for self-hosted runtimes the webview cannot fetch (mixed content, #3865) |
 | `overlay_parent_rpc_url`         | RPC URL inherited from a parent process (overlay windows), from `OPENHUMAN_CORE_RPC_URL`                                                        |
 | `process_diagnostics_list_owned` | List OpenHuman processes owned by this app bundle (macOS; empty elsewhere)                                                                      |
 
 Use **`app/src/services/coreRpcClient.ts`** (`callCoreRpc`) from the frontend.
+
+### Gateways — running the core somewhere else
+
+A **gateway** is one way of reaching an OpenHuman core. Four exist: the core inside this
+process, a core somebody else is running at a URL, and two this app provisions itself — in
+a Docker container, or on a machine reached over SSH. The last two are the same code:
+[tinybox](https://github.com/tinyhumansai/tinybox) models *reach* (`local` / `ssh`) and
+*confinement* (`passthrough` / `docker`) as independent axes, so "a container on the build
+server" is those two choices made separately rather than a third case with code of its own.
+
+**The seam is one line.** A gateway resolves to a URL and a bearer, and `core_rpc_url` /
+`core_rpc_token` answer from the active one. Every RPC call site in the renderer therefore
+follows along unchanged — there is no per-gateway transport in the frontend, and
+`services/transport/` (the iOS `ConnectionProfile` path) is not involved.
+
+Provisioning is four tinybox calls: `create` a box publishing the core's port, `spawn` the
+core in it detached with a freshly minted bearer, `forward` that published port back to
+this machine, then poll the core's unauthenticated `/health`. The third step is the one
+that is easy to omit and impossible to notice missing — publishing puts the port on the
+*box's* host, which for an SSH placement is the far machine.
+
+| Command            | Purpose                                                                    |
+| ------------------ | -------------------------------------------------------------------------- |
+| `gateway_list`     | Every configured gateway, the built-in desktop one first                    |
+| `gateway_save`     | Add or replace a gateway. Does not activate it                              |
+| `gateway_delete`   | Forget a gateway. The running session is unaffected                         |
+| `gateway_activate` | Provision if needed, then make it the one RPC goes to                       |
+| `gateway_active`   | Which gateway is active                                                     |
+| `gateway_status`   | `inactive` / `activating{step}` / `connected{endpoint}` / `failed{reason}`  |
+
+Records live shell-side in `gateways.json`, **not** renderer `localStorage`: an SSH
+identity path and a remote bearer are materially more sensitive than a window position, and
+the renderer's own notes on the cloud token (audit U3, `utils/configPersistence.ts`) already
+say a renderer XSS can read anything kept there. The frontend holds a gateway *id*.
+
+Shell-internal callers (`imessage_scanner`, `local_data_reset`, `companion`) deliberately
+keep talking to the embedded core: they are about *this* machine's iMessage database, *this*
+install's data, and *this* machine's audio, so routing them to a remote gateway would be
+wrong rather than incomplete.
+
+Gated by the shell-local `gateways` Cargo feature (default on). That gate is unrelated to
+the feature-forwarding rules in `AGENTS.md`, which govern which `openhuman_core` gates the
+shell forwards; nothing here belongs in `scripts/ci/product-features.txt`.
+
+Frontend: **`app/src/services/gatewayService.ts`**, surfaced in Settings → Core connection
+(`components/settings/panels/core/GatewaySection.tsx`).
 
 ### Core & app lifecycle
 

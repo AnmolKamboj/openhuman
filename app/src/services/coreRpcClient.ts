@@ -82,6 +82,12 @@ let resolvingCoreRpcUrl: Promise<string> | null = null;
 let resolvedCoreRpcToken: string | null = null;
 let didResolveCoreRpcToken = false;
 let resolvingCoreRpcToken: Promise<string | null> | null = null;
+// The one snapshot the shell answered with, resolved atomically so the URL
+// and bearer can never describe different cores (see `resolveShellEndpoint`).
+let shellEndpoint: { url: string; token: string } | null = null;
+// In-flight `core_rpc_endpoint` call, so concurrent URL+token resolution is
+// served by a single invoke (see `resolveShellEndpoint`).
+let resolvingShellEndpoint: Promise<{ url: string; token: string } | null> | null = null;
 
 // ---------------------------------------------------------------------------
 // Active transport override (used by iOS / remote profiles)
@@ -292,6 +298,8 @@ function dispatchAuthExpired(method: string, reason: AuthExpiredReason): void {
 export function clearCoreRpcUrlCache(): void {
   resolvedCoreRpcUrl = null;
   resolvingCoreRpcUrl = null;
+  shellEndpoint = null;
+  resolvingShellEndpoint = null;
 }
 
 /**
@@ -335,6 +343,8 @@ export function clearCoreRpcTokenCache(): void {
   resolvedCoreRpcToken = null;
   didResolveCoreRpcToken = false;
   resolvingCoreRpcToken = null;
+  shellEndpoint = null;
+  resolvingShellEndpoint = null;
   coreRpcTokenInvalidationBus.dispatchEvent(new Event(CORE_RPC_TOKEN_INVALIDATED_EVENT));
 }
 const coreRpcLog = debug('core-rpc');
@@ -358,6 +368,35 @@ function coreRpcErrorMessage(err: unknown): string {
     }
   }
   return 'Unknown core RPC error';
+}
+
+/**
+ * Resolve the shell's active `{ url, token }` endpoint, cached as one unit.
+ *
+ * The shell exposes `core_rpc_url` and `core_rpc_token` as separate commands,
+ * but resolving them independently is racy: if a gateway activation lands
+ * between the two invokes, the renderer caches A's URL next to B's bearer. This
+ * instead asks for both halves once, via the atomic `core_rpc_endpoint`
+ * command, and shares the snapshot. A failure resolves to null so callers keep
+ * their existing fallback behaviour.
+ */
+async function resolveShellEndpoint(): Promise<{ url: string; token: string } | null> {
+  if (shellEndpoint) return shellEndpoint;
+  if (!isTauri()) return null;
+  if (resolvingShellEndpoint) return resolvingShellEndpoint;
+  resolvingShellEndpoint = (async () => {
+    try {
+      const endpoint = await invoke<{ url: string; token: string }>('core_rpc_endpoint');
+      shellEndpoint = { url: endpoint?.url ?? '', token: endpoint?.token ?? '' };
+      return shellEndpoint;
+    } catch (err) {
+      coreRpcError('failed to resolve core RPC endpoint', sanitizeError(err));
+      return null;
+    } finally {
+      resolvingShellEndpoint = null;
+    }
+  })();
+  return resolvingShellEndpoint;
 }
 
 export async function getCoreRpcUrl(): Promise<string> {
@@ -393,8 +432,8 @@ export async function getCoreRpcUrl(): Promise<string> {
         return resolvedCoreRpcUrl;
       }
 
-      const url = await invoke<string>('core_rpc_url');
-      const trimmed = String(url || '').trim();
+      const endpoint = await resolveShellEndpoint();
+      const trimmed = String(endpoint?.url || '').trim();
       if (!trimmed) {
         coreRpcError('core_rpc_url returned empty; using build-time default', {
           fallback: CORE_RPC_URL,
@@ -465,8 +504,8 @@ export async function getCoreRpcToken(): Promise<string | null> {
 
   resolvingCoreRpcToken = (async () => {
     try {
-      const token = await invoke<string>('core_rpc_token');
-      resolvedCoreRpcToken = token?.trim() || null;
+      const endpoint = await resolveShellEndpoint();
+      resolvedCoreRpcToken = endpoint?.token?.trim() || null;
       didResolveCoreRpcToken = true;
       coreRpcLog('core RPC token loaded');
       return resolvedCoreRpcToken;

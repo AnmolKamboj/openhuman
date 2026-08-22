@@ -3213,6 +3213,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'O runtime não conseguiu ler o seu ficheiro de configuração. O config.toml pode pertencer a outra conta de utilizador ou estar inacessível ao processo por outro motivo. Reinicie o runtime e, se isso não resolver, corrija a propriedade da pasta de trabalho ou recrie o seu volume.',
   'welcome.localSessionErrorFallback': 'Não foi possível iniciar uma sessão local.',
+  'welcome.gatewaySessionErrorFallback':
+    'Não foi possível concluir o login neste momento. O armazenamento de sessão não respondeu a tempo (mesmo após tentar novamente). Reinicie o OpenHuman e tente de novo.',
   'welcome.localSessionDesc': 'Usa um perfil local offline e ignora TinyHumans OAuth.',
   'chat.agentChatDesc': 'Abrir uma sessão de chat direto com o agente.',
   'chat.modelPlaceholder': 'gpt-4o',
@@ -7261,6 +7263,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'Arquivo de configurações recuperado',
   'notifications.configRecovered.body':
     'Não foi possível ler seu arquivo de configurações, então ele foi restaurado de um backup ou redefinido para os padrões. O arquivo ilegível foi mantido com o sufixo ".corrupted" caso você precise dele.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'Executar o núcleo em outro lugar',
+  'settings.gateway.description':
+    'O núcleo pode ser executado localmente, em um contêiner ou em outra máquina por SSH. Você também pode se conectar a um núcleo remoto por meio de uma URL. O OpenHuman gerencia o ciclo de vida das localizações que ele provisiona; para uma URL remota, ele apenas estabelece a conexão.',
+  'settings.gateway.add': 'Adicionar uma localização',
+  'settings.gateway.save': 'Salvar localização',
+  'settings.gateway.remove': 'Remover',
+  'settings.gateway.use': 'Usar este',
+  'settings.gateway.inUse': 'Em uso',
+  'settings.gateway.activating': 'Conectando…',
+  'settings.gateway.activatingStep': 'Conectando: {step}',
+  'settings.gateway.connected': 'Conectado em {endpoint}',
+  'settings.gateway.failed': 'Não foi possível conectar: {reason}',
+  'settings.gateway.nameLabel': 'Nome',
+  'settings.gateway.namePlaceholder': 'Servidor de compilação',
+  'settings.gateway.whereLegend': 'Onde deve ser executado?',
+  'settings.gateway.where.here': 'Neste computador',
+  'settings.gateway.where.ssh': 'Em outra máquina, por SSH',
+  'settings.gateway.destinationLabel': 'Destino SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'Um host da sua configuração de SSH, ou usuário@host. Portas, chaves e hosts de salto já configurados são usados como estão.',
+  'settings.gateway.identityLabel': 'Chave privada (opcional)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'Confiar nesta máquina na primeira conexão',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'Aceita uma chave de host nunca vista. Uma chave que mudou continua sendo recusada, porque é esse o caso que indica que algo está errado.',
+  'settings.gateway.containedLabel': 'Executar dentro de um contêiner',
+  'settings.gateway.imageLabel': 'Imagem do contêiner',
+  'settings.gateway.binaryLabel': 'Caminho para openhuman-core',
+  'settings.gateway.kind.desktop': 'Dentro desta aplicação',
+  'settings.gateway.kind.remote': 'Um núcleo num URL',
+  'settings.gateway.kind.docker': 'Em um contêiner neste computador',
+  'settings.gateway.kind.ssh': 'Em outra máquina',
+  'settings.gateway.kind.ssh+docker': 'Em um contêiner em outra máquina',
+  'settings.gateway.kind.local-process': 'Neste computador',
+  'settings.gateway.idRequired': 'Dê um nome a esta localização.',
+  'settings.gateway.idReserved': 'Esse nome está reservado para o núcleo da própria aplicação.',
+  'settings.gateway.destinationRequired': 'Indique a máquina à qual deseja se conectar.',
+  'settings.gateway.imageRequired': 'Indique a imagem de contêiner a executar.',
+  'settings.gateway.binaryRequired': 'Indique o caminho para openhuman-core nessa máquina.',
+  'settings.gateway.portInvalid': 'A porta SSH deve ser um número.',
+
+  'devOptions.gateway': 'Local',
+  'devOptions.provisionedCore': 'Núcleo iniciado por esta aplicação',
+  'devOptions.gatewayId': 'ID do local',
 };
 
 export default messages;

@@ -3184,6 +3184,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'Среде выполнения не удалось прочитать свой файл конфигурации. Возможно, config.toml принадлежит другой учётной записи или недоступен процессу по иной причине. Перезапустите среду выполнения, а если это не поможет, исправьте владельца рабочего каталога или создайте его том заново.',
   'welcome.localSessionErrorFallback': 'Не удалось запустить локальный сеанс.',
+  'welcome.gatewaySessionErrorFallback':
+    'Не удалось завершить вход в систему. Хранилище сеанса не ответило вовремя (даже после повторной попытки). Перезапустите OpenHuman и попробуйте снова.',
   'welcome.localSessionDesc':
     'Использует автономный локальный профиль и пропускает TinyHumans OAuth.',
   'chat.agentChatDesc': 'Открыть прямой чат с агентом.',
@@ -7221,6 +7223,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'Файл настроек восстановлен',
   'notifications.configRecovered.body':
     'Не удалось прочитать файл настроек, поэтому он был восстановлен из резервной копии или сброшен к значениям по умолчанию. Нечитаемый файл сохранён с суффиксом ".corrupted" на случай, если он вам понадобится.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'Запустить ядро в другом месте',
+  'settings.gateway.description':
+    'Ядро может работать в контейнере, на другой машине по SSH или в контейнере на другой машине. OpenHuman запускает его, подключается к нему и останавливает, когда вы переключаетесь.',
+  'settings.gateway.add': 'Добавить размещение',
+  'settings.gateway.save': 'Сохранить размещение',
+  'settings.gateway.remove': 'Удалить',
+  'settings.gateway.use': 'Использовать',
+  'settings.gateway.inUse': 'Используется',
+  'settings.gateway.activating': 'Подключение…',
+  'settings.gateway.activatingStep': 'Подключение: {step}',
+  'settings.gateway.connected': 'Подключено к {endpoint}',
+  'settings.gateway.failed': 'Не удалось подключиться: {reason}',
+  'settings.gateway.nameLabel': 'Название',
+  'settings.gateway.namePlaceholder': 'Сервер сборки',
+  'settings.gateway.whereLegend': 'Где его запускать?',
+  'settings.gateway.where.here': 'На этом компьютере',
+  'settings.gateway.where.ssh': 'На другой машине, по SSH',
+  'settings.gateway.destinationLabel': 'Адрес SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'Хост из вашей конфигурации SSH или пользователь@хост. Порты, ключи и промежуточные хосты, уже настроенные там, используются как есть.',
+  'settings.gateway.identityLabel': 'Закрытый ключ (необязательно)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'Доверять этой машине при первом подключении',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'Принимает ключ хоста, который вы раньше не видели. Изменившийся ключ по-прежнему отклоняется, потому что именно это означает, что что-то не так.',
+  'settings.gateway.containedLabel': 'Запускать внутри контейнера',
+  'settings.gateway.imageLabel': 'Образ контейнера',
+  'settings.gateway.binaryLabel': 'Путь к openhuman-core',
+  'settings.gateway.kind.desktop': 'Внутри этого приложения',
+  'settings.gateway.kind.remote': 'Ядро по URL',
+  'settings.gateway.kind.docker': 'В контейнере здесь',
+  'settings.gateway.kind.ssh': 'На другой машине',
+  'settings.gateway.kind.ssh+docker': 'В контейнере на другой машине',
+  'settings.gateway.kind.local-process': 'На этом компьютере',
+  'settings.gateway.idRequired': 'Дайте этому размещению название.',
+  'settings.gateway.idReserved': 'Это название зарезервировано за собственным ядром приложения.',
+  'settings.gateway.destinationRequired': 'Укажите машину для подключения.',
+  'settings.gateway.imageRequired': 'Укажите образ контейнера для запуска.',
+  'settings.gateway.binaryRequired': 'Укажите путь к openhuman-core на этой машине.',
+  'settings.gateway.portInvalid': 'Порт SSH должен быть числом.',
+
+  'devOptions.gateway': 'Размещение',
+  'devOptions.provisionedCore': 'Ядро, запущенное этим приложением',
+  'devOptions.gatewayId': 'Размещение',
 };
 
 export default messages;

@@ -3093,6 +3093,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'تعذّر على بيئة التشغيل قراءة ملف الإعدادات الخاص بها. قد يكون الملف config.toml مملوكًا لحساب مستخدم آخر، أو غير متاح لعملية التشغيل لسبب آخر. أعد تشغيل بيئة التشغيل، وإن لم يُجدِ ذلك فأصلح ملكية مجلد العمل أو أعد إنشاء وحدة التخزين الخاصة به.',
   'welcome.localSessionErrorFallback': 'تعذّر بدء جلسة محلية.',
+  'welcome.gatewaySessionErrorFallback':
+    'تعذّر إتمام تسجيل الدخول في الوقت الحالي. لم يستجب تخزين الجلسة في الوقت المحدد (حتى بعد إعادة المحاولة). يرجى إعادة تشغيل OpenHuman والمحاولة مرة أخرى.',
   'welcome.localSessionDesc': 'يستخدم ملف تعريف محلي غير متصل ويتخطى TinyHumans OAuth.',
   'chat.agentChatDesc': 'فتح جلسة محادثة مباشرة مع الوكيل.',
   'chat.modelPlaceholder': 'gpt-4o',
@@ -6988,6 +6990,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'تمت استعادة ملف الإعدادات',
   'notifications.configRecovered.body':
     'تعذّرت قراءة ملف الإعدادات، لذا تمت استعادته من نسخة احتياطية أو إعادة تعيينه إلى الإعدادات الافتراضية. تم الاحتفاظ بالملف غير القابل للقراءة باللاحقة ".corrupted" في حال احتجت إليه.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'تشغيل النواة في مكان آخر',
+  'settings.gateway.description':
+    'يمكن للنواة أن تعمل داخل حاوية، أو على جهاز آخر عبر SSH، أو داخل حاوية على جهاز آخر. يشغّلها OpenHuman ويتصل بها ثم يوقفها عند انتقالك إلى مكان آخر.',
+  'settings.gateway.add': 'إضافة موقع',
+  'settings.gateway.save': 'حفظ الموقع',
+  'settings.gateway.remove': 'إزالة',
+  'settings.gateway.use': 'استخدام هذا',
+  'settings.gateway.inUse': 'قيد الاستخدام',
+  'settings.gateway.activating': 'جارٍ الاتصال…',
+  'settings.gateway.activatingStep': 'جارٍ الاتصال: {step}',
+  'settings.gateway.connected': 'متصل عند {endpoint}',
+  'settings.gateway.failed': 'تعذّر الاتصال: {reason}',
+  'settings.gateway.nameLabel': 'الاسم',
+  'settings.gateway.namePlaceholder': 'خادم البناء',
+  'settings.gateway.whereLegend': 'أين ينبغي أن تعمل؟',
+  'settings.gateway.where.here': 'على هذا الحاسوب',
+  'settings.gateway.where.ssh': 'على جهاز آخر عبر SSH',
+  'settings.gateway.destinationLabel': 'وجهة SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'مضيف من إعدادات SSH لديك، أو مستخدم@مضيف. تُستخدم المنافذ والمفاتيح ومضيفات القفز المعدّة هناك كما هي.',
+  'settings.gateway.identityLabel': 'مفتاح خاص (اختياري)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'الوثوق بهذا الجهاز عند أول اتصال',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'يقبل مفتاح مضيف لم تره من قبل. أما المفتاح الذي تغيّر فيظل مرفوضًا، لأن تلك هي الحالة التي تعني أن هناك خطأ ما.',
+  'settings.gateway.containedLabel': 'تشغيلها داخل حاوية',
+  'settings.gateway.imageLabel': 'صورة الحاوية',
+  'settings.gateway.binaryLabel': 'مسار openhuman-core',
+  'settings.gateway.kind.desktop': 'داخل هذا التطبيق',
+  'settings.gateway.kind.remote': 'نواة على رابط',
+  'settings.gateway.kind.docker': 'في حاوية هنا',
+  'settings.gateway.kind.ssh': 'على جهاز آخر',
+  'settings.gateway.kind.ssh+docker': 'في حاوية على جهاز آخر',
+  'settings.gateway.kind.local-process': 'على هذا الحاسوب',
+  'settings.gateway.idRequired': 'امنح هذا الموقع اسمًا.',
+  'settings.gateway.idReserved': 'هذا الاسم محجوز لنواة التطبيق نفسه.',
+  'settings.gateway.destinationRequired': 'أدخل الجهاز المراد الاتصال به.',
+  'settings.gateway.imageRequired': 'أدخل صورة الحاوية المراد تشغيلها.',
+  'settings.gateway.binaryRequired': 'أدخل مسار openhuman-core على ذلك الجهاز.',
+  'settings.gateway.portInvalid': 'يجب أن يكون منفذ SSH رقمًا.',
+
+  'devOptions.gateway': 'الموقع',
+  'devOptions.provisionedCore': 'نواة شغّلها هذا التطبيق',
+  'devOptions.gatewayId': 'معرّف الموقع',
 };
 
 export default messages;

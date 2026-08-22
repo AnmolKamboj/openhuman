@@ -43,6 +43,10 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
+ "tinybox-core",
+ "tinybox-docker",
+ "tinybox-host",
+ "tinybox-ssh",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tokio-util",
@@ -7021,6 +7025,41 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "tinybox-core"
+version = "0.1.5"
+dependencies = [
+ "async-trait",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "tinybox-docker"
+version = "0.1.5"
+dependencies = [
+ "async-trait",
+ "tinybox-core",
+]
+
+[[package]]
+name = "tinybox-host"
+version = "0.1.5"
+dependencies = [
+ "async-trait",
+ "tinybox-core",
+ "tokio",
+]
+
+[[package]]
+name = "tinybox-ssh"
+version = "0.1.5"
+dependencies = [
+ "async-trait",
+ "tinybox-core",
+ "tokio",
 ]
 
 [[package]]

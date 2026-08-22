@@ -17,6 +17,14 @@
  * persists the choice and restarts the app so the normal BootCheckGate flow
  * re-runs against the new mode. This panel only *surfaces* connection state;
  * it does not change what happens when a configured core is unreachable.
+ *
+ * `GatewaySection` below adds the cores this app *provisions* — in a Docker
+ * container, on a machine over SSH, or a container on a machine over SSH. Those
+ * are a different question from the remote URL above (which points at a core
+ * somebody else is already running), which is why they are a separate section
+ * rather than more options on the same toggle. Switching to one takes effect
+ * immediately instead of restarting: the shell re-points `core_rpc_url` and
+ * `core_rpc_token`, and there is no persisted mode for the boot gate to re-read.
  */
 import { invoke } from '@tauri-apps/api/core';
 import debug from 'debug';
@@ -28,6 +36,7 @@ import {
   clearCoreRpcUrlCache,
   testCoreRpcConnection,
 } from '../../../services/coreRpcClient';
+import { gatewaysAvailable } from '../../../services/gatewayService';
 import { type CoreMode, setCoreMode } from '../../../store/coreModeSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
 import { CORE_RPC_URL } from '../../../utils/config';
@@ -44,6 +53,7 @@ import { restartApp } from '../../../utils/tauriCommands/core';
 import Button from '../../ui/Button';
 import { SettingsRow, SettingsSection, SettingsSwitch, SettingsTextField } from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
+import GatewaySection from './core/GatewaySection';
 
 const log = debug('settings:core');
 
@@ -487,6 +497,8 @@ const CoreConnectionPanel = () => {
           </Button>
         </div>
       </SettingsSection>
+
+      <GatewaySection available={gatewaysAvailable()} />
     </SettingsPanel>
   );
 };

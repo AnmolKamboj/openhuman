@@ -3173,6 +3173,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'Runtime tidak dapat membaca berkas konfigurasinya. config.toml mungkin milik akun pengguna lain, atau tidak dapat diakses oleh proses runtime karena alasan lain. Mulai ulang runtime, dan jika belum teratasi, perbaiki kepemilikan direktori kerja atau buat ulang volumenya.',
   'welcome.localSessionErrorFallback': 'Tidak dapat memulai sesi lokal.',
+  'welcome.gatewaySessionErrorFallback':
+    'Masuk tidak dapat diselesaikan saat ini. Penyimpanan sesi tidak merespons tepat waktu (bahkan setelah dicoba lagi). Mulai ulang OpenHuman dan coba lagi.',
   'welcome.localSessionDesc': 'Menggunakan profil lokal offline dan melewati TinyHumans OAuth.',
   'chat.agentChatDesc': 'Buka sesi chat langsung dengan agen.',
   'chat.modelPlaceholder': 'gpt-4o',
@@ -7180,6 +7182,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'File pengaturan dipulihkan',
   'notifications.configRecovered.body':
     'File pengaturan Anda tidak dapat dibaca, jadi dipulihkan dari cadangan atau disetel ulang ke default. File yang tidak terbaca disimpan dengan akhiran ".corrupted" jika Anda membutuhkannya.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'Jalankan core di tempat lain',
+  'settings.gateway.description':
+    'Core bisa berjalan di dalam kontainer, di mesin lain lewat SSH, atau di kontainer pada mesin lain. OpenHuman menyalakannya, menyambung ke sana, dan mematikannya saat kamu berpindah.',
+  'settings.gateway.add': 'Tambah lokasi',
+  'settings.gateway.save': 'Simpan lokasi',
+  'settings.gateway.remove': 'Hapus',
+  'settings.gateway.use': 'Pakai ini',
+  'settings.gateway.inUse': 'Sedang dipakai',
+  'settings.gateway.activating': 'Menyambungkan…',
+  'settings.gateway.activatingStep': 'Menyambungkan: {step}',
+  'settings.gateway.connected': 'Tersambung di {endpoint}',
+  'settings.gateway.failed': 'Tidak bisa menyambung: {reason}',
+  'settings.gateway.nameLabel': 'Nama',
+  'settings.gateway.namePlaceholder': 'Server build',
+  'settings.gateway.whereLegend': 'Di mana ia harus berjalan?',
+  'settings.gateway.where.here': 'Di komputer ini',
+  'settings.gateway.where.ssh': 'Di mesin lain, lewat SSH',
+  'settings.gateway.destinationLabel': 'Tujuan SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'Host dari konfigurasi SSH kamu, atau pengguna@host. Port, kunci, dan jump host yang sudah diatur di sana dipakai apa adanya.',
+  'settings.gateway.identityLabel': 'Kunci privat (opsional)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'Percayai mesin ini saat pertama kali menyambung',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'Menerima kunci host yang belum pernah dilihat. Kunci yang berubah tetap ditolak, karena justru itulah tanda ada yang tidak beres.',
+  'settings.gateway.containedLabel': 'Jalankan di dalam kontainer',
+  'settings.gateway.imageLabel': 'Image kontainer',
+  'settings.gateway.binaryLabel': 'Path ke openhuman-core',
+  'settings.gateway.kind.desktop': 'Di dalam aplikasi ini',
+  'settings.gateway.kind.remote': 'Core di sebuah URL',
+  'settings.gateway.kind.docker': 'Di kontainer di sini',
+  'settings.gateway.kind.ssh': 'Di mesin lain',
+  'settings.gateway.kind.ssh+docker': 'Di kontainer pada mesin lain',
+  'settings.gateway.kind.local-process': 'Di komputer ini',
+  'settings.gateway.idRequired': 'Beri nama lokasi ini.',
+  'settings.gateway.idReserved': 'Nama itu dipakai untuk core bawaan aplikasi.',
+  'settings.gateway.destinationRequired': 'Isi mesin yang ingin disambungkan.',
+  'settings.gateway.imageRequired': 'Isi image kontainer yang akan dijalankan.',
+  'settings.gateway.binaryRequired': 'Isi path ke openhuman-core di mesin itu.',
+  'settings.gateway.portInvalid': 'Port SSH harus berupa angka.',
+
+  'devOptions.gateway': 'Lokasi',
+  'devOptions.provisionedCore': 'Core yang dijalankan aplikasi ini',
+  'devOptions.gatewayId': 'Lokasi',
 };
 
 export default messages;
