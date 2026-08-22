@@ -1858,12 +1858,7 @@ fn hide_tools_seeds_allowlist_when_no_filter_present() {
 
     // Reset to the "all visible" sentinel so the no-filter seed path below is
     // actually exercised, matching the historical precondition.
-    agent.set_visible_tool_names(
-        ["not_on_belt".to_string()]
-            .into_iter()
-            .filter(|_| false)
-            .collect(),
-    );
+    agent.set_visible_tool_names(std::collections::HashSet::new());
     assert!(
         agent.visible_tool_names_for_test().is_empty(),
         "precondition: sentinel reset yields an empty visible-tool set"
