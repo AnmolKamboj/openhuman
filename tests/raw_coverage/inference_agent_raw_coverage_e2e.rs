@@ -3929,6 +3929,31 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
     assert!(summary_text.contains("planner/coverage"));
     assert!(summary_text.contains("integrations_agent@gmail+calendar"));
 
+    // Each per-dump tools sidecar carries the rendered tool schemas verbatim,
+    // one entry per tool in `tool_names` order.
+    let planner_tools: Vec<Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            workspace.path().join("1_planner_coverage.tools.json"),
+        )
+        .expect("planner tools sidecar"),
+    )
+    .expect("planner tools json");
+    assert_eq!(planner_tools.len(), 2);
+    assert_eq!(planner_tools[0]["name"], "todo");
+    assert_eq!(planner_tools[1]["name"], "delegate");
+
+    let integrations_tools: Vec<Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            workspace
+                .path()
+                .join("2_integrations_agent_gmail_calendar.tools.json"),
+        )
+        .expect("integrations tools sidecar"),
+    )
+    .expect("integrations tools json");
+    assert_eq!(integrations_tools.len(), 1);
+    assert_eq!(integrations_tools[0]["name"], "GMAIL_SEND_EMAIL");
+
     let identities = openhuman_core::openhuman::agent::prompts::render_connected_identities();
     assert_eq!(identities, "");
 }
