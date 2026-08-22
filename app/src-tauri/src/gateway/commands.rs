@@ -5,14 +5,18 @@
 
 use super::registry;
 use super::store;
-use super::types::{Gateway, GatewayStatus};
+use super::types::{Gateway, GatewayStatus, GatewaySummary};
 
 /// Every configured gateway, the built-in desktop one first.
+///
+/// Returns a credential-free [`GatewaySummary`], not the full [`Gateway`]: a
+/// `Remote` bearer and a `Box`/SSH destination or identity path belong to the
+/// shell store, and the renderer only needs the id, label and kind badge.
 #[tauri::command]
-pub(crate) fn gateway_list() -> Vec<Gateway> {
+pub(crate) fn gateway_list() -> Vec<GatewaySummary> {
     let gateways = store::list();
     log::debug!("[gateway][cmd] list -> {} gateway(s)", gateways.len());
-    gateways
+    gateways.iter().map(GatewaySummary::from).collect()
 }
 
 /// Add or replace a gateway.
