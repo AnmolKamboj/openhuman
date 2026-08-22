@@ -138,22 +138,6 @@ const baseSettings = {
 
 const baseLocalSnapshot = { status: null, diagnostics: null, presets: null, installedModels: [] };
 
-const baseHeartbeatSettings = {
-  enabled: true,
-  interval_minutes: 15,
-  inference_enabled: true,
-  notify_meetings: true,
-  notify_reminders: true,
-  notify_relevant_events: false,
-  external_delivery_enabled: false,
-  meeting_lookahead_minutes: 60,
-  max_calendar_connections_per_tick: 2,
-  reminder_lookahead_minutes: 30,
-  subconscious_mode: 'off' as 'off' | 'simple' | 'aggressive' | 'event_driven',
-  triggers_enabled: false,
-  max_promotions_per_hour: 30,
-};
-
 const baseUsage = {
   remainingUsd: 1.5,
   cycleBudgetUsd: 10,
@@ -234,25 +218,6 @@ describe('AIPanel', () => {
     vi.mocked(completeOpenAiCodexOAuth).mockResolvedValue(undefined);
     vi.mocked(openUrl).mockResolvedValue(undefined);
     vi.mocked(connectOpenRouterViaOAuth).mockResolvedValue('sk-or-oauth');
-    vi.mocked(openhumanHeartbeatSettingsGet).mockResolvedValue({
-      result: { settings: baseHeartbeatSettings },
-      logs: [],
-    });
-    vi.mocked(openhumanHeartbeatSettingsSet).mockResolvedValue({
-      result: { settings: baseHeartbeatSettings },
-      logs: [],
-    });
-    vi.mocked(openhumanHeartbeatTickNow).mockResolvedValue({
-      result: {
-        summary: {
-          source_events: 3,
-          deliveries_attempted: 2,
-          deliveries_sent: 1,
-          deliveries_skipped_dedup: 1,
-        },
-      },
-      logs: [],
-    });
     vi.mocked(creditsApi.getTeamUsage).mockResolvedValue(baseUsage);
     vi.mocked(creditsApi.getTransactions).mockResolvedValue({
       transactions: baseTransactions,
