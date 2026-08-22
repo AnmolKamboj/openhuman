@@ -87,16 +87,22 @@ pub fn start_boot_jobs(config: &crate::openhuman::config::Config) {
     tokio::spawn(async move {
         registry::boot::spawn_installed_servers(&cfg_for_mcp).await;
     });
-    spawn_reconnect_supervisor(config.clone());
+    spawn_reconnect_supervisor();
 }
 
 /// Spawns the reconnect supervisor exactly once per process.
+///
+/// The supervisor walks every workspace host the process has opened, so the
+/// single task covers a host opened after boot — a workspace switch, a second
+/// embedder — as well as the one booted against. It takes no configuration
+/// because it reads the host map each tick rather than binding to one
+/// workspace.
 #[cfg(feature = "mcp")]
-fn spawn_reconnect_supervisor(config: crate::openhuman::config::Config) {
+fn spawn_reconnect_supervisor() {
     static SUPERVISOR_SPAWNED: std::sync::Once = std::sync::Once::new();
     SUPERVISOR_SPAWNED.call_once(|| {
         tokio::spawn(async move {
-            registry::supervisor::run(config).await;
+            registry::supervisor::run().await;
         });
     });
 }
