@@ -256,12 +256,6 @@ const RESOURCE_CATALOG: &[PromptResource] = &[
         description: "Dedicated memory retrieval subagent using smart-walk strategies.",
         content: include_str!("../../memory/agent/agent/prompt.md"),
     },
-    PromptResource {
-        uri: "openhuman://prompts/agents/subconscious",
-        name: "subconscious",
-        description: "Background awareness agent: diffs the user's world, prepares context, and decides what to do.",
-        content: include_str!("../../subconscious/agent/prompt.md"),
-    },
     #[cfg(feature = "skills")]
     PromptResource {
         uri: "openhuman://prompts/agents/skill_setup",

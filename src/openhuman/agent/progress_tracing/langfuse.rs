@@ -155,7 +155,7 @@ pub(crate) fn spans_to_langfuse_batch(
         }
         trace_meta.insert("app.version".to_string(), json!(env!("CARGO_PKG_VERSION")));
         // Run-type tags so traces filter by kind of run in the Langfuse UI:
-        // `run:<type>` (interactive_chat / autonomous_task / agentbox /
+        // `run:<type>` (interactive_chat / autonomous_task /
         // channel_inbound) plus `source:<channel.source>` when known.
         let mut tags: Vec<String> = Vec::with_capacity(2);
         if let Some(run_type) = root.attributes.get("run.type").and_then(Value::as_str) {

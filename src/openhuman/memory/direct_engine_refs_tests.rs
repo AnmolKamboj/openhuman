@@ -173,17 +173,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine dependency predates this branch; the facade deletion made it visible",
     ),
     (
-        "src/core/subconscious_cli.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
         "src/lib.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
-        "src/openhuman/agent/agentbox/invoker.rs",
         Verdict::FacadeRevealed,
         "engine dependency predates this branch; the facade deletion made it visible",
     ),
@@ -378,16 +368,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine dependency predates this branch; the facade deletion made it visible",
     ),
     (
-        "src/openhuman/meet/backend_bot/bus.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
-        "src/openhuman/meet/backend_bot/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
         "src/openhuman/memory/guard/audit.rs",
         Verdict::FacadeRevealed,
         "engine dependency predates this branch; the facade deletion made it visible",
@@ -539,11 +519,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     ),
     (
         "src/openhuman/skills/runtime/run_machinery.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
-        "src/openhuman/subconscious/source_chunk.rs",
         Verdict::FacadeRevealed,
         "engine dependency predates this branch; the facade deletion made it visible",
     ),

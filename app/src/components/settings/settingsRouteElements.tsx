@@ -6,7 +6,6 @@ import AboutPanel from './panels/AboutPanel';
 import AccountPanel from './panels/AccountPanel';
 import AgentAccessPanel from './panels/AgentAccessPanel';
 import AgentActivityPanel from './panels/AgentActivityPanel';
-import AgentBoxPanel from './panels/AgentBoxPanel';
 import AgentEditorPage from './panels/AgentEditorPage';
 import AgentsPanel from './panels/AgentsPanel';
 import AppearancePanel from './panels/AppearancePanel';
@@ -135,9 +134,6 @@ export function settingsRouteElements(): ReactNode {
           lives on the Connections page. */}
       <Route path="integrations" element={<Navigate to="/connections" replace />} />
       <Route path="tools" element={wrapSettingsPage(<ToolsPanel />)} />
-      <Route path="companion" element={<Navigate to="/connections?tab=companion" replace />} />
-      {/* Meeting settings moved to the Connections page (meetings tab). */}
-      <Route path="meetings" element={<Navigate to="/connections?tab=meetings" replace />} />
 
       {/* ── System ──────────────────────────────────────────────── */}
       {/* Core connection — promotes cloud-mode remote-core config into a
@@ -154,7 +150,6 @@ export function settingsRouteElements(): ReactNode {
         path="tool-policy-diagnostics"
         element={wrapSettingsPage(<ToolPolicyDiagnosticsPanel />)}
       />
-      <Route path="agentbox" element={wrapSettingsPage(<AgentBoxPanel />)} />
       <Route path="mcp-server" element={wrapSettingsPage(<McpServerPanel />)} />
       {/* Search engine settings moved to the Connections page. */}
       <Route path="search" element={<Navigate to="/connections?tab=search" replace />} />

@@ -477,14 +477,6 @@ pub fn all_tools_with_runtime(
         // per-query recall). Written verbatim to user_pref_{general,situational};
         // bypasses the inference/stability pipeline. Always registered.
         Box::new(SavePreferenceTool::new(security.clone())),
-        Box::new(MonitorTool::new(
-            security.clone(),
-            Arc::clone(&runtime),
-            Arc::clone(&audit),
-        )),
-        Box::new(MonitorListTool),
-        Box::new(MonitorStopTool),
-        Box::new(MonitorReadTool),
         // WhatsApp data store — read-only agent surface (issue #1341). The
         // store lives in the Tauri shell; these tools reach it over the
         // in-process native request bus. The matching ingest write-path is
@@ -777,9 +769,6 @@ pub fn all_tools_with_runtime(
     // choosing it and reporting the failure back to the user.
     #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
-
-    // Subconscious user-facing handoff — notify_user proactive delivery.
-    tools.extend(crate::openhuman::subconscious::user_thread::all_user_thread_tools());
 
     // tiny.place agent surface. These wrap the internal tiny.place controllers
     // so the dedicated tinyplace subagent can register identities, inspect
@@ -1227,8 +1216,8 @@ pub fn all_tools_with_runtime(
     // 1. DomainSet (#4796): drop tools whose DomainGroup is disabled under the
     //    ambient CoreContext. With no active context, or under
     //    `DomainSet::full()`, every tool is kept (byte-identical). Under
-    //    `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice/
-    //    meet) are dropped so agent turns can't call a domain that isn't live;
+    //    `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice)
+    //    are dropped so agent turns can't call a domain that isn't live;
     //    only the memory + threads tools survive (the mapped harness families)
     //    — see `tool_group` for the classification and its Platform-default
     //    caveat.
@@ -1397,17 +1386,13 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         return DomainGroup::Channels;
     }
     // Voice family: explicit audio_* podcast tools plus the defensive
-    // voice_/tts_/stt_ prefixes for any future tool. Meet has no agent tools in
-    // the current surface, but the `meet_` prefix is mapped defensively.
+    // voice_/tts_/stt_ prefixes for any future tool.
     if VOICE.contains(&name)
         || name.starts_with("voice_")
         || name.starts_with("tts_")
         || name.starts_with("stt_")
     {
         return DomainGroup::Voice;
-    }
-    if name.starts_with("meet_") {
-        return DomainGroup::Meet;
     }
     // Memory family (harness-kept): memory_* store/search/etc + goals_* + extras.
     if name.starts_with("memory_") || name.starts_with("goals_") || MEMORY_EXTRA.contains(&name) {

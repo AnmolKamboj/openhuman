@@ -109,7 +109,6 @@ export interface OrchestrationSteering {
 
 export interface OrchestrationStatus {
   steering?: OrchestrationSteering;
-  lastTickAt?: number;
   ingestLastMessageAt?: string;
   /** Whether the hosted brain was reachable at the last health sync. `false`
    * drives the "cloud brain unreachable" offline notice. Absent = assume up. */

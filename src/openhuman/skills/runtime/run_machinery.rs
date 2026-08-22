@@ -229,7 +229,6 @@ pub async fn spawn_workflow_run_background_with_profile(
             let mut agent = match Agent::from_config_for_agent_with_profile(
                 &config,
                 "orchestrator",
-                None,
                 active_profile
                     .as_ref()
                     .and_then(|profile| profile.system_prompt_suffix.clone()),

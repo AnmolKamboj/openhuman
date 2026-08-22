@@ -5,7 +5,7 @@
 //! points without relying on the *absence* of other task-locals as a signal.
 //!
 //! Every entry point that drives the agent loop ([`crate::openhuman::web_chat`],
-//! [`crate::openhuman::channels::runtime::dispatch`], [`crate::openhuman::subconscious`],
+//! [`crate::openhuman::channels::runtime::dispatch`],
 //! [`crate::openhuman::cron`], CLI) MUST scope a real [`AgentTurnOrigin`]
 //! around its `run_turn` invocation. Any path that fails to do so is treated
 //! as [`AgentTurnOrigin::Unknown`] by the gate and the call fails closed.

@@ -83,8 +83,6 @@ pub enum RunType {
     InteractiveChat,
     /// Autonomous background run from the task dispatcher.
     AutonomousTask,
-    /// Programmatic AgentBox `/run` invocation.
-    Agentbox,
     /// Inbound message relayed from an external channel (Telegram, Discord,
     /// Slack, …) through the channel bus.
     ChannelInbound,
@@ -96,7 +94,6 @@ impl RunType {
         match self {
             RunType::InteractiveChat => "interactive_chat",
             RunType::AutonomousTask => "autonomous_task",
-            RunType::Agentbox => "agentbox",
             RunType::ChannelInbound => "channel_inbound",
         }
     }
@@ -107,7 +104,6 @@ impl RunType {
     pub fn from_source(source: Option<&str>) -> Self {
         match source {
             Some("autonomous") => RunType::AutonomousTask,
-            Some("agentbox") => RunType::Agentbox,
             Some("channel_inbound") => RunType::ChannelInbound,
             _ => RunType::InteractiveChat,
         }
