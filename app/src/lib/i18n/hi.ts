@@ -7164,9 +7164,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'इसी कंप्यूटर पर',
   'settings.gateway.where.ssh': 'SSH के ज़रिए किसी दूसरी मशीन पर',
   'settings.gateway.destinationLabel': 'SSH गंतव्य',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'आपकी SSH कॉन्फ़िगरेशन का कोई होस्ट, या उपयोगकर्ता@होस्ट। वहाँ पहले से तय पोर्ट, कुंजियाँ और जंप होस्ट जैसे हैं वैसे ही इस्तेमाल होते हैं।',
   'settings.gateway.identityLabel': 'निजी कुंजी (वैकल्पिक)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'पहली बार जुड़ने पर इस मशीन पर भरोसा करें',
   'settings.gateway.acceptNewHostKeyHelp':
     'ऐसी होस्ट कुंजी स्वीकार करता है जो पहले कभी नहीं देखी गई। बदली हुई कुंजी फिर भी अस्वीकार होती है, क्योंकि वही स्थिति बताती है कि कुछ गड़बड़ है।',

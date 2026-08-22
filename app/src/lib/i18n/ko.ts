@@ -7086,9 +7086,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': '이 컴퓨터에서',
   'settings.gateway.where.ssh': 'SSH로 다른 컴퓨터에서',
   'settings.gateway.destinationLabel': 'SSH 대상',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'SSH 설정에 있는 호스트 또는 사용자@호스트입니다. 그곳에 이미 설정해 둔 포트, 키, 점프 호스트를 그대로 사용합니다.',
   'settings.gateway.identityLabel': '개인 키 (선택)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': '처음 연결할 때 이 컴퓨터를 신뢰',
   'settings.gateway.acceptNewHostKeyHelp':
     '한 번도 본 적 없는 호스트 키를 받아들입니다. 바뀐 키는 여전히 거부되는데, 바로 그 경우가 무언가 잘못되었다는 뜻이기 때문입니다.',

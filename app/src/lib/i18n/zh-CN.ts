@@ -6782,9 +6782,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': '在这台电脑上',
   'settings.gateway.where.ssh': '通过 SSH 在另一台机器上',
   'settings.gateway.destinationLabel': 'SSH 目标',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     '你的 SSH 配置中的主机，或者 用户@主机。那里已经配置好的端口、密钥和跳板机会被原样沿用。',
   'settings.gateway.identityLabel': '私钥（可选）',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': '首次连接时信任这台机器',
   'settings.gateway.acceptNewHostKeyHelp':
     '接受一个从未见过的主机密钥。已经变更的密钥仍会被拒绝，因为那种情况才说明确实出了问题。',

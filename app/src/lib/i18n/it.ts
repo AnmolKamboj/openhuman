@@ -7300,9 +7300,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'Su questo computer',
   'settings.gateway.where.ssh': 'Su un’altra macchina, via SSH',
   'settings.gateway.destinationLabel': 'Destinazione SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'Un host dalla tua configurazione SSH, oppure utente@host. Porte, chiavi e jump host già configurati lì vengono usati così come sono.',
   'settings.gateway.identityLabel': 'Chiave privata (facoltativa)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'Fidati di questa macchina alla prima connessione',
   'settings.gateway.acceptNewHostKeyHelp':
     'Accetta una chiave host mai vista prima. Una chiave cambiata viene comunque rifiutata, perché è quello il caso che segnala un problema reale.',

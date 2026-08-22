@@ -7369,9 +7369,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'Auf diesem Computer',
   'settings.gateway.where.ssh': 'Auf einem anderen Rechner, über SSH',
   'settings.gateway.destinationLabel': 'SSH-Ziel',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'Ein Host aus deiner SSH-Konfiguration oder benutzer@host. Ports, Schlüssel und Jump-Hosts, die dort schon eingerichtet sind, werden unverändert übernommen.',
   'settings.gateway.identityLabel': 'Privater Schlüssel (optional)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'Diesem Rechner beim ersten Verbinden vertrauen',
   'settings.gateway.acceptNewHostKeyHelp':
     'Akzeptiert einen noch nie gesehenen Hostschlüssel. Ein geänderter Schlüssel wird weiterhin abgelehnt, denn genau das deutet auf ein echtes Problem hin.',

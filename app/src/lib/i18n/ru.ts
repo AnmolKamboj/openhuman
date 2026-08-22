@@ -7242,9 +7242,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'На этом компьютере',
   'settings.gateway.where.ssh': 'На другой машине, по SSH',
   'settings.gateway.destinationLabel': 'Адрес SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'Хост из вашей конфигурации SSH или пользователь@хост. Порты, ключи и промежуточные хосты, уже настроенные там, используются как есть.',
   'settings.gateway.identityLabel': 'Закрытый ключ (необязательно)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'Доверять этой машине при первом подключении',
   'settings.gateway.acceptNewHostKeyHelp':
     'Принимает ключ хоста, который вы раньше не видели. Изменившийся ключ по-прежнему отклоняется, потому что именно это означает, что что-то не так.',

@@ -7201,9 +7201,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'Di komputer ini',
   'settings.gateway.where.ssh': 'Di mesin lain, lewat SSH',
   'settings.gateway.destinationLabel': 'Tujuan SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'Host dari konfigurasi SSH kamu, atau pengguna@host. Port, kunci, dan jump host yang sudah diatur di sana dipakai apa adanya.',
   'settings.gateway.identityLabel': 'Kunci privat (opsional)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'Percayai mesin ini saat pertama kali menyambung',
   'settings.gateway.acceptNewHostKeyHelp':
     'Menerima kunci host yang belum pernah dilihat. Kunci yang berubah tetap ditolak, karena justru itulah tanda ada yang tidak beres.',

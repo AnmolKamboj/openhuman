@@ -7167,9 +7167,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'এই কম্পিউটারে',
   'settings.gateway.where.ssh': 'SSH দিয়ে অন্য একটি মেশিনে',
   'settings.gateway.destinationLabel': 'SSH গন্তব্য',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'আপনার SSH কনফিগারেশনের একটি হোস্ট, বা ব্যবহারকারী@হোস্ট। সেখানে আগে থেকে ঠিক করা পোর্ট, কী এবং জাম্প হোস্ট যেমন আছে তেমনই ব্যবহার হয়।',
   'settings.gateway.identityLabel': 'ব্যক্তিগত কী (ঐচ্ছিক)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'প্রথমবার সংযোগের সময় এই মেশিনকে বিশ্বাস করুন',
   'settings.gateway.acceptNewHostKeyHelp':
     'আগে কখনও দেখা হয়নি এমন একটি হোস্ট কী গ্রহণ করে। বদলে যাওয়া কী তবুও প্রত্যাখ্যান করা হয়, কারণ সেটিই বোঝায় যে কিছু একটা গণ্ডগোল হয়েছে।',

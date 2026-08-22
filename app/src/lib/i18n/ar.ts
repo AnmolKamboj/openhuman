@@ -7009,9 +7009,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'على هذا الحاسوب',
   'settings.gateway.where.ssh': 'على جهاز آخر عبر SSH',
   'settings.gateway.destinationLabel': 'وجهة SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'مضيف من إعدادات SSH لديك، أو مستخدم@مضيف. تُستخدم المنافذ والمفاتيح ومضيفات القفز المعدّة هناك كما هي.',
   'settings.gateway.identityLabel': 'مفتاح خاص (اختياري)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'الوثوق بهذا الجهاز عند أول اتصال',
   'settings.gateway.acceptNewHostKeyHelp':
     'يقبل مفتاح مضيف لم تره من قبل. أما المفتاح الذي تغيّر فيظل مرفوضًا، لأن تلك هي الحالة التي تعني أن هناك خطأ ما.',

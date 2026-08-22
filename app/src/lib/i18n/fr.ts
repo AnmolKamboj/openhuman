@@ -7346,9 +7346,11 @@ const messages: TranslationMap = {
   'settings.gateway.where.here': 'Sur cet ordinateur',
   'settings.gateway.where.ssh': 'Sur une autre machine, via SSH',
   'settings.gateway.destinationLabel': 'Destination SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'Un hôte de votre configuration SSH, ou utilisateur@hôte. Les ports, clés et rebonds déjà configurés là-bas sont utilisés tels quels.',
   'settings.gateway.identityLabel': 'Clé privée (facultatif)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey':
     'Faire confiance à cette machine lors de la première connexion',
   'settings.gateway.acceptNewHostKeyHelp':
