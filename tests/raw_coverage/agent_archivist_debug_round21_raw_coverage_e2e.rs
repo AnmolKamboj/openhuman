@@ -436,7 +436,10 @@ fn debug_dump_writer_sanitizes_names_and_writes_summary_sidecars() -> Result<()>
         workspace_dir: PathBuf::from("/tmp/round21-workspace"),
         text: "SYSTEM PROMPT\n".to_string(),
         tool_names: vec!["echo".to_string(), "search".to_string()],
-        tool_specs: vec![],
+        tool_specs: vec![
+            json!({"name": "echo", "description": "echo back", "parameters": {}}),
+            json!({"name": "search", "description": "search docs", "parameters": {}}),
+        ],
         skill_tool_count: 1,
     }];
 
