@@ -1620,12 +1620,15 @@ async fn orchestrator_tool_synthesis_covers_agent_and_integration_delegation_edg
     assert_eq!(names, vec!["research", "delegate_to_integrations_agent"]);
 
     let research = &tools[0];
-    assert!(research
-        .description()
-        .contains("direct tools are insufficient"));
+    // #1335 dropped the repeated "Use only when direct response/direct tools
+    // are insufficient. " prefix from every delegate schema (13 tokens each);
+    // the description is now the target's `when_to_use` verbatim.
     assert!(research
         .description()
         .contains("careful public-source research"));
+    assert!(!research
+        .description()
+        .contains("direct tools are insufficient"));
     assert_eq!(research.permission_level(), PermissionLevel::Execute);
     assert_eq!(research.category(), ToolCategory::System);
     assert_eq!(
