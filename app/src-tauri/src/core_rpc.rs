@@ -200,13 +200,16 @@ mod tests {
     #[cfg(feature = "gateways")]
     #[tokio::test]
     async fn insecure_transport_refusal_redacts_url() {
-        let err = super::post_json_rpc(
+        let err = match super::post_json_rpc(
             "http://user:pass@192.168.1.74:7788/rpc/secret?token=t0k",
             Some("bearer-tok"),
             "body".to_string(),
         )
         .await
-        .expect_err("insecure non-loopback + bearer must be refused");
+        {
+            Err(e) => e,
+            Ok(_) => panic!("insecure non-loopback + bearer must be refused"),
+        };
         assert!(
             !err.contains("pass"),
             "raw userinfo leaked into refusal error: {err}"
