@@ -61,6 +61,24 @@ describe('draftToGateway', () => {
     expect(spec.reach.port).toBe(2222);
   });
 
+  it('refuses SSH ports outside the valid TCP range', () => {
+    // `0` and anything past 65535 pass a bare digit check but reach the shell
+    // as invalid connection settings, failing later with a generic error.
+    expect(draftToGateway(draft({ where: 'ssh', destination: 'h', sshPort: '0' }))).toEqual({
+      error: 'portInvalid',
+    });
+    expect(draftToGateway(draft({ where: 'ssh', destination: 'h', sshPort: '65536' }))).toEqual({
+      error: 'portInvalid',
+    });
+    expect(draftToGateway(draft({ where: 'ssh', destination: 'h', sshPort: '70000' }))).toEqual({
+      error: 'portInvalid',
+    });
+    // The boundary values stay valid.
+    const built = draftToGateway(draft({ where: 'ssh', destination: 'h', sshPort: '65535' }));
+    if (!('gateway' in built)) throw new Error('expected a gateway');
+    expect(built.gateway.spec).toMatchObject({ reach: { kind: 'ssh', port: 65535 } });
+  });
+
   it('falls back to the id when no label was typed', () => {
     const built = draftToGateway(draft({ label: '' }));
 
