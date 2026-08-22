@@ -3875,7 +3875,10 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             workspace_dir: workspace.path().join("ws"),
             text: "# planner\nbody\n".to_string(),
             tool_names: vec!["todo".to_string(), "delegate".to_string()],
-            tool_specs: vec![],
+            tool_specs: vec![
+                json!({"name": "todo", "description": "manage todos", "parameters": {}}),
+                json!({"name": "delegate", "description": "delegate a task", "parameters": {}}),
+            ],
             skill_tool_count: 0,
         },
         DumpedPrompt {
@@ -3886,7 +3889,11 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             workspace_dir: workspace.path().join("ws"),
             text: "# integrations\nbody\n".to_string(),
             tool_names: vec!["GMAIL_SEND_EMAIL".to_string()],
-            tool_specs: vec![],
+            tool_specs: vec![json!({
+                "name": "GMAIL_SEND_EMAIL",
+                "description": "send an email",
+                "parameters": {},
+            })],
             skill_tool_count: 1,
         },
     ];
