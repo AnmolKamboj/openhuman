@@ -185,6 +185,22 @@ impl Harness {
 impl Drop for Harness {
     fn drop(&mut self) {
         HARNESS_LIVE.store(false, std::sync::atomic::Ordering::Release);
+        // For an ephemeral workspace, take ownership of the temp path and
+        // remove it with a short retry. The core's memory/session writers keep
+        // running a moment after the harness returns from a turn and can
+        // recreate workspace subdirectories while `TempDir`'s own drop-time
+        // removal is racing them, leaving an empty directory behind and
+        // breaking the documented "removed with its harness" guarantee. A
+        // bounded retry lets those writes settle before we give up.
+        if let Some(temp) = self._workspace._temp.take() {
+            let root = temp.into_path();
+            for _ in 0..20 {
+                if std::fs::remove_dir_all(&root).is_ok() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
         log::debug!("[embed][harness] released");
     }
 }
