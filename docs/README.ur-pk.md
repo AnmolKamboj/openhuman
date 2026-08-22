@@ -91,7 +91,6 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 
 ### 🔬 گہرا محقق اور کام کرنے والا
 
-- **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**: ایک ریسرچ اسکاؤٹ ماڈل کے آپ کا پہلا پیغام پڑھنے سے پہلے آپ کی یادداشت اور فائلوں کا جائزہ لے لیتا ہے۔ کوئی سرد آغاز نہیں۔
 - **سب کچھ شامل ہے**: ویب سرچ، سکریپر، کوڈر ٹول سیٹ، ایک حقیقی [براؤزر](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)، ان پروسیس Whisper کے ساتھ [مقامی آواز](../gitbooks/features/native-tools/voice.md)، اور ساتھ [ماڈل روٹنگ](https://tinyhumans.gitbook.io/openhuman/features/model-routing) جو ہر ورک لوڈ کے لیے صحیح LLM چنتی ہے، ایک سبسکرپشن، [مقامی AI اختیاری](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)۔
 - **[تصویر اور ویڈیو جنریشن](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**: Seedream/SeedEdit تصاویر اور Seedance/Veo ویڈیو، براہ راست آپ کے ورک اسپیس میں، اسی سبسکرپشن پر۔
 - **[17 میسجنگ چینلز](https://tinyhumans.gitbook.io/openhuman/features/channels)**: Telegram، Discord، Slack، WhatsApp، Signal، iMessage… اور ساتھ **مقامی ای میل** (IMAP IDLE + SMTP)۔ آپ کا ایجنٹ آپ تک وہیں پہنچتا ہے جہاں آپ پہلے سے موجود ہیں۔

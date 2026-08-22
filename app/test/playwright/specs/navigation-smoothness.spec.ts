@@ -8,7 +8,7 @@ interface RouteCheck {
 }
 
 const routes: RouteCheck[] = [
-  { hash: '/chat', markers: ['Your assistant is ready', 'Reasoning', 'Super Context'] },
+  { hash: '/chat', markers: ['Your assistant is ready', 'Reasoning'] },
   { hash: '/connections', markers: ['Composio', 'Channels', 'MCP Servers', 'Skills'] },
   // Home folded into the unified chat surface — /home redirects to /chat.
   { hash: '/home', markers: ['Your assistant is ready', 'Reasoning'] },

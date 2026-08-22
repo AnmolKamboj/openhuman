@@ -37,22 +37,17 @@ const SCOUT_AGENT_ID: &str = "context_scout";
 /// substring (tags included). Returns `None` when no usable envelope is
 /// present.
 ///
-/// The harness prepends every non-error `run_context_scout` result to turn 1 as
-/// "Prepared context", and the `context_scout` contract is "emit the single
-/// envelope and nothing outside it". But the scout runs on a fast chat-tier
-/// model that regularly wraps the envelope in a preamble (`Sure, here's what I
-/// found:\n[context_bundle]…`) or a closing line (`…[/context_bundle]\nHope
-/// that helps!`). Requiring the *whole* trimmed output to be the envelope made
-/// any such wrap fail validation, so the harness silently dropped an
-/// otherwise-good bundle and injected nothing — the "scout runs, bundle
-/// missing" failure.
+/// The `context_scout` contract is "emit the single envelope and nothing
+/// outside it", but the fast model may wrap the envelope in a preamble (`Sure,
+/// here's what I found:\n[context_bundle]…`) or a closing line
+/// (`…[/context_bundle]\nHope that helps!`). Requiring the *whole* trimmed
+/// output to be the envelope would discard an otherwise-good bundle.
 ///
 /// Pulling the envelope substring out of the surrounding text keeps the safety
-/// property intact: we still never inject the model's free-form prose, only the
-/// bracketed envelope itself. We still reject genuinely unusable output —
+/// property intact: callers receive only the bracketed envelope, never the
+/// model's free-form prose. We still reject genuinely unusable output —
 /// absent, unterminated/reversed, or duplicated (where we can't tell which
-/// envelope is authoritative) — by returning `None`, so the caller falls back
-/// to the un-augmented message.
+/// envelope is authoritative) — by returning `None`.
 fn extract_context_bundle(output: &str) -> Option<String> {
     const OPEN: &str = "[context_bundle]";
     const CLOSE: &str = "[/context_bundle]";
@@ -108,14 +103,8 @@ fn already_prepared_context_bundle(sources: &[AgentContextPreparedSource]) -> St
 /// Run the `context_scout` sub-agent inline (blocking) for `question` and
 /// return its bounded `[context_bundle]` envelope as a [`ToolResult`].
 ///
-/// This is the shared engine behind two callers:
-///
-/// 1. The [`AgentPrepareContextTool`] — invoked *autonomously by the LLM*
-///    when it decides to scout context mid-turn.
-/// 2. The agent harness itself — when "super context" is enabled it calls
-///    this directly on the first turn of a new thread (see
-///    [`crate::openhuman::config::ContextConfig::super_context_enabled`]),
-///    so the collection happens regardless of the model's decision.
+/// This is the engine behind [`AgentPrepareContextTool`], invoked autonomously
+/// by the LLM when it decides to scout context mid-turn.
 ///
 /// Must be called from within an active agent turn (i.e. with the
 /// [`crate::openhuman::agent::harness::fork_context::PARENT_CONTEXT`]
@@ -416,8 +405,7 @@ async fn run_context_scout_with_catalog_and_workspace(
                 // authoritative (it sets/replaces via `goal_set`); the
                 // context-gathering path just seeds a goal on the first scout of
                 // a fresh chat so the harness has something to steer toward.
-                // Runs for both entry points (LLM-invoked tool + harness
-                // super-context first turn). Best-effort — never fails the call.
+                // Best-effort — never fails the call.
                 if let (Some(parent), Some(thread_id)) = (current_parent(), current_thread_id()) {
                     if let Some(objective) = AgentPrepareContextTool::parse_proposed_goal(&bundle) {
                         match crate::openhuman::threads::goals::store::set_if_absent(
@@ -864,7 +852,7 @@ mod tests {
         let tool = AgentPrepareContextTool::new();
         let result = crate::openhuman::agent::harness::with_agent_context_prepared_sources(
             vec![AgentContextPreparedSource {
-                source: "super context preparation".to_string(),
+                source: "memory agent context retrieval".to_string(),
                 has_enough_context: Some(false),
             }],
             tool.execute(json!({"question": "prepare context again"})),
@@ -876,7 +864,7 @@ mod tests {
         assert!(result.output().contains("[context_bundle]"));
         assert!(result.output().contains("has_enough_context: false"));
         assert!(result.output().contains("already been prepared once"));
-        assert!(result.output().contains("super context preparation"));
+        assert!(result.output().contains("memory agent context retrieval"));
         assert!(result
             .output()
             .contains("does not assert that enough context is available"));
@@ -888,7 +876,7 @@ mod tests {
         let tool = AgentPrepareContextTool::new();
         let result = crate::openhuman::agent::harness::with_agent_context_prepared_sources(
             vec![AgentContextPreparedSource {
-                source: "super context preparation".to_string(),
+                source: "memory agent context retrieval".to_string(),
                 has_enough_context: Some(true),
             }],
             tool.execute(json!({"question": "prepare context again"})),

@@ -81,9 +81,7 @@ use crate::openhuman::agent::progress::AgentProgress;
 
 #[allow(unused_imports)] // Wired into the recall/retrieval facade in workstream 09.2.
 pub(crate) use embeddings::ProviderEmbeddingModel;
-pub(crate) use middleware::{
-    HandoffConfig, SuperContextConfig, TranscriptSnapshotSink, TurnContextMiddleware,
-};
+pub(crate) use middleware::{HandoffConfig, TranscriptSnapshotSink, TurnContextMiddleware};
 use model::{
     BuiltTurnModels, ProfileOverrideModel, RouteRecordingModel, TierRoutes, TurnChatModel,
 };

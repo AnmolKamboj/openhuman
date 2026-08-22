@@ -36,7 +36,6 @@
 - [The Orchestrator](features/orchestration.md)
 - [Workflows](features/workflows.md)
 - [Messaging Channels](features/channels.md)
-- [SuperContext](features/super-context.md)
 - [Goals & Todos](features/goals-and-todos.md)
 - [Personalization & Self-Learning](features/personalization.md)
 - [Themes & Theme Studio](features/theming.md)
