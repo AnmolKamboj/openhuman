@@ -26,11 +26,6 @@ import { connectOpenRouterViaOAuth } from '../../../../utils/openrouterOAuth';
 import { openUrl } from '../../../../utils/openUrl';
 // Lazy import so the typed mock is available to individual tests.
 import { openhumanUpdateLocalAiSettings as openhumanUpdateLocalAiSettingsMock } from '../../../../utils/tauriCommands/config';
-import {
-  openhumanHeartbeatSettingsGet,
-  openhumanHeartbeatSettingsSet,
-  openhumanHeartbeatTickNow,
-} from '../../../../utils/tauriCommands/heartbeat';
 import AIPanel, {
   BackgroundLoopControls,
   buildRoutingDiffSummary,
@@ -90,12 +85,6 @@ vi.mock('../../hooks/useSettingsNavigation', () => ({
     navigateToSettings: vi.fn(),
     breadcrumbs: [],
   }),
-}));
-
-vi.mock('../../../../utils/tauriCommands/heartbeat', () => ({
-  openhumanHeartbeatSettingsGet: vi.fn(),
-  openhumanHeartbeatSettingsSet: vi.fn(),
-  openhumanHeartbeatTickNow: vi.fn(),
 }));
 
 vi.mock('../../../../services/api/creditsApi', () => ({
