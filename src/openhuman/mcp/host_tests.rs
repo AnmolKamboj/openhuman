@@ -314,7 +314,7 @@ fn the_default_workspace_wins_when_one_is_set() {
     let first = tempfile::tempdir().expect("tempdir");
     let second = tempfile::tempdir().expect("tempdir");
     let hosts = hosts_for(&[first.path(), second.path()]);
-    let expected = Arc::clone(&hosts[second.path()]);
+    let expected = Arc::clone(&hosts[second.path()].host);
 
     let resolved = super::resolve(Some(second.path()), &hosts).expect("a service");
 
