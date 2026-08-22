@@ -1,0 +1,561 @@
+/* Import Google Fonts for trust and professionalism */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+/* Canonical theme tokens (colour + font-role CSS variables). Must precede the
+   Tailwind layers so the var-backed utility colours resolve. */
+@import './styles/tokens.css';
+
+/* Tailwind CSS imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base layer - Typography and fundamental styles */
+@layer base {
+  /* Set default font and improve text rendering */
+  html {
+    /* Body font role — themeable via styles/tokens.css (--font-body) */
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    color: var(--color-text-primary);
+  }
+
+  /* Thin, theme-tinted, auto-hiding scrollbars app-wide — the macOS overlay
+     behaviour, which CEF does not give us for free (it paints classic
+     always-visible bars, so every scroll pane drew a permanent gutter down the
+     edge of the content card).
+
+     The track is always present and always the same width: only the THUMB's
+     colour animates. Toggling `width` instead would reflow the pane's content
+     on every scroll. So the gutter is reserved but invisible at rest.
+
+     `data-scrolling` is stamped on the scrolling element for a moment after it
+     scrolls (see `lib/autoHideScrollbars.ts`) — CSS has no "is scrolling"
+     state. Hover reveals it too, matching the platform.
+
+     Deliberately NOT setting `scrollbar-color`/`scrollbar-width`: in Chromium
+     the standard properties take precedence and disable ::-webkit-scrollbar
+     styling entirely, which would kill the auto-hide.
+
+     Cannot reach native CEF provider webviews — those are separate documents
+     composited above the HTML layer and keep their own scrollbars. */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    /* Transparent border + content-box clip insets the thumb to ~4px inside the
+       10px gutter, so it reads as a thin pill rather than a full-width slab. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+    transition: background-color 160ms ease-out;
+  }
+
+  *[data-scrolling]::-webkit-scrollbar-thumb,
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--content-faint) / 0.55);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--content-muted) / 0.8);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *::-webkit-scrollbar-thumb {
+      transition: none;
+    }
+  }
+
+  body {
+    @apply font-sans;
+    line-height: 1.6;
+
+    /* Themes may supply a decorative `--app-gradient`; fall back to the flat
+       canvas colour when they don't. */
+    background: var(--app-gradient, var(--color-background));
+    color: var(--color-text-primary);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  html[data-window='overlay'],
+  html[data-window='overlay'] body,
+  html[data-window='overlay'] #root,
+  html[data-window='mascot'],
+  html[data-window='mascot'] body,
+  html[data-window='mascot'] #root,
+  html[data-window='notch'],
+  html[data-window='notch'] body,
+  html[data-window='notch'] #root {
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  @keyframes notch-pill-in {
+    from {
+      opacity: 0;
+      transform: scaleX(0.4) scaleY(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: scaleX(1) scaleY(1);
+    }
+  }
+
+  @keyframes notch-bar {
+    0%,
+    100% {
+      transform: scaleY(0.5);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scaleY(1.2);
+      opacity: 1;
+    }
+  }
+
+  @keyframes notch-dot {
+    0%,
+    80%,
+    100% {
+      transform: scale(0.6);
+      opacity: 0.4;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes overlay-bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.92);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  * {
+    color: inherit;
+  }
+
+  /* Heading hierarchy for clear information architecture */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    /* Heading font role + semantic text colour (themeable). */
+    @apply font-heading font-semibold;
+    @apply text-content;
+    line-height: 1.2;
+  }
+
+  h1 {
+    @apply text-3xl lg:text-4xl;
+  }
+  h2 {
+    @apply text-2xl lg:text-3xl;
+  }
+  h3 {
+    @apply text-xl lg:text-2xl;
+  }
+  h4 {
+    @apply text-lg lg:text-xl;
+  }
+
+  /* Suppress the default browser focus ring (outline + tap highlight) but
+     leave borders and box-shadows alone — components rely on those for
+     selected / focus-visible styling (e.g. the runtime picker cards).
+     Deliberate outlines are left alone too. This block used to carry
+     `outline: none !important` on the bare `*`, which suppressed EVERY outline
+     in the app, not just the focus ring it was aimed at — `!important` on a
+     universal selector outranks any component rule. That silently killed all
+     four flow-canvas rings, which are drawn with `outline`: the live run
+     overlay (`.flow-node-running` / `-success` / `-failed`), the validation
+     ring (`.flow-node-error`), and the copilot diff overlay
+     (`.flow-node-added` / `-removed`). None of them could ever paint. The
+     focus-ring suppression this comment actually describes is fully covered by
+     the `*:focus` rule below plus the explicit element list after it. */
+  * {
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  *:focus {
+    outline: none !important;
+  }
+
+  button:focus,
+  a:focus,
+  input:focus,
+  textarea:focus,
+  select:focus,
+  [role='button']:focus,
+  [tabindex]:focus {
+    outline: none !important;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Component layer - Reusable patterns */
+@layer components {
+  /* Button variants for consistent interaction design */
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 active:bg-primary-700;
+    @apply text-content-inverted font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+    @apply focus:outline-none;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-surface hover:bg-surface-hover active:bg-surface-strong;
+    @apply text-content font-medium;
+    @apply px-4 py-2 rounded-lg border border-line-strong;
+    @apply transition-all duration-200 ease-in-out;
+    @apply focus:outline-none;
+  }
+
+  .btn-success {
+    @apply bg-sage-500 hover:bg-sage-600 active:bg-sage-700;
+    @apply text-content-inverted font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+    @apply focus:outline-none;
+  }
+
+  .btn-danger {
+    @apply bg-coral-500 hover:bg-coral-600 active:bg-coral-700;
+    @apply text-content-inverted font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+    @apply focus:outline-none;
+  }
+
+  /* Card components for content organization */
+  .card {
+    @apply bg-surface rounded-xl shadow-soft border border-line;
+    @apply p-6 text-content;
+    @apply transition-shadow duration-200;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-medium;
+  }
+
+  .app-dotted-canvas {
+    background-color: transparent;
+    /* Dots follow the theme's content colour at low alpha (dark dots on light
+       themes, light dots on dark themes, accent-tinted on custom themes). */
+    background-image: radial-gradient(
+      circle at center,
+      rgb(var(--content) / 0.1) 1px,
+      transparent 1px
+    );
+    background-size: 18px 18px;
+    background-position: 0 0;
+  }
+
+  /* Input components with consistent styling */
+  .input-primary {
+    @apply w-full px-4 py-3 rounded-lg;
+    @apply border border-line focus:border-primary-500;
+    @apply bg-surface text-content placeholder-content-faint;
+    @apply transition-colors duration-200;
+    @apply focus:outline-none;
+  }
+
+  /* Status indicators */
+  .status-online {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-sage-100 text-sage-700;
+  }
+
+  .status-offline {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-surface-subtle text-content-secondary;
+  }
+
+  .status-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  /* Navigation styles */
+  .nav-item {
+    @apply flex items-center px-4 py-2 text-sm font-medium rounded-lg;
+    @apply text-content-secondary hover:text-content hover:bg-surface-hover;
+    @apply transition-colors duration-150;
+  }
+
+  .nav-item-active {
+    @apply nav-item bg-surface-subtle text-content;
+  }
+
+  /* Message/chat specific styles */
+  .message-bubble {
+    @apply max-w-xs lg:max-w-md px-4 py-2 rounded-2xl;
+    @apply break-words;
+  }
+
+  .message-sent {
+    @apply message-bubble bg-primary-500 text-white ml-auto;
+  }
+
+  .message-received {
+    @apply message-bubble bg-surface-strong text-content;
+  }
+
+  /* Loading states */
+  .loading-pulse {
+    @apply animate-pulse bg-surface-subtle rounded;
+  }
+
+  /* Crypto price styling */
+  .price-positive {
+    @apply text-market-bullish font-mono font-medium;
+  }
+
+  .price-negative {
+    @apply text-market-bearish font-mono font-medium;
+  }
+
+  .price-neutral {
+    @apply text-market-neutral font-mono font-medium;
+  }
+
+  /* ============================================
+     Dark-mode overrides for @apply'd component classes.
+     Most classes are now token-driven (semantic surface/content/line) and flip
+     automatically, so only the tinted status badges — which keep a light accent
+     tint in light mode — still need an explicit dark override.
+     ============================================ */
+  :root.dark .status-online {
+    background-color: rgba(52, 199, 89, 0.15);
+    color: theme('colors.sage.300');
+  }
+
+  :root.dark .status-warning {
+    background-color: rgba(232, 167, 40, 0.15);
+    color: theme('colors.amber.300');
+  }
+}
+
+/* Utility layer - Custom utilities */
+@layer utilities {
+  /* NOTE: a `.scrollbar-thin` utility used to live here. It had zero call
+     sites, and being in `@layer utilities` it outranked the base-layer
+     auto-hide rules above — so the moment anyone reached for it, that pane
+     would have kept a permanently visible grey thumb and silently ignored
+     `data-scrolling`. Deleted rather than kept as a trap; scrollbars are thin
+     and theme-tinted app-wide now, so nothing needs to opt in. */
+
+  /* Hide scrollbar while keeping scroll behavior */
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Text selection styling */
+  .select-primary::selection {
+    @apply bg-primary-600 text-white;
+  }
+
+  /* Glass effect for light theme */
+  .glass {
+    backdrop-filter: blur(12px);
+    /* Themeable: surface tint + line border follow the active theme. */
+    background: rgb(var(--surface) / 0.8);
+    border: 1px solid rgb(var(--line) / 0.6);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  :root.dark .glass {
+    /* Only the shadow needs a darker variant; colours come from the tokens. */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Animation utilities */
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Modal animations */
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Safe area padding for mobile devices */
+  .safe-area-padding {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Skills table container */
+  .skills-table-container {
+    position: relative;
+    max-height: calc(3 * 2.5rem + 2.5rem + 1px); /* Header + 3 rows + border */
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .skills-table-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(3 * 2.5rem + 2.5rem + 1px);
+  }
+
+  .skills-table-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+  }
+
+  :root.dark .skills-table-header {
+    background: rgba(23, 23, 23, 0.9);
+  }
+
+  /* Gradient fade overlay at bottom */
+  .skills-table-container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background: linear-gradient(to bottom, transparent, rgba(245, 245, 245, 0.9));
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  :root.dark .skills-table-container::after {
+    background: linear-gradient(to bottom, transparent, rgba(10, 10, 10, 0.9));
+  }
+
+  /* Hover overlay */
+  .skills-table-overlay {
+    z-index: 20;
+  }
+
+  .skills-table-container:hover .skills-table-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Light mode (default) */
+:root {
+  color-scheme: light;
+}
+
+/*
+ * Command palette + help overlay tokens — now thin aliases over the canonical
+ * theme tokens in styles/tokens.css, so the palette themes along with the rest
+ * of the app. Only the shadow (not a colour token) stays literal.
+ */
+:root {
+  --cmd-accent: rgb(var(--primary-500));
+  --cmd-surface: rgb(var(--surface));
+  --cmd-surface-elevated: rgb(var(--surface-subtle));
+  --cmd-foreground: rgb(var(--content));
+  --cmd-foreground-muted: rgb(var(--content-muted));
+  --cmd-border: rgb(var(--line));
+  --cmd-ring: var(--cmd-accent);
+  --cmd-overlay: rgb(var(--surface-overlay) / 0.5);
+  --cmd-shadow-palette: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+:root.dark {
+  --cmd-accent: rgb(var(--primary-400));
+  --cmd-surface: rgb(var(--surface));
+  --cmd-surface-elevated: rgb(var(--surface-muted));
+  --cmd-foreground: rgb(var(--content));
+  --cmd-foreground-muted: rgb(var(--content-muted));
+  --cmd-border: rgb(var(--line-strong));
+  --cmd-overlay: rgb(var(--surface-overlay) / 0.7);
+  --cmd-shadow-palette: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmd-palette-enter,
+  .cmd-palette-exit,
+  .cmd-help-enter,
+  .cmd-help-exit {
+    animation: none !important;
+    transition: none !important;
+  }
+}

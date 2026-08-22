@@ -1,0 +1,116 @@
+//! The load-bearing test here is [`turn_request_field_names_match_the_controller`].
+//!
+//! Everything else in this file checks the facade's own logic; that one checks
+//! the thing that actually breaks in the field. `AgentChatParams` has no
+//! `#[serde(rename_all)]`, so its wire names are Rust field names — an upstream
+//! rename produces no compile error anywhere, and a hand-written `json!` keeps
+//! sending the old key while the controller reads `None`. Pinning our field
+//! names against the *registered schema* turns that into a test failure.
+
+use super::*;
+use serde_json::json;
+
+/// Every key [`TurnRequest`] serializes must be a declared input of the
+/// controller it is sent to.
+#[test]
+fn turn_request_field_names_match_the_controller() {
+    let schema = crate::openhuman::inference::local::all_local_inference_controller_schemas()
+        .into_iter()
+        .find(|s| s.namespace == "inference" && s.function == "agent_chat")
+        .expect("inference.agent_chat is a registered controller");
+
+    let declared: std::collections::HashSet<&str> =
+        schema.inputs.iter().map(|field| field.name).collect();
+
+    // Fully populated so `skip_serializing_if` hides nothing.
+    let request = TurnRequest {
+        message: "hi".into(),
+        model_override: Some("m".into()),
+        temperature: Some(0.5),
+        thread_id: Some("t".into()),
+        cwd: Some("/tmp".into()),
+        inference_url: Some("https://example.invalid/v1".into()),
+        api_key: Some("k".into()),
+    };
+
+    let serde_json::Value::Object(encoded) =
+        serde_json::to_value(&request).expect("TurnRequest encodes")
+    else {
+        panic!("TurnRequest must encode to an object");
+    };
+
+    for key in encoded.keys() {
+        assert!(
+            declared.contains(key.as_str()),
+            "TurnRequest sends `{key}`, which inference.agent_chat does not declare. \
+             Either the controller renamed a field or the facade invented one; \
+             declared inputs are {declared:?}"
+        );
+    }
+
+    // And the reverse: a param the controller declares but the facade cannot
+    // reach is a capability we silently dropped.
+    for field in &schema.inputs {
+        assert!(
+            encoded.contains_key(field.name),
+            "inference.agent_chat declares `{}`, which TurnRequest cannot send",
+            field.name
+        );
+    }
+}
+
+#[test]
+fn turn_request_omits_absent_options() {
+    // `None` must not become `null`: the controller's `Option<String>` would
+    // accept it, but sending keys the caller never set makes the wire payload
+    // depend on facade internals rather than on what was asked for.
+    let encoded = serde_json::to_value(TurnRequest::new("hi")).expect("encodes");
+    assert_eq!(encoded, json!({ "message": "hi" }));
+}
+
+#[test]
+fn a_route_sets_both_halves_or_neither() {
+    // The core ignores the route unless both arrive non-blank, so the type
+    // makes supplying one alone unrepresentable.
+    let turn_request = {
+        let mut r = TurnRequest::new("hi");
+        let route = Route::openai_compatible("https://example.invalid/v1", "sk-test");
+        r.inference_url = Some(route.base_url);
+        r.api_key = Some(route.api_key);
+        r
+    };
+    assert_eq!(
+        turn_request.inference_url.as_deref(),
+        Some("https://example.invalid/v1")
+    );
+    assert_eq!(turn_request.api_key.as_deref(), Some("sk-test"));
+}
+
+#[test]
+fn absolute_leaves_absolute_paths_alone() {
+    let already = std::path::Path::new("/tmp/example");
+    assert_eq!(absolute(already).expect("absolute"), already);
+}
+
+#[test]
+fn absolute_roots_a_relative_path_at_the_cwd() {
+    let resolved = absolute("sub/dir").expect("absolute");
+    assert!(resolved.is_absolute());
+    assert!(resolved.ends_with("sub/dir"));
+}
+
+#[test]
+fn route_debug_redacts_bearer_and_url_embedded_credentials() {
+    let route = Route::openai_compatible(
+        "https://user:topsecret@api.example/v1?key=leaky#frag",
+        "sk-bearer",
+    );
+    let debug = format!("{route:?}");
+
+    assert!(debug.contains("api.example"), "origin stays readable");
+    assert!(
+        !debug.contains("topsecret") && !debug.contains("sk-bearer") && !debug.contains("leaky"),
+        "credentials leaked into Route Debug: {debug}"
+    );
+    assert!(debug.contains("redacted"));
+}
