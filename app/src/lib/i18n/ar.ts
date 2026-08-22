@@ -7033,7 +7033,7 @@ const messages: TranslationMap = {
 
   'devOptions.gateway': 'الموقع',
   'devOptions.provisionedCore': 'نواة شغّلها هذا التطبيق',
-  'devOptions.gatewayId': 'الموقع',
+  'devOptions.gatewayId': 'معرّف الموقع',
 };
 
 export default messages;
