@@ -78,6 +78,60 @@
 //! happens to live in the engine crate, and it should probably move to
 //! `tinymemory-api` rather than gain a bus method.
 //!
+//! ## What the 2026-08-22 audit added to that list
+//!
+//! Draining `FacadeRevealed` turned 82 unexamined files into evidence, and it
+//! widened the ask rather than narrowing it. Grouped by what blocks them, so
+//! the upstream work can be sized per gap instead of per file:
+//!
+//! - **The engine handle itself** (~28 files) — `global::{init, client,
+//!   client_if_ready}`, `store::{UnifiedMemory, MemoryClient, MemoryClientRef}`
+//!   and `store::factories::create_memory`. These construct or hold the
+//!   in-process engine. Nothing routes here: the seam has no door onto a live
+//!   client, and it should not grow one — this is `memory::binding`'s job, and
+//!   the ask is that every caller take the binding's provider instead.
+//! - **Chunk writes and transactions** (~21 files) —
+//!   `store::chunks::store::{with_connection, upsert_chunks,
+//!   upsert_staged_chunks_tx, get_or_init_connection}`, plus `store::{fts5,
+//!   segments, profile, events, content}`. `MemoryChunks` is a read family;
+//!   this is the write half, and `with_connection` hands out a SQLite handle,
+//!   which no engine-neutral contract can promise. **Moving these subsystems
+//!   behind the bus is the only shape that keeps a supermemory/mem0/cognee
+//!   driver implementable** — a contract with `with_connection` in it is a
+//!   SQLite contract wearing a trait.
+//! - **Host policy living in the engine crate** (~14 files) —
+//!   `store::safety::{sanitize_text, sanitize_json, has_likely_secret}`,
+//!   `util::redact::redact`, `source_scope::*`. Pure functions and a
+//!   task-local. These want relocation to `tinymemory-api`, not bus methods;
+//!   they are the cheapest item on this list and they unblock nothing else,
+//!   which is exactly why they are worth doing first.
+//! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
+//!   ensure_reembed_backfill, requeue_failed_after_provider_change,
+//!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
+//! - **Engine-shaped integration internals** (~11 files) —
+//!   `tinycortex::{memory_config_from, run_composio_connection,
+//!   load_composio_sync_state, HostSyncAdapter, CodingSession*}`. Named after
+//!   the engine, so no engine-neutral family can express them as they stand.
+//! - **Engine-owned types** — `rpc_models::*`, `store::trees::types::TreeKind`,
+//!   `store::chunks::types::SourceKind`, `store::{NamespaceDocumentInput,
+//!   NamespaceRetrievalContext, GraphRelationRecord}`. A type import links the
+//!   crate exactly as a call does, so the shed needs these in
+//!   `tinymemory-api`. `MemoryCategory`/`MemoryEntry`/`MemoryTaint` already
+//!   are — `tinymemory_core::traits` re-exports them — so those call sites can
+//!   name the contract today.
+//! - **Chat, ingest pipeline and preferences** (~12 files) —
+//!   `chat::{ChatProvider, build_chat_provider, test_override}`,
+//!   `ingest_pipeline::{ingest_chat, ingest_document_with_scope}`,
+//!   `preferences::{STANDING_PREFS_LIMIT, load_general_preferences,
+//!   recall_situational_preferences}`.
+//!
+//! The order that follows from this: relocate the pure helpers and types to
+//! `tinymemory-api` (no bus surface, no release coupling), then move the
+//! queue and chunk-write subsystems behind the module, and only then can the
+//! handle-holding callers take the binding's provider and the crate leave the
+//! build. Nothing here is a host-side routing pass, which is what the original
+//! scope assumed.
+//!
 //! # Known weaknesses, stated rather than hidden
 //!
 //! - **The lint sees text, not types.** A reference reached through a
@@ -121,6 +175,19 @@ pub(crate) enum Verdict {
     /// for one of the three considered verdicts above. Draining it means
     /// re-classifying each entry as one of those three, not deleting the
     /// variant.
+    ///
+    /// **Drained 2026-08-22.** All 82 entries were audited into the three
+    /// considered verdicts; none turned out to be [`Verdict::SeamExpressible`],
+    /// which is the finding rather than a formality — every one of them is
+    /// blocked on a contract the module does not yet expose, so the remaining
+    /// #5560 work is upstream in `tinymemory` and not a routing pass here. The
+    /// variant is kept rather than removed for the reason it was added: if a
+    /// re-export facade grows back and hides engine users again, the label for
+    /// them already exists and already says what it means.
+    #[allow(
+        dead_code,
+        reason = "drained 2026-08-22; retained as the landing spot if a facade regrows"
+    )]
     FacadeRevealed,
 }
 
@@ -144,388 +211,389 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     // inventory — is what surfaced them, and the count of real engine
     // dependencies did not grow by one.
     //
-    // They are `FacadeRevealed` rather than one of the three considered
-    // verdicts because they have not been audited individually. See the note on
-    // that variant.
+    // Audited individually on 2026-08-22 and re-classified out of
+    // `FacadeRevealed`; each entry now names the symbols it actually reaches
+    // for, so the verdict is checkable against the code rather than taken on
+    // trust. The audit's finding is that none of them is `SeamExpressible`.
     (
         "src/bin/library_profile/scenarios/cold_phases.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/bin/library_profile/scenarios/memory_ingest.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine-internal ingest pipeline entry (ingest_pipeline::ingest_chat, queue::drain_until_idle); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
     ),
     (
         "src/core/memory_cli.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init, store::MemoryClientRef, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/core/runtime/context.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/core/runtime/services.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (queue::start) has no capability family",
     ),
     (
         "src/lib.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::HostSide,
+        "crate-root re-export of the engine's store module under its historical path",
     ),
     (
         "src/openhuman/agent/experience/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init, global::client_if_ready, store::UnifiedMemory::new_with_memory_dir); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/experience/store.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/harness/archivist/hook_impl.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::fts5, tinycortex::memory_config_from); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/agent/harness/archivist/lifecycle.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::events, store::fts5::EpisodicEntry, store::profile, store::segments, chat::build_chat_provider); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/agent/harness/archivist/mod.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::profile); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/agent/harness/archivist/recap.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::fts5, store::segments::ConversationSegment, store::chunks::types::approx_token_count); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/agent/harness/archivist/test_constructors.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the engine-side chat provider seam (chat::ChatProvider); MemoryIngest has no provider-override door",
     ),
     (
         "src/openhuman/agent/harness/archivist/tree_ingest.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::fts5, store::segments::ConversationSegment, ingest_pipeline); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/agent/harness/archivist/types.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the engine-side chat provider seam (chat::ChatProvider); MemoryIngest has no provider-override door",
     ),
     (
         "src/openhuman/agent/harness/artifact_offload/policy.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (store::safety::sanitize_text); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/agent/harness/session/builder/factory.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/harness/session/turn/context.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "preferences namespace and loaders are engine-owned (preferences::STANDING_PREFS_LIMIT, preferences::load_general_preferences); no capability family covers them",
     ),
     (
         "src/openhuman/agent/harness/session/turn/core.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "preferences namespace and loaders are engine-owned (preferences::recall_situational_preferences); no capability family covers them",
     ),
     (
         "src/openhuman/agent/harness/subagent_runner/ops/runner.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "names engine-owned types (store::trees::types::TreeKind); relocating them to tinymemory-api is the ask, not a bus method",
     ),
     (
         "src/openhuman/agent/harness/tool_result_artifacts/mod.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (store::safety); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/agent/learning/linkedin_enrichment.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::MemoryClient, store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/task_dispatcher/executor.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/agent/tinyagents/host/agent_memory.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::factories::create_memory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/tools/remember_preference.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/tools/save_preference.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (store::safety); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/channels/controllers/ops/connect.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/channels/runtime/startup.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/channels/tests/memory.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/config/migration_helpers/core.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/config/ops/model.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
     ),
     (
         "src/openhuman/cron/scheduler.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/desktop/app_state/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/flows/memory_tools.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::has_likely_secret); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/flows/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (store::safety::has_likely_secret); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/hosted/orchestration/effect_executor.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine-internal ingest pipeline entry (ingest_pipeline::ingest_document_with_scope); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
     ),
     (
         "src/openhuman/inference/embeddings/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
     ),
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind, tinycortex::HostSyncAdapter); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/integrations/composio/ops/mod.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/integrations/composio/ops/providers_ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/integrations/composio/schemas.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::client_if_ready); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/guard/audit.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (util::redact::redact); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/memory/guard/policy.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "task-local host policy living in the engine crate (source_scope::current_source_scope, store::safety::sanitize_json/sanitize_text); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/memory/ops/documents.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init, store::NamespaceRetrievalContext); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/guard.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/helpers.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::client, global::client_if_ready, global::init, store::GraphRelationRecord); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/learn.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::client, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/sync.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::run_composio_connection, global::client, sync_events); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/ops/test_support.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/read_rpc/admin.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (queue::store, queue::types, queue::wake_workers, store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/read_rpc/chunks.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::with_connection); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/read_rpc/entities.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/read_rpc/graph.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/read_rpc/mod.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::with_connection, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/read_rpc/vault.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::content::obsidian_registry, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/sources/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::CodingSession* request/response/status types, tinycortex::SyncAuditEntry); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/sources/schemas.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::CodingSessionIngestRequest); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/store_golden.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (global::client, rpc_models::QueryNamespaceRequest, store::UnifiedMemory::new, store::chunks); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/sync/composio/bus.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (events::MemoryEvent/publish, observability::report_error_or_expected, tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/sync/composio/providers/slack/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::load_composio_sync_state, tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/sync/sync_status/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/sync_events_bridge.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (queue::ensure_reembed_backfill, sync_events) has no capability family",
     ),
     (
         "src/openhuman/memory/tools/flavour.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
         "src/openhuman/memory/tools/forget.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/tools/recall.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/tools/store.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/tree/retrieval/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::upsert_chunks, upsert_staged_chunks_tx, with_connection); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, ingest_pipeline) has no capability family",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store::with_connection, store::factories::effective_embedding_settings); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/security/approval/store.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "pure host-policy helper living in the engine crate (store::safety::sanitize_text); belongs in tinymemory-api rather than gaining a bus method",
     ),
     (
         "src/openhuman/security/credentials/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "the re-embed queue (global::init, queue::ensure_reembed_backfill) has no capability family",
     ),
     (
         "src/openhuman/skills/runtime/run_machinery.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "task-local host policy living in the engine crate (source_scope::current_source_scope, source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/tools/registry/ops.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "reaches engine storage below the contract (store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/web_chat/run_task.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
+        Verdict::NeedsWiderSeam,
+        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
