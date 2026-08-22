@@ -16,13 +16,10 @@ import PageWelcome from '../components/layout/PageWelcome';
 import PanelPage from '../components/layout/PanelPage';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import TwoPaneNav from '../components/layout/TwoPaneNav';
-import MeetingsPage from '../components/meetings/MeetingsPage';
 import { SettingsLayoutProvider } from '../components/settings/layout/SettingsLayoutContext';
-import CompanionPanel from '../components/settings/panels/CompanionPanel';
 import ComposioPanel from '../components/settings/panels/ComposioPanel';
 import EmbeddingsPanel from '../components/settings/panels/EmbeddingsPanel';
 import LlmConnectionsPanel from '../components/settings/panels/LlmConnectionsPanel';
-import MeetingSettingsPanel from '../components/settings/panels/MeetingSettingsPanel';
 import SearchPanel from '../components/settings/panels/SearchPanel';
 import UsagePanel from '../components/settings/panels/UsagePanel';
 import VoicePanel from '../components/settings/panels/VoicePanel';
@@ -424,7 +421,7 @@ interface SkillItem {
  *   mcp       → mcp
  *   skills    → skills (kept secondary)
  *
- * Back-compat: the old ?tab= values (composio, channels, mcp, meetings) are
+ * Back-compat: the old ?tab= values (composio, channels, mcp) are
  * normalised to the new values so existing deep links continue to work.
  */
 type ConnectionsTab =
@@ -433,15 +430,13 @@ type ConnectionsTab =
   | 'channels'
   | 'mcp'
   | 'skills'
-  | 'meetings'
   | 'llm'
   | 'voice'
   | 'embeddings'
   | 'search'
   | 'usage'
   | 'composio-key'
-  | 'wallet'
-  | 'companion';
+  | 'wallet';
 
 /**
  * Tabs that render a relocated settings panel inside the shared card surface.
@@ -455,7 +450,6 @@ const CONNECTIONS_HEADERS: Partial<Record<ConnectionsTab, { titleKey: string; de
     channels: { titleKey: 'connections.tabs.channels', descKey: 'connections.header.channels' },
     mcp: { titleKey: 'connections.tabs.mcp', descKey: 'connections.header.mcp' },
     skills: { titleKey: 'connections.tabs.skills', descKey: 'connections.header.skills' },
-    meetings: { titleKey: 'connections.tabs.meetings', descKey: 'connections.header.meetings' },
   };
 
 /** Canonical header (title + description) for each relocated settings panel. */
@@ -472,10 +466,6 @@ const INTELLIGENCE_HEADERS: Partial<Record<ConnectionsTab, { titleKey: string; d
     },
     search: { titleKey: 'settings.search.title', descKey: 'connections.header.search' },
     usage: { titleKey: 'settings.usage.title', descKey: 'settings.usage.menuDesc' },
-    companion: {
-      titleKey: 'pages.settings.features.desktopCompanion',
-      descKey: 'connections.header.companion',
-    },
   };
 
 /** Intelligence tabs whose panel renders its own header card (with chip tabs in
@@ -490,7 +480,6 @@ const INTELLIGENCE_TABS: ReadonlySet<ConnectionsTab> = new Set<ConnectionsTab>([
   'usage',
   'composio-key',
   'wallet',
-  'companion',
 ]);
 
 export default function Skills() {
@@ -512,22 +501,19 @@ export default function Skills() {
       raw === 'channels' ||
       raw === 'mcp' ||
       raw === 'skills' ||
-      raw === 'meetings' ||
       raw === 'llm' ||
       raw === 'voice' ||
       raw === 'embeddings' ||
       raw === 'search' ||
       raw === 'usage' ||
       raw === 'composio-key' ||
-      raw === 'wallet' ||
-      raw === 'companion'
+      raw === 'wallet'
     )
       return raw;
     // Legacy back-compat aliases
     if (raw === 'apps') return 'composio';
     if (raw === 'messaging') return 'channels';
     if (raw === 'tools') return 'mcp';
-    if (raw === 'talents') return 'meetings';
     if (raw === 'explorer') return 'skills';
     // Default landing is the Welcome overview for the Connections page.
     return 'welcome';
@@ -946,31 +932,11 @@ export default function Skills() {
                     ),
                   },
                   {
-                    value: 'meetings',
-                    label: t('connections.tabs.meetings'),
-                    icon: navIcon(
-                      'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'
-                    ),
-                  },
-                  {
                     // Wallet balances relocated from Settings → Data.
                     value: 'wallet',
                     label: t('pages.settings.account.walletBalances'),
                     icon: navIcon(
                       'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z'
-                    ),
-                  },
-                ],
-              },
-              {
-                // Desktop capabilities relocated from Settings → Connections.
-                label: t('connections.groups.desktop'),
-                items: [
-                  {
-                    value: 'companion',
-                    label: t('pages.settings.features.desktopCompanion'),
-                    icon: navIcon(
-                      'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z'
                     ),
                   },
                 ],
@@ -1107,7 +1073,6 @@ export default function Skills() {
                     {activeTab === 'search' && <SearchPanel />}
                     {activeTab === 'usage' && <UsagePanel />}
                     {activeTab === 'composio-key' && <ComposioPanel />}
-                    {activeTab === 'companion' && <CompanionPanel />}
                   </SettingsLayoutProvider>
                 </div>
               </>
@@ -1350,16 +1315,6 @@ export default function Skills() {
                       <div className="rounded-2xl border border-line bg-surface p-4 shadow-soft">
                         <McpServersTab />
                       </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'meetings' && (
-                    <div className="space-y-4">
-                      <MeetingsPage onToast={addToast} />
-                      {/* Meeting connection settings (auto-join, summary,
-                          listen-only, transcript ingestion) relocated from
-                          Settings → Meetings. */}
-                      <MeetingSettingsPanel embedded />
                     </div>
                   )}
                 </>

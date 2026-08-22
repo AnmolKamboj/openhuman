@@ -373,6 +373,30 @@ pub async fn run_subagent(
             AgentDefinitionRegistry::global().and_then(|reg| reg.get(&parent.agent_definition_id));
         tier_gate_decision(parent_def, definition, &parent.agent_definition_id, &task_id)?;
 
+        // Configured `subagentStart` hooks — the last gate before a spawn costs
+        // anything. Placed after the tier gate so a spawn the graph already
+        // forbids never reaches a user script, and before config load so a
+        // denied spawn has no side effects at all.
+        if let Err(reason) = crate::openhuman::hooks::ops::subagent_starting(
+            crate::openhuman::hooks::context::TurnIdentity {
+                conversation_id: Some(parent.session_id.clone()),
+                session_id: Some(parent.session_id.clone()),
+                agent_id: Some(parent.agent_definition_id.clone()),
+                ..Default::default()
+            },
+            &definition.id,
+            task_prompt,
+        )
+        .await
+        {
+            tracing::info!(
+                agent_id = %definition.id,
+                task_id = %task_id,
+                "[subagent_runner] spawn denied by a configured hook: {reason}"
+            );
+            return Err(SubagentRunError::HookDenied(reason));
+        }
+
         // Load the host config exactly once for this spawn and hand it to
         // everything below. See `LoadedConfig` — `load_or_init` re-reads
         // config.toml on every call, and the runtime below is slated to move

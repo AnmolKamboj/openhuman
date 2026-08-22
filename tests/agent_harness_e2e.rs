@@ -2179,7 +2179,6 @@ mod streaming_support {
     use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
     use openhuman_core::openhuman::agent::Agent;
     use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
-    use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
     use openhuman_core::openhuman::memory::Memory;
     use openhuman_core::openhuman::tools::traits::ToolCallOptions;
     use openhuman_core::openhuman::tools::{
@@ -2301,19 +2300,6 @@ mod streaming_support {
         Arc::from(memory_store::create_memory(&cfg, path).unwrap())
     }
 
-    struct NullMemoryLoader;
-
-    #[async_trait]
-    impl MemoryLoader for NullMemoryLoader {
-        async fn load_context(
-            &self,
-            _memory: &dyn Memory,
-            _user_message: &str,
-        ) -> anyhow::Result<String> {
-            Ok(String::new())
-        }
-    }
-
     pub fn agent_with_s(
         provider: Arc<dyn ChatModel<()>>,
         tools: Vec<Box<dyn Tool>>,
@@ -2324,7 +2310,6 @@ mod streaming_support {
             .chat_model(provider)
             .tools(tools)
             .memory(memory_for_workspace_s(&workspace_path))
-            .memory_loader(Box::new(NullMemoryLoader))
             .tool_dispatcher(Box::new(NativeToolDispatcher))
             .workspace_dir(workspace_path)
             .event_context("stream-accum-session", "stream-accum-channel")

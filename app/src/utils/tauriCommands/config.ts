@@ -730,69 +730,6 @@ export async function openhumanGetAnalyticsSettings(): Promise<
   });
 }
 
-/** Meeting Assistant calendar auto-join policy (issue #3511). */
-export type MeetAutoJoinPolicy = 'ask_each_time' | 'always' | 'never';
-/** Meeting Assistant post-call summary policy. */
-export type MeetAutoSummarizePolicy = 'ask' | 'always' | 'never';
-
-/** Full shape returned by `openhuman.config_get_meet_settings`. */
-export interface MeetSettings {
-  auto_orchestrator_handoff: boolean;
-  auto_join_policy: MeetAutoJoinPolicy;
-  auto_summarize_policy: MeetAutoSummarizePolicy;
-  listen_only_default: boolean;
-  ingest_backend_transcripts: boolean;
-  /** Per-platform auto-join policy overrides. Keys: "gmeet"|"zoom"|"teams"|"webex". */
-  platform_auto_join_policies?: Record<string, MeetAutoJoinPolicy>;
-  /**
-   * Master switch for calendar-driven meeting actions (auto-join / ask-to-join).
-   * Decoupled from the heartbeat reminder-notification toggle.
-   */
-  watch_calendar: boolean;
-  /** Calendar detection source for Google Meet: composio (default) | recall. */
-  calendar_provider?: 'composio' | 'recall';
-  /** The user's meeting display name, reused as the bot's reply anchor on join. */
-  reply_display_name?: string;
-}
-
-/** Partial update accepted by `openhuman.config_update_meet_settings`. */
-export interface MeetSettingsUpdate {
-  auto_orchestrator_handoff?: boolean;
-  auto_join_policy?: MeetAutoJoinPolicy;
-  auto_summarize_policy?: MeetAutoSummarizePolicy;
-  listen_only_default?: boolean;
-  ingest_backend_transcripts?: boolean;
-  /** Per-platform auto-join policy overrides. Keys: "gmeet"|"zoom"|"teams"|"webex". */
-  platform_auto_join_policies?: Record<string, MeetAutoJoinPolicy>;
-  /** Master switch for calendar-driven auto-join / ask-to-join. */
-  watch_calendar?: boolean;
-  /** Calendar detection source for Google Meet: composio (default) | recall. */
-  calendar_provider?: 'composio' | 'recall';
-  /** The user's meeting display name, reused as the bot's reply anchor on join. */
-  reply_display_name?: string;
-}
-
-export async function openhumanUpdateMeetSettings(
-  update: MeetSettingsUpdate
-): Promise<CommandResponse<ConfigSnapshot>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<ConfigSnapshot>>({
-    method: 'openhuman.config_update_meet_settings',
-    params: update,
-  });
-}
-
-export async function openhumanGetMeetSettings(): Promise<CommandResponse<MeetSettings>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<MeetSettings>>({
-    method: 'openhuman.config_get_meet_settings',
-  });
-}
-
 export type SearchEngineId = 'disabled' | 'managed' | 'parallel' | 'brave' | 'querit' | 'exa';
 
 export interface SearchSettingsUpdate {

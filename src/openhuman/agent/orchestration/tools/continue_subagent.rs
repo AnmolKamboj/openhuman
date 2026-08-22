@@ -130,15 +130,7 @@ impl Tool for ContinueSubagentTool {
     }
 
     fn description(&self) -> &str {
-        "Resume an existing sub-agent with a follow-up message, keeping its \
-         full prior context. Two cases: (1) a sub-agent paused on \
-         ask_user_clarification — pass the task_id from the \
-         [SUBAGENT_AWAITING_USER] envelope and the user's answer; (2) a \
-         durable worker from the [active_subagents] roster (e.g. an `idle` \
-         workflow_builder whose proposal the user is now reacting to) — pass \
-         its subagent_session_id (or task id) and the follow-up. Always \
-         prefer this over re-delegating the same task from scratch: a fresh \
-         delegation loses everything the worker already did."
+        "Resume an existing sub-agent with a follow-up, keeping its full prior context: pass the `task_id` from a `[SUBAGENT_AWAITING_USER]` envelope with the user's answer, or a `subagent_session_id` from the `[active_subagents]` roster. Always prefer this to re-delegating — a fresh delegation loses everything the worker already did."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

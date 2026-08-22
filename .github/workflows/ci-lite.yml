@@ -143,6 +143,18 @@ jobs:
               # The changed-files runner itself must trigger the lane that
               # runs it (it is also in rust-core-full → full-suite mode).
               - 'scripts/ci/rust-coverage-changed.sh'
+              # The product feature set decides what the Rust lanes below
+              # actually compile (clippy's `--features`, the test suite's, and
+              # rust-coverage-changed.sh's). Changing it changes the code under
+              # test as surely as editing `Cargo.toml` does, so it has to arm
+              # this lane too — #5619 turned `hosting` on and, without this
+              # entry, resolved to `["rust-tauri"]` alone, skipping every lane
+              # that would have compiled the family it enabled.
+              - 'scripts/ci/product-features.*'
+              # The coverage-presence gate and its allowlist decide whether this
+              # lane FAILS, so they arm it for the same reason.
+              - 'scripts/ci/assert-coverage-presence.sh'
+              - 'scripts/ci/coverage-presence-allowlist.txt'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'
@@ -154,12 +166,26 @@ jobs:
               - 'scripts/check-linux-tls-dependencies.sh'
               - 'scripts/test-rust-e2e.sh'
               - 'scripts/test-rust-with-mock.sh'
-              - 'vendor/motosan-ai-oauth/**'
-              - 'vendor/tinychannels'
+              # Every vendored crate, not an enumeration. `[patch.crates-io]`
+              # force-resolves all ten submodules by path, so ANY pointer bump
+              # changes what this crate compiles against. The previous list
+              # named two of them, so a bump to the other eight ran no openhuman
+              # Rust lane at all while PR CI Gate still reported success.
+              # Enumerating here failed the same way the release Docker
+              # submodule list did three times before #5596 replaced it with
+              # `--init --recursive`. Do not go back to a list.
+              - '.gitmodules'
+              - 'vendor/**'
             # Changes here invalidate per-module test scoping → full suite.
             rust-core-full:
               - '.github/workflows/ci-lite.yml'
               - 'scripts/ci/rust-coverage-changed.sh'
+              # Same reason as in `rust-core` above: a feature-set change
+              # changes what compiles, which invalidates per-module scoping
+              # exactly as a `Cargo.toml` change does.
+              - 'scripts/ci/product-features.*'
+              - 'scripts/ci/assert-coverage-presence.sh'
+              - 'scripts/ci/coverage-presence-allowlist.txt'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'
@@ -167,8 +193,11 @@ jobs:
               - 'rust-toolchain.toml'
               - 'scripts/ci-cancel-aware.sh'
               - 'scripts/check-linux-tls-dependencies.sh'
-              - 'vendor/motosan-ai-oauth/**'
-              - 'vendor/tinychannels'
+              # A vendored-crate bump invalidates per-module test scoping for the
+              # same reason a Cargo.lock change does: it moves the dependency
+              # graph under every module. Full suite, not scoped.
+              - '.gitmodules'
+              - 'vendor/**'
             rust-core-src:
               - 'src/**'
               - 'tests/**'
@@ -185,6 +214,11 @@ jobs:
               - 'rust-toolchain.toml'
               - 'app/src-tauri/**'
               - 'scripts/ci-cancel-aware.sh'
+              # The shell is a second Cargo world with its own duplicate
+              # `[patch.crates-io]` table pointing at the same submodules, so it
+              # is affected by a bump exactly as the core is. It named none.
+              - '.gitmodules'
+              - 'vendor/**'
             # Shared mock backend + script self-tests. The mock backend every
             # E2E suite depends on had zero PR-lane coverage before this (its
             # own socket-auth tests never ran in CI) — arm the scripts
@@ -194,6 +228,8 @@ jobs:
               - 'scripts/mock-api/**'
               - 'scripts/*.mjs'
               - 'scripts/__tests__/**'
+              # Bash helpers with node --test coverage in scripts/__tests__/.
+              - 'scripts/ci/assert-coverage-presence.sh'
             # Test-wiring surface: a change here can orphan a test or add an
             # untested controller domain → run the inventory guard.
             inventory:
@@ -522,7 +558,13 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 264
+        #
+        # The number is the Linux name count of the `flows` profile, so it moves
+        # whenever scripts/kernel-floor.limits does and belongs in the same PR.
+        # 264 -> 265 on 2026-08-21: the tinymemory #76/#77 bump adds exactly one
+        # name, `tinymemory-bus`. macOS resolves one higher (266) per the host
+        # skew recorded in the limits history — this expects the CI host.
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 265
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -1179,7 +1221,29 @@ jobs:
             --compare-branch="${{ steps.coverage-compare.outputs.ref }}" \
             --fail-under=80 \
             --html-report diff-coverage.html \
-            --markdown-report diff-coverage.md
+            --markdown-report diff-coverage.md \
+            --format json:diff-coverage.json
+
+          # diff-cover exits 0 when it measured nothing at all ("No lines with
+          # coverage information in this diff"), which is how PR #5593 passed
+          # this gate with 1,643 uncompiled lines. Absence of data is not
+          # evidence of coverage — but it IS legitimate for a diff whose only
+          # Rust/TS changes are comments, imports or type declarations, so this
+          # only WARNS. The hard failure for "the file was never compiled" is
+          # scripts/ci/assert-coverage-presence.sh, which runs inside the core
+          # coverage lane and can tell those two cases apart.
+          #
+          # `total_num_lines` is diff-cover's own count of changed lines it
+          # found coverage rows for: 0 on the "no lines with coverage
+          # information" path, non-zero otherwise. Verified against
+          # diff-cover 10.5.1 (the version `>=9.2.0` resolves to today) on both
+          # an empty and a non-empty diff. `--format json:` rather than the
+          # `--json-report` alias, which that release deprecates.
+          measured="$(python3 -c 'import json; print(json.load(open("diff-coverage.json"))["total_num_lines"])')"
+          echo "diff-cover measured ${measured} changed line(s)"
+          if [ "${measured}" -eq 0 ]; then
+            echo "::warning::diff-cover measured 0 changed lines. If this PR changed executable code, that code was not compiled by any coverage lane — check the 'Rust Core Coverage' log for the coverage-presence gate."
+          fi
 
       - name: Upload diff-cover report
         if: always() && needs.changes.outputs.coverage == 'true'

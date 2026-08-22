@@ -110,12 +110,6 @@ export const SETTINGS_NAV_ICONS: Record<string, ReactNode> = {
       {stroke('M21 12a9 9 0 11-18 0 9 9 0 0118 0z')}
     </Fragment>
   ),
-  // Models & Inference
-  agentbox: icon(
-    stroke(
-      'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z'
-    )
-  ),
   // Automation & Integrations
   tasks: icon(
     stroke(

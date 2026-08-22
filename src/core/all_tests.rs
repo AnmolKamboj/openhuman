@@ -1012,10 +1012,6 @@ fn group_mapping_smoke() {
     assert_eq!(group_for_namespace("voice"), Some(DomainGroup::Voice));
     #[cfg(feature = "web3")]
     assert_eq!(group_for_namespace("wallet"), Some(DomainGroup::Web3));
-    // `meet` is compiled out under `--no-default-features`, so the registry has
-    // no entry to map (#4800).
-    #[cfg(feature = "meet")]
-    assert_eq!(group_for_namespace("meet"), Some(DomainGroup::Meet));
     // Internal-only registry is grouped too (mcp_audit → Mcp).
     // Compiled out with the `mcp` feature: `group_for_namespace` reads the LIVE
     // registry, and the gate unregisters the mcp_audit controller entirely.
@@ -1106,24 +1102,6 @@ fn flows_controllers_absent_when_feature_off() {
     );
 }
 
-/// All three Meet namespaces register when the `meet` feature is on (#4800).
-///
-/// Paired with `meet_controllers_absent_when_feature_off` below: together they
-/// pin *both* directions of the compile-time gate. The negative half is the one
-/// that actually proves the gate does something — a gate that never removes
-/// anything would still pass this positive test.
-#[cfg(feature = "meet")]
-#[test]
-fn meet_controllers_registered_when_feature_on() {
-    for ns in ["meet", "agent_meetings", "meet_agent"] {
-        assert_eq!(
-            group_for_namespace(ns),
-            Some(DomainGroup::Meet),
-            "`{ns}` must register under DomainGroup::Meet when the `meet` feature is on"
-        );
-    }
-}
-
 /// The `modules` namespace registers when the `modules` feature is on.
 #[cfg(feature = "modules")]
 #[test]
@@ -1148,22 +1126,6 @@ fn modules_controllers_absent_when_feature_off() {
         None,
         "`modules` must leave no trace in the registry when the feature is off"
     );
-}
-
-/// No Meet namespace registers when the `meet` feature is off (#4800).
-///
-/// This is the half that proves the gate: with `meet` compiled out the three
-/// domains must leave zero trace in either the public or the internal registry.
-#[cfg(not(feature = "meet"))]
-#[test]
-fn meet_controllers_absent_when_feature_off() {
-    for ns in ["meet", "agent_meetings", "meet_agent"] {
-        assert_eq!(
-            group_for_namespace(ns),
-            None,
-            "`{ns}` must not register when the `meet` feature is off"
-        );
-    }
 }
 
 /// The external-channel namespace registers when the `channels` feature is on
@@ -1309,7 +1271,6 @@ fn carved_out_families_report_their_own_group() {
         #[cfg(feature = "flows")]
         ("flows", DomainGroup::Flows),
         ("cron", DomainGroup::Automation),
-        ("heartbeat", DomainGroup::Automation),
         ("composio", DomainGroup::Integrations),
         ("task_sources", DomainGroup::Integrations),
         ("billing", DomainGroup::Hosted),
@@ -1321,7 +1282,6 @@ fn carved_out_families_report_their_own_group() {
         // Mis-tagged before the realignment: these live inside a named family
         // directory but answered `Platform`, so `harness()` registered nothing
         // for them despite claiming to enable their family.
-        ("agentbox", DomainGroup::Agent),
         ("harness_init", DomainGroup::Agent),
         ("ai", DomainGroup::Agent),
         ("auth", DomainGroup::Security),
@@ -1358,7 +1318,6 @@ fn platform_holds_only_kernel_surfaces() {
             !matches!(
                 *ns,
                 "cron"
-                    | "heartbeat"
                     | "composio"
                     | "task_sources"
                     | "billing"
@@ -1369,7 +1328,6 @@ fn platform_holds_only_kernel_surfaces() {
                     | "dashboard"
                     | "notification"
                     | "sandbox"
-                    | "agentbox"
                     | "harness_init"
                     | "ai"
                     | "auth"
@@ -1390,7 +1348,6 @@ fn platform_holds_only_kernel_surfaces() {
 fn harness_preset_registers_the_families_it_claims() {
     let harness = crate::core::runtime::DomainSet::harness();
     for ns in [
-        "agentbox",
         "harness_init",
         "ai",
         "auth",
@@ -1447,9 +1404,9 @@ fn embedded_preset_excludes_desktop_and_hosted() {
     );
     assert!(!e.relay, "embedded() must not enable the relay surface");
     // Still needs these: skills run on the managed runtimes, and the session
-    // loop is driven by cron/heartbeat.
+    // loop is driven by cron.
     assert!(e.runtimes, "embedded() needs the code-execution runtimes");
-    assert!(e.automation, "embedded() needs cron + subconscious");
+    assert!(e.automation, "embedded() needs cron");
     assert!(e.inference, "embedded() needs inference");
     assert!(e.integrations, "embedded() needs external integrations");
 }
@@ -1519,7 +1476,6 @@ fn every_domain_group_is_accounted_for_in_store_init_plan() {
         DomainGroup::Security,
         DomainGroup::Flows,
         DomainGroup::Mcp,
-        DomainGroup::Meet,
         DomainGroup::Channels,
         DomainGroup::Web3,
         DomainGroup::Voice,
@@ -1570,7 +1526,6 @@ fn every_domain_group_is_accounted_for_in_subscriber_plan() {
         DomainGroup::Channels,
         DomainGroup::Flows,
         DomainGroup::Memory,
-        DomainGroup::Meet,
         DomainGroup::Agent,
         DomainGroup::Mcp,
         DomainGroup::Integrations,

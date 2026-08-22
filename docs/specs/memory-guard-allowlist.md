@@ -47,7 +47,6 @@ workspace; it does not read or write memory, and every call site is a
 login / active-user-switch / boot / CLI-entry lifecycle event
 (`security/credentials/ops.rs`, `desktop/app_state/ops.rs`,
 `core/runtime/context.rs`, `core/memory_cli.rs`, `core/subconscious_cli.rs`,
-`bin/slack_backfill.rs`, `bin/gmail_backfill_3d.rs`,
 `memory/ops/documents.rs`'s `memory_init`, `memory/tinycortex/sync.rs`).
 
 ## What M4b re-pointed
@@ -170,7 +169,7 @@ are recorded here so M4c starts from the real set.
 `integrations/composio/ops_tests.rs`, `core/runtime/context.rs` (its `#[cfg(test)]`
 module).
 
-`vendor/tinymemory/core/src/tinycortex/sync.rs` also has an inline `#[cfg(test)]`
+`vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs` also has an inline `#[cfg(test)]`
 module whose isolated-workspace fixtures construct `MemoryClient` directly; it
 is counted because the scanner does not brace-track inline test modules.
 

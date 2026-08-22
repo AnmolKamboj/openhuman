@@ -65,12 +65,9 @@
 //!   driven (`ingest_transcript_path` / `ingest_session_transcript` take a
 //!   session `.jsonl` on disk) and runs on session close, not per turn. A sink
 //!   invocation has no transcript to point at.
-//! - [`crate::openhuman::subconscious`] is scheduler-driven: its public entry
-//!   point is `SubconsciousInstance::tick`, polled by the heartbeat engine.
-//!   There is no per-turn ingestion API to call.
 //!
-//! Both are reachable through the same `Memory` those hooks write to, so
-//! nothing is lost by leaving them on their own cadence.
+//! It is reachable through the same `Memory` those hooks write to, so nothing
+//! is lost by leaving it on its own cadence.
 
 use std::sync::Arc;
 

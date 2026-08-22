@@ -122,14 +122,19 @@ pub fn collect_orchestrator_tools(
                     tool_name,
                     target.id
                 );
-                let direct_first_description = format!(
-                    "Use only when direct response/direct tools are insufficient. {}",
-                    target.when_to_use
-                );
+                // The description is the target's `when_to_use` verbatim.
+                //
+                // It used to be prefixed with "Use only when direct
+                // response/direct tools are insufficient. " — 13 tokens
+                // repeated once per delegate tool, ~250 per turn on the Master
+                // Agent, restating a rule its prompt already carries as
+                // "**Direct-first always**". A parent whose prompt does not
+                // state that rule should gain it there, once, rather than
+                // paying for it on every delegate schema on every turn.
                 tools.push(Box::new(ArchetypeDelegationTool {
                     tool_name,
                     agent_id: target.id.clone(),
-                    tool_description: direct_first_description,
+                    tool_description: target.when_to_use.clone(),
                 }));
             }
             SubagentEntry::Skills(wildcard) => {

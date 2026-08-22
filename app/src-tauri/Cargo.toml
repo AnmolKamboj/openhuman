@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.13"
+version = "0.63.17"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -103,7 +103,7 @@ anyhow = "1.0"
 # platforms — the store persists on Windows/Linux/macOS. Pinned to match the
 # core crate so a single bundled SQLite is linked. (The macOS-only iMessage
 # scanner also uses rusqlite; this general dep covers it too.)
-rusqlite = { version = "=0.40.0", features = ["bundled"] }
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
 parking_lot = "0.12"
 chrono = "0.4"
 async-trait = "0.1"
@@ -161,7 +161,6 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "documents",
     "modules",
     "flows",
-    "meet",
     "skills",
     "mcp",
     "crash-reporting",
@@ -182,6 +181,12 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # shipped app, the memory_diff agent tool is absent, and the embedded
     # driver stops advertising Capability::Diff — the product keeps all three.
     "memory-git",
+    # Declared "Default-OFF, product-ON" by its own gate comment in the root
+    # Cargo.toml, but it reached neither the product set nor this list, so the
+    # family was compiled in no configuration at all. Registration stays
+    # credential-gated in tools/ops.rs, so a host with no hosting credential
+    # sees no new tools.
+    "hosting",
 ] }
 
 [target.'cfg(unix)'.dependencies]
@@ -259,7 +264,7 @@ e2e-test-support = ["openhuman_core/e2e-test-support"]
 # deleted, reintroduced by dependency resolution. Same entry tinymemory's own
 # workspace carries; the key has no `.git` suffix, matching the dep URL.
 [patch."https://github.com/tinyhumansai/tinymemory"]
-tinymemory-api = { path = "../../vendor/tinymemory/api" }
+tinymemory-api = { path = "../../vendor/tinymemory/crates/tinymemory-api" }
 
 [patch.crates-io]
 # Keep reqwest defaults disabled in this independent Cargo world too. Without
@@ -312,7 +317,9 @@ split-debuginfo = "packed"
 # change here needs the same change in the root `Cargo.toml` and in
 # `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
 lto = "thin"
-codegen-units = 1
+# 16, not 1 — see the root `Cargo.toml` for why (#5595: one codegen unit cost
+# the desktop release matrix +82% build time and blocked every release).
+codegen-units = 16
 strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed

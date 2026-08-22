@@ -160,11 +160,6 @@ pub struct AppStateSnapshot {
     /// longer depends on this field.
     pub chat_onboarding_completed: bool,
     pub analytics_enabled: bool,
-    /// Mirror of `Config::meet.auto_orchestrator_handoff` — gates whether
-    /// ending a Google Meet call hands the transcript to the orchestrator
-    /// agent for proactive follow-up actions. Default `false`. See
-    /// issue #1299.
-    pub meet_auto_orchestrator_handoff: bool,
     pub local_state: StoredAppState,
     pub keyring_status: crate::openhuman::security::keyring_consent::KeyringStatus,
     pub runtime: RuntimeSnapshot,
@@ -545,9 +540,6 @@ async fn finish_revalidated_user_activation(
     crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
         target_config.workspace_dir.clone(),
     );
-    if let Err(error) = crate::openhuman::subconscious::registry::bootstrap_after_login().await {
-        warn!("{LOG_PREFIX} subconscious bootstrap failed after pending session revalidation: {error}");
-    }
     if let Some(source_config) = service_rebind_source {
         crate::openhuman::security::credentials::stop_login_gated_services(source_config).await;
         crate::openhuman::security::credentials::start_login_gated_services(target_config).await;
@@ -688,7 +680,6 @@ async fn clear_deferred_session_after_backend_rejection(
         Err(_) => {}
     }
     crate::openhuman::security::credentials::stop_login_gated_services(config).await;
-    crate::openhuman::subconscious::registry::reset_engine_for_user_switch().await;
     crate::openhuman::security::credentials::sentry_scope::clear();
 
     clear_result
@@ -1174,13 +1165,12 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
     );
 
     debug!(
-        "{LOG_PREFIX} snapshot req_id={} auth={} onboarding={} chat_onboarding={} analytics={} meet_handoff={} local_ai_state={} service_state={:?}",
+        "{LOG_PREFIX} snapshot req_id={} auth={} onboarding={} chat_onboarding={} analytics={} local_ai_state={} service_state={:?}",
         req_id,
         auth.is_authenticated,
         snapshot_config.onboarding_completed,
         snapshot_config.chat_onboarding_completed,
         snapshot_config.observability.analytics_enabled,
-        snapshot_config.meet.auto_orchestrator_handoff,
         runtime.local_ai.state,
         runtime.service.state
     );
@@ -1196,7 +1186,6 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
             onboarding_completed: snapshot_config.onboarding_completed,
             chat_onboarding_completed: snapshot_config.chat_onboarding_completed,
             analytics_enabled: snapshot_config.observability.analytics_enabled,
-            meet_auto_orchestrator_handoff: snapshot_config.meet.auto_orchestrator_handoff,
             local_state,
             keyring_status,
             runtime,

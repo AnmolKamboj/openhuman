@@ -100,9 +100,7 @@ use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::agent::{
     all_agent_controller_schemas, all_agent_registered_controllers,
 };
-use openhuman_core::openhuman::memory::agent::memory_loader::{
-    collect_recall_citations, DefaultMemoryLoader, MemoryLoader, CROSS_CHAT_HEADER,
-};
+use openhuman_core::openhuman::memory::agent::memory_loader::collect_recall_citations;
 use openhuman_core::openhuman::agent::registry::agents::BUILTINS;
 use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
@@ -1811,33 +1809,9 @@ async fn inference_public_helpers_cover_context_windows_and_sentiment_fallbacks(
 }
 
 #[tokio::test]
-async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citations() {
+async fn agent_memory_recall_citations_filter_by_relevance_and_truncate() {
     let memory = ScriptedMemory {
         normal: Arc::new(vec![
-            memory_entry(
-                "working-1",
-                "working.user.timezone",
-                "Prefers UTC for release plans.",
-                Some("profile"),
-                None,
-                Some(0.95),
-            ),
-            memory_entry(
-                "working-low",
-                "working.user.low",
-                "Too weak to include.",
-                Some("profile"),
-                None,
-                Some(0.1),
-            ),
-            memory_entry(
-                "prior-1",
-                "high.preference.database",
-                "[high preference] Prefer Postgres for production services.\n[provenance] {\"thread_id\":\"older\"}",
-                Some("conversation_memory"),
-                Some("older-thread"),
-                Some(0.92),
-            ),
             memory_entry(
                 "citation-1",
                 "project.summary",
@@ -1855,44 +1829,8 @@ async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citation
                 Some(0.2),
             ),
         ]),
-        cross_session: Arc::new(vec![
-            memory_entry(
-                "episodic-cross:old",
-                "old-thread",
-                "Earlier chat mentioned round seven coverage priorities.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"old-thread","client_id":"client"}"#),
-                Some(0.91),
-            ),
-            memory_entry(
-                "episodic-cross:current",
-                "current-thread",
-                "Current chat should be excluded from cross chat context.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"current-thread"}"#),
-                Some(0.99),
-            ),
-        ]),
+        cross_session: Arc::new(Vec::new()),
     };
-
-    let context = with_thread_id("current-thread", async {
-        DefaultMemoryLoader::new(5, 0.4)
-            .with_max_chars(2_000)
-            .load_context(&memory, "coverage priorities")
-            .await
-    })
-    .await
-    .expect("memory context");
-
-    assert!(context.contains("[User working memory]"));
-    assert!(context.contains("working.user.timezone (as of 2026-05-29)"));
-    assert!(!context.contains("Too weak to include"));
-    assert!(context.contains("[Prior conversations]"));
-    assert!(context.contains("(noted 2026-05-29) [high preference] Prefer Postgres"));
-    assert!(!context.contains("[provenance]"));
-    assert!(context.contains(CROSS_CHAT_HEADER.trim_end()));
-    assert!(context.contains("Earlier chat mentioned round seven coverage priorities"));
-    assert!(!context.contains("Current chat should be excluded"));
 
     let citations = collect_recall_citations(&memory, "project", 8, 0.4)
         .await
@@ -1905,13 +1843,6 @@ async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citation
     assert!(!citations
         .iter()
         .any(|citation| citation.id == "citation-low"));
-
-    let tiny_budget = DefaultMemoryLoader::new(5, 0.4)
-        .with_max_chars("[User working memory]\n".len() - 1)
-        .load_context(&memory, "coverage priorities")
-        .await
-        .expect("tiny budget context");
-    assert!(tiny_budget.is_empty());
 }
 
 #[tokio::test]
@@ -3945,6 +3876,7 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             text: "# planner\nbody\n".to_string(),
             tool_names: vec!["todo".to_string(), "delegate".to_string()],
             skill_tool_count: 0,
+            tool_specs: Vec::new(),
         },
         DumpedPrompt {
             agent_id: "integrations_agent".to_string(),
@@ -3955,6 +3887,7 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             text: "# integrations\nbody\n".to_string(),
             tool_names: vec!["GMAIL_SEND_EMAIL".to_string()],
             skill_tool_count: 1,
+            tool_specs: Vec::new(),
         },
     ];
 

@@ -1,9 +1,8 @@
 //! Shared root [`ParentExecutionContext`] builder for controller-spawned
 //! orchestration tasks (#3374 PR4, extracted from the #3375 workflow engine).
 //!
-//! The workflow-run engine ([`workflow_runs::engine`]), the agent-team runtime
-//! ([`agent_teams::runtime`]), and the subconscious tick
-//! ([`crate::openhuman::subconscious`]) all need to spawn real sub-agents from a
+//! The workflow-run engine ([`workflow_runs::engine`]) and the agent-team
+//! runtime ([`agent_teams::runtime`]) both need to spawn real sub-agents from a
 //! background task that has **no** enclosing agent turn on the stack. Those
 //! spawns read their parent execution context from a task-local
 //! ([`current_parent`]) that is only set inside an agent turn — so a naive spawn

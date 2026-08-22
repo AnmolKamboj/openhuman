@@ -17,6 +17,16 @@
 # no longer counts on the fast lane. The full suite still runs on main→release
 # PRs (Release CI).
 #
+# TWO GATES GUARD THE "WE VERIFIED NOTHING" CASE (PR #5593):
+#   1. scripts/ci/assert-coverage-presence.sh — hard failure when a changed
+#      source file produced no lcov records at all, i.e. the lane never
+#      compiled it. This is the precise one; it names the files.
+#   2. A zero-executed-tests scoped run ESCALATES to the full suite rather than
+#      failing. Scoping that selects no tests is unsafe scoping, and this
+#      script's standing policy for unsafe scoping is to widen, not to redden —
+#      a domain that legitimately owns no unit tests (there are five today,
+#      e.g. core::shutdown) must not turn every PR touching it red.
+#
 # Inputs (env):
 #   FULL          "true" → run the full suite (build-config / lib.rs / script
 #                 changes, detected by paths-filter)
@@ -63,6 +73,26 @@ llvm_cov() {
   bash scripts/ci-cancel-aware.sh cargo llvm-cov --features "${PRODUCT_FEATURES}" "$@"
 }
 
+# Total libtest cases executed across every scoped/full run in this invocation.
+# `run_counted` tees libtest output so the count can be read without changing
+# what the log looks like. `${PIPESTATUS[0]}` — not `$?` — carries the cargo
+# exit status through the pipe; reading `$?` here would report tee's status and
+# turn a failing suite green.
+TESTS_RUN=0
+
+run_counted() {
+  local log rc n
+  log="$(mktemp)"
+  set +e
+  "$@" 2>&1 | tee "${log}"
+  rc=${PIPESTATUS[0]}
+  set -e
+  n="$(sed -n 's/^running \([0-9]\{1,\}\) tests\{0,1\}$/\1/p' "${log}" | awk '{s+=$1} END {print s+0}')"
+  TESTS_RUN=$((TESTS_RUN + n))
+  rm -f "${log}"
+  return "${rc}"
+}
+
 integration_test_targets() {
   find tests -maxdepth 1 -type f -name '*.rs' -print |
     sed -e 's#^tests/##' -e 's#\.rs$##' |
@@ -105,10 +135,21 @@ run_integration_target() {
     # globals (env vars, event bus handlers, auth tokens, singleton stores).
     # Run one process per generated module filter to preserve the former
     # per-binary isolation contract while still paying only one link.
+    #
+    # `|| return` is load-bearing, not defensive noise. This loop's exit status
+    # is that of its LAST iteration, so a module that fails followed by one that
+    # succeeds reports success. That used to be masked by ambient errexit — the
+    # function was called bare, so a failing `llvm_cov` aborted the script here.
+    # It is no longer: `run_counted` runs its command inside a pipeline with
+    # `set +e`, which disables errexit for everything underneath, so without this
+    # the failure is silently discarded and a red suite goes green.
+    #
+    # Returning on the first failure also preserves the previous fail-fast
+    # timing exactly: no module ran after a failure before, and none does now.
     while IFS= read -r module; do
       [ -n "${module}" ] || continue
       log "running raw coverage module: ${module}"
-      llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- "${module}::" --test-threads=1
+      llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- "${module}::" --test-threads=1 || return
     done < <(raw_coverage_modules)
   elif [ "${target}" = "json_rpc_e2e" ]; then
     # This target exercises process-global runtime/config state. Its tests take
@@ -133,6 +174,12 @@ run_full() {
   done < <(integration_test_targets)
   log "merging coverage into ${OUT}"
   llvm_cov report --lcov --output-path "${OUT}"
+  # FULL mode has no changed-file list (the workflow blanks CHANGED_FILES to
+  # stay under the container's argv limit), so assert the whole-tree invariant
+  # instead: no eligible source file may be missing from a full product build's
+  # coverage. This is the mode PR #5578 ran in when it first landed the
+  # uncompiled hosting family, and it is the mode that would have caught it.
+  bash scripts/ci/assert-coverage-presence.sh "${OUT}" --all
   exit 0
 }
 
@@ -175,8 +222,7 @@ for f in "${files[@]}"; do
       run_full "root module ${f} changed — whole-crate scope"
       ;;
     src/bin/*)
-      # Standalone backfill binaries (slack-backfill, gmail-backfill-3d) have
-      # no unit tests; nothing to scope to.
+      # Standalone ops/bench binaries have no domain unit tests to scope to.
       log "ignoring standalone-binary file: ${f}"
       ;;
     src/*.rs)
@@ -280,15 +326,29 @@ llvm_cov clean --workspace
 if [ "${#lib_filters[@]}" -gt 0 ]; then
   log "running scoped lib unit tests with filters: ${lib_filters[*]}"
   # libtest ORs multiple positional filters — one run covers all domains.
-  llvm_cov --no-report --no-fail-fast -p openhuman --lib -- "${lib_filters[@]}"
+  run_counted llvm_cov --no-report --no-fail-fast -p openhuman --lib -- "${lib_filters[@]}"
 fi
 
 if [ "${#test_targets[@]}" -gt 0 ]; then
   for t in "${test_targets[@]}"; do
     log "running changed integration-test target: ${t}"
-    run_integration_target "${t}"
+    run_counted run_integration_target "${t}"
   done
 fi
 
 log "merging coverage into ${OUT}"
 llvm_cov report --lcov --output-path "${OUT}"
+
+# Gate 1 (precise, hard): did the lane produce ANY coverage records for the
+# files this PR changed? Run before the zero-test escalation so the hosting-class
+# defect — a file the build never compiled — fails in ~10 minutes with the file
+# names, instead of first spending ~40 minutes on a full suite that cannot
+# compile it either.
+bash scripts/ci/assert-coverage-presence.sh "${OUT}" --files "${files[@]}"
+
+# Gate 2 (imprecise, safe): a scoped run that executed no tests verified
+# nothing. Widen rather than fail — see the header note.
+if [ "${TESTS_RUN}" -eq 0 ]; then
+  log "scoped run executed 0 tests (filters: ${lib_filters[*]-none}; targets: ${test_targets[*]-none})"
+  run_full "scoped run executed 0 tests — scoping selected no coverage"
+fi

@@ -665,10 +665,6 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
         "memory_recall",
         "memory_forget",
         "memory_tree",
-        "monitor",
-        "monitor_list",
-        "monitor_stop",
-        "monitor_read",
         "schedule",
         "proxy_config",
         "update_check",
@@ -2722,7 +2718,7 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     // `Modules` is the loader, not a capability: a loaded module's own surface
     // is reached through whichever domain calls it (documents go through the
     // document tools), so the family itself owns no agent tool.
-    &[G::Config, G::Security, G::Meet, G::Medulla, G::Modules]
+    &[G::Config, G::Security, G::Medulla, G::Modules]
 };
 
 // ---- tool_capability() drift guard (M5.3) ----------------------------------

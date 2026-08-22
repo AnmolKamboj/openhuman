@@ -156,6 +156,12 @@ pub struct Config {
     #[serde(default)]
     pub autonomy: AutonomyConfig,
 
+    /// Host-level switches for the configurable hook system. The hooks
+    /// themselves live in `hooks.json` files, not here — see
+    /// [`super::HooksConfig`].
+    #[serde(default)]
+    pub hooks: super::HooksConfig,
+
     /// Data-egress posture (Privacy Mode). Distinct from `autonomy` (which
     /// governs agent *act* power). Missing `[privacy]` block → `Standard`
     /// (#4435, epic #4256).
@@ -507,12 +513,6 @@ pub struct Config {
     #[serde(default)]
     pub dictation: DictationConfig,
 
-    /// Google Meet integration settings — currently the
-    /// `auto_orchestrator_handoff` privacy gate (see
-    /// [`crate::openhuman::config::schema::MeetConfig`]).
-    #[serde(default)]
-    pub meet: MeetConfig,
-
     /// Whether the user has completed the **React UI** onboarding flow.
     ///
     /// Set by `OnboardingOverlay.tsx::handleDone` and the multi-step
@@ -800,6 +800,7 @@ impl Default for Config {
             observability: ObservabilityConfig::default(),
             dashboard: DashboardConfig::default(),
             autonomy: AutonomyConfig::default(),
+            hooks: super::HooksConfig::default(),
             privacy: PrivacyConfig::default(),
             sandbox: SandboxConfig::default(),
             runtime: RuntimeConfig::default(),
@@ -873,7 +874,6 @@ impl Default for Config {
             learning: LearningConfig::default(),
             update: UpdateConfig::default(),
             dictation: DictationConfig::default(),
-            meet: MeetConfig::default(),
             onboarding_completed: false,
             chat_onboarding_completed: false,
             model_registry: Vec::new(),

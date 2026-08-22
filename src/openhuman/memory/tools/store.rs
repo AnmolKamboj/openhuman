@@ -29,14 +29,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store a general fact or note in a namespace (e.g. global, background, autocomplete, skill-{id}). \
-         Do NOT use this for user preferences — for any preference (how the user wants you to behave, \
-         their tastes, settings, standing instructions) call `save_preference` instead, which routes it \
-         to the preference store the assistant actually reads. Requires an explicit namespace. \
-         Memory protocol (only with tools you actually have available): if you have a memory-recall \
-         tool (e.g. `memory_recall`), check for a near-duplicate before storing so you don't create \
-         one; and if `update_memory_md` is available, call it after storing to keep the MEMORY.md \
-         index in sync with the store."
+        "Store a general fact or note in an explicit namespace (e.g. global, background, autocomplete, skill-{id}). NOT for preferences — those go to `save_preference`, which writes the store the assistant actually reads. Check `memory_recall` for a near-duplicate first, and call `update_memory_md` afterwards, when you have those tools."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

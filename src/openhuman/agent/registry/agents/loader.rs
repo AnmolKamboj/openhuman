@@ -301,12 +301,6 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         prompt_fn: crate::openhuman::memory::agent::agent::prompt::build,
         graph_fn: None,
     },
-    BuiltinAgent {
-        id: "subconscious",
-        toml: include_str!("../../../subconscious/agent/agent.toml"),
-        prompt_fn: crate::openhuman::subconscious::agent::prompt::build,
-        graph_fn: None,
-    },
     // Workflow-authoring specialist (Phase 5a): builds tinyflows automation
     // graphs from natural language and returns a validated PROPOSAL — it never
     // persists or enables a flow. Deliberately narrow propose-or-read tool belt.

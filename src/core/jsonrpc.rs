@@ -1172,7 +1172,7 @@ const MAX_RPC_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// 3. `http_request_log_middleware` — logs non-RPC HTTP requests with timing
 #[cfg(feature = "http-server")]
 pub fn build_core_http_router(socketio_enabled: bool) -> Router {
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/schema", get(schema_handler))
@@ -1199,50 +1199,11 @@ pub fn build_core_http_router(socketio_enabled: bool) -> Router {
         .route("/oauth/mcp/callback", get(oauth_mcp_callback_handler))
         // OpenAI-compatible inference endpoint (/v1/chat/completions, /v1/models)
         .nest("/v1", crate::openhuman::inference::http::router())
-        // Apply `AppState` here (before any state-less sub-routers such as
-        // AgentBox are merged below) so the outer router becomes
-        // `Router<()>` and matches them.
+        // Apply `AppState` here so the outer router becomes `Router<()>` and
+        // matches any state-less sub-router merged into it.
         .with_state(AppState {
             core_version: env!("CARGO_PKG_VERSION").to_string(),
         });
-
-    // Mount AgentBox marketplace routes when explicitly enabled.
-    //
-    // Gate is strict literal "1" — "true"/"yes"/etc. do NOT enable it. Auth
-    // bypass for `/run` and `/jobs/{id}` is unconditional in
-    // [`crate::core::auth`]; the router-side gate is what actually exposes
-    // the handlers. The spawned sweep loop lives until process exit.
-    if crate::openhuman::agent::agentbox::agentbox_mode_enabled() {
-        let store =
-            crate::openhuman::agent::agentbox::JobStore::new(std::time::Duration::from_secs(3600));
-        let invoker: std::sync::Arc<dyn crate::openhuman::agent::agentbox::invoker::AgentInvoker> =
-            std::sync::Arc::new(crate::openhuman::agent::agentbox::invoker::CoreAgentInvoker);
-        let job_timeout = std::env::var("OPENHUMAN_AGENTBOX_JOB_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .map(std::time::Duration::from_secs)
-            .unwrap_or_else(|| std::time::Duration::from_secs(600));
-
-        // Spawn sweep loop — bounds memory under sustained traffic.
-        let sweep_store = store.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
-            loop {
-                tick.tick().await;
-                let evicted = sweep_store.sweep_now();
-                if evicted > 0 {
-                    log::info!("[agentbox] sweep evicted {} terminal jobs", evicted);
-                }
-            }
-        });
-
-        log::info!("[agentbox] enabled; public routes: POST /run, GET /jobs/{{id}}, GET /health");
-        router = router.merge(crate::openhuman::agent::agentbox::agentbox_router(
-            store,
-            invoker,
-            job_timeout,
-        ));
-    }
 
     let router = router
         .fallback(not_found_handler)
@@ -1914,8 +1875,6 @@ pub struct DomainSubscriberPlan {
     pub flows: bool,
     /// memory conversation-persistence + sync-stage bridge.
     pub memory: bool,
-    /// agent_meetings calendar + meeting-event subscribers.
-    pub meet: bool,
     /// agent handlers + background delivery + run-ledger finalizer + orchestration ingest.
     pub agent: bool,
     /// hosted orchestration ingest.
@@ -1937,7 +1896,6 @@ impl DomainSubscriberPlan {
             channels: domains.allows(DomainGroup::Channels),
             flows: domains.allows(DomainGroup::Flows),
             memory: domains.allows(DomainGroup::Memory),
-            meet: domains.allows(DomainGroup::Meet),
             agent: domains.allows(DomainGroup::Agent),
             hosted: domains.allows(DomainGroup::Hosted),
             mcp: domains.allows(DomainGroup::Mcp),
@@ -2303,16 +2261,6 @@ fn register_domain_subscribers(
         );
     }
 
-    // Meet: calendar + meeting-event subscribers.
-    if plan.meet {
-        if group_first_time(DomainGroup::Meet) {
-            crate::openhuman::meet::backend_bot::calendar::register_meet_calendar_subscriber();
-            crate::openhuman::meet::backend_bot::bus::register_meeting_event_subscriber();
-        }
-    } else {
-        log::debug!("[event_bus] agent_meetings subscribers SKIPPED — Meet domain disabled");
-    }
-
     // Hosted: ingest tiny.place harness session DMs off the stream bus.
     if plan.hosted {
         if group_first_time(DomainGroup::Hosted) {
@@ -2410,6 +2358,14 @@ pub async fn bootstrap_core_runtime(
     // keeps reporting it after the loader heals the file on this same boot; the
     // frontend raises a one-shot "settings were reset" notice off it.
     crate::openhuman::desktop::app_state::latch_from_config(&cfg);
+
+    // --- Configurable hooks -------------------------------------------
+    // Read every `hooks.json` layer and, only if something is configured,
+    // install the harness bridge. Boot is the right moment: a hook that is
+    // meant to gate the first tool call of the first turn has to be loaded
+    // before any session exists, and the alternative — loading lazily on the
+    // first event — would let that first call through while the file is read.
+    crate::openhuman::hooks::init(&cfg).await;
 
     // --- Turn-state recovery -------------------------------------------
     // Any per-thread turn snapshots left on disk from a previous process
