@@ -102,12 +102,33 @@ pub(crate) fn sanitize_url_for_display(url: &str) -> String {
     out.to_string()
 }
 
-/// True when `endpoint` is an `https:` URL (TLS). Used to refuse sending a
-/// bearer credential over a cleartext channel. Falls back to `false` when the
-/// value does not parse as an absolute URL, so an unparseable route is refused
-/// rather than silently allowed.
-fn is_https_endpoint(endpoint: &str) -> bool {
-    url::Url::parse(endpoint).is_ok_and(|u| u.scheme() == "https")
+/// True when `endpoint` is safe to carry a bearer credential.
+///
+/// A bearer must never cross a cleartext channel to a remote party, so an
+/// `https:` endpoint is always accepted. `http:` is accepted only for a
+/// loopback host (`127.0.0.1`, `::1`, `localhost`), where the traffic never
+/// leaves the machine and the "credential in the clear" concern does not
+/// apply — local, self-hosted OpenAI-compatible servers are a supported
+/// embedder configuration. Falls back to `false` when the value does not
+/// parse as an absolute URL, so an unparseable route is refused rather than
+/// silently allowed.
+fn is_safe_endpoint_for_bearer(endpoint: &str) -> bool {
+    let Ok(url) = url::Url::parse(endpoint) else {
+        return false;
+    };
+    if url.scheme() == "https" {
+        return true;
+    }
+    if url.scheme() != "http" {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    matches!(
+        host,
+        "127.0.0.1" | "localhost" | "::1" | "[::1]" | "[0:0:0:0:0:0:0:1]" | "0:0:0:0:0:0:0:1"
+    ) || host.starts_with("127.")
 }
 
 impl Route {
@@ -315,7 +336,7 @@ impl Turn<'_> {
             .is_some_and(|k| !k.is_empty())
         {
             if let Some(endpoint) = self.request.inference_url.as_deref() {
-                if !is_https_endpoint(endpoint) {
+                if !is_safe_endpoint_for_bearer(endpoint) {
                     return Err(crate::embed::error::CoreError::InsecureRoute {
                         method: AGENT_CHAT,
                         endpoint: sanitize_url_for_display(endpoint),
