@@ -438,7 +438,6 @@ fn debug_dump_writer_sanitizes_names_and_writes_summary_sidecars() -> Result<()>
         tool_names: vec!["echo".to_string(), "search".to_string()],
         tool_specs: vec![],
         skill_tool_count: 1,
-        tool_specs: Vec::new(),
     }];
 
     let summary = write_prompt_dumps(tmp.path(), &dumps)?;
