@@ -15,8 +15,6 @@ import ComposerTokenStats from '../../components/chat/ComposerTokenStats';
 import { FlowApprovalRequestCard } from '../../components/chat/FlowApprovalRequestCard';
 import IntegrationConnectCard from '../../components/chat/IntegrationConnectCard';
 import QueuedFollowups from '../../components/chat/QueuedFollowups';
-import SuperContextToggle from '../../components/chat/SuperContextToggle';
-import { whenSuperContextWriteSettled } from '../../components/chat/superContextWrite';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
 import PanelHeader from '../../components/layout/PanelHeader';
@@ -1066,12 +1064,6 @@ const Conversations = ({
     if (!sendingThreadId) return;
     pendingSendsRef.current.add(sendingThreadId);
     addPendingSendingThread(sendingThreadId);
-    // If the user just flipped the Super Context toggle, make sure that config
-    // write has landed before the core builds this thread's session (which
-    // reads `context.super_context_enabled`). Done AFTER the duplicate-send
-    // guard above is set so this await can't open a check→add race for rapid
-    // repeat clicks. Resolves instantly when nothing is pending.
-    await whenSuperContextWriteSettled();
     const pendingAttachments = attachments.slice();
     const modelOverride =
       agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
@@ -2495,14 +2487,6 @@ const Conversations = ({
                   {t('chat.agentProfile.reasoning')}
                 </button>
               </div>
-              {/* Super context is read at thread construction, so it only
-                  affects NEW threads. Hide the toggle once the thread has ANY
-                  activity — use the raw `messages` (not `hasVisibleMessages`,
-                  which ignores hidden transcript entries) so an already-started
-                  thread never looks "fresh" here. */}
-              {/* Key by thread so switching to another empty chat remounts the
-                  toggle and re-runs its off-by-default reset (PR #4874 review). */}
-              {messages.length === 0 && <SuperContextToggle key={selectedThreadId ?? 'new-chat'} />}
               {selectedThreadId && (
                 <button
                   type="button"
