@@ -396,15 +396,6 @@ async fn run_legacy_migrations(config: &Config) {
     }
 }
 
-fn spawn_mcp_reconnect_supervisor(config: Config) {
-    static SUPERVISOR_SPAWNED: Once = Once::new();
-    SUPERVISOR_SPAWNED.call_once(|| {
-        tokio::spawn(async move {
-            crate::openhuman::mcp::registry::supervisor::run(config).await;
-        });
-    });
-}
-
 /// Auto-connect Socket.IO to the backend when enabled by the service selection.
 pub fn spawn_socket_auto_connect(
     services: ServiceSet,
