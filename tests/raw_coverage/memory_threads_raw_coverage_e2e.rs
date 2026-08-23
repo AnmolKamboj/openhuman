@@ -132,25 +132,27 @@ use openhuman_core::openhuman::memory::{
     read_rpc as memory_read_rpc,
     MemoryIngestionConfig, MemoryIngestionRequest,
 };
-// `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
-// crate with the rest of the memory implementation; the host re-exports some of
-// their contents flat but not the modules themselves.
+// `remember`, `traits` and `util` live in the extracted engine crate. The RPC
+// models do not any more — the host brought its own home, and both crates now
+// define all twenty-four names. They are distinct types with identical
+// spelling, so importing the engine's and handing them to a host function is a
+// type error that reads like a typo. These come from the host, which is what
+// the host's handlers take.
 // The guard exposes `store` through the contract's mandatory core trait, and
 // stamps provenance from an explicit taint argument.
 use openhuman_core::openhuman::memory::api::provider::MemoryCore;
 use openhuman_core::openhuman::memory::api::types::MemoryTaint;
+use openhuman_core::openhuman::memory::rpc_models::{
+    ApiEnvelope, ApiError, ApiMeta, AppendConversationMessageRequest, ConversationMessageRecord,
+    ConversationMessagesRequest, CreateConversationThreadRequest, DeleteConversationThreadRequest,
+    DeleteDocumentRequest, EmptyRequest, GenerateConversationThreadTitleRequest,
+    ListDocumentsRequest, ListMemoryFilesRequest, MemoryInitRequest, PaginationMeta,
+    QueryNamespaceRequest, ReadMemoryFileRequest, RecallContextRequest, RecallMemoriesRequest,
+    UpdateConversationMessageRequest, UpdateConversationThreadLabelsRequest,
+    UpdateConversationThreadTitleRequest, UpsertConversationThreadRequest, WriteMemoryFileRequest,
+};
 use tinymemory_core::{
     remember::RememberSourceKind,
-    rpc_models::{
-        ApiEnvelope, ApiError, ApiMeta, AppendConversationMessageRequest,
-        ConversationMessageRecord, ConversationMessagesRequest, CreateConversationThreadRequest,
-        DeleteConversationThreadRequest, DeleteDocumentRequest, EmptyRequest,
-        GenerateConversationThreadTitleRequest, ListDocumentsRequest, ListMemoryFilesRequest,
-        MemoryInitRequest, PaginationMeta, QueryNamespaceRequest, ReadMemoryFileRequest,
-        RecallContextRequest, RecallMemoriesRequest, UpdateConversationMessageRequest,
-        UpdateConversationThreadLabelsRequest, UpdateConversationThreadTitleRequest,
-        UpsertConversationThreadRequest, WriteMemoryFileRequest,
-    },
     traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
     util::redact::{redact, redact_endpoint},
 };
@@ -2087,6 +2089,9 @@ fn memory_retrieval_embedding_and_rpc_model_helpers_round_trip() {
         session_id: Some("session-2"),
         min_score: Some(0.5),
         cross_session: true,
+        // Shape assertion, not behaviour: this exercises the field surface, so
+        // the exclusion is the "exclude nothing" value.
+        exclude_session_id: None,
     };
     assert!(opts.cross_session);
     assert_eq!(opts.category.unwrap().to_string(), "conversation");
