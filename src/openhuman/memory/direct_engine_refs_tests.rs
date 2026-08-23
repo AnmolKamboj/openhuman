@@ -599,11 +599,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "task-local host policy living in the engine crate (source_scope::current_source_scope, source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     (
-        "src/openhuman/tools/registry/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
         "src/openhuman/web_chat/run_task.rs",
         Verdict::NeedsWiderSeam,
         "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
