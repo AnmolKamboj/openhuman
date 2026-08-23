@@ -117,8 +117,6 @@ pub(crate) fn build_text_mode_tool_instructions() -> String {
 /// * every synthesised per-archetype `delegate_*` tool
 ///   ([`crate::openhuman::tools::orchestrator_tools::collect_orchestrator_tools`]
 ///   emits `delegate_researcher`, `delegate_planner`, …).
-/// * custom delegate names that intentionally do not use the `delegate_*`
-///   prefix, currently `use_tinyplace`.
 /// * `agent_prepare_context` — the context-scout entry point. It reads the
 ///   *parent's* visible catalog/session via `current_parent()`, which inside a
 ///   nested run is still the top-level orchestrator (the runner does not
@@ -134,7 +132,6 @@ pub(crate) fn build_text_mode_tool_instructions() -> String {
 pub(super) fn is_subagent_spawn_tool(name: &str) -> bool {
     if name == "spawn_subagent"
         || name.starts_with("delegate_")
-        || name == "use_tinyplace"
         || name == "agent_prepare_context"
     {
         return true;

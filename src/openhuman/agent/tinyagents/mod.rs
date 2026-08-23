@@ -519,7 +519,6 @@ pub(crate) async fn run_turn_via_tinyagents(
 fn is_subagent_spawn_or_delegate_tool(name: &str) -> bool {
     name == "spawn_subagent"
         || name.starts_with("delegate_")
-        || name == "use_tinyplace"
         || name == "agent_prepare_context"
         || name == "spawn_worker_thread"
 }
