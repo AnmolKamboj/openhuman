@@ -12,7 +12,8 @@
 //! in a shared section impl.
 
 use crate::openhuman::agent::context::prompt::{
-    render_datetime, render_tools, render_user_files, render_workspace, ConnectedIntegration,
+    render_datetime, render_identity, render_tools, render_user_files, render_workspace,
+    ConnectedIntegration,
     PromptContext, ToolCallFormat,
 };
 use crate::openhuman::skills::ops_types::Workflow;
