@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::openhuman::agent::learning::candidate::FacetClass;
-use crate::openhuman::memory::api::provider::{
+use tinymemory_api::provider::{
     MemoryProfile, MemoryProvider, ProfileFacet, UserState,
 };
 use crate::openhuman::memory::guard::MemoryGuard;
@@ -205,7 +205,7 @@ pub fn class_prefix(class: FacetClass) -> &'static str {
 
 // ── Facet state enum re-export (convenience for callers of this module) ───────
 
-pub use crate::openhuman::memory::api::provider::{
+pub use tinymemory_api::provider::{
     FacetState as CacheFacetState, UserState as CacheUserState,
 };
 

@@ -34,8 +34,8 @@
 //! component.  The preference is authoritative from the moment the tool
 //! returns `Ok`.
 
-use crate::openhuman::memory::api::provider::MemoryCore;
-use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
+use tinymemory_api::provider::MemoryCore;
+use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;

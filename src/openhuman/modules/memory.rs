@@ -34,14 +34,14 @@
 //!
 //! # Errors round-trip through the shared table
 //!
-//! `crate::openhuman::memory::api::wire` maps a `MemoryError` to a `(name, message)` pair and
+//! `tinymemory_api::wire` maps a `MemoryError` to a `(name, message)` pair and
 //! back, and **both ends use it**. Reimplementing the mapping here is what would
 //! let a `PathEscape` arrive as an `Invalid`, silently reclassifying a sandbox
 //! escape as a caller mistake.
 
 use std::sync::Arc;
 
-use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use tinymemory_api::capabilities::{Capabilities, Capability};
 
 /// The release whose capability set [`ARTIFACT_CAPABILITIES`] was read from.
 ///
@@ -122,15 +122,15 @@ fn capabilities_for(assume_full: bool) -> Capabilities {
 fn artifact_serves(capability: Capability) -> bool {
     assume_full_capabilities() || ARTIFACT_CAPABILITIES.contains(&capability)
 }
-use crate::openhuman::memory::api::chunks::Chunk;
-use crate::openhuman::memory::api::error::MemoryError;
-use crate::openhuman::memory::api::goals::GoalsDoc;
-use crate::openhuman::memory::api::health::MemoryHealth;
-use crate::openhuman::memory::api::provider::types::{
+use tinymemory_api::chunks::Chunk;
+use tinymemory_api::error::MemoryError;
+use tinymemory_api::goals::GoalsDoc;
+use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::types::{
     DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
-use crate::openhuman::memory::api::provider::{
+use tinymemory_api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
     FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
     MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
@@ -139,15 +139,15 @@ use crate::openhuman::memory::api::provider::{
     PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
     SourceRetrievalQuery, UserState,
 };
-use crate::openhuman::memory::api::recall::OwnedRecallOpts;
-use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
-use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
-use crate::openhuman::memory::api::types::{
+use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::tool_memory::ToolMemoryRule;
+use tinymemory_api::tree::{IngestRequest, QueryResult, TreeStatus};
+use tinymemory_api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
     NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
     StoredMemoryDocument,
 };
-use crate::openhuman::memory::api::wire;
+use tinymemory_api::wire;
 use async_trait::async_trait;
 
 use super::{host, ops, registry};

@@ -477,8 +477,8 @@ mod tests {
 
     #[test]
     fn facet_to_json_includes_cue_families_and_evidence_refs() {
-        use crate::openhuman::memory::api::host::EvidenceRef;
-        use crate::openhuman::memory::api::provider::{
+        use tinymemory_api::host::EvidenceRef;
+        use tinymemory_api::provider::{
             FacetState, FacetType, ProfileFacet, UserState,
         };
         use std::collections::HashMap;
@@ -694,7 +694,7 @@ fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFuture {
 fn handle_cache_stats(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         use crate::openhuman::agent::learning::cache::FacetCache;
-        use crate::openhuman::memory::api::provider::FacetState;
+        use tinymemory_api::provider::FacetState;
 
         tracing::debug!("[learning.cache_stats] cache stats requested via RPC");
 
@@ -780,7 +780,7 @@ fn full_key(class_str: &str, key_suffix: &str) -> String {
 }
 
 /// Serialize a [`ProfileFacet`] to a serde_json [`Value`] for RPC output.
-fn facet_to_json(f: &crate::openhuman::memory::api::provider::ProfileFacet) -> serde_json::Value {
+fn facet_to_json(f: &tinymemory_api::provider::ProfileFacet) -> serde_json::Value {
     serde_json::json!({
         "key": f.key,
         "value": f.value,
@@ -805,7 +805,7 @@ fn facet_to_json(f: &crate::openhuman::memory::api::provider::ProfileFacet) -> s
 
 fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::FacetState;
+        use tinymemory_api::provider::FacetState;
 
         tracing::debug!("[learning.list_facets] called");
 
@@ -889,7 +889,7 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::UserState;
+        use tinymemory_api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -945,7 +945,7 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::UserState;
+        use tinymemory_api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -987,7 +987,7 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::UserState;
+        use tinymemory_api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -1029,7 +1029,7 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::{FacetState, UserState};
+        use tinymemory_api::provider::{FacetState, UserState};
 
         let class_str = params
             .get("class")

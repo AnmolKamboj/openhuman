@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use tinymemory_api::capabilities::{Capabilities, Capability};
 
 use crate::core::ControllerSchema;
 
@@ -239,7 +239,7 @@ struct GroupedController {
     /// Absence, not a stub that errors — a registered-but-failing method
     /// teaches a model that the capability exists and makes it retry. Same
     /// reasoning as the `flows` compile-time gate (see CLAUDE.md) and as
-    /// `crate::openhuman::memory::api::capabilities`' module docs.
+    /// `tinymemory_api::capabilities`' module docs.
     capability: Option<Capability>,
     controller: RegisteredController,
 }

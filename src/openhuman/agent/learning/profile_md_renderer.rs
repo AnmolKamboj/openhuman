@@ -43,7 +43,7 @@ use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::integrations::composio::providers::profile_md::replace_managed_block;
-use crate::openhuman::memory::api::provider::UserState;
+use tinymemory_api::provider::UserState;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
 
@@ -220,7 +220,7 @@ impl EventHandler<DomainEvent> for RendererSubscriber {
 mod tests {
     use super::*;
     use crate::openhuman::integrations::composio::providers::profile_md::{block_end, block_start};
-    use crate::openhuman::memory::api::provider::{FacetState, FacetType, ProfileFacet, UserState};
+    use tinymemory_api::provider::{FacetState, FacetType, ProfileFacet, UserState};
     use std::sync::Arc;
     use tempfile::TempDir;
 

@@ -2,7 +2,7 @@
 
 use crate::core::bus::BUS;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::api::host::{MemoryEvent, SpacyResponse};
+use tinymemory_api::host::{MemoryEvent, SpacyResponse};
 use std::sync::Arc;
 use tinyagents::harness::model::{ModelRequest, ModelResponse};
 use tinybus::ObjectPath;

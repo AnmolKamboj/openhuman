@@ -41,9 +41,9 @@ use crate::openhuman::agent::harness::memory_context_safety::{
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::{cross_flow_recall, flow_namespace};
-use crate::openhuman::memory::api::provider::{MemoryCore, MemoryRecall};
-use crate::openhuman::memory::api::recall::OwnedRecallOpts;
-use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
+use tinymemory_api::provider::{MemoryCore, MemoryRecall};
+use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 use crate::openhuman::memory::tools::flavour::{lookup_flavour, FlavourLookup};
 use crate::openhuman::security::approval::{
     redact_args, summarize_action, ApprovalGate, ExecutionOutcome, GateOutcome,
@@ -387,7 +387,7 @@ impl MemoryProvider for OpenHumanMemory {
 
         // Reads people through the bound driver, like every other people caller
         // — the store moved behind the loaded module.
-        use crate::openhuman::memory::api::provider::MemoryProvider;
+        use tinymemory_api::provider::MemoryProvider;
         let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
             .await
             .map_err(|e| {

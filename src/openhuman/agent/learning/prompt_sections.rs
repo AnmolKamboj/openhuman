@@ -163,7 +163,7 @@ pub async fn load_learned_from_cache(
 
     // Group by class prefix (portion before the first '/'), then sort within
     // each class by stability descending, then by key alphabetically.
-    use crate::openhuman::memory::api::provider::ProfileFacet;
+    use tinymemory_api::provider::ProfileFacet;
     use std::collections::BTreeMap;
     let mut by_class: BTreeMap<String, Vec<usize>> = BTreeMap::new();
 
@@ -197,7 +197,7 @@ pub async fn load_learned_from_cache(
             // agent can parse the source. Goal class keeps value-only (full
             // sentence, no key prefix). Pinned entries get a trailing suffix.
             let pinned =
-                if f.user_state == crate::openhuman::memory::api::provider::UserState::Pinned {
+                if f.user_state == tinymemory_api::provider::UserState::Pinned {
                     " *(pinned)*"
                 } else {
                     ""
@@ -380,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn load_learned_from_cache_formats_active_facets() {
-        use crate::openhuman::memory::api::provider::{
+        use tinymemory_api::provider::{
             FacetState, FacetType, ProfileFacet, UserState,
         };
         let cache = crate::openhuman::agent::learning::test_profile::in_memory_cache();

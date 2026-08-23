@@ -2726,9 +2726,9 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
 /// Driver-backed memory tools and the capability each requires.
 const MEMORY_TOOL_CAPABILITIES: &[(
     &str,
-    crate::openhuman::memory::api::capabilities::Capability,
+    tinymemory_api::capabilities::Capability,
 )] = {
-    use crate::openhuman::memory::api::capabilities::Capability as C;
+    use tinymemory_api::capabilities::Capability as C;
     &[
         ("memory_store", C::Core),
         ("memory_forget", C::Core),
@@ -2815,7 +2815,7 @@ fn every_memory_tool_has_an_explicit_capability_or_is_core() {
 /// (the never-filtered bucket). Synthetic names matching only the prefix.
 #[test]
 fn no_prefix_family_memory_tool_silently_defaults_to_uncapped() {
-    use crate::openhuman::memory::api::capabilities::Capability;
+    use tinymemory_api::capabilities::Capability;
     for (name, want) in [
         ("goals_new_thing", Capability::Goals),
         ("memory_tree_new_thing", Capability::Tree),

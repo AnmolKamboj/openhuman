@@ -26,7 +26,7 @@ use crate::openhuman::channels::routes::{
 use crate::openhuman::channels::traits;
 use crate::openhuman::channels::{ChannelSendExt, SendMessage};
 use crate::openhuman::inference::provider;
-use crate::openhuman::memory::api::provider::MemoryCore as _;
+use tinymemory_api::provider::MemoryCore as _;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -276,9 +276,9 @@ pub(crate) async fn process_channel_runtime_message(
                 crate::openhuman::agent::learning::transcript_ingest::CONVERSATION_RAW_NAMESPACE,
                 &autosave_key,
                 &msg.content,
-                crate::openhuman::memory::api::types::MemoryCategory::Conversation,
+                tinymemory_api::types::MemoryCategory::Conversation,
                 None,
-                crate::openhuman::memory::api::types::MemoryTaint::Internal,
+                tinymemory_api::types::MemoryTaint::Internal,
             )
             .await;
     }

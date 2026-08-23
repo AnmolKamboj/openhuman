@@ -37,7 +37,7 @@
 //! static namespace/function names, never from user-supplied argument values,
 //! and no memory content can reach this path at all.
 
-use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use tinymemory_api::capabilities::{Capabilities, Capability};
 use anyhow::Result;
 
 use crate::core::subsystem::DriverClass;
