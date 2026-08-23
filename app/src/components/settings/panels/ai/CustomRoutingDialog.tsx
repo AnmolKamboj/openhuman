@@ -283,64 +283,64 @@ export const CustomRoutingDialog = ({
           </Alert>
         )}
         <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            onClick={() => setPickerOpen(true)}
-            className="h-auto w-full justify-between px-3 py-2.5 text-left">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-xs font-medium text-content-secondary">Provider and model</span>
-              <span className="truncate text-sm font-medium text-content">
-                {model ? `${selectedProviderLabel} · ${model}` : 'Select provider and model'}
-              </span>
+          type="button"
+          variant="secondary"
+          size="md"
+          onClick={() => setPickerOpen(true)}
+          className="h-auto w-full justify-between px-3 py-2.5 text-left">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium text-content-secondary">Provider and model</span>
+            <span className="truncate text-sm font-medium text-content">
+              {model ? `${selectedProviderLabel} · ${model}` : 'Select provider and model'}
             </span>
-            <span className="text-xs text-content-muted">Change</span>
-          </Button>
+          </span>
+          <span className="text-xs text-content-muted">Change</span>
+        </Button>
 
-          <TemperatureOverrideField temperature={temperature} onChange={setTemperature} />
+        <TemperatureOverrideField temperature={temperature} onChange={setTemperature} />
 
-          {/* Vision capability (optional). Marks a custom/BYOK model as
+        {/* Vision capability (optional). Marks a custom/BYOK model as
                 accepting image input so the chat composer offers image
                 attachments for it. Only shown once a concrete model is chosen. */}
-          {registrySlug && model.trim().length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label className="inline-flex items-center gap-2 text-xs text-content-secondary">
-                <Checkbox
-                  checked={visionLocked ? true : vision}
-                  onCheckedChange={setVision}
-                  disabled={visionLocked}
-                  className="h-3.5 w-3.5 disabled:opacity-60"
-                />
-                {t('settings.ai.modelVision')}
-              </Label>
-              <p className="text-[11px] text-content-faint">{t('settings.ai.modelVisionDesc')}</p>
-            </div>
-          )}
+        {registrySlug && model.trim().length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label className="inline-flex items-center gap-2 text-xs text-content-secondary">
+              <Checkbox
+                checked={visionLocked ? true : vision}
+                onCheckedChange={setVision}
+                disabled={visionLocked}
+                className="h-3.5 w-3.5 disabled:opacity-60"
+              />
+              {t('settings.ai.modelVision')}
+            </Label>
+            <p className="text-[11px] text-content-faint">{t('settings.ai.modelVisionDesc')}</p>
+          </div>
+        )}
 
-          <ModelTestResultPanel
-            testBusy={testBusy}
-            testReply={testReply}
-            testError={testError}
-            testStartedAt={testStartedAt}
-            currentProviderString={currentProviderString}
+        <ModelTestResultPanel
+          testBusy={testBusy}
+          testReply={testReply}
+          testError={testError}
+          testStartedAt={testStartedAt}
+          currentProviderString={currentProviderString}
+        />
+
+        {pickerOpen && (
+          <ProviderModelPickerDialog
+            cloudProviders={customCloud}
+            localModels={localModels}
+            ollamaRunning={ollamaRunning}
+            claudeCodeEnabled={claudeCodeEnabled}
+            initial={source && model ? { source, model } : null}
+            onClose={() => setPickerOpen(false)}
+            onSelect={({ source: nextSource, model: nextModel }) => {
+              resetTestState();
+              setSource(nextSource);
+              setModel(nextModel);
+              setPickerOpen(false);
+            }}
           />
-
-          {pickerOpen && (
-            <ProviderModelPickerDialog
-              cloudProviders={customCloud}
-              localModels={localModels}
-              ollamaRunning={ollamaRunning}
-              claudeCodeEnabled={claudeCodeEnabled}
-              initial={source && model ? { source, model } : null}
-              onClose={() => setPickerOpen(false)}
-              onSelect={({ source: nextSource, model: nextModel }) => {
-                resetTestState();
-                setSource(nextSource);
-                setModel(nextModel);
-                setPickerOpen(false);
-              }}
-            />
-          )}
+        )}
       </div>
     </ModalShell>
   );
