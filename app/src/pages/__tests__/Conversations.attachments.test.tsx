@@ -260,7 +260,7 @@ async function renderWithSelectedThread() {
     </Provider>
   );
 
-  const textarea = await screen.findByPlaceholderText('Send a message...');
+  const textarea = await screen.findByRole('textbox', { name: 'Message input' });
   return { store, textarea, thread };
 }
 
@@ -501,7 +501,8 @@ describe('Conversations — attachment feature', () => {
     });
 
     await act(async () => {
-      fireEvent.change(textarea, { target: { value: 'describe this' } });
+      textarea.textContent = 'describe this';
+      fireEvent.input(textarea, { data: 'describe this', inputType: 'insertText' });
     });
 
     await act(async () => {
@@ -538,7 +539,8 @@ describe('Conversations — attachment feature', () => {
     });
 
     await act(async () => {
-      fireEvent.change(textarea, { target: { value: 'read this' } });
+      textarea.textContent = 'read this';
+      fireEvent.input(textarea, { data: 'read this', inputType: 'insertText' });
     });
 
     await act(async () => {
