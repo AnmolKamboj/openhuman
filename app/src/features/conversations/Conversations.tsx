@@ -2622,6 +2622,13 @@ const Conversations = ({
           {t('openrouterFree.error')}
         </div>
       )}
+      {attachError && (
+        <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2">
+          <p className="text-xs text-coral-500" data-chat-send-error-code={attachError.code}>
+            {attachError.message}
+          </p>
+        </div>
+      )}
       {selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 ? (
         <QueuedFollowups
           items={queuedFollowupsByThread[selectedThreadId] ?? []}
@@ -2646,6 +2653,13 @@ const Conversations = ({
         inputValue={inputValue}
         onInputValueChange={setInputValue}
         onEscape={handleComposerEscape}
+        attachments={attachments}
+        onAttachFiles={handleAttachFiles}
+        onRemoveAttachment={id => setAttachments(previous => previous.filter(a => a.id !== id))}
+        maxAttachments={ATTACHMENT_MAX_IMAGES + ATTACHMENT_MAX_FILES}
+        attachmentsEnabled={CHAT_ATTACHMENTS_ENABLED}
+        attachmentInteractionBlocked={composerInteractionBlocked || isSending}
+        onAttachmentOnlySend={() => void handleComposerSend()}
         onModelChange={(value, contextWindow) => {
           setComposerModelOverride(value);
           setComposerModelContextWindow(contextWindow ?? null);
