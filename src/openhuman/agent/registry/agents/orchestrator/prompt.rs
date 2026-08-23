@@ -24,6 +24,22 @@ const ARCHETYPE: &str = include_str!("prompt.md");
 
 pub fn build(ctx: &PromptContext<'_>) -> Result<String> {
     let mut out = String::with_capacity(8192);
+
+    // Identity leads the prompt (#5701): SOUL.md is the product persona every
+    // opted-in agent shares, ROLE.md is this agent's own role brief. Both are
+    // workspace files, so tuning either is an edit rather than a rebuild.
+    //
+    // Rendered here rather than via `IdentitySection` because the orchestrator
+    // is a `PromptSource::Dynamic` agent: `SystemPromptBuilder::from_dynamic`
+    // installs only this builder and never consults `omit_identity`, so the
+    // section chain that would otherwise inject these files does not run for
+    // us. Same reason `render_user_files` is called by hand just below.
+    let identity = render_identity(ctx)?;
+    if !identity.trim().is_empty() {
+        out.push_str(identity.trim_end());
+        out.push_str("\n\n");
+    }
+
     out.push_str(ARCHETYPE.trim_end());
     out.push_str("\n\n");
 
