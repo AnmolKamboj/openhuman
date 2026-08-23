@@ -586,12 +586,28 @@ Layering: `embed::Core::agent()` is the typed turn surface for a host that alrea
 
 Example: `examples/run_turn.rs`. End-to-end test: `tests/harness_embed.rs`.
 
-### Runtime composition — `ServiceSet` + `DomainSet` on `CoreBuilder`
+### Runtime composition — `ServiceSet` + `DomainSet` + `ToolGroups` on `CoreBuilder`
 
-Two independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
+Three independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
 
 - **`ServiceSet`** selects which *background services / transports* run (`rpc_http`, `socketio`, `cron`, `channels`, `heartbeat`, …). Presets: `desktop()` / `headless_api()` / `none()`.
 - **`DomainSet`** selects which *domain families* exist at runtime, one flag per `DomainGroup` (`src/core/all.rs`). Presets: `full()` (default — byte-identical to before #4796), `harness()` (agent + memory + threads + config + security only), `none()`. Every controller is tagged with its `DomainGroup` at the single registration site in `src/core/all.rs`; the live surface (controllers/`/schema`/dispatch, agent tools, stores, subscribers) is filtered by the ambient `CoreContext::domains()`. A gated domain's controllers become unknown-method, its agent tools absent, its stores/subscribers uninitialized. `examples/embed_headless.rs` uses `DomainSet::harness()`; `examples/embed_kernel.rs` uses `DomainSet::kernel()` — the floor (threads + config + security, with `agent`/`memory` OFF) that a host opts subsystems back into by field assignment. Per-gate Cargo `[features]` (children #4797–#4804) narrow the compile-time surface further; `DomainSet` is the runtime axis they compose with.
+
+- **`ToolGroups`** selects how each *tool group* reaches the model, one mode per compiled-in pack in `tools/toolpacks/registry.rs` (`src/openhuman/tools/toolpacks/groups.rs`). Presets: `packed()` (default — every group withheld, byte-identical to before the type existed), `advertised()`, `none()`, plus `.with(id, mode)`. Also on `Harness::builder()`.
+
+**The third axis exists because the pack table answers a compression question, and a library embedder is asking a capability question.** Packs were built for one host's problem — an orchestrator whose fixed per-turn cost is dominated by tool schemas — and membership is compiled in for a good reason: a pack that config or RPC could edit would let a caller move a dangerous tool out of the reviewed surface. But `openhuman_core` is also consumed as a library, and there the group id is the natural unit of *what this product has at all*. A host embedding the harness to summarise documents has no use for the crypto belt at any disclosure level; a host doing its own routing may want every schema on the wire because it does not pay the orchestrator's budget. Neither is expressible by membership, which only ever says "advertised or withheld".
+
+So `GroupMode` has three states, not two:
+
+| `GroupMode` | Schemas on the wire | Registered and callable |
+| --- | --- | --- |
+| `Advertised` | yes | yes |
+| `Withheld` | no (reached via `load_skill` / `use_skill`) | yes |
+| `Off` | no | **no** |
+
+`Off` is the state that could not be said before, and it is the one an embedder reaches for most — absence beats a registered tool that fails, the same reasoning the `flows` compile gate already documents. Enforcement is two-sited and mirrors the existing filters: `Off` drops the tool in `all_tools_with_runtime`'s post-filter block (a third `retain`, right after the `DomainSet` and memory-capability ones), and `Withheld` is what `strip_packed_from_visible` acts on. **The three narrow, they never widen** — `Advertised` cannot conjure a tool that a Cargo gate compiled out or that the ambient `DomainSet` dropped.
+
+**Packs now carry an `owners` list, and a pack is skipped entirely for its owner.** This is new with the raw-tool packs and was not needed before: the original packs held only synthesised `delegate_*` tools, which exist on the orchestrator alone. A pack over raw tools is different — `settings_agent` exists precisely to run `config_*` / `health_*` / `service_*`, so withholding the `system` pack from it would put a `load_skill` round trip in front of the first call of every one of its turns and hide nothing that was idle. Its whole belt *is* the pack. `strip_packed_from_visible` therefore takes the agent id.
 
 **`DomainGroup` tracks family directories 1:1.** After the domain reorg (#5328) each variant names a `src/openhuman/` family, so the runtime axis stopped sweeping half the surface into the `Platform` catch-all. Groups: the harness families (`Agent`, `Memory`, `Threads`, `Config`, `Security`), the compile-gate families (`Flows`, `Skills`, `Mcp`, `Channels`, `Web3`, `Voice`, `Media`, `Medulla`), the families carved out of `Platform` (`Inference`, `Integrations`, `Automation` = cron, `Runtimes` = runtime + sandbox, `Desktop`, `Hosted`, `Relay` = tinyplace, `Modules` = the native module host), and `Platform` itself — now only the kernel surfaces with no family of their own (`platform/`, `tools/`, `http_host/`, `test_support/`).
 
