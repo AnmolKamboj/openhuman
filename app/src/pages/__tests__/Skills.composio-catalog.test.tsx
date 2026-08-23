@@ -161,9 +161,7 @@ describe('Skills page — Composio catalog fallback', () => {
       within(integrationsSection as HTMLElement).getByTestId('composio-integrations-loading')
     ).toBeInTheDocument();
     expect(
-      within(integrationsSection as HTMLElement).queryAllByTestId(
-        'composio-integrations-loading-row'
-      ).length
+      within(integrationsSection as HTMLElement).queryAllByTestId('composio-skeleton-tile').length
     ).toBeGreaterThan(0);
     // …and none of the hardcoded fallback toolkits are rendered yet.
     expect(
