@@ -440,6 +440,46 @@ orchestration surface still has a pinned **subconscious chat window**
 `threadFilter`'s `MEETINGS_LABELS` still routes historical meeting-labelled
 threads so existing user data does not leak into the General bucket.
 
+**Removed agent-tool families.** A second, narrower removal: six families left
+the *agent tool surface* while their RPC controllers stayed registered, because
+the dashboard still calls them. The distinction matters — "the tool is gone" is
+not "the domain is gone", and only one of these took its domain with it:
+
+| Removed family | Tools gone | Domain / RPC |
+| --- | --- | --- |
+| `apify_*` | `apify_run_actor`, `apify_get_run_status`, `apify_get_run_results` + the `[integrations].apify` toggle | Deleted. **`openhuman.tools_apify_linkedin_scrape` stays** — onboarding's ContextGatheringStep calls it, and `agent::learning::linkedin_enrichment` reaches the backend route directly, not through the deleted tools. |
+| `people_*` | all 7 | `memory/tools/people.rs` deleted; the `people` RPC surface and `memory/people/` (address book, the `contacts` gate) stay. |
+| `thread_*` | all 17, plus `transcript_search` | `threads/tools.rs` deleted; the `threads` domain stays — it is `DomainGroup::Threads` kernel surface and backs the whole chat UI. `todo_*` and `goal_*` are untouched. |
+| `billing_*`, `team_*`, `referral_*` | all 34 | `hosted/{billing,team,referral}/tools.rs` deleted; every controller stays (32 `team` and 5 `billing` frontend call sites). |
+| `tinyplace_*` | the whole curated agent surface (`tinyplace/agent_tools`, `tinyplace/tools.rs`) | The **domain stays.** See the note below. |
+
+Two agents went with them: **`account_admin_agent`** (its belt was billing +
+team + referral) and **`tinyplace_agent`**. `account_admin_agent`'s read-only
+half — `session_state`, `session_get_user`, `credential_list`,
+`oauth_connect_url`, `oauth_list` — moved to `settings_agent`: that is account
+*state*, which is settings territory, and has nothing to do with the money
+movement that went away. The `tinyplace_autopilot` cron seed went too, and with
+it `cron::seed::seed_proactive_agents_on_boot`, whose only job was backfilling
+that one job.
+
+**`openhuman::tinyplace/` was NOT deleted, and this is a deliberate stop, not an
+oversight.** It is ~17.8k lines with ~180 references across ~30 files outside
+itself, and the two heaviest consumers are surfaces that must survive:
+`hosted/orchestration` (the tiny.place orchestration surface the note above
+says not to clean up) and `web3::wallet`, whose `tinyplace_solana_rpc_endpoints`
+/ `tinyplace_signer_seed` are documented API. Deleting the domain means deleting
+or rewriting `hosted/orchestration` first. What is gone is the agent's route to
+it; `DomainGroup::Relay` still exists and still serves its controllers, it just
+owns no agent tool any more — which is why `Relay` is now in `TOOL_LESS` in
+`tools/ops_tests.rs`.
+
+**Known regression, accepted:** removing `thread_list` from the orchestrator
+reopens #4744 — "list my recent conversation threads" has no direct route and
+the model will fall back to `retrieve_memory`, which walks the memory *tree*,
+the wrong index. `tests/orchestrator_thread_list_wiring.rs`, which existed to
+pin that fix, was deleted with the tool. If threads need a chat route again, the
+cheap fix is a single read-only `thread_list` rather than restoring the family.
+
 **Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime::node`/`runtime::python`, which are clients for the `tinyruntime` module).
 
 ### Tool calling lives in tinyagents — `src/openhuman/agent/dispatcher.rs` is a seam
