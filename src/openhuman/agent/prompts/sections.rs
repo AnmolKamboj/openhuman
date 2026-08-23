@@ -443,6 +443,11 @@ impl PromptSection for SafetySection {
 ///
 /// Byte-stable (no time / RNG / host) so it lives in the KV-cache-friendly
 /// prefix. Must contain no em-dashes per [`super::builder::GLOBAL_STYLE_SUFFIX`].
+/// Heading the grounding contract renders under, in both the global
+/// [`GROUNDING_BODY`] and any agent prompt that carries its own copy. The
+/// builder matches on this to avoid emitting the contract twice.
+pub const GROUNDING_HEADING: &str = "Grounding and tool use";
+
 pub const GROUNDING_BODY: &str = "## Grounding and tool use\n\n\
     - Your tools are exactly the ones listed in this prompt. You can only act through them. If a capability is not one of your tools, say so plainly rather than pretending it exists.\n\
     - Never invent tool names, arguments, ids, slugs, file paths, URLs, chain ids, addresses, quotes, metrics, or any other value. If you do not have it from a tool result or the user, ask for it or look it up with a tool.\n\
