@@ -13,6 +13,26 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   287/269/2  2026-08-23  the TinyJuice wire contract moved into its own crate
+#                      (+1 package, +1 NAME: `tinyjuice-bus`). It is `serde` and
+#                      nothing else — no transport, no runtime, no native code —
+#                      and it brings no third-party crate this profile did not
+#                      already have.
+#
+#                      It cannot be gated: `inference::tokenjuice` compiles in
+#                      every build because the compression middleware sits in the
+#                      agent turn path, so the contract has no feature to hang
+#                      off. The two other contracts that landed in the same PR
+#                      DO have one and cost this profile nothing —
+#                      `tinydocs-bus` is exclusive to `documents` and
+#                      `tinyvoice-bus` to `voice`, both default-OFF for
+#                      contributors.
+#
+#                      What it buys is the deletion of 259 lines of hand-copied
+#                      wire types from `inference/tokenjuice/types.rs`, which
+#                      were a second definition of a contract with nothing
+#                      checking that the two agreed. A crate in the graph is the
+#                      cheaper of the two failure modes.
 #   286/268/2  2026-08-22  combined raise from two independent extractions
 #                      landing on the same day, each additive on the 283/265/2
 #                      base. (1) The MCP client moved out to `tinymcp` (+2
@@ -403,4 +423,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:286:268:2
+flows:287:269:2
