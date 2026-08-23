@@ -1402,7 +1402,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         || name.starts_with("brave_")
         || name.starts_with("parallel_")
         || name.starts_with("querit_")
-        || name.starts_with("apify_")
         || name.starts_with("google_places_")
         || name.starts_with("stock_")
         || name.starts_with("storage_")
@@ -1417,18 +1416,15 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     {
         return DomainGroup::Integrations;
     }
-    // Hosted: clients of the TinyHumans backend.
-    if name.starts_with("billing_")
-        || name.starts_with("referral_")
-        || name.starts_with("team_")
-        || name.starts_with("orchestration_")
-    {
+    // Hosted: clients of the TinyHumans backend. The `billing_` / `team_` /
+    // `referral_` prefixes were removed with those agent-tool families; their
+    // controllers stay registered for the dashboard, which does not route
+    // through this classifier.
+    if name.starts_with("orchestration_") {
         return DomainGroup::Hosted;
     }
-    // Relay: the multi-agent relay surface.
-    if name.starts_with("tinyplace_") {
-        return DomainGroup::Relay;
-    }
+    // Relay owns no agent tools since the `tinyplace_*` family was removed —
+    // see `TOOL_LESS` in `ops_tests.rs`, which is what keeps that honest.
     // Desktop: shell-facing surfaces.
     if name.starts_with("dashboard_") {
         return DomainGroup::Desktop;
@@ -1496,7 +1492,6 @@ fn tool_capability(name: &str) -> Option<crate::openhuman::memory::api::capabili
     // Not driver-backed. Each entry is an argued exception, not a fallthrough.
     if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly
         || name == "memory_store_kinds"    // enumerates `MemoryKind` constants; no store access
-        || name.starts_with("people_")     // per-workspace people SQLite store, not the driver
         || name.starts_with("flow_memory_")
     // flow-sandboxed; DomainGroup::Flows
     {
