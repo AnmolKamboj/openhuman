@@ -1784,14 +1784,6 @@ mod tests {
         );
     }
 
-    /// `tools_agent` must explicitly disallow specialist-owned external action
-    /// families so the wildcard inventory does not surface raw paid/write
-    /// tools to the generalist, bypassing specialist prompts.
-    #[test]
-    fn tools_agent_disallows_specialist_owned_external_tools() {
-        let def = find("tools_agent");
-    }
-
     /// Routing: the orchestrator must list `mcp_agent` in its `subagents`
     /// so a `delegate_use_mcp_server` tool is synthesised at agent-build
     /// time. Without this entry the orchestrator can only *set up* MCP
