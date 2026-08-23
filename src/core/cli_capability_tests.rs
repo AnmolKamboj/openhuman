@@ -114,10 +114,17 @@ async fn bound_driver_probe_reports_the_default_module_driver() {
     let advertised = binding.capabilities();
     assert!(advertised.contains_all(Capabilities::mandatory()));
     assert!(advertised.contains(Capability::Tree));
-    assert!(
-        advertised.contains(Capability::Retrieval),
-        "the pinned v1.2.0 artifact serves `retrieval`; not advertising it is an under-claim"
-    );
+    for capability in [
+        Capability::Chunks,
+        Capability::People,
+        Capability::Profile,
+        Capability::Retrieval,
+    ] {
+        assert!(
+            advertised.contains(capability),
+            "the pinned v1.2.0 artifact must advertise {capability:?}"
+        );
+    }
     assert!(
         !advertised.contains(Capability::Episodic),
         "`episodic` must stay unadvertised until `ModuleMemoryProvider` implements `as_episodic`"
