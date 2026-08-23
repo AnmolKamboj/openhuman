@@ -59,7 +59,6 @@ pub use crate::openhuman::skills::runtime::tools::*;
 #[cfg(feature = "skills")]
 pub use crate::openhuman::skills::tools::*;
 pub use crate::openhuman::threads::todos::tools::*;
-pub use crate::openhuman::tinyplace::tools::*;
 #[cfg(feature = "voice")]
 pub use crate::openhuman::voice::audio_toolkit::tools::*;
 #[cfg(feature = "web3")]
