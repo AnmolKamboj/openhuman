@@ -365,6 +365,15 @@ impl AgentMemory for OpenHumanAgentMemory {
             // Widening past the requested session is a wiring decision, never a
             // runtime hint.
             cross_session: self.cross_session,
+            // TODO(pin bump): decide this deliberately before shipping the
+            // engine bump that introduced the field. `None` reproduces exactly
+            // what this call did before it existed — the engine falls back to
+            // its ambient task-local. But the engine's own comment says that
+            // ambient reads `None` on the far side of the module boundary,
+            // because a `cdylib` has its own statics, and this call goes
+            // through the module. So `None` here is bug-compatible, not
+            // correct: it hands the agent back what it just said.
+            exclude_session_id: None,
         };
 
         let entries = crate::openhuman::agent::tinyagents::retriever::recall_through_facade(

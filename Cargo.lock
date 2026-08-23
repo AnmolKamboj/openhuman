@@ -2682,7 +2682,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.57.0",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -6321,6 +6321,8 @@ dependencies = [
 [[package]]
 name = "tinyagents"
 version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f0c44e010c8c98ce8e61ff7116d87095234c1f415a2a9d35532bbfec974a1bc"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6534,7 +6536,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6642,6 +6644,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "log",
+ "rusqlite",
  "serde",
  "serde_json",
  "tinycortex",
@@ -8778,3 +8781,7 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "tinyagents"
+version = "2.1.0"
