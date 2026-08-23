@@ -23,10 +23,7 @@ import AlertDialogRoot, { AlertDialogContent } from './AlertDialog';
 import { DialogContent, DialogRoot } from './Dialog';
 
 /** The animation registrations and keyframes, read from the real theme. */
-const tailwindSource = readFileSync(
-  join(__dirname, '..', '..', 'index.css'),
-  'utf8'
-);
+const tailwindSource = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8');
 
 /** `--animate-dialog-in: dialogIn 0.2s …` → the keyframe name `dialogIn`. */
 const keyframeNameFor = (animation: string): string => {

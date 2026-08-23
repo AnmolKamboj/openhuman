@@ -115,7 +115,9 @@ describe('Skills page — Channels grid', () => {
     renderWithProviders(<Skills />, { initialEntries: ['/connections'], preloadedState });
     fireEvent.click(screen.getByTestId('two-pane-nav-channels'));
 
-    const channelsCard = screen.getByRole('heading', { name: 'Messaging' }).closest('[data-slot="card"]');
+    const channelsCard = screen
+      .getByRole('heading', { name: 'Messaging' })
+      .closest('[data-slot="card"]');
     const order = within(channelsCard as HTMLElement)
       .getAllByTestId(/^skill-row-channel-/)
       .map(el => el.getAttribute('data-testid'));
@@ -135,7 +137,9 @@ describe('Skills page — Channels grid', () => {
     const { store } = renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
     fireEvent.click(screen.getByTestId('two-pane-nav-channels'));
 
-    const channelsCard = screen.getByRole('heading', { name: 'Messaging' }).closest('[data-slot="card"]');
+    const channelsCard = screen
+      .getByRole('heading', { name: 'Messaging' })
+      .closest('[data-slot="card"]');
     const within$ = within(channelsCard as HTMLElement);
 
     // The redux default starts on Telegram, so its tile shows the "Default"
