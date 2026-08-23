@@ -224,9 +224,12 @@ export const CustomRoutingDialog = ({
     }
   };
 
-  // Empty state only when there's genuinely nothing to route to: no custom
-  // cloud providers, no local Ollama, and the Claude Code peer chip is off.
-  const noProviders = customCloud.length === 0 && !localAvailable && !claudeCodeEnabled;
+  // Nothing to route to *of the user's own*: no custom cloud providers, no
+  // local Ollama, and the Claude Code peer chip is off. The warning still
+  // explains that, but it no longer replaces the picker — managed is always
+  // available, so a user with nothing configured must still be able to route a
+  // workload back to it.
+  const noOwnProviders = customCloud.length === 0 && !localAvailable && !claudeCodeEnabled;
   const selectedProviderLabel =
     source?.kind === 'cloud'
       ? (customCloud.find(provider => provider.slug === source.providerSlug)?.label ??
@@ -273,12 +276,13 @@ export const CustomRoutingDialog = ({
       <p className="mt-2 text-xs leading-5 text-content-muted">
         {t(WORKLOAD_MODEL_HINT_KEYS[workload.id])}
       </p>
-      {noProviders ? (
-        <Alert variant="warning" className="p-3 text-xs">
-          {t('settings.ai.noCustomProviders')}
-        </Alert>
-      ) : (
-        <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
+        {noOwnProviders && (
+          <Alert variant="warning" className="p-3 text-xs">
+            {t('settings.ai.noCustomProviders')}
+          </Alert>
+        )}
+        {(
           <Button
             type="button"
             variant="secondary"
