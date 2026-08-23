@@ -4193,6 +4193,7 @@ dependencies = [
  "tinyplace",
  "tinyruntime-bus",
  "tinywallet",
+ "tinywallet-bus",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.29.0",
@@ -6722,23 +6723,34 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tinywallet"
-version = "0.4.0"
+version = "0.5.0"
+dependencies = [
+ "coins-bip32 0.8.7",
+ "coins-bip39 0.13.1",
+ "ed25519-dalek",
+ "hmac 0.13.0",
+ "ripemd 0.2.0",
+ "sha2 0.11.0",
+ "sha3",
+ "thiserror 2.0.18",
+ "tinywallet-bus",
+ "zeroize",
+]
+
+[[package]]
+name = "tinywallet-bus"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "bech32 0.11.1",
  "bs58",
- "coins-bip32 0.8.7",
- "coins-bip39 0.13.1",
- "ed25519-dalek",
  "hex",
- "hmac 0.13.0",
  "ripemd 0.2.0",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "sha3",
  "thiserror 2.0.18",
- "zeroize",
 ]
 
 [[package]]

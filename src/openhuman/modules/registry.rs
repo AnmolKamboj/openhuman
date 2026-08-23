@@ -105,8 +105,10 @@ const TINYDOCS: ModuleRecord = ModuleRecord {
 ///
 /// **This host sends it the recovery phrase, over confidential calls, and never
 /// derives or signs itself.** All four chains — Bitcoin, EVM, Solana and Tron —
-/// derive and sign inside the module. This binary links neither `tinywallet`'s
-/// `key` feature nor `k256`; see the note on the `tinywallet` dependency.
+/// derive and sign inside the module. This binary does not link the root
+/// `tinywallet` crate at all — it takes `tinywallet-bus`, the wire contract,
+/// which carries no `key` gate — nor does it link `k256`; see the note on the
+/// `tinywallet-bus` dependency.
 ///
 /// The phrase is only sent to a module tinybus has attested *and* whose digest
 /// matches one of the entries below — `super::wallet::attested_proxy` checks
@@ -131,63 +133,63 @@ const TINYWALLET: ModuleRecord = ModuleRecord {
     description: "Transaction building and assembly for Bitcoin, EVM, Solana and Tron",
     bus_name: "ai.tinyhumans.tinywallet.Wallet",
     object_path: "/ai/tinyhumans/tinywallet/Wallet",
-    version: "0.4.0",
-    release_url: "https://github.com/tinyhumansai/tinywallet/releases/tag/v0.4.0",
+    version: "0.5.0",
+    release_url: "https://github.com/tinyhumansai/tinywallet/releases/tag/v0.5.0",
     assets: &[
         PlatformAsset {
             host_key: "ubuntu-24.04-x86_64",
-            archive: "tinywallet-module-0.4.0-ubuntu-24.04-x86_64.tar.gz",
-            sha256: "737a18c258bb9013ad85006433c72a5dc83b94de8f15a0d37723a3b96cf047fa",
+            archive: "tinywallet-module-0.5.0-ubuntu-24.04-x86_64.tar.gz",
+            sha256: "03906b3e2bb6f24a230e29eefc916299d0e9269c166c8766c12769545fbe602d",
         },
         PlatformAsset {
             host_key: "ubuntu-24.04-arm64",
-            archive: "tinywallet-module-0.4.0-ubuntu-24.04-arm64.tar.gz",
-            sha256: "72217d4f4dc1a2328de08c83d24998cd51729e8157cd2e9cb3b034ec1da2ea94",
+            archive: "tinywallet-module-0.5.0-ubuntu-24.04-arm64.tar.gz",
+            sha256: "8630d4d3bd49047606b19b53cc1c16eaf114ee12a7693ce14882c395cd6141de",
         },
         PlatformAsset {
             host_key: "ubuntu-22.04-x86_64",
-            archive: "tinywallet-module-0.4.0-ubuntu-22.04-x86_64.tar.gz",
-            sha256: "e7d2d1a40331b5fea1dc9d8870c206d093c756af91790a15e3fcc9fc1b160158",
+            archive: "tinywallet-module-0.5.0-ubuntu-22.04-x86_64.tar.gz",
+            sha256: "a680eb8e52caa6e367c914f0c08505569022362bff3b7bcd8ca79f931fcc12bf",
         },
         PlatformAsset {
             host_key: "ubuntu-22.04-arm64",
-            archive: "tinywallet-module-0.4.0-ubuntu-22.04-arm64.tar.gz",
-            sha256: "248fd13ba59ab9c00ccd605b60c533aabd41be0f82cd167758524842122510f1",
+            archive: "tinywallet-module-0.5.0-ubuntu-22.04-arm64.tar.gz",
+            sha256: "7e38bde187aba01cacac78c86fa2b29526f8feabb21c4992a1d240763f509aea",
         },
         PlatformAsset {
             host_key: "macos-26-arm64",
-            archive: "tinywallet-module-0.4.0-macos-26-arm64.tar.gz",
-            sha256: "e6df7dc830d595a63af6864cbec6e3e22e51f35af558e7b62fa655d6b16d0581",
+            archive: "tinywallet-module-0.5.0-macos-26-arm64.tar.gz",
+            sha256: "40ff703a3f609db1b40083e1f03f3291a88a838b931602ebd19116c8dbaedf64",
         },
         PlatformAsset {
             host_key: "macos-26-x86_64",
-            archive: "tinywallet-module-0.4.0-macos-26-x86_64.tar.gz",
-            sha256: "fd197ac908057b9b5b4c7aef1b86e74ea7369133eff2a4835c310c73e7816a01",
+            archive: "tinywallet-module-0.5.0-macos-26-x86_64.tar.gz",
+            sha256: "1d6a035bcf5a94591023536b974a5b594acec6c83939b2505730efe8cf1ae530",
         },
         PlatformAsset {
             host_key: "macos-15-arm64",
-            archive: "tinywallet-module-0.4.0-macos-15-arm64.tar.gz",
-            sha256: "28a56ed94827b46a972c054b07e614684b7217d8f8c69373e93b957de336901b",
+            archive: "tinywallet-module-0.5.0-macos-15-arm64.tar.gz",
+            sha256: "3a56c28c29a4c9047be3fd730c28e7a8b07e27cd3655b5c2ff2832e762d2bf1a",
         },
         PlatformAsset {
             host_key: "macos-15-x86_64",
-            archive: "tinywallet-module-0.4.0-macos-15-x86_64.tar.gz",
-            sha256: "2e97717f08efefb90a8be51f389cbf826fb132fc7111f11837e9ee717c527e58",
+            archive: "tinywallet-module-0.5.0-macos-15-x86_64.tar.gz",
+            sha256: "77e99f160f435cbf227d91a41738849d1d26f3ce0b607c73d32e505c54e5aa84",
         },
         PlatformAsset {
             host_key: "windows-2025-x86_64",
-            archive: "tinywallet-module-0.4.0-windows-2025-x86_64.zip",
-            sha256: "c9393d6c0f171db34298950ad029c21ea6b41f3f77971cf6668ebbd7f34736b7",
+            archive: "tinywallet-module-0.5.0-windows-2025-x86_64.zip",
+            sha256: "9e677b63f3371728cf783cd7439f680d837e654e40eb42d6b1f12ec8dce7965a",
         },
         PlatformAsset {
             host_key: "windows-2022-x86_64",
-            archive: "tinywallet-module-0.4.0-windows-2022-x86_64.zip",
-            sha256: "8ed5e86977f951a8c54dbde82914f6f936d4402564beb30406f4140d4be02872",
+            archive: "tinywallet-module-0.5.0-windows-2022-x86_64.zip",
+            sha256: "4fc049696ef9897a3aada0f4322b70b98d561b689bb51f90ebe30a9916f47fba",
         },
         PlatformAsset {
             host_key: "windows-11-arm64",
-            archive: "tinywallet-module-0.4.0-windows-11-arm64.zip",
-            sha256: "7854dfeb1dd04afe99488616e223a0f3ce6d7c671e22f8fbc3089eb0523cbf51",
+            archive: "tinywallet-module-0.5.0-windows-11-arm64.zip",
+            sha256: "d22513e74c435ac541b1827c17c598c87df00fc2526e75afbdd18bdaf71c002b",
         },
     ],
     load: LoadPolicy::Lazy,
@@ -495,6 +497,93 @@ const TINYRUNTIME_PYTHON: ModuleRecord = ModuleRecord {
     load: LoadPolicy::Lazy,
 };
 
+/// The `tinymcp` module: the Model Context Protocol client.
+///
+/// Owns both transports (Streamable HTTP and a subprocess over stdio), the
+/// statically declared server set a host puts in its own configuration, the
+/// dynamic registry of user-installed servers with its SQLite store, the
+/// reconnect supervisor, the browser sign-in flow, and the write-audit log.
+///
+/// Lazy, because dialing an MCP server is something most sessions never do: a
+/// host with no installed servers and no configured ones would otherwise pay a
+/// download and a `dlopen` for a capability it never reaches. That differs from
+/// the module's own `lazy = false` export hint, which speaks for a host whose
+/// servers should be connected the moment it comes up — this host decides when
+/// that moment is, and does so on the first ask.
+///
+/// **What stays out of the module is host policy**, and the split is the same
+/// one the contract's own documentation draws: the prompt-injection scan over
+/// remote tool definitions, the `mcp_clients` / `mcp_setup` RPC surface, the
+/// agent-facing tools, and the proxy *scoping* decision all belong to this
+/// application's threat model, not to a protocol client. `tinymcp-bus` carries
+/// the vocabulary; this table says which bytes may speak it.
+const TINYMCP: ModuleRecord = ModuleRecord {
+    id: "tinymcp",
+    description: "Model Context Protocol client: transports, registry, and the write-audit log",
+    bus_name: "ai.tinyhumans.tinymcp.Mcp",
+    object_path: "/ai/tinyhumans/tinymcp/Mcp",
+    version: "0.3.1",
+    release_url: "https://github.com/tinyhumansai/tinymcp/releases/tag/v0.3.1",
+    assets: &[
+        PlatformAsset {
+            host_key: "ubuntu-24.04-x86_64",
+            archive: "tinymcp-0.3.1-ubuntu-24.04-x86_64.tar.gz",
+            sha256: "f2ba8bfa0a74a9c234499e946936cc2de7f237e9772a85e7df0453a7c29669ab",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-24.04-arm64",
+            archive: "tinymcp-0.3.1-ubuntu-24.04-arm64.tar.gz",
+            sha256: "a68734086449b980a7de3cf87f6b6e00f4aa43bbd1f39187ac0803b4082d62dc",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-x86_64",
+            archive: "tinymcp-0.3.1-ubuntu-22.04-x86_64.tar.gz",
+            sha256: "da9225bbc008a3de0917da0280667e4a76a93d517f017a0962f420a0c0b311f6",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-arm64",
+            archive: "tinymcp-0.3.1-ubuntu-22.04-arm64.tar.gz",
+            sha256: "aaefc1f2c3ae51bb1447d18b25abc5b78f37b795c172ecb6d8fa31967b8d213c",
+        },
+        PlatformAsset {
+            host_key: "macos-26-arm64",
+            archive: "tinymcp-0.3.1-macos-26-arm64.tar.gz",
+            sha256: "453624140df1d0df00a6e1bb1108fab086fb6b2ed3fbdced3f6765b534d4e0bc",
+        },
+        PlatformAsset {
+            host_key: "macos-26-x86_64",
+            archive: "tinymcp-0.3.1-macos-26-x86_64.tar.gz",
+            sha256: "bcb8c68b0744bfc82479261a60c1beb3fcc0842321bcd5ed6519aef1b6194ac6",
+        },
+        PlatformAsset {
+            host_key: "macos-15-arm64",
+            archive: "tinymcp-0.3.1-macos-15-arm64.tar.gz",
+            sha256: "a3e405131221a168bf35a887e1628f66e5e27a2cae65db8c260b00b4e190f4bb",
+        },
+        PlatformAsset {
+            host_key: "macos-15-x86_64",
+            archive: "tinymcp-0.3.1-macos-15-x86_64.tar.gz",
+            sha256: "6e501853e76ba77b7fea2f828f3ff293c15ad3e41a5b70b7f3ddb73c6efee5d1",
+        },
+        PlatformAsset {
+            host_key: "windows-2025-x86_64",
+            archive: "tinymcp-0.3.1-windows-2025-x86_64.zip",
+            sha256: "86d2d309e8c605c27f87bd652709683430449878843beb684842965e3fba2a41",
+        },
+        PlatformAsset {
+            host_key: "windows-2022-x86_64",
+            archive: "tinymcp-0.3.1-windows-2022-x86_64.zip",
+            sha256: "7b04601dafd43eddf7d218900a1e70ecfa6471aa3af34f4dcab67fce2d872a99",
+        },
+        PlatformAsset {
+            host_key: "windows-11-arm64",
+            archive: "tinymcp-0.3.1-windows-11-arm64.zip",
+            sha256: "db352cb7fffdbbd00a5cbd3e4fc610123e23c884c2d0cad89f1293a83f550406",
+        },
+    ],
+    load: LoadPolicy::Lazy,
+};
+
 /// Every module this build can load.
 pub const ALL: &[ModuleRecord] = &[
     TINYDOCS,
@@ -505,6 +594,7 @@ pub const ALL: &[ModuleRecord] = &[
     TINYRUNTIME,
     TINYRUNTIME_NODEJS,
     TINYRUNTIME_PYTHON,
+    TINYMCP,
 ];
 
 /// The record for `id`, if this build knows it.
