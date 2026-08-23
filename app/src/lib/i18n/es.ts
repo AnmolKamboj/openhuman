@@ -559,6 +559,12 @@ const messages: TranslationMap = {
   'common.create': 'Crear',
   'common.search': 'Buscar',
   'common.loading': 'cargando…',
+  'common.noResults': 'Sin resultados',
+  'common.filter': 'Filtrar',
+  'skills.explorer.colSkill': 'Habilidad',
+  'skills.explorer.colDescription': 'Descripción',
+  'skills.explorer.colProvider': 'Proveedor',
+  'skills.explorer.colAction': 'Acción',
   'sync.runs': 'sincronizaciones',
   'sync.totalCost': 'total',
   'sync.when': 'Cuándo',
@@ -580,6 +586,7 @@ const messages: TranslationMap = {
   'common.next': 'Siguiente',
   'common.finish': 'Finalizar',
   'common.close': 'Cerrar',
+  'notices.title': 'Notificaciones',
   'common.enabled': 'Activado',
   'common.disabled': 'Desactivado',
   'common.on': 'Activado',
@@ -3100,6 +3107,9 @@ const messages: TranslationMap = {
     'Vuelva a conectarse para volver a habilitar las herramientas {name}. OpenHuman mantendrá esta integración no disponible hasta que actualice el acceso de OAuth.',
   'composio.envVarOverrides': 'está configurada, reemplaza esta configuración.',
   'composio.previewBadge': 'Vista previa',
+  'composio.colApp': 'Aplicación',
+  'composio.colStatus': 'Estado',
+  'composio.colAccounts': 'Cuentas',
   'composio.previewTooltip':
     'La integración del agente estará disponible próximamente: puede conectarse, pero el agente aún no puede usar este kit de herramientas.',
   'memory.day.sun': 'Dom',
@@ -4379,7 +4389,7 @@ const messages: TranslationMap = {
   'overlay.orbTitle': 'Arrastra para mover · Doble clic para restablecer posición',
   'pages.settings.account.connections': 'Conexiones',
   'pages.settings.account.connectionsDesc': 'Descripción de conexiones',
-  'pages.settings.account.migration': 'Importar desde otro asistente',
+  'pages.settings.account.migration': 'Importar',
   'pages.settings.account.migrationDesc':
     'Migra memoria y notas desde OpenClaw (y pronto Hermes) a este espacio de trabajo.',
   'pages.settings.account.privacy': 'Privacidad',
@@ -4759,6 +4769,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Encuestas de trabajadores de la memoria',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Gestionado',
+  'settings.ai.managedSourceLabel': 'Gestionado por OpenHuman',
+  'settings.ai.managedSourceDetail': 'Selección automática de modelo',
   'settings.ai.routing.managedAlwaysOn': 'Siempre encendido',
   'settings.ai.routing.managedHint':
     'Gestionado siempre está disponible como alternativa. Para utilizar su propio modelo, elija un modo de enrutamiento a continuación.',
@@ -6171,6 +6183,10 @@ const messages: TranslationMap = {
   'pages.settings.account.walletBalancesDesc':
     'Ver saldos en múltiples cadenas de tu billetera local',
   'walletBalances.title': 'Saldos de billetera',
+  'walletBalances.colNetwork': 'Red',
+  'walletBalances.colAddress': 'Dirección',
+  'walletBalances.colBalance': 'Saldo',
+  'walletBalances.colActions': 'Acciones',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'Cargando saldos…',
   'walletBalances.retry': 'Retry',
@@ -6573,6 +6589,7 @@ const messages: TranslationMap = {
   'composer.attachFile': 'Adjuntar archivo',
   'composer.modelSelector': 'Modelo',
   'composer.voiceMode': 'Modo de voz',
+  'composer.humanMode': 'Modo humano',
   'composer.qualityHigh': 'Alto',
   // Agent activity level
   'activityLevel.title': 'Nivel de actividad del agente',
@@ -6850,6 +6867,10 @@ const messages: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Acción necesaria',
   'userErrors.dismiss': 'Descartar',
+  'userErrors.action.openConnections': 'Abrir conexiones',
+  'userErrors.integrationDegraded.title': 'Las conexiones muestran un estado desactualizado',
+  'userErrors.integrationDegraded.body':
+    'Una integración conectada está devolviendo errores, por lo que el estado de conexión que ves puede estar desactualizado.',
   'userErrors.action.openBilling': 'Abrir facturación',
   'userErrors.action.openProviderSettings': 'Configuración del proveedor',
   'userErrors.action.openEmbeddingsSettings': 'Configurar embeddings',

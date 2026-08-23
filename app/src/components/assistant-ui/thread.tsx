@@ -107,6 +107,15 @@ export type ThreadComponents = {
   hasComposerAttachments?: boolean | undefined;
   /** Sends an attachment-only message through the host's normal send path. */
   onComposerAttachmentSend?: (() => void) | undefined;
+  /**
+   * Host-owned control for the composer's primary slot while there is nothing
+   * to send — the slot ChatGPT gives its voice mode. Send takes the slot back
+   * on the first character or attachment, and a running turn always shows
+   * Cancel. A component rather than a callback for the same reason
+   * `ComposerAddAttachment` is one: what belongs there is the host's own
+   * branding and behaviour, and this file should not learn about either.
+   */
+  ComposerIdleAction?: ComponentType | undefined;
 };
 
 export type ThreadProps = {
@@ -114,7 +123,7 @@ export type ThreadProps = {
   /** Host-owned model route used for real sends. */
   model?: string | null | undefined;
   /** Updates the host's composer route and selected model metadata. */
-  onModelChange?: ((value: string, contextWindow?: number | null) => void) | undefined;
+  onModelChange?: ((value: string | null, contextWindow?: number | null) => void) | undefined;
   /** Host transport error shown in place of an empty welcome state. */
   loadError?: string | null | undefined;
   /** Host-specific Escape behavior (for example cancel + restore prompt). */
@@ -194,7 +203,7 @@ export const Thread: FC<ThreadProps> = ({
 const ThreadRoot: FC<{
   isEmpty: boolean;
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
   loadError: string | null;
   onEscape?: () => void;
 }> = ({ isEmpty, model, onModelChange, loadError, onEscape }) => {
@@ -315,7 +324,7 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC<{
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
   onEscape?: () => void;
 }> = ({ model, onModelChange, onEscape }) => {
   const aui = useAui();
@@ -337,7 +346,7 @@ const Composer: FC<{
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
             data-slot="aui_composer-shell"
-            className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
+            className="border-line focus-within:border-line-strong data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
             {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
@@ -396,7 +405,7 @@ const ComposerExtrasSlot: FC = () => {
 
 const ComposerAction: FC<{
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
 }> = ({ model, onModelChange }) => {
   const aui = useAui();
   const composerText = useAuiState(state => state.composer.text);
@@ -404,7 +413,14 @@ const ComposerAction: FC<{
     ComposerAddAttachment: HostComposerAddAttachment,
     hasComposerAttachments,
     onComposerAttachmentSend,
+    ComposerIdleAction,
   } = useContext(ThreadComponentsContext);
+  // Nothing to send: the primary slot goes to the host's idle control instead
+  // of a Send button that would refuse the click anyway. Guarded on
+  // `isRunning` by the surrounding `AuiIf`, so a streaming turn still shows
+  // Cancel.
+  const showIdleAction =
+    !!ComposerIdleAction && composerText.trim().length === 0 && !hasComposerAttachments;
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <div className="flex min-w-0 items-center gap-1">
@@ -444,7 +460,9 @@ const ComposerAction: FC<{
           </AuiIf>
         </AuiIf>
         <AuiIf condition={s => !s.thread.isRunning}>
-          {hasComposerAttachments && composerText.trim().length === 0 ? (
+          {showIdleAction ? (
+            <ComposerIdleAction />
+          ) : hasComposerAttachments && composerText.trim().length === 0 ? (
             <TooltipIconButton
               tooltip="Send message"
               side="bottom"

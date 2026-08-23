@@ -52,31 +52,63 @@
 //!
 //! ## The concrete gaps, for whoever picks the upstream work up
 //!
-//! The seam's tree family is `query_source(namespace, source_id, limit, scope)
-//! -> Vec<Chunk>`, `drill_down(namespace, node_id) -> QueryResult`, `append`,
-//! `seal`, `cascade`. What the host actually calls is richer in four ways, and
-//! each is a distinct upstream ask:
+//! **This list was drained on 2026-08-23 and the shape of the problem changed.**
+//! It used to enumerate four things the seam could not express — retrieval
+//! filters, chunk reads, an entity-kind filter, and source listing — plus the
+//! people domain and the `source_scope` task-local. Every one of those now has
+//! a home:
 //!
-//! 1. **Retrieval takes filters the seam has no room for** — a time window, a
-//!    free-text query, a `SourceKind`, a depth and a limit
-//!    (`query::backend`, `query::cover_window`, `query::fast_walk`).
-//! 2. **Chunk reads have no family at all.** `store::chunks::store::{get_chunk,
-//!    list_chunks}` with a nine-field `ListChunksQuery` backs three agent tools
-//!    (`memory_chunk_context`, `raw_chunks`, `vector_search`); the seam's only
-//!    chunk door is `query_source`, keyed on a single source id.
-//! 3. **Entity search has no kind filter.** `MemoryEntities::entities` takes
-//!    `(namespace, query, limit)`; `memory_tree_search_entities` additionally
-//!    filters on `Vec<EntityKind>`.
-//! 4. **Sources cannot be listed.** `MemorySourceSink` is
-//!    `accept_source_items` + `forget_source`; `memory_diff` needs
-//!    `sources::{get_source, list_sources}`.
+//! - **Retrieval filters, chunk reads, entity-kind search** — `MemoryRetrieval`
+//!   (`fast_retrieve`, `cover_window`, `retrieve_source`, `retrieve_children`,
+//!   `retrieve_leaves`, `recall_namespace_scored`, `search_entities`) and
+//!   `MemoryChunks` (`list_chunks`, `get_chunk`, `chunk_detail`,
+//!   `storage_kinds`, `chunk_embeddings`).
+//! - **The people domain** — `MemoryPeople`, seven methods.
+//! - **Profile/facets** — `MemoryProfile`, eleven methods, which
+//!   `memory::guard`'s docs separately described as a missing "fourteenth
+//!   family".
+//! - **`source_scope`** — not a seam gap at all. It is host policy; it lives in
+//!   `memory::source_scope`, and the scope crosses the bus as a `SourceScope`
+//!   value on every scoped method.
 //!
-//! Two more sit outside the tree families entirely: the `people` domain has no
-//! capability family (`PeopleStore`, `Handle`, `PersonId`), and
-//! `source_scope::{current_source_scope, chunk_source_allowed}` is a
-//! task-local the host sets and the engine reads — it is host policy that
-//! happens to live in the engine crate, and it should probably move to
-//! `tinymemory-api` rather than gain a bus method.
+//! `ModuleMemoryProvider` implements all of these bar `as_episodic`, and
+//! `MemoryGuard` wraps all fifteen families.
+//!
+//! **So what blocks the migration is release lag, not seam width.**
+//! `modules::registry` pins a SHA-256-verified artifact, and the five families
+//! above shipped in no release until v1.2.0. Before migrating a call site onto
+//! one, check the *tag* rather than the vendored source — the submodule is
+//! routinely ahead of what is pinned. A method the pinned artifact does not
+//! serve answers `Unsupported` at run time, which is strictly worse than the
+//! direct call it replaced.
+//!
+//! What genuinely has no bus representation yet, and is the next upstream ask:
+//! the ingest `queue`, the `chat` runtime seam, the composio sync pipelines,
+//! and **recency recall**. The first three live inside `tinymemory-core` and
+//! would each need a design pass, not just a trait method.
+//!
+//! Recency recall is the subtle one, and it is worth spelling out because the
+//! obvious migration is wrong. `MemoryRetrieval::recall_namespace_scored` looks
+//! like the twin for `memory.recall_context` and `memory.recall_memories`, and
+//! it is not:
+//!
+//! - `recall_namespace_scored` resolves to
+//!   `query_namespace_hits_excluding_session(ns, query, limit, exclude)` — the
+//!   **query-ranked** path.
+//! - Both handlers call `recall_namespace_memories(ns, limit)` — a distinct
+//!   **recency** path. `recall_namespace_context_data` is just that plus a
+//!   rendered `context_text` wrapper.
+//!
+//! Passing an empty query to the scored method does not degrade to recency; it
+//! runs the ranking path with nothing to rank against. The two share a prefix
+//! (`load_documents_for_scope` + `kv_records_for_scope`) and diverge after it,
+//! so the swap compiles, returns plausible hits, and quietly changes what the
+//! user gets back. `memory.query_namespace` *is* safely expressible, because it
+//! has a real query — pass `exclude_session_id: None` there to preserve the
+//! current no-exclusion behaviour, since an RPC handler is not an agent turn.
+//!
+//! The upstream ask is a `RecallNamespaceRecent`-shaped method on
+//! `MemoryRetrieval`.
 //!
 //! ## What the 2026-08-22 audit added to that list
 //!
@@ -111,27 +143,17 @@
 //!   a caller can depend on it and compile almost nothing. Only
 //!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
 //!   `sha2` in the contract crate.
-//! - **The re-embed queue** (~4 files) — `queue::{start, types,
-//!   drain_until_idle}`, plus a bare `wake_workers` after a tree reset. What
-//!   is left is queue *lifecycle* rather than queue operations: starting the
-//!   worker belongs with driver construction, and the reset nudge is not
-//!   paired with a requeue the way the retry path was.
-//!
-//!   `ensure_reembed_backfill` is off this list, and how it left is the part
-//!   worth keeping: it needed no upstream work at all. `Maintenance::reembed`
-//!   is documented as "recompute embeddings for content whose embedding is
-//!   missing or stale", and the TinyCortex driver implements it by calling
-//!   `ensure_reembed_backfill` and reporting how many jobs that enqueued — so
-//!   the five host call sites were already expressible and this audit had
-//!   simply not checked. Before sizing an upstream ask for anything else here,
-//!   read what the driver already does with the nearest existing method.
+//! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
+//!   ensure_reembed_backfill, requeue_failed_after_provider_change,
+//!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
 //! - **Engine-shaped integration internals** (~11 files) —
 //!   `tinycortex::{memory_config_from, run_composio_connection,
 //!   load_composio_sync_state, HostSyncAdapter, CodingSession*}`. Named after
 //!   the engine, so no engine-neutral family can express them as they stand.
-//! - **Engine-owned types** — `store::trees::types::TreeKind`,
-//!   `store::chunks::types::SourceKind`, `store::{NamespaceDocumentInput,
-//!   NamespaceRetrievalContext, GraphRelationRecord}`. A type import links the
+//! - **Engine-owned types** — `store::trees::types::TreeKind`, and
+//!   `store::{NamespaceDocumentInput, NamespaceRetrievalContext,
+//!   GraphRelationRecord}` (`store::chunks::types::SourceKind`/`SourceRef`
+//!   were on this list and are **done** — see below). A type import links the
 //!   crate exactly as a call does, so the shed needs these in
 //!   `tinymemory-api`. `MemoryCategory`/`MemoryEntry`/`MemoryTaint` already
 //!   are — `tinymemory_core::traits` re-exports them — so those call sites can
@@ -142,7 +164,14 @@
 //!   `memory::rpc_models` rather than into the contract. That is the shape to
 //!   look for first in what remains — a type the engine crate defines but only
 //!   the host uses does not need a contract to live in, it needs to come home.
-//!   `SourceKind` is emphatically **not** such a case (see the trap below).
+//!   `SourceKind`/`SourceRef` were called out here as emphatically **not**
+//!   such a case, on the grounds that the engine path resolved to a
+//!   `tinycortex-api` type distinct from the contract's. That is no longer
+//!   true: `tinycortex-api` is a deprecated re-export of `tinymemory-bus` and
+//!   the two paths resolve to the **same item**, verified by a compile-time
+//!   identity probe and then by repointing every call site. Prefer
+//!   `tinymemory_api::chunks::…` in new code. The general warning still holds
+//!   for *other* near-identical pairs — probe before assuming, either way.
 //! - **Chat, ingest pipeline and preferences** (~12 files) —
 //!   `chat::{ChatProvider, build_chat_provider, test_override}`,
 //!   `ingest_pipeline::{ingest_chat, ingest_document_with_scope}`,
@@ -355,11 +384,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/agent/task_dispatcher/executor.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
-    ),
-    (
         "src/openhuman/agent/tinyagents/host/agent_memory.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::factories::create_memory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -393,11 +417,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/config/migration_helpers/core.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/cron/scheduler.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/desktop/app_state/ops.rs",
@@ -443,11 +462,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/integrations/composio/schemas.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::client_if_ready); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/guard/audit.rs",
-        Verdict::NeedsWiderSeam,
-        "pure host-policy helper genuinely owned by the engine crate (util::redact::redact — 136 lines over `sha2` alone); relocatable to tinymemory-api, at the cost of adding `sha2` there, unlike its `store::safety` neighbours which only shim the engine's own scrubbers",
     ),
     (
         "src/openhuman/memory/guard/policy.rs",
@@ -547,7 +561,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/sync_events_bridge.rs",
         Verdict::NeedsWiderSeam,
-        "sync_events is engine-owned vocabulary with no capability family; the enqueue half moved onto Maintenance::reembed",
+        "the re-embed queue (queue::ensure_reembed_backfill, sync_events) has no capability family",
     ),
     (
         "src/openhuman/memory/tools/flavour.rs",
@@ -577,7 +591,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the ingest pipeline (ingest_pipeline, tinycortex canonicalize) has no capability family, chunk reads still need MemoryChunks widened (list_chunks/get_chunk), and queue::backfill_in_progress is a process-global the engine cannot yet scope per store; diagnostics moved onto Maintenance::{store_stats, queue_stats, latest_queue_failure} and retry onto Maintenance::retry_failed",
+        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, ingest_pipeline) has no capability family",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",
@@ -592,17 +606,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/security/credentials/ops.rs",
         Verdict::NeedsWiderSeam,
-        "the in-process engine handle (global::init), which belongs to memory::binding; the re-embed enqueue that was the second blocker moved onto Maintenance::reembed",
-    ),
-    (
-        "src/openhuman/skills/runtime/run_machinery.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::current_source_scope, source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
-    ),
-    (
-        "src/openhuman/web_chat/run_task.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
+        "two blockers: the re-embed queue (queue::ensure_reembed_backfill), which has no capability family; and the in-process engine handle (global::init), which belongs to memory::binding",
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
@@ -712,21 +716,11 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     // served over the bus. They are what an embedded engine needs, and they
     // are the last thing to remove, not the first.
     (
-        "src/openhuman/memory/host.rs",
-        Verdict::HostSide,
-        "installs the event sink into the in-process engine",
-    ),
-    (
         "src/openhuman/memory/host_impls.rs",
         Verdict::HostSide,
         "installs the eight host seams (embedding, chat, composio, config, nlp, scheduler gate, shutdown, error reporter); mirrored over the bus by modules/memory_host.rs",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
-    (
-        "src/openhuman/memory/query/ingest_document.rs",
-        Verdict::NeedsWiderSeam,
-        "names SourceKind / SourceRef, which are tinycortex-api types the engine re-exports — NOT the same type as the contract's api::chunks::SourceKind, so this is not a type carve-out",
-    ),
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
     (
         "src/openhuman/memory/sync/composio/providers/context_ext.rs",
@@ -737,11 +731,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/tools/diff.rs",
         Verdict::NeedsWiderSeam,
         "sources::{get_source, list_sources}; MemorySourceSink is accept_source_items + forget_source, with no list door",
-    ),
-    (
-        "src/openhuman/memory/tools/search/chunk_context.rs",
-        Verdict::NeedsWiderSeam,
-        "get_chunk / list_chunks by id and source, plus source_scope::chunk_source_allowed",
     ),
 ];
 

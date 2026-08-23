@@ -52,11 +52,12 @@ export const DialogContent = ({
     <DialogPrimitive.Content
       data-slot="dialog-content"
       // `animate-dialog-in`, NOT `animate-fade-up`. This element is centered by
-      // the `-translate-*-1/2` pair below, and an entrance whose keyframes set
-      // `transform` would replace that pair for the animation's duration --
-      // the dialog would open offset toward the bottom-right and snap into
-      // place when the animation ended. `dialogIn` carries the centering in
-      // its own frames; see the keyframe comment in tailwind.config.js.
+      // the `-translate-*-1/2` pair below, which under Tailwind v4 compiles to
+      // the `translate` property. An entrance whose keyframes set `transform`
+      // composes with that pair instead of replacing it, so the dialog opens
+      // offset and snaps into place when the animation ends. `dialogIn`
+      // animates `translate` and carries the centering in its own frames; see
+      // the keyframe comment in `index.css`.
       className={cn(
         'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
         'overflow-hidden rounded-2xl bg-surface shadow-large animate-dialog-in focus:outline-hidden',

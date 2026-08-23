@@ -264,6 +264,12 @@ const en: TranslationMap = {
   'common.create': 'Create',
   'common.search': 'Search',
   'common.loading': 'Loading…',
+  'common.noResults': 'No results',
+  'common.filter': 'Filter',
+  'skills.explorer.colSkill': 'Skill',
+  'skills.explorer.colDescription': 'Description',
+  'skills.explorer.colProvider': 'Provider',
+  'skills.explorer.colAction': 'Action',
   'sync.runs': 'sync runs',
   'sync.totalCost': 'total',
   'sync.when': 'When',
@@ -285,6 +291,7 @@ const en: TranslationMap = {
   'common.next': 'Next',
   'common.finish': 'Finish',
   'common.close': 'Close',
+  'notices.title': 'Notifications',
   'common.enabled': 'Enabled',
   'common.disabled': 'Disabled',
   'common.on': 'On',
@@ -3319,6 +3326,9 @@ const en: TranslationMap = {
     'Reconnect to re-enable {name} tools. OpenHuman will keep this integration unavailable until you refresh OAuth access.',
   'composio.envVarOverrides': 'is set, it overrides this setting.',
   'composio.previewBadge': 'Preview',
+  'composio.colApp': 'App',
+  'composio.colStatus': 'Status',
+  'composio.colAccounts': 'Accounts',
   'composio.previewTooltip':
     "Agent integration coming soon: you can connect, but the agent can't use this toolkit yet.",
 
@@ -4914,7 +4924,7 @@ const en: TranslationMap = {
   'overlay.orbTitle': 'Drag to move · Double-click to reset position',
   'pages.settings.account.connections': 'Connections',
   'pages.settings.account.connectionsDesc': 'Review and manage linked account connections',
-  'pages.settings.account.migration': 'Import from another assistant',
+  'pages.settings.account.migration': 'Import',
   'pages.settings.account.migrationDesc':
     'Bring memory and notes over from OpenClaw (Hermes coming soon)',
   'pages.settings.account.privacy': 'Privacy',
@@ -5289,6 +5299,8 @@ const en: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Memory worker polls',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Managed',
+  'settings.ai.managedSourceLabel': 'Managed by OpenHuman',
+  'settings.ai.managedSourceDetail': 'Automatic model selection',
   'settings.ai.routing.managedAlwaysOn': 'Always on',
   'settings.ai.routing.managedHint':
     'Managed is always available as a fallback. To use your own model, choose a routing mode below.',
@@ -6675,6 +6687,10 @@ const en: TranslationMap = {
   'wallet.ariaLabel': 'Wallet views',
   // WalletBalancesPanel strings
   'walletBalances.title': 'Wallet Balances',
+  'walletBalances.colNetwork': 'Network',
+  'walletBalances.colAddress': 'Address',
+  'walletBalances.colBalance': 'Balance',
+  'walletBalances.colActions': 'Actions',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'Loading balances…',
   'walletBalances.retry': 'Retry',
@@ -7052,6 +7068,7 @@ const en: TranslationMap = {
   'composer.attachFile': 'Attach file',
   'composer.modelSelector': 'Model',
   'composer.voiceMode': 'Voice mode',
+  'composer.humanMode': 'Human mode',
   'composer.qualityHigh': 'High',
   // Sync budget dialog
   'syncBudget.title': 'Sync budget',
@@ -7114,6 +7131,10 @@ const en: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Action needed',
   'userErrors.dismiss': 'Dismiss',
+  'userErrors.action.openConnections': 'Open connections',
+  'userErrors.integrationDegraded.title': 'Connections are showing stale status',
+  'userErrors.integrationDegraded.body':
+    'A connected integration is returning errors, so the connection state shown in the app may be out of date.',
   'userErrors.action.openBilling': 'Open billing',
   'userErrors.action.openProviderSettings': 'Provider settings',
   'userErrors.action.openEmbeddingsSettings': 'Set up embeddings',

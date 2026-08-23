@@ -222,7 +222,7 @@ pub(super) async fn run_autonomous(
         .profile
         .as_ref()
         .and_then(|p| p.memory_sources.clone());
-    let run = tinymemory_core::source_scope::with_source_scope(
+    let run = crate::openhuman::memory::source_scope::with_source_scope(
         memory_scope,
         crate::openhuman::agent::turn_origin::with_origin(
             crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli,

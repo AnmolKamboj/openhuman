@@ -1,18 +1,22 @@
 /**
- * Regression: a centered dialog opened offset toward the bottom-right and
- * snapped into place when its entrance animation finished.
+ * Regression: a centered dialog opened offset from center and snapped into
+ * place when its entrance animation finished.
  *
  * `DialogContent` / `AlertDialogContent` center with `fixed left-1/2 top-1/2`
- * plus `-translate-x-1/2 -translate-y-1/2`. They used `animate-fade-up`, whose
- * keyframes set `transform: translateY(…)`. An animated property replaces the
- * same property from a normal declaration for the animation's whole duration,
- * so the centering transform was dropped while the animation ran.
+ * plus `-translate-x-1/2 -translate-y-1/2`. Under Tailwind v4 those utilities
+ * compile to the **`translate` property**, not to `transform`:
+ *
+ *     .-translate-x-1\/2 { --tw-translate-x: …; translate: var(--tw-translate-x) var(--tw-translate-y) }
+ *
+ * `translate` and `transform` compose rather than override, so a keyframe that
+ * sets `transform: translate(-50%, …)` — correct under v3, where the utilities
+ * WERE transforms — *adds* to the utility and opens the dialog at -100%/-100%.
  *
  * Asserting the class name alone would only catch a literal revert. These tests
- * assert the RULE instead, against the real Tailwind v4 theme: any entrance
- * animation used by a transform-centered element must carry the centering in
- * every one of its own keyframes, and must land exactly where the utility
- * classes leave it so nothing moves when the animation hands the element back.
+ * assert the RULE instead, against the real Tailwind v4 theme: the entrance
+ * animation must drive the same property the centering utilities use, and must
+ * land exactly where they leave it so nothing moves when the animation hands
+ * the element back.
  */
 import { render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
@@ -32,13 +36,15 @@ const keyframeNameFor = (animation: string): string => {
   return match[1];
 };
 
-/** Every `transform:` value inside the named keyframe block. */
-const transformsIn = (keyframe: string): string[] => {
+/** Every value of `property` declared inside the named keyframe block. */
+const declaredIn = (keyframe: string, property: string): string[] => {
   const start = tailwindSource.indexOf(`  @keyframes ${keyframe} {`);
   if (start === -1) throw new Error(`no keyframes named ${keyframe}`);
   const end = tailwindSource.indexOf('\n  }', start);
   const block = tailwindSource.slice(start, end);
-  return Array.from(block.matchAll(/transform:\s*([^;]+);/g)).map(m => m[1].trim());
+  return Array.from(block.matchAll(new RegExp(`(?:^|[;{\\s])${property}:\\s*([^;]+);`, 'g'))).map(
+    m => m[1].trim()
+  );
 };
 
 const centeringClassesOf = (el: HTMLElement) => ({
@@ -65,32 +71,40 @@ describe('centered dialog entrance animation', () => {
         </AlertDialogRoot>
       ),
     ],
-  ])('%s keeps its centering transform for the whole animation', (_name, renderIt) => {
+  ])('%s never has its centering displaced by the animation', (_name, renderIt) => {
     render(renderIt());
     const content = screen.getByText('body').closest('[data-slot$="dialog-content"]');
     expect(content).not.toBeNull();
 
     const { centersX, centersY, animation } = centeringClassesOf(content as HTMLElement);
-    // Guard the premise: if it ever stops centering by transform, this whole
-    // rule is moot and the test should be revisited rather than silently pass.
+    // Guard the premise: if it ever stops centering by translate utilities,
+    // this whole rule is moot and the test should be revisited rather than
+    // silently pass.
     expect(centersX && centersY).toBe(true);
     expect(animation).toBeDefined();
 
-    const transforms = transformsIn(keyframeNameFor(animation!));
-    // An entrance that animates no transform at all cannot clobber the
-    // centering, and is equally correct.
-    for (const transform of transforms) {
-      expect(transform, `keyframe of ${animation} drops the centering offset`).toMatch(
-        /translate\(\s*-50%/
+    const keyframe = keyframeNameFor(animation!);
+
+    // A `transform` frame composes ON TOP of the utilities' `translate`, so it
+    // must not carry a translation of its own. (Scale, rotate and opacity are
+    // all fine — they do not displace the element's center.)
+    for (const transform of declaredIn(keyframe, 'transform')) {
+      expect(transform, `keyframe of ${animation} translates via transform`).not.toMatch(
+        /translate/
       );
-      expect(transform, `keyframe of ${animation} drops the centering offset`).toMatch(/-50%/);
     }
+
+    // Whatever it does animate must land on the utilities' resting value, or
+    // the dialog jumps as the animation releases the element.
+    const translates = declaredIn(keyframe, 'translate');
+    expect(translates.length, `keyframe of ${animation} animates no translate`).toBeGreaterThan(0);
+    expect(translates.at(-1)).toBe('-50% -50%');
   });
 
-  it('lands exactly on the resting transform, so nothing moves when it ends', () => {
-    const transforms = transformsIn(keyframeNameFor('dialog-in'));
-    // The utility pair resolves to translate(-50%, -50%); the final frame must
-    // match it or the dialog jumps as the animation releases the element.
-    expect(transforms.at(-1)).toBe('translate(-50%, -50%)');
+  it('starts near its resting place rather than at the viewport origin', () => {
+    // The opening frame must already carry the centering. Without it the
+    // element starts at the top-left corner of the viewport and flies in.
+    const [first] = declaredIn(keyframeNameFor('dialog-in'), 'translate');
+    expect(first).toMatch(/^-50%/);
   });
 });

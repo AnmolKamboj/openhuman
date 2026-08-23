@@ -39,6 +39,9 @@ pub mod sync_events_bridge;
 pub mod query;
 pub mod read_rpc;
 pub mod schemas;
+/// The host-side per-turn memory-source allowlist. See the module docs for why
+/// this is OpenHuman's and not the engine's.
+pub mod source_scope;
 pub mod tools;
 
 // Domains that are *mostly* extracted but keep their JSON-RPC surface here.

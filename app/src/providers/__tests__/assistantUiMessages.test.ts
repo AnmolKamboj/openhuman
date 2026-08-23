@@ -163,6 +163,58 @@ describe('buildRuntimeMessages', () => {
     ]);
   });
 
+  /**
+   * The crash this guards: assistant-ui keys tool parts as `toolCallId-${id}`
+   * and throws "Duplicate key … in useResources" on a repeat, taking the whole
+   * thread render down on load. A provider that emits tool calls without ids
+   * writes `''` for every one, so a settled turn can hold two transcript
+   * pointers naming the same row.
+   */
+  it('emits one tool part per row when a turn has two pointers to the same call id', () => {
+    const answer = msg({
+      id: 'answer',
+      sender: 'agent',
+      content: 'done',
+      extraMetadata: { requestId: 'req-1' },
+    });
+    const timeline = [tool({ id: '', status: 'success', result: 'once' })];
+    const transcript = [
+      { kind: 'toolCall' as const, round: 1, seq: 0, callId: '' },
+      { kind: 'toolCall' as const, round: 1, seq: 1, callId: '' },
+    ];
+
+    const content = buildRuntimeMessages([answer], null, {
+      turnTimelines: { 'req-1': timeline },
+      turnTranscripts: { 'req-1': transcript },
+    })[0]?.content as unknown as { type: string; toolCallId?: string }[];
+
+    const toolIds = content.filter(part => part.type === 'tool-call').map(part => part.toolCallId);
+    expect(toolIds).toHaveLength(1);
+  });
+
+  it('never repeats a toolCallId across the transcript and timeline passes', () => {
+    const answer = msg({
+      id: 'answer',
+      sender: 'agent',
+      content: 'done',
+      extraMetadata: { requestId: 'req-1' },
+    });
+    const timeline = [
+      tool({ id: 'c1', status: 'success', result: 'a' }),
+      tool({ id: 'c2', status: 'success', result: 'b' }),
+    ];
+    const transcript = [{ kind: 'toolCall' as const, round: 1, seq: 0, callId: 'c1' }];
+
+    const content = buildRuntimeMessages([answer], null, {
+      turnTimelines: { 'req-1': timeline },
+      turnTranscripts: { 'req-1': transcript },
+    })[0]?.content as unknown as { type: string; toolCallId?: string }[];
+
+    const toolIds = content.filter(part => part.type === 'tool-call').map(part => part.toolCallId);
+    expect(toolIds).toEqual(['c1', 'c2']);
+    expect(new Set(toolIds).size).toBe(toolIds.length);
+  });
+
   it('re-converts only the tail as tokens land, never the settled transcript', () => {
     // The projection-level statement of the property `ChatThreadView.renderPerf`
     // pins for the render tree: streaming must not sweep the transcript.

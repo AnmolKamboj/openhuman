@@ -111,6 +111,13 @@ export { default as StatusLine, type StatusLineProps } from './StatusLine';
 export { default as ListRow, type ListRowProps } from './ListRow';
 export { default as Progress, type ProgressProps } from './Progress';
 export { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './Table';
+export {
+  default as DataTable,
+  type DataTableColumn,
+  type DataTableFilter,
+  type DataTableProps,
+  type DataTableSearch,
+} from './DataTable';
 export { AvatarFallback, AvatarImage, AvatarRoot } from './Avatar';
 export {
   AccordionContent,

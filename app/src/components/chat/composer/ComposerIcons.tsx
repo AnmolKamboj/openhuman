@@ -1,3 +1,5 @@
+import { LuUserRound } from 'react-icons/lu';
+
 import { COMPOSER_CANCEL_ICON, COMPOSER_SEND_ICON } from './composerStyles';
 
 /** Plus glyph for the add-attachment control (`.aui-composer-add-attachment`). */
@@ -37,6 +39,16 @@ export function MicIcon() {
       />
     </svg>
   );
+}
+
+/**
+ * Person glyph for the composer's idle primary action, which opens the Human
+ * page. Deliberately the same lucide `LuUserRound` the sidebar's Human tab
+ * uses (`shell/navIcons.tsx`) so the button reads as *that destination* rather
+ * than as a second, unrelated voice control beside the mic.
+ */
+export function HumanModeIcon() {
+  return <LuUserRound className={COMPOSER_SEND_ICON} aria-hidden="true" />;
 }
 
 /** Send arrow, sized by `.aui-composer-send-icon`. */

@@ -1,6 +1,6 @@
 //! The `core::bus` subscriber half of the memory sync-stage stream.
 //!
-//! [`tinymemory_core::sync_events`] owns the vocabulary (`MemorySyncTrigger`,
+//! [`tinymemory_api::sync_events`] owns the vocabulary (`MemorySyncTrigger`,
 //! `MemorySyncStage`) and the *emit* side, which goes out through the seam's
 //! event sink. What lives here is the *subscribe* side: the bridge that
 //! translates lower-level ingestion events into the coarse stage stream the
@@ -20,7 +20,7 @@ use tinybus::SubscriptionHandle;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
-use tinymemory_core::sync_events::{
+use tinymemory_api::sync_events::{
     emit_sync_stage, extract_mem_src_id, MemorySyncStage, MemorySyncTrigger,
 };
 

@@ -32,7 +32,7 @@ use crate::openhuman::memory::api::capabilities::Capability;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
-use tinymemory_core::util::redact::redact;
+use crate::openhuman::util::redact::redact;
 
 use super::policy::GuardPolicy;
 

@@ -8,17 +8,18 @@
 use serde::{Deserialize, Serialize};
 
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::memory::tree::retrieval::{
-    cover::cover_window,
-    drill_down::drill_down,
-    fetch::fetch_leaves,
+    cover::cover_window_scoped,
+    drill_down::drill_down_scoped,
+    fetch::fetch_leaves_scoped,
     search::search_entities,
-    source::query_source,
+    source::{query_source_scoped, SourceQuery},
     types::{EntityMatch, QueryResponse, RetrievalHit},
 };
 use crate::openhuman::memory::tree::score::extract::EntityKind;
 use crate::rpc::RpcOutcome;
-use tinymemory_core::store::chunks::types::SourceKind;
+use tinymemory_api::chunks::SourceKind;
 
 // ── query_source ──────────────────────────────────────────────────────
 
@@ -54,13 +55,17 @@ pub async fn query_source_rpc(
         None => None,
     };
     let limit = req.limit.unwrap_or(0);
-    let resp = query_source(
+    // Explicit scope — see the note in `cover_window_rpc`.
+    let resp = query_source_scoped(
         config,
-        req.source_id.as_deref(),
-        source_kind,
-        req.time_window_days,
-        req.query.as_deref(),
-        limit,
+        SourceQuery {
+            source_id: req.source_id.as_deref(),
+            source_kind,
+            time_window_days: req.time_window_days,
+            query: req.query.as_deref(),
+            limit,
+        },
+        current_source_scope(),
     )
     .await
     .map_err(|e| format!("query_source: {e}"))?;
@@ -118,13 +123,19 @@ pub async fn cover_window_rpc(
     };
     let limit = req.limit.unwrap_or(0);
     log::trace!("[rpc][memory_tree] cover_window dispatch limit={limit}");
-    let resp = cover_window(
+    // `cover_window_scoped`, not `cover_window`: the ambient variant reads the
+    // ENGINE's task-local, and this host now sets its own
+    // (`memory::source_scope`) because a task-local cannot cross to the loadable
+    // memory module. Reading the engine's here would find it absent, and absent
+    // means unrestricted — a per-profile source gate failing open.
+    let resp = cover_window_scoped(
         config,
         req.since_ms,
         req.until_ms,
         req.source_id.as_deref(),
         source_kind,
         limit,
+        current_source_scope(),
     )
     .await
     .map_err(|e| format!("cover_window: {e}"))?;
@@ -229,9 +240,17 @@ pub async fn drill_down_rpc(
     req: DrillDownRequest,
 ) -> Result<RpcOutcome<DrillDownResponse>, String> {
     let depth = req.max_depth.unwrap_or(1);
-    let hits = drill_down(config, &req.node_id, depth, req.query.as_deref(), req.limit)
-        .await
-        .map_err(|e| format!("drill_down: {e}"))?;
+    // Explicit scope — see the note in `cover_window_rpc`.
+    let hits = drill_down_scoped(
+        config,
+        &req.node_id,
+        depth,
+        req.query.as_deref(),
+        req.limit,
+        current_source_scope(),
+    )
+    .await
+    .map_err(|e| format!("drill_down: {e}"))?;
     let n = hits.len();
     // node_id can embed source scope (e.g. "chat:slack:#eng:0") which may
     // carry workspace hints — log only the structural prefix.
@@ -272,7 +291,8 @@ pub async fn fetch_leaves_rpc(
     config: &Config,
     req: FetchLeavesRequest,
 ) -> Result<RpcOutcome<FetchLeavesResponse>, String> {
-    let hits = fetch_leaves(config, &req.chunk_ids)
+    // Explicit scope, for the reason given in `cover_window_rpc`.
+    let hits = fetch_leaves_scoped(config, &req.chunk_ids, current_source_scope())
         .await
         .map_err(|e| format!("fetch_leaves: {e}"))?;
     let n = hits.len();
@@ -299,8 +319,8 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use tempfile::TempDir;
+    use tinymemory_api::chunks::{chunk_id, Chunk, Metadata, SourceRef};
     use tinymemory_core::store::chunks::store::upsert_chunks;
-    use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceRef};
     use tinymemory_core::store::content as content_store;
 
     fn stage_test_chunks(cfg: &Config, chunks: &[Chunk]) {
@@ -443,7 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn cover_window_rpc_honors_profile_source_scope() {
-        use tinymemory_core::source_scope::with_source_scope;
+        use crate::openhuman::memory::source_scope::with_source_scope;
         let (_tmp, cfg) = test_config();
         // Two memory-source chunks in different sources, both inside the window.
         let mut allowed = sample_chunk("slack:#eng", 0);

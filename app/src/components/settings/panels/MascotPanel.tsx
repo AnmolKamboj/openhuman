@@ -891,8 +891,9 @@ const MascotPanel = ({ embedded = false }: MascotPanelProps) => {
   );
 
   // Embedded inside the tabbed Personality & Face page: the parent owns the
-  // header, so render just the padded body.
-  if (embedded) return <div className="p-4 space-y-5">{body}</div>;
+  // header AND the page gutter (`SettingsPanel` supplies `p-4` now), so this
+  // renders the body flush — a `p-4` here would indent it twice.
+  if (embedded) return <div className="space-y-5">{body}</div>;
 
   return <SettingsPanel>{body}</SettingsPanel>;
 };

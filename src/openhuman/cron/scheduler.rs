@@ -928,7 +928,7 @@ async fn run_agent_job(config: &Config, job: &CronJob) -> (bool, String, Option<
                             source:
                                 crate::openhuman::agent::turn_origin::TrustedAutomationSource::Cron,
                         };
-                    let turn = tinymemory_core::source_scope::with_source_scope(
+                    let turn = crate::openhuman::memory::source_scope::with_source_scope(
                         profile.and_then(|profile| profile.memory_sources),
                         crate::openhuman::agent::turn_origin::with_origin(
                             origin,

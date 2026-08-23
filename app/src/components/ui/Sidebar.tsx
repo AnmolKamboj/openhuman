@@ -322,7 +322,12 @@ export const SidebarRail = forwardRef<HTMLDivElement, SidebarRailProps>(
         onPointerDown={handlePointerDown}
         onKeyDown={handleKeyDown}
         className={cn(
-          'group relative w-px flex-none cursor-col-resize select-none self-stretch',
+          // `w-0`, not `w-px`: the rail sits between the column and the content
+          // card, so any layout width of its own makes the card's left gutter
+          // wider than its other three by exactly that much. The seam is drawn
+          // by the absolutely-positioned indicator below instead, which costs
+          // no width — and it only paints on hover/focus anyway.
+          'group relative w-0 flex-none cursor-col-resize select-none self-stretch',
           'bg-transparent focus:outline-hidden',
           className
         )}
@@ -331,7 +336,7 @@ export const SidebarRail = forwardRef<HTMLDivElement, SidebarRailProps>(
         <span className="absolute inset-y-0 -left-1 -right-1 z-10" />
         <span
           className={cn(
-            'absolute inset-0 transition-colors',
+            'absolute inset-y-0 left-0 w-px transition-colors',
             indicatorClassName ?? DEFAULT_RAIL_INDICATOR
           )}
         />
@@ -379,6 +384,15 @@ SidebarTrigger.displayName = 'SidebarTrigger';
 /**
  * The routed content beside the column. `unframed` renders it edge-to-edge —
  * the framed default is an inset, rounded card on the chrome.
+ *
+ * The card's hairline is painted by an `::after` overlay rather than by the
+ * element's own `box-shadow`. An inset shadow renders above the element's
+ * background but *below* its children's, so any page whose root paints an
+ * opaque fill — `Thread`'s `bg-background` on the chat surface is the one that
+ * exposed this — covered the edge and the page appeared borderless. The
+ * overlay sits above the content, is `pointer-events-none`, and inherits the
+ * radius, so it draws the same hairline on every page regardless of what the
+ * page paints.
  */
 export interface SidebarInsetProps extends HTMLAttributes<HTMLDivElement> {
   unframed?: boolean;
@@ -392,7 +406,13 @@ export const SidebarInset = forwardRef<HTMLDivElement, SidebarInsetProps>(
       data-unframed={unframed ? 'true' : undefined}
       className={cn(
         'relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface',
-        !unframed && 'm-3 rounded-2xl shadow-content-edge',
+        // `my-3 mr-3`, with NO left margin: the card butts against the sidebar
+        // column so the two read as one continuous surface, and the gutter the
+        // shell shows is the three outer edges. A left margin here put a strip
+        // of chrome between the nav and the content that nothing else lined up
+        // with.
+        !unframed &&
+          'my-3 mr-3 rounded-2xl after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-[inherit] after:shadow-content-edge',
         className
       )}
       {...rest}
@@ -431,7 +451,7 @@ export const SidebarFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEl
     <div
       ref={ref}
       data-slot="sidebar-footer"
-      className={cn('flex flex-none flex-col gap-1 px-2 pb-2 pt-1', className)}
+      className={cn('flex flex-none flex-col gap-1 px-3 pb-2 pt-1', className)}
       {...rest}
     />
   )
@@ -457,7 +477,7 @@ export const SidebarGroup = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEle
     <div
       ref={ref}
       data-slot="sidebar-group"
-      className={cn('relative flex w-full min-w-0 flex-col px-2 py-1', className)}
+      className={cn('relative flex w-full min-w-0 flex-col px-3 py-1', className)}
       {...rest}
     />
   )
@@ -476,7 +496,9 @@ export const SidebarGroupLabel = forwardRef<HTMLDivElement, SidebarGroupLabelPro
         ref={ref}
         data-slot="sidebar-group-label"
         className={cn(
-          'flex h-7 shrink-0 items-center px-2 text-micro font-medium uppercase tracking-wide text-content-faint',
+          // px-2.5 matches SidebarMenuButton's own inner padding, so a group
+          // heading's text sits on the same left edge as the row labels under it.
+          'flex h-7 shrink-0 items-center px-2.5 text-micro font-medium uppercase tracking-wide text-content-faint',
           className
         )}
         {...rest}
@@ -540,10 +562,17 @@ const MENU_BUTTON_SIZES: Record<SidebarMenuButtonSize, string> = {
 /**
  * One navigation row.
  *
- * The active state is a neutral fill lifted off the chrome, not an accent tint:
- * the chrome carries the theme's hue, so tinting a pill on top of it stacks two
- * colours and reads as noise. Weight and contrast carry the selection instead,
- * and the fills are alpha-based so they lift against whatever the theme paints.
+ * The active state is a solid `primary-500` pill with inverted text. This was
+ * a neutral `bg-surface/70` fill, on the reasoning that the chrome carries the
+ * theme's hue so an accent pill stacks two colours. That held while the chrome
+ * was a themed WebGL mesh; the default backdrop is flat now and the chrome is a
+ * plain neutral, so a neutral pill on it is the thing that reads as noise —
+ * there is nothing for it to lift against. The accent is the only colour in
+ * this column, which is what makes it legible as *selection* rather than
+ * decoration.
+ *
+ * The hover/idle states stay alpha-based so they still lift against whatever a
+ * theme paints behind them.
  */
 export const SidebarMenuButton = forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
   (
@@ -572,7 +601,7 @@ export const SidebarMenuButton = forwardRef<HTMLButtonElement, SidebarMenuButton
           'disabled:pointer-events-none disabled:opacity-50',
           MENU_BUTTON_SIZES[size],
           isActive
-            ? 'bg-surface/70 font-semibold text-content'
+            ? 'bg-primary-500 font-semibold text-content-inverted'
             : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary',
           className
         )}

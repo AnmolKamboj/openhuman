@@ -107,7 +107,7 @@ pub(crate) fn is_context_window_overflow_error(err: &anyhow::Error) -> bool {
     tinychannels::context::is_context_window_overflow_message(&err.to_string())
 }
 
-use crate::openhuman::memory::api::provider::MemoryRecall as _;
+use tinymemory_api::provider::MemoryRecall as _;
 
 pub(crate) async fn build_memory_context(
     mem: &crate::openhuman::memory::guard::MemoryGuard,
@@ -120,7 +120,7 @@ pub(crate) async fn build_memory_context(
         .recall(
             user_msg,
             5,
-            &crate::openhuman::memory::api::recall::OwnedRecallOpts::default(),
+            &tinymemory_api::recall::OwnedRecallOpts::default(),
             // Unrestricted: a channel turn carries no ambient source scope, and
             // the guard narrows against its own allowlist regardless.
             None,
@@ -175,9 +175,9 @@ pub(crate) async fn build_memory_context(
 mod tests {
     use super::*;
     use crate::openhuman::channels::traits;
-    use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry};
     use crate::openhuman::tools::{Tool, ToolResult};
     use async_trait::async_trait;
+    use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 
     struct DummyTool;
 

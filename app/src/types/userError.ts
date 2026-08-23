@@ -34,7 +34,16 @@ export type UserErrorKind =
    * not running, or the configured model was never pulled (#5354). Mirrors the
    * core-side `LOCAL_MODEL_UNAVAILABLE_KIND` token.
    */
-  | 'local_model_unavailable';
+  | 'local_model_unavailable'
+  /**
+   * A third-party integration is answering with errors, so the connection
+   * state the app is showing is stale (today: Composio). Distinct from
+   * `budget_exceeded` even when the underlying cause is exhausted credits:
+   * the consequence is "your tools are silently not running", and naming that
+   * is the whole point — a billing-worded entry would not tell the user their
+   * connections have stopped working.
+   */
+  | 'integration_degraded';
 
 /** Where the failure originated, for grouping/labelling (privacy-safe). */
 export type UserErrorScope =
@@ -51,6 +60,8 @@ export type UserErrorAction =
   | 'open_billing'
   | 'open_provider_settings'
   | 'open_embeddings_settings'
+  /** The connections screen — where integration health is polled and re-read. */
+  | 'open_connections'
   | 'dismiss';
 
 export type UserErrorSeverity = 'warning' | 'error';
@@ -74,6 +85,18 @@ export interface UserErrorDescriptor {
   titleKey: string;
   /** i18n key for the one-line explanation. */
   bodyKey: string;
+  /**
+   * Extra already-user-facing detail from the source, shown verbatim beneath
+   * the translated body.
+   *
+   * The rest of this contract is deliberately i18n *keys* so all copy stays
+   * translatable, and that stays the rule. This is the narrow exception for a
+   * message a backend wrote **for the user** and that the app cannot restate
+   * without losing what actually went wrong (e.g. which integration call
+   * failed and why). Never put raw provider responses, tokens, prompts or PII
+   * here — only text already destined for the user's screen.
+   */
+  detail?: string;
   action: UserErrorAction;
 }
 

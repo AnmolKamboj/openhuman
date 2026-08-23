@@ -52,8 +52,8 @@ export const COMPOSER_ROOT = 'relative flex w-full flex-col pb-2.5';
  * `closest('div.rounded-2xl')`.
  */
 export const COMPOSER_DROPZONE =
-  'flex w-full flex-col rounded-3xl border border-transparent bg-surface-muted/55 ' +
-  'transition-colors focus-within:bg-surface-muted/75 ' +
+  'flex w-full flex-col rounded-3xl border border-line bg-surface-muted/55 ' +
+  'transition-colors focus-within:border-line-strong focus-within:bg-surface-muted/75 ' +
   'data-[dragging=true]:border-primary-500 data-[dragging=true]:border-dashed ' +
   'data-[dragging=true]:bg-surface-hover/50';
 

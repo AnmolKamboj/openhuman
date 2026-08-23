@@ -29,7 +29,6 @@ import NativeSelect from '../../ui/NativeSelect';
 import TextArea from '../../ui/TextArea';
 import TextField from '../../ui/TextField';
 import SettingsPanel from '../layout/SettingsPanel';
-import { settingsNavState } from '../modal/settingsOverlay';
 import { AgentEditorToolsField } from './AgentEditorToolsPicker';
 
 // Known model options — mirrors the Rust tier constants + route hints
@@ -71,10 +70,7 @@ const AgentEditorPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { id: routeId } = useParams<{ id: string }>();
-  const backToList = useCallback(
-    () => navigate('/settings/agents', settingsNavState(location)),
-    [navigate, location]
-  );
+  const backToList = useCallback(() => navigate('/settings/agents'), [navigate, location]);
   const isCreate = !routeId;
 
   const [loading, setLoading] = useState(!isCreate);

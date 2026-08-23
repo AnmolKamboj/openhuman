@@ -20,6 +20,7 @@ import Notifications from './pages/Notifications';
 import Onboarding from './pages/onboarding/Onboarding';
 import { PttOverlayPage } from './pages/PttOverlayPage';
 import Rewards from './pages/Rewards';
+import Settings from './pages/Settings';
 import Skills from './pages/Skills';
 import WebCallbackPage from './pages/WebCallbackPage';
 import Welcome from './pages/Welcome';
@@ -27,10 +28,11 @@ import WorkflowsRun from './pages/WorkflowsRun';
 
 interface AppRoutesProps {
   /**
-   * Optional location override. The desktop shell passes the *background*
-   * location here while the Settings modal is open, so the page behind the
-   * modal stays rendered even though the URL is `/settings/*`. Omitted
-   * everywhere else (router uses the ambient location).
+   * Optional location override. Nothing passes one today — the router uses the
+   * ambient location. It existed for the desktop Settings modal, which rendered
+   * the page *behind* it from a stashed background location; Settings is a
+   * routed page now. Kept because `<Routes location=…>` is the standard escape
+   * hatch for any future overlay-over-a-page surface.
    */
   location?: Location | string;
 }
@@ -300,10 +302,19 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
       {/* Webhooks retired from the UI — land on the Integrations settings. */}
       <Route path="/webhooks" element={<Navigate to="/settings/integrations" replace />} />
 
-      {/* Desktop Settings renders as a modal overlay mounted by AppShellDesktop
-          (App.tsx) using the backgroundLocation pattern — it is no longer an
-          inline route here. iOS keeps its own /settings/* route in
-          AppRoutesIOS.tsx. */}
+      {/* Settings is a routed page like every other surface: the shared route
+          table renders inside `SettingsLayout`, which projects the settings nav
+          into the app sidebar's dynamic region. It was a modal overlay (the
+          backgroundLocation pattern) until this route replaced it. iOS keeps
+          its own /settings/* route in AppRoutesIOS.tsx. */}
+      <Route
+        path="/settings/*"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="/ptt-overlay" element={<PttOverlayPage />} />
 

@@ -142,11 +142,6 @@ const RewardsCouponSection = () => {
   return (
     <>
       <section className="bg-surface rounded-2xl shadow-soft border border-line p-6 space-y-5">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-semibold text-content">{t('rewards.coupon.title')}</h2>
-          <p className="max-w-2xl text-sm text-content-secondary">{t('rewards.coupon.subtitle')}</p>
-        </div>
-
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-line bg-surface-muted p-4">
             <div className="text-xs font-medium uppercase tracking-wide text-content-faint">

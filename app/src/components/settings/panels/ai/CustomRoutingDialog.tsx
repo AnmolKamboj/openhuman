@@ -73,13 +73,10 @@ export const CustomRoutingDialog = ({
         ? { kind: 'local' }
         : initial.kind === 'claude-code'
           ? { kind: 'claude-code' }
-          : customCloud[0]
-            ? { kind: 'cloud', providerSlug: customCloud[0].slug }
-            : localAvailable
-              ? { kind: 'local' }
-              : claudeCodeEnabled
-                ? { kind: 'claude-code' }
-                : null;
+          : // `default` / `openhuman` are the managed refs. They used to fall
+            // through to the first configured provider, which quietly
+            // preselected a different route than the workload was actually on.
+            { kind: 'managed' };
 
   const [source, setSource] = useState<CustomDialogSource | null>(initialSource);
   const [model, setModel] = useState<string>(() => {
@@ -141,8 +138,13 @@ export const CustomRoutingDialog = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrySlug, model, visionLocked]);
 
-  const canSave = source !== null && model.trim().length > 0;
-  const canTest = canSave;
+  // Managed carries no model id — the product picks one per workload — so
+  // requiring one would make it permanently unsavable.
+  const isManagedSource = source?.kind === 'managed';
+  const canSave = source !== null && (isManagedSource || model.trim().length > 0);
+  // …and there is nothing to send a test prompt to: the route is resolved
+  // server-side at request time, not from a provider string here.
+  const canTest = canSave && !isManagedSource;
 
   const resetTestState = () => {
     testRequestIdRef.current += 1;
@@ -153,7 +155,7 @@ export const CustomRoutingDialog = ({
   };
 
   const currentProviderString =
-    source == null
+    source == null || source.kind === 'managed'
       ? null
       : source.kind === 'cloud'
         ? appendTemperatureToProviderString(
@@ -180,8 +182,13 @@ export const CustomRoutingDialog = ({
       );
     } else if (source.kind === 'claude-code') {
       onSubmit({ kind: 'claude-code', model: model.trim(), temperature: temp }, vision);
-    } else {
+    } else if (source.kind === 'local') {
       onSubmit({ kind: 'local', model: model.trim(), temperature: temp }, vision);
+    } else {
+      // Managed. `default` is the backend's managed sentinel; it takes no model
+      // or temperature, so both are deliberately dropped rather than carried
+      // over from whatever was selected before.
+      onSubmit({ kind: 'default' }, vision);
     }
   };
 
@@ -217,9 +224,12 @@ export const CustomRoutingDialog = ({
     }
   };
 
-  // Empty state only when there's genuinely nothing to route to: no custom
-  // cloud providers, no local Ollama, and the Claude Code peer chip is off.
-  const noProviders = customCloud.length === 0 && !localAvailable && !claudeCodeEnabled;
+  // Nothing to route to *of the user's own*: no custom cloud providers, no
+  // local Ollama, and the Claude Code peer chip is off. The warning still
+  // explains that, but it no longer replaces the picker — managed is always
+  // available, so a user with nothing configured must still be able to route a
+  // workload back to it.
+  const noOwnProviders = customCloud.length === 0 && !localAvailable && !claudeCodeEnabled;
   const selectedProviderLabel =
     source?.kind === 'cloud'
       ? (customCloud.find(provider => provider.slug === source.providerSlug)?.label ??
@@ -266,73 +276,72 @@ export const CustomRoutingDialog = ({
       <p className="mt-2 text-xs leading-5 text-content-muted">
         {t(WORKLOAD_MODEL_HINT_KEYS[workload.id])}
       </p>
-      {noProviders ? (
-        <Alert variant="warning" className="p-3 text-xs">
-          {t('settings.ai.noCustomProviders')}
-        </Alert>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            onClick={() => setPickerOpen(true)}
-            className="h-auto w-full justify-between px-3 py-2.5 text-left">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-xs font-medium text-content-secondary">Provider and model</span>
-              <span className="truncate text-sm font-medium text-content">
-                {model ? `${selectedProviderLabel} · ${model}` : 'Select provider and model'}
-              </span>
+      <div className="flex flex-col gap-4">
+        {noOwnProviders && (
+          <Alert variant="warning" className="p-3 text-xs">
+            {t('settings.ai.noCustomProviders')}
+          </Alert>
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          onClick={() => setPickerOpen(true)}
+          className="h-auto w-full justify-between px-3 py-2.5 text-left">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium text-content-secondary">Provider and model</span>
+            <span className="truncate text-sm font-medium text-content">
+              {model ? `${selectedProviderLabel} · ${model}` : 'Select provider and model'}
             </span>
-            <span className="text-xs text-content-muted">Change</span>
-          </Button>
+          </span>
+          <span className="text-xs text-content-muted">Change</span>
+        </Button>
 
-          <TemperatureOverrideField temperature={temperature} onChange={setTemperature} />
+        <TemperatureOverrideField temperature={temperature} onChange={setTemperature} />
 
-          {/* Vision capability (optional). Marks a custom/BYOK model as
+        {/* Vision capability (optional). Marks a custom/BYOK model as
                 accepting image input so the chat composer offers image
                 attachments for it. Only shown once a concrete model is chosen. */}
-          {registrySlug && model.trim().length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label className="inline-flex items-center gap-2 text-xs text-content-secondary">
-                <Checkbox
-                  checked={visionLocked ? true : vision}
-                  onCheckedChange={setVision}
-                  disabled={visionLocked}
-                  className="h-3.5 w-3.5 disabled:opacity-60"
-                />
-                {t('settings.ai.modelVision')}
-              </Label>
-              <p className="text-[11px] text-content-faint">{t('settings.ai.modelVisionDesc')}</p>
-            </div>
-          )}
+        {registrySlug && model.trim().length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label className="inline-flex items-center gap-2 text-xs text-content-secondary">
+              <Checkbox
+                checked={visionLocked ? true : vision}
+                onCheckedChange={setVision}
+                disabled={visionLocked}
+                className="h-3.5 w-3.5 disabled:opacity-60"
+              />
+              {t('settings.ai.modelVision')}
+            </Label>
+            <p className="text-[11px] text-content-faint">{t('settings.ai.modelVisionDesc')}</p>
+          </div>
+        )}
 
-          <ModelTestResultPanel
-            testBusy={testBusy}
-            testReply={testReply}
-            testError={testError}
-            testStartedAt={testStartedAt}
-            currentProviderString={currentProviderString}
+        <ModelTestResultPanel
+          testBusy={testBusy}
+          testReply={testReply}
+          testError={testError}
+          testStartedAt={testStartedAt}
+          currentProviderString={currentProviderString}
+        />
+
+        {pickerOpen && (
+          <ProviderModelPickerDialog
+            cloudProviders={customCloud}
+            localModels={localModels}
+            ollamaRunning={ollamaRunning}
+            claudeCodeEnabled={claudeCodeEnabled}
+            initial={source && model ? { source, model } : null}
+            onClose={() => setPickerOpen(false)}
+            onSelect={({ source: nextSource, model: nextModel }) => {
+              resetTestState();
+              setSource(nextSource);
+              setModel(nextModel);
+              setPickerOpen(false);
+            }}
           />
-
-          {pickerOpen && (
-            <ProviderModelPickerDialog
-              cloudProviders={customCloud}
-              localModels={localModels}
-              ollamaRunning={ollamaRunning}
-              claudeCodeEnabled={claudeCodeEnabled}
-              initial={source && model ? { source, model } : null}
-              onClose={() => setPickerOpen(false)}
-              onSelect={({ source: nextSource, model: nextModel }) => {
-                resetTestState();
-                setSource(nextSource);
-                setModel(nextModel);
-                setPickerOpen(false);
-              }}
-            />
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </ModalShell>
   );
 };

@@ -96,7 +96,10 @@ const AppUpdatePrompt = (props: AppUpdatePromptProps) => {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-9998 w-[340px] animate-fade-up"
+      // `bottom-14`, not `bottom-2`: NoticeCenter's FAB owns the bottom-right
+      // corner (8px inset, 40px tall), and this card is ~340px wide at z-9998 —
+      // sharing the corner would put it straight on top and swallow the clicks.
+      className="fixed bottom-14 right-2 z-9998 w-[340px] animate-fade-up"
       data-testid="app-update-prompt">
       <div className="bg-stone-900 border border-stone-700/50 rounded-2xl shadow-large overflow-hidden">
         {/* Header */}

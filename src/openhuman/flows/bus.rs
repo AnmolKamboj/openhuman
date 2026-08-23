@@ -14,8 +14,6 @@ use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::store;
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
-use crate::openhuman::memory::api::provider::MemoryCore;
-use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -23,6 +21,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use tinybus::EventHandler;
 use tinyflows::model::{NodeKind, TriggerKind};
 use tinyflows::nodes::control_flow::dedup as dedup_node;
+use tinymemory_api::provider::MemoryCore;
+use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 
 /// Reads `trigger_kind` from a flow's trigger node config, deserializing into
 /// `tinyflows::model::TriggerKind`. Returns `None` when the flow doesn't have

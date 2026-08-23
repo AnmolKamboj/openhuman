@@ -104,7 +104,12 @@ function importedBackdrop(parsed: Partial<Theme>): Theme['backdrop'] {
   };
 }
 
-const ThemeStudioPanel = () => {
+interface ThemeStudioPanelProps {
+  /** Render the sections only — the host draws the page header. */
+  embedded?: boolean;
+}
+
+const ThemeStudioPanel = ({ embedded = false }: ThemeStudioPanelProps = {}) => {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const families = selectThemeFamilies();
@@ -176,8 +181,8 @@ const ThemeStudioPanel = () => {
       channelLuminance(readToken('content')) - channelLuminance(readToken('surface-canvas'))
     ) < 0.2;
 
-  return (
-    <SettingsPanel description={t('settings.theme.menuDesc', 'Customize colours and fonts.')}>
+  const body = (
+    <>
       {/* ── Theme gallery: family tiles + one Light/Dark/Auto toggle ──── */}
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
@@ -394,7 +399,7 @@ const ThemeStudioPanel = () => {
             role="radiogroup"
             aria-label={t('settings.theme.backdropHeading', 'Background')}>
             {(['mesh', 'solid', 'image'] as BackdropKind[]).map(kind => {
-              const current = effectiveTheme.backdrop?.kind ?? 'mesh';
+              const current = effectiveTheme.backdrop?.kind ?? 'solid';
               const sel = current === kind;
               return (
                 <button
@@ -505,6 +510,20 @@ const ThemeStudioPanel = () => {
           </Button>
         </div>
       </SettingsSection>
+    </>
+  );
+
+  // Embedded: the Appearance page owns the header and renders these sections
+  // among its own. That is the only host today — `/settings/theme` redirects to
+  // `/settings/appearance`, because a separate "Theme studio" page split one
+  // subject across two sidebar rows whose light/dark toggles wrote the same two
+  // slice fields (`setThemeMode` and `setThemeVariant` are identical). The
+  // unembedded branch is kept for a standalone host.
+  if (embedded) return body;
+
+  return (
+    <SettingsPanel description={t('settings.theme.menuDesc', 'Customize colours and fonts.')}>
+      {body}
     </SettingsPanel>
   );
 };

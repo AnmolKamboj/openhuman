@@ -67,6 +67,40 @@ export function classifyMemoryPipelineFailure(
   };
 }
 
+/**
+ * A third-party integration is failing, so the connection state on screen is
+ * stale (#composio).
+ *
+ * Unlike the matchers below this does not sniff the prose: the caller already
+ * knows the integration errored, and the message is the backend's own
+ * user-facing explanation. It rides on `detail` verbatim rather than being
+ * pattern-matched into a billing entry — "your credits are exhausted" and
+ * "your connected tools have silently stopped" are different things to tell
+ * someone, and only the second explains why their agent stopped acting.
+ *
+ * @param message The integration client's user-facing error text.
+ * @param provider Integration slug (e.g. `composio`) — metadata only.
+ */
+export function classifyIntegrationError(
+  message: string | null | undefined,
+  provider: string
+): UserErrorDescriptor | null {
+  const detail = message?.trim();
+  if (!detail) return null;
+  return {
+    id: userErrorId('integration_degraded', 'integration', provider),
+    kind: 'integration_degraded',
+    severity: 'warning',
+    scope: 'integration',
+    sourceDomain: provider,
+    provider,
+    titleKey: 'userErrors.integrationDegraded.title',
+    bodyKey: 'userErrors.integrationDegraded.body',
+    detail,
+    action: 'open_connections',
+  };
+}
+
 /** Build the stable dedupe identity for an error. */
 export function userErrorId(
   kind: UserErrorDescriptor['kind'],

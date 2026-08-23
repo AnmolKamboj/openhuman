@@ -296,13 +296,23 @@ pub async fn recall_rpc(
         limit
     );
 
-    let resp = crate::openhuman::memory::tree::retrieval::query_source(
+    // Explicit scope: `query_source` (unscoped) reads the *engine's* own
+    // task-local, which nothing on the host side ever sets — the host's
+    // per-turn allowlist lives in `memory::source_scope` instead (see its
+    // module docs). Calling the unscoped form here would always see `None`
+    // and recall would run unrestricted regardless of the active profile's
+    // `memory_sources` allowlist. Mirrors `query_source_rpc` in
+    // `tree/retrieval/rpc.rs`.
+    let resp = crate::openhuman::memory::tree::retrieval::source::query_source_scoped(
         config,
-        None,
-        None,
-        None,
-        Some(query.as_str()),
-        limit,
+        crate::openhuman::memory::tree::retrieval::source::SourceQuery {
+            source_id: None,
+            source_kind: None,
+            time_window_days: None,
+            query: Some(query.as_str()),
+            limit,
+        },
+        crate::openhuman::memory::source_scope::current_source_scope(),
     )
     .await
     .map_err(|e| format!("recall query_source: {e:#}"))?;

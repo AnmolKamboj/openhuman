@@ -23,7 +23,7 @@
 //!
 //! Call [`install_memory_event_sink`] once during startup, before any memory
 //! work begins. Until it runs, the core drops its events silently rather than
-//! failing — see `tinymemory_core::events`.
+//! failing — see `tinymemory_api::events`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -194,7 +194,7 @@ impl MemoryEventSink for BusEventSink {
 /// Wire [`BusEventSink`] into `tinymemory-core`. Call once during startup,
 /// before any memory work begins.
 pub fn install_memory_event_sink() {
-    tinymemory_core::events::set_event_sink(Arc::new(BusEventSink));
+    tinymemory_api::events::set_event_sink(Arc::new(BusEventSink));
     log::debug!("[memory:host] event sink installed");
 }
 

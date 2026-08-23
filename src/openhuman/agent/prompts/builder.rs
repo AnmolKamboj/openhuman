@@ -8,14 +8,19 @@ use anyhow::Result;
 /// Global style rules appended to every assembled system prompt, regardless
 /// of which sections the agent opts in/out of. Kept tiny and byte-stable so
 /// it doesn't bust the inference backend's prefix cache.
+///
+/// These are the rules that make output read as written by a person. There
+/// used to be a **Be concise** bullet here too ("lead with the answer, then
+/// only the detail the task needs ... a one-line answer for a simple ask").
+/// It was removed deliberately: brevity is not the same goal as sounding
+/// human, and a global length ceiling was truncating answers that had more to
+/// say. Lead-with-the-answer and no-preamble survive in the per-agent voice
+/// sections, where they can be phrased as ordering rather than as a budget.
+/// Do not reintroduce a global length rule here.
 pub const GLOBAL_STYLE_SUFFIX: &str = "## Output style\n\n\
     - Do **not** use em-dashes (`—`). Replace them with commas, colons, \
     parentheses, or two short sentences. This applies to every output \
     you produce: chat replies, summaries, tool args, and file contents.\n\
-    - **Be concise.** Lead with the answer, then only the detail the task \
-    needs. No preamble, no recap of the request, no filler. Make the \
-    response as long as the task requires and no longer: a one-line answer \
-    for a simple ask, fuller treatment only when the task genuinely needs it.\n\
     - **Do not repeat yourself.** Don't restate facts, context, or results \
     already shown earlier in this conversation; reference them instead of \
     pasting them again.\n";

@@ -558,6 +558,12 @@ const messages: TranslationMap = {
   'common.create': 'Utwórz',
   'common.search': 'Szukaj',
   'common.loading': 'ładowanie…',
+  'common.noResults': 'Brak wyników',
+  'common.filter': 'Filtruj',
+  'skills.explorer.colSkill': 'Umiejętność',
+  'skills.explorer.colDescription': 'Opis',
+  'skills.explorer.colProvider': 'Dostawca',
+  'skills.explorer.colAction': 'Akcja',
   'sync.runs': 'synchronizacji',
   'sync.totalCost': 'razem',
   'sync.when': 'Kiedy',
@@ -579,6 +585,7 @@ const messages: TranslationMap = {
   'common.next': 'Dalej',
   'common.finish': 'Zakończ',
   'common.close': 'Zamknij',
+  'notices.title': 'Powiadomienia',
   'common.enabled': 'Włączone',
   'common.disabled': 'Wyłączone',
   'common.on': 'Wł.',
@@ -3075,6 +3082,9 @@ const messages: TranslationMap = {
     'Połącz ponownie, aby ponownie włączyć narzędzia {name}. OpenHuman utrzyma tę integrację jako niedostępną, dopóki nie odświeżysz dostępu OAuth.',
   'composio.envVarOverrides': 'jest ustawiona, nadpisuje to ustawienie.',
   'composio.previewBadge': 'Podgląd',
+  'composio.colApp': 'Aplikacja',
+  'composio.colStatus': 'Status',
+  'composio.colAccounts': 'Konta',
   'composio.previewTooltip':
     'Integracja z agentem wkrótce: możesz się połączyć, ale agent nie może jeszcze użyć tego zestawu narzędzi.',
   'memory.day.sun': 'nd.',
@@ -4360,7 +4370,7 @@ const messages: TranslationMap = {
   'overlay.orbTitle': 'Przeciągnij, aby przesunąć · Kliknij dwukrotnie, aby zresetować pozycję',
   'pages.settings.account.connections': 'Połączenia',
   'pages.settings.account.connectionsDesc': 'Przeglądaj i zarządzaj połączeniami kont',
-  'pages.settings.account.migration': 'Importuj z innego asystenta',
+  'pages.settings.account.migration': 'Importuj',
   'pages.settings.account.migrationDesc':
     'Przenieś pamięć i notatki z OpenClaw (a wkrótce również Hermes) do tej przestrzeni roboczej.',
   'pages.settings.account.privacy': 'Prywatność',
@@ -4745,6 +4755,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Odpytywania procesu pamięci',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Zarządzane',
+  'settings.ai.managedSourceLabel': 'Zarządzane przez OpenHuman',
+  'settings.ai.managedSourceDetail': 'Automatyczny wybór modelu',
   'settings.ai.routing.managedAlwaysOn': 'Zawsze włączone',
   'settings.ai.routing.managedHint':
     'Opcja zarządzana jest zawsze dostępna jako opcja rezerwowa. Aby użyć własnego modelu, wybierz poniżej tryb routingu.',
@@ -6137,6 +6149,10 @@ const messages: TranslationMap = {
   'pages.settings.account.walletBalancesDesc':
     'Przeglądaj salda wielu sieci dla swojego lokalnego portfela',
   'walletBalances.title': 'Salda portfela',
+  'walletBalances.colNetwork': 'Sieć',
+  'walletBalances.colAddress': 'Adres',
+  'walletBalances.colBalance': 'Saldo',
+  'walletBalances.colActions': 'Akcje',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'Ładowanie sald…',
   'walletBalances.retry': 'Retry',
@@ -6537,6 +6553,7 @@ const messages: TranslationMap = {
   'composer.attachFile': 'Dołącz plik',
   'composer.modelSelector': 'Model',
   'composer.voiceMode': 'Tryb głosowy',
+  'composer.humanMode': 'Tryb człowieka',
   'composer.qualityHigh': 'Wysoka',
   // Agent activity level
   'activityLevel.title': 'Poziom aktywności agenta',
@@ -6804,6 +6821,10 @@ const messages: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Wymagane działanie',
   'userErrors.dismiss': 'Odrzuć',
+  'userErrors.action.openConnections': 'Otwórz połączenia',
+  'userErrors.integrationDegraded.title': 'Połączenia pokazują nieaktualny stan',
+  'userErrors.integrationDegraded.body':
+    'Podłączona integracja zwraca błędy, więc stan połączeń widoczny w aplikacji może być nieaktualny.',
   'userErrors.action.openBilling': 'Otwórz rozliczenia',
   'userErrors.action.openProviderSettings': 'Ustawienia dostawcy',
   'userErrors.action.openEmbeddingsSettings': 'Skonfiguruj osadzenia',
