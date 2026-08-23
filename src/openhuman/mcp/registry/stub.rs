@@ -103,6 +103,8 @@ pub mod oauth {
 
 /// Global in-process registry of connected MCP servers.
 pub mod connections {
+    use crate::openhuman::config::Config;
+
     /// Re-exported from the ungated `types` module — the SAME type the enabled
     /// build uses, not a mirrored copy, so the orchestrator prompt builder's
     /// field access can never drift between builds.
