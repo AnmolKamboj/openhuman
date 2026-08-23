@@ -108,7 +108,7 @@ const BalanceRow = ({ balance, onSend, onReceive }: BalanceRowProps) => {
       <div className="flex items-center gap-3">
         {/* Network badge */}
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-mono min-w-[3rem] justify-center shrink-0 ${badgeClass}`}>
+          className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-mono min-w-12 justify-center shrink-0 ${badgeClass}`}>
           {balanceBadge(balance)}
         </span>
 
@@ -220,7 +220,7 @@ const ChainPlaceholderRow = ({
   return (
     <div className="flex items-center gap-3 px-4 py-3 opacity-70">
       <span
-        className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-mono min-w-[3rem] justify-center shrink-0 ${badgeClass}`}>
+        className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold font-mono min-w-12 justify-center shrink-0 ${badgeClass}`}>
         {balanceBadge({ chain, evmNetwork })}
       </span>
       <div className="min-w-0">
@@ -334,7 +334,7 @@ const WalletBalancesPanel = () => {
             role="alert"
             className="flex items-start gap-2.5 p-3 mb-4 rounded-xl bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30">
             <svg
-              className="w-4 h-4 text-coral-500 flex-shrink-0 mt-0.5"
+              className="w-4 h-4 text-coral-500 shrink-0 mt-0.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -371,7 +371,7 @@ const WalletBalancesPanel = () => {
               role="status"
               className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
               <svg
-                className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"
+                className="w-4 h-4 text-amber-500 shrink-0 mt-0.5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -396,7 +396,7 @@ const WalletBalancesPanel = () => {
               </div>
             </div>
           </div>
-          <div className="divide-y divide-line-subtle dark:divide-neutral-800">
+          <div className="divide-y divide-line-subtle">
             {PLACEHOLDER_ROWS.map(row => (
               <ChainPlaceholderRow
                 key={`${row.chain}-${row.evmNetwork ?? 'native'}`}
@@ -434,7 +434,7 @@ const WalletBalancesPanel = () => {
 
     if (balances && balances.length > 0) {
       return (
-        <div className="divide-y divide-line-subtle dark:divide-neutral-800">
+        <div className="divide-y divide-line-subtle">
           {balances.map(balance => (
             <BalanceRow
               key={balanceKey(balance)}

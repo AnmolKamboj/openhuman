@@ -103,7 +103,14 @@
   --coral-900: 127 29 29;
   --coral-950: 69 10 10;
 
-  /* ---- Font roles ---- */
+  /* ---- Font roles ----
+     NOTE ON 'Cabinet Grotesk': it is NOT bundled, so every stack naming it
+     resolves to Inter. It never rendered — `styles/theme.css` declared an
+     @font-face whose `src` pointed at a Google Fonts *stylesheet* URL rather
+     than a font binary, which can only fail. That file is gone; the name is
+     kept here only so the intended stack is still legible. Do not "fix" this
+     by re-adding an @font-face: either vendor the real woff2 into
+     `public/fonts/` via `scripts/fetch-fonts.mjs`, or drop the name. */
   --font-title: 'Cabinet Grotesk', 'Inter', -apple-system, system-ui, sans-serif;
   --font-heading: 'Inter', 'Cabinet Grotesk', -apple-system, system-ui, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;

@@ -26,7 +26,7 @@ vi.mock('../../../lib/orchestration/orchestrationClient', () => ({
 const linkSession = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const acceptRequest = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const reverse = vi.hoisted(() => vi.fn().mockResolvedValue({ agents: [] }));
-vi.mock('../../../agentworld/AgentWorldShell', () => ({
+vi.mock('../../../lib/agentworld/apiClient', () => ({
   apiClient: {
     orchestrationPairing: { linkSession, acceptRequest, declineRequest: vi.fn() },
     directory: { reverse },

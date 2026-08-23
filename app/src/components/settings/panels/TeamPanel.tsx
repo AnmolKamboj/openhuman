@@ -1,5 +1,5 @@
 import debug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useCoreState } from '../../../providers/CoreStateProvider';
@@ -7,7 +7,8 @@ import { teamApi } from '../../../services/api/teamApi';
 import { CoreRpcError } from '../../../services/coreRpcClient';
 import type { TeamWithRole } from '../../../types/team';
 import { sanitizeError } from '../../../utils/sanitize';
-import { CenteredLoadingState, ErrorBanner } from '../../ui';
+import { CenteredLoadingState, ErrorBanner, ModalShell } from '../../ui';
+import { AvatarFallback, AvatarRoot } from '../../ui/Avatar';
 import Button from '../../ui/Button';
 import { SettingsBadge, SettingsSection, SettingsTextField } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
@@ -18,6 +19,7 @@ const log = debug('core-rpc:error');
 
 const TeamPanel = () => {
   const { t } = useT();
+  const leaveTitleId = useId();
   const { navigateToTeamManagement } = useSettingsNavigation();
   const { snapshot, teams, refresh, refreshTeams } = useCoreState();
   const user = snapshot.currentUser;
@@ -157,11 +159,11 @@ const TeamPanel = () => {
             : 'border-line bg-surface hover:bg-surface-hover'
         }`}>
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="w-9 h-9 rounded-lg bg-surface-subtle flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-semibold text-content-secondary">
+          <AvatarRoot className="h-9 w-9 rounded-lg bg-surface-subtle shrink-0">
+            <AvatarFallback className="rounded-lg bg-surface-subtle text-sm font-semibold text-content-secondary">
               {team.name.charAt(0).toUpperCase()}
-            </span>
-          </div>
+            </AvatarFallback>
+          </AvatarRoot>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-medium text-content truncate">{team.name}</span>
@@ -175,7 +177,7 @@ const TeamPanel = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {canManage && (
             <Button
               type="button"
@@ -252,48 +254,51 @@ const TeamPanel = () => {
       </SettingsSection>
 
       {teamToLeave && (
-        <div className="fixed inset-0 bg-neutral-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line">
-            <h3 className="text-sm font-semibold text-content mb-4">{t('team.leaveTeam')}</h3>
-
-            {error && (
-              <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
-                <p className="text-xs text-coral-400">{error}</p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="text-sm text-content-muted">
-                <p>
-                  {t('team.confirmLeave')}{' '}
-                  <strong className="text-content">{teamToLeave.team.name}</strong>?
-                </p>
-                <p className="mt-2 text-amber-400">{t('team.leaveWarning')}</p>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  className="flex-1"
-                  onClick={() => setTeamToLeave(null)}
-                  disabled={isLeaving === teamToLeave.team._id}>
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="tertiary"
-                  size="md"
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-content-inverted border-0 dark:bg-amber-500 dark:hover:bg-amber-600"
-                  onClick={() => void confirmLeaveTeam()}
-                  disabled={isLeaving === teamToLeave.team._id}>
-                  {isLeaving === teamToLeave.team._id ? t('team.leaving') : t('team.leaveTeam')}
-                </Button>
-              </div>
+        <ModalShell
+          title={t('team.leaveTeam')}
+          titleId={leaveTitleId}
+          onClose={() => setTeamToLeave(null)}
+          contentClassName="px-6 py-5"
+          closePolicy={
+            isLeaving === teamToLeave.team._id
+              ? { escape: false, backdrop: false, button: false }
+              : undefined
+          }
+          footer={
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                className="flex-1"
+                onClick={() => setTeamToLeave(null)}
+                disabled={isLeaving === teamToLeave.team._id}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="tertiary"
+                size="md"
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-content-inverted border-0 dark:bg-amber-500 dark:hover:bg-amber-600"
+                onClick={() => void confirmLeaveTeam()}
+                disabled={isLeaving === teamToLeave.team._id}>
+                {isLeaving === teamToLeave.team._id ? t('team.leaving') : t('team.leaveTeam')}
+              </Button>
             </div>
+          }>
+          {error && (
+            <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
+              <p className="text-xs text-coral-400">{error}</p>
+            </div>
+          )}
+          <div className="text-sm text-content-muted">
+            <p>
+              {t('team.confirmLeave')}{' '}
+              <strong className="text-content">{teamToLeave.team.name}</strong>?
+            </p>
+            <p className="mt-2 text-amber-400">{t('team.leaveWarning')}</p>
           </div>
-        </div>
+        </ModalShell>
       )}
     </SettingsPanel>
   );

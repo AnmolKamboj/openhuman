@@ -8,7 +8,7 @@
  */
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-import { apiClient } from '../../agentworld/AgentWorldShell';
+import { apiClient } from '../../lib/agentworld/apiClient';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
   orchestrationClient,
@@ -18,6 +18,7 @@ import {
 import { usePairing } from '../../lib/orchestration/usePairing';
 import { contactAddress, extractHandle } from '../intelligence/orchestrationTabHelpers';
 import Button from '../ui/Button';
+import TextField from '../ui/TextField';
 import { SectionCard } from './primitives';
 
 export default function DiscoverPanel() {
@@ -144,11 +145,11 @@ export default function DiscoverPanel() {
         description={t('orchPage.discover.linkDescription')}
         testId="orch-discover-link">
         <form className="flex gap-2" onSubmit={submitLink}>
-          <input
+          <TextField
             value={linkAgentId}
             onChange={e => setLinkAgentId(e.target.value)}
             placeholder={t('tinyplaceOrchestration.pairing.linkPlaceholder')}
-            className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-content outline-none transition focus:border-ocean-500 focus:ring-2 focus:ring-ocean-500/20"
+            className="min-w-0 flex-1"
             data-testid="orch-discover-link-input"
           />
           <Button

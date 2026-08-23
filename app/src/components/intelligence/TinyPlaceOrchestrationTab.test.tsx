@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { apiClient } from '../../agentworld/AgentWorldShell';
+import { apiClient } from '../../lib/agentworld/apiClient';
 import { orchestrationClient } from '../../lib/orchestration/orchestrationClient';
 import { socketService } from '../../services/socketService';
 import TinyPlaceOrchestrationTab from './TinyPlaceOrchestrationTab';
 
-vi.mock('../../agentworld/AgentWorldShell', () => ({
+vi.mock('../../lib/agentworld/apiClient', () => ({
   apiClient: {
     orchestrationPairing: {
       list: vi.fn(),

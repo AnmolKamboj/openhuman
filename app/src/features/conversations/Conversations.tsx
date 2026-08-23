@@ -17,11 +17,11 @@ import IntegrationConnectCard from '../../components/chat/IntegrationConnectCard
 import QueuedFollowups from '../../components/chat/QueuedFollowups';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
-import PanelHeader from '../../components/layout/PanelHeader';
 import { SidebarContent } from '../../components/layout/shell/SidebarSlot';
 import { settingsNavState } from '../../components/settings/modal/settingsOverlay';
 import UpsellBanner from '../../components/upsell/UpsellBanner';
 import { dismissBanner, shouldShowBanner } from '../../components/upsell/upsellDismissState';
+import { AssistantUiChat } from '../../features/conversations/components/AssistantUiChat';
 import { selectBackgroundProcesses } from '../../features/conversations/components/BackgroundProcessesPanel';
 import {
   ChatThreadView,
@@ -125,6 +125,7 @@ import {
   openhumanVoiceTranscribeBytes,
   openhumanVoiceTts,
 } from '../../utils/tauriCommands';
+import { useChatSurfaceRegistration } from './hooks/useChatSurfaceRegistration';
 import { ThreadList } from './threadList/ThreadList';
 
 const CHAT_MODEL_HINT = 'hint:chat';
@@ -446,6 +447,15 @@ const Conversations = ({
     onCancel: () => {},
   });
   const [resolvedModel, setResolvedModel] = useState<string | null>(null);
+  // A picker choice belongs to this composer session. It overrides the active
+  // profile route for subsequent sends without mutating the shared profile.
+  const [composerModelOverride, setComposerModelOverride] = useState<string | null>(null);
+  // `undefined` means no explicit picker selection, so usage-reported context
+  // remains authoritative. `null` means the selected model did not report a
+  // window, and the meter deliberately shows an unknown limit.
+  const [composerModelContextWindow, setComposerModelContextWindow] = useState<
+    number | null | undefined
+  >(undefined);
   // Whether the resolved model for the active profile accepts image input.
   // Managed tiers do; custom/BYOK models only when the user flagged them. Gates
   // the composer's image-attachment affordance (docs flow regardless). Resolved
@@ -525,6 +535,13 @@ const Conversations = ({
   const sendingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Ref so the mount-time dictation event handler can call the latest send fn.
   const handleSendMessageRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  // Refs the assistant-ui chat-surface registration binds through. Both target
+  // functions are re-created every render; the registration must NOT be, or the
+  // registry slot would be rewritten on every keystroke and could be dropped
+  // mid-turn. So the effect below depends only on the thread id and reads the
+  // latest implementation out of these refs at call time.
+  const handleComposerSendRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  const handleStopGenerationRef = useRef<(() => void) | null>(null);
   // Per-thread "turn signature": the last-seen tuple of progress-slice
   // references [inferenceStatus, streamingAssistant, toolTimeline, taskBoard]
   // for each thread that owns a live silence timer. Redux Toolkit (immer)
@@ -1066,7 +1083,9 @@ const Conversations = ({
     addPendingSendingThread(sendingThreadId);
     const pendingAttachments = attachments.slice();
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(trimmed, pendingAttachments);
     const userMessage: ThreadMessage = {
       id: `msg_${globalThis.crypto.randomUUID()}`,
@@ -1193,7 +1212,9 @@ const Conversations = ({
 
     const pendingAttachments = attachments.slice();
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(normalized, pendingAttachments);
     const userMessage: ThreadMessage = {
       id: `msg_${globalThis.crypto.randomUUID()}`,
@@ -1253,6 +1274,7 @@ const Conversations = ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSendError(chatSendError('cloud_send_failed', msg));
+      setInputValue(normalized);
     }
   };
 
@@ -1272,7 +1294,9 @@ const Conversations = ({
     if (!normalized && pendingAttachments.length === 0) return;
 
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(normalized, pendingAttachments);
     // Build the full user message exactly like a normal send (content +
     // attachment metadata) so the follow-up persists identically when it is
@@ -1335,6 +1359,10 @@ const Conversations = ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSendError(chatSendError('cloud_send_failed', msg));
+      // assistant-ui clears its composer after `onNew` resolves. This path
+      // handles the transport error locally, so restore the rejected follow-up
+      // explicitly instead of letting the user's draft disappear.
+      setInputValue(normalized);
     }
   };
 
@@ -1357,6 +1385,8 @@ const Conversations = ({
   // while the selected thread is streaming, otherwise to a normal send.
   const handleComposerSend = (text?: string): Promise<void> =>
     selectedThreadActive ? handleSendFollowup(text) : handleSendMessage(text);
+
+  handleComposerSendRef.current = handleComposerSend;
 
   // Cancel the in-flight turn for the selected thread. Shared by the in-composer
   // Stop button (text mode), the ESC-to-interrupt shortcut, and the footer
@@ -1416,6 +1446,24 @@ const Conversations = ({
       }
     });
   }, [selectedThreadId, streamingAssistantByThread, dispatch]);
+
+  handleStopGenerationRef.current = handleStopGeneration;
+
+  // Claim the selected thread's write path for assistant-ui's runtime, so its
+  // `onNew`/`onCancel` forward here instead of reimplementing ~200 lines of
+  // send orchestration (see `providers/chatSurfaceHandlers`).
+  //
+  // `send` routes through `handleComposerSend` — the SAME function the Send
+  // button and plain Enter use — so the streaming-vs-idle decision (queued
+  // follow-up vs. fresh turn) is made in exactly one place, and
+  // `handleSendMessage`'s `evaluateComposerSend` block/allow half runs
+  // unchanged. Re-deriving either here is the drift this seam exists to stop.
+  useChatSurfaceRegistration(
+    selectedThreadId,
+    handleComposerSendRef,
+    handleStopGenerationRef,
+    true
+  );
 
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
@@ -1587,6 +1635,37 @@ const Conversations = ({
     };
   }, [messages, replyMode, rustChat]);
 
+  const handleComposerEscape = useCallback(() => {
+    if (!selectedThreadActive) return;
+    const composerEmpty = inputValue.trim().length === 0;
+    debug(
+      '[chat] esc interrupt: thread=%s composerEmpty=%s',
+      selectedThreadId ?? 'none',
+      composerEmpty
+    );
+    handleStopGeneration();
+    if (composerEmpty) {
+      // Restore the last *visible* user prompt (hidden system/injected
+      // messages are excluded here to match how the transcript is rendered).
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find(m => m.sender === 'user' && !m.extraMetadata?.hidden);
+      const restored = lastUserMessage
+        ? parseMessageImages(lastUserMessage.content ?? '').text
+        : '';
+      if (restored.length > 0) {
+        debug('[chat] esc interrupt: restored prompt len=%d', restored.length);
+        setInputValue(restored);
+        window.requestAnimationFrame(() => {
+          const ta = textInputRef.current;
+          if (!ta) return;
+          ta.focus();
+          ta.setSelectionRange(restored.length, restored.length);
+        });
+      }
+    }
+  }, [handleStopGeneration, inputValue, messages, selectedThreadActive, selectedThreadId]);
+
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isComposingTextRef.current || isImeCompositionKeyEvent(e)) return;
 
@@ -1598,33 +1677,7 @@ const Conversations = ({
     // default behaviour (blur / no-op).
     if (e.key === 'Escape' && selectedThreadActive) {
       e.preventDefault();
-      const composerEmpty = inputValue.trim().length === 0;
-      debug(
-        '[chat] esc interrupt: thread=%s composerEmpty=%s',
-        selectedThreadId ?? 'none',
-        composerEmpty
-      );
-      handleStopGeneration();
-      if (composerEmpty) {
-        // Restore the last *visible* user prompt (hidden system/injected
-        // messages are excluded here to match how the transcript is rendered).
-        const lastUserMessage = [...messages]
-          .reverse()
-          .find(m => m.sender === 'user' && !m.extraMetadata?.hidden);
-        const restored = lastUserMessage
-          ? parseMessageImages(lastUserMessage.content ?? '').text
-          : '';
-        if (restored.length > 0) {
-          debug('[chat] esc interrupt: restored prompt len=%d', restored.length);
-          setInputValue(restored);
-          window.requestAnimationFrame(() => {
-            const ta = textInputRef.current;
-            if (!ta) return;
-            ta.focus();
-            ta.setSelectionRange(restored.length, restored.length);
-          });
-        }
-      }
+      handleComposerEscape();
       return;
     }
 
@@ -1920,8 +1973,7 @@ const Conversations = ({
   );
 
   // Main chat area (right pane): header, message list, composer.
-  const showChatHeader = !isSidebar && Boolean(selectedThreadId);
-  const mainPanel = (
+  const legacyMainPanel = (
     <div
       className={
         isSidebar
@@ -1931,24 +1983,6 @@ const Conversations = ({
             // the absolutely-positioned floating composer.
             'relative flex-1 flex flex-col min-w-0'
       }>
-      {/* Page header band — the same flush title band every other page opens
-          with (PanelHeader / bg-surface-muted), naming the open thread. Page
-          variant only: the embedded sidebar variant lives in a narrow aside
-          where a full band would cost more vertical room than it earns, and its
-          host already titles the surface. Suppressed until a thread resolves so
-          a brand-new chat doesn't open with an empty band above the hero. */}
-      {showChatHeader && selectedThreadId && (
-        // No fade beneath the band, deliberately. The bottom of the pane needs
-        // one because the composer is absolutely positioned and floats over the
-        // messages; this header is `flex-shrink-0` in normal flow, so the scroll
-        // area simply starts below it and nothing ever scrolls underneath. A
-        // gradient here has no overlap to soften — it just paints a veil over
-        // whatever message happens to be at the top of the list.
-        <PanelHeader
-          title={resolveThreadDisplayTitle(selectedThreadId)}
-          className="flex-shrink-0 px-4 pt-4 pb-3"
-        />
-      )}
       <ChatThreadView
         ref={threadViewRef}
         threadId={selectedThreadId ?? null}
@@ -1983,7 +2017,7 @@ const Conversations = ({
       {!isSidebar && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-surface via-surface/90 to-transparent"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-linear-to-t from-surface via-surface/90 to-transparent"
         />
       )}
 
@@ -2000,15 +2034,15 @@ const Conversations = ({
         // (e.g. the voice "Setup" link) + the composer (#3785). Rather than a
         // percentage `max-height` (which does not reliably resolve inside a
         // stretched flex item in Chromium), let the footer SHRINK: dropping
-        // `flex-shrink-0` and adding `min-h-0 overflow-y-auto` makes the flex
+        // `shrink-0` and adding `min-h-0 overflow-y-auto` makes the flex
         // algorithm cap it to the available height (the basis-0 message list
         // gives up its space first) and scroll internally instead of being
         // clipped by the `overflow-hidden` mainPanel. On a tall window there is
         // free space, so the footer keeps its natural height (composer pinned).
         className={
           isSidebar
-            ? 'mx-auto w-full max-w-[48.75rem] min-h-0 overflow-y-auto px-4 py-3'
-            : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[48.75rem] px-4 pb-4 pt-6'
+            ? 'mx-auto w-full max-w-195 min-h-0 overflow-y-auto px-4 py-3'
+            : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-195 px-4 pb-4 pt-6'
         }>
         <>
           {isNearLimit &&
@@ -2036,7 +2070,7 @@ const Conversations = ({
             <div className="mb-3 p-3 rounded-xl bg-coral-50 border border-coral-200 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <svg
-                  className="w-4 h-4 text-coral-400 flex-shrink-0"
+                  className="w-4 h-4 text-coral-400 shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24">
@@ -2053,7 +2087,7 @@ const Conversations = ({
                     : t('chat.budgetComplete')}
                 </p>
               </div>
-              <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   data-analytics-id="chat-budget-openrouter-free"
@@ -2096,7 +2130,7 @@ const Conversations = ({
               type="button"
               data-analytics-id="chat-send-advisory-dismiss"
               onClick={() => setSendAdvisory(null)}
-              className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors ml-2">
+              className="text-xs text-content-muted hover:text-content-secondary transition-colors ml-2">
               {t('common.dismiss')}
             </button>
           </div>
@@ -2124,7 +2158,7 @@ const Conversations = ({
               data-chat-send-error-code={displayedSendError.code}>
               {displayedSendError.message}
             </p>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+            <div className="flex items-center gap-2 shrink-0 ml-2">
               {(displayedSendError.code === 'stt_not_ready' ||
                 displayedSendError.code === 'voice_transcription' ||
                 displayedSendError.code === 'tts_not_ready' ||
@@ -2150,7 +2184,7 @@ const Conversations = ({
                   setSendError(null);
                   dispatch(clearCreateThreadError());
                 }}
-                className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors">
+                className="text-xs text-content-muted hover:text-content-secondary transition-colors">
                 {t('common.dismiss')}
               </button>
             </div>
@@ -2375,6 +2409,11 @@ const Conversations = ({
                 <ThreadGoalEditorPanel key="thread-goal" ctl={threadGoal} />,
               ]}
               mascotDock={mascotDock}
+              modelOverride={composerModelOverride ?? resolvedModel}
+              onModelOverrideChange={(value, contextWindow) => {
+                setComposerModelOverride(value);
+                setComposerModelContextWindow(contextWindow ?? null);
+              }}
             />
           </>
         ) : (
@@ -2384,7 +2423,7 @@ const Conversations = ({
               data-analytics-id="chat-voice-switch-to-text"
               onClick={() => setInputMode('text')}
               disabled={isRecording || isTranscribing}
-              className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 hover:border-line-strong dark:hover:border-line-strong transition-colors disabled:opacity-40"
+              className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-content-muted hover:text-content-secondary hover:border-line-strong transition-colors disabled:opacity-40"
               title={t('chat.switchToText')}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -2433,7 +2472,7 @@ const Conversations = ({
               void dispatch(loadThreadMessages(selectedThreadParent.id));
               navigate(chatThreadPath(selectedThreadParent.id));
             }}
-            className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-300"
             data-testid="worker-thread-back-to-parent">
             <span aria-hidden="true">←</span>
             <span className="max-w-[16rem] truncate">
@@ -2455,7 +2494,7 @@ const Conversations = ({
             <ThreadGoalFooterTrigger ctl={threadGoal} />
           </div>
           {!isSidebar && (
-            <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <div
                 className="flex h-7 items-center rounded-full border border-line bg-surface-subtle p-0.5"
                 role="radiogroup"
@@ -2468,7 +2507,7 @@ const Conversations = ({
                   onClick={() => void handleSelectAgentProfile('default')}
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
                     selectedAgentProfileId === 'default'
-                      ? 'bg-surface text-content shadow-sm'
+                      ? 'bg-surface text-content shadow-xs'
                       : 'text-content-muted hover:text-content-secondary'
                   }`}>
                   {t('chat.agentProfile.quick')}
@@ -2481,7 +2520,7 @@ const Conversations = ({
                   onClick={() => void handleSelectAgentProfile('reasoning')}
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
                     selectedAgentProfileId === 'reasoning'
-                      ? 'bg-surface text-content shadow-sm'
+                      ? 'bg-surface text-content shadow-xs'
                       : 'text-content-muted hover:text-content-secondary'
                   }`}>
                   {t('chat.agentProfile.reasoning')}
@@ -2533,13 +2572,114 @@ const Conversations = ({
     </div>
   );
 
+  const assistantComposerHeader = (
+    <>
+      {isNearLimit &&
+        !isAtLimit &&
+        isFreeTier &&
+        shouldShowBanner('conversations-warning', 24 * 60 * 60 * 1000) && (
+          <UpsellBanner
+            variant="warning"
+            title={t('chat.approachingLimit')}
+            message={t('chat.approachingLimitMsg').replace(
+              '{pct}',
+              String(Math.round(usagePct * 100))
+            )}
+            ctaLabel={t('chat.upgrade')}
+            onCtaClick={() => void openUrl(PRICING_URL)}
+            dismissible
+            onDismiss={() => dismissBanner('conversations-warning')}
+          />
+        )}
+      {teamUsage && shouldShowBudgetCompletedMessage && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral-200 bg-coral-50 p-3">
+          <p className="min-w-0 text-xs text-coral-600">
+            {teamUsage.cycleBudgetUsd > 0
+              ? `${t('chat.weeklyLimitHit')}${teamUsage.cycleEndsAt ? ` ${t('chat.resets')} ${formatResetTime(teamUsage.cycleEndsAt)}.` : ''} ${t('chat.topUpToContinue')}`
+              : t('chat.budgetComplete')}
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              data-analytics-id="chat-budget-openrouter-free"
+              disabled={openRouterStatus === 'saving'}
+              onClick={() => void handleUseOpenRouterFree()}
+              className="rounded-lg border border-coral-300 bg-surface px-3 py-1.5 text-xs font-medium text-coral-700 transition-colors hover:bg-coral-100 disabled:cursor-wait disabled:opacity-70">
+              {openRouterStatus === 'saving' ? t('openrouterFree.saving') : t('openrouterFree.cta')}
+            </button>
+            <button
+              type="button"
+              data-analytics-id="chat-budget-top-up"
+              onClick={() => void openUrl(PRICING_URL)}
+              className="rounded-lg bg-coral-500 px-3 py-1.5 text-xs font-medium text-content-inverted transition-colors hover:bg-coral-400">
+              {t('chat.topUp')}
+            </button>
+          </div>
+        </div>
+      )}
+      {openRouterStatus === 'error' && (
+        <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700">
+          {t('openrouterFree.error')}
+        </div>
+      )}
+      {attachError && (
+        <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2">
+          <p className="text-xs text-coral-500" data-chat-send-error-code={attachError.code}>
+            {attachError.message}
+          </p>
+        </div>
+      )}
+      {selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 ? (
+        <QueuedFollowups
+          items={queuedFollowupsByThread[selectedThreadId] ?? []}
+          onClear={() => void handleClearQueuedFollowups()}
+        />
+      ) : null}
+    </>
+  );
+
+  const assistantUiMainPanel = (
+    <div
+      className={
+        isSidebar
+          ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-l border-line bg-surface'
+          : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+      }>
+      <AssistantUiChat
+        threadGoal={threadGoal}
+        model={composerModelOverride ?? resolvedModel ?? CHAT_MODEL_HINT}
+        modelContextWindow={composerModelContextWindow}
+        composerHeader={assistantComposerHeader}
+        inputValue={inputValue}
+        onInputValueChange={setInputValue}
+        onEscape={handleComposerEscape}
+        attachments={attachments}
+        onAttachFiles={handleAttachFiles}
+        onRemoveAttachment={id => setAttachments(previous => previous.filter(a => a.id !== id))}
+        maxAttachments={ATTACHMENT_MAX_IMAGES + ATTACHMENT_MAX_FILES}
+        attachmentsEnabled={CHAT_ATTACHMENTS_ENABLED}
+        attachmentInteractionBlocked={composerInteractionBlocked || isSending}
+        onAttachmentOnlySend={() => void handleComposerSend()}
+        onModelChange={(value, contextWindow) => {
+          setComposerModelOverride(value);
+          setComposerModelContextWindow(contextWindow ?? null);
+        }}
+      />
+    </div>
+  );
+  // The realtime/mic-only embed still owns a voice-specific footer. The normal
+  // text chat is fully assistant-ui; voice keeps its established surface until
+  // assistant-ui exposes the equivalent recording controls.
+  const mainPanel = composer === 'mic-cloud' ? legacyMainPanel : assistantUiMainPanel;
+
   return (
     <div
       className={
         isSidebar
           ? 'h-full relative z-10 flex overflow-hidden'
-          : // No background of its own. The old `bg-surface/70 dark:bg-black/40`
-            // was a translucent tint over the app canvas, which composed to pure
+          : // No background of its own.
+            // The old bg-surface/70 with a dark-mode black/40 override was a
+            // translucent tint over the app canvas, which composed to pure
             // black in dark — the colour the composer fade below hardcoded. On
             // the opaque content card it instead composes to an un-tokened
             // ~#0e0e0e that nothing else in the app can name or match, so the

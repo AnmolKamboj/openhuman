@@ -55,7 +55,7 @@ export function ThreadList({
       {/* Section header: a muted group label with the "new" affordance docked on
           the right, replacing the old full-width centered button. Mirrors the
           grouped-nav idiom the settings sidebar already uses. */}
-      <div className="flex flex-shrink-0 items-center justify-between px-4 pb-1.5 pt-4">
+      <div className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-4">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
           {t('chat.conversationsHeading')}
         </span>
@@ -130,7 +130,7 @@ export function ThreadList({
                     onBlur={() => onBlurTitle(thread.id)}
                     aria-label={t('chat.editThreadTitle')}
                     data-testid={`thread-title-input-${thread.id}`}
-                    className="h-5 min-w-0 flex-1 border-b border-primary-400 bg-transparent py-0 text-xs font-medium leading-none text-content-secondary outline-none"
+                    className="h-5 min-w-0 flex-1 border-b border-primary-400 bg-transparent py-0 text-xs font-medium leading-none text-content-secondary outline-hidden"
                     autoFocus
                   />
                 ) : (

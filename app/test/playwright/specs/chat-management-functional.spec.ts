@@ -112,12 +112,12 @@ test.describe('Chat management functional coverage', () => {
     await attachTxt();
     await expect(page.getByText('notes.txt')).toBeVisible();
 
-    await page.getByPlaceholder('How can I help you today?').fill('Summarize this file');
+    await page.getByPlaceholder('Send a message...').fill('Summarize this file');
     await page.getByTestId('send-message-button').click();
     await expect(page.getByText('Attachment received by the assistant.')).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByPlaceholder('How can I help you today?')).toBeEnabled();
+    await expect(page.getByPlaceholder('Send a message...')).toBeEnabled();
 
     await expect
       .poll(

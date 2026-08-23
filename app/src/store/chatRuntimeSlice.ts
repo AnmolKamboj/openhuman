@@ -364,7 +364,7 @@ export interface SubAgentUsage {
 }
 
 /** Running per-session totals accumulated from `chat:done` events (#703). */
-interface SessionTokenUsage {
+export interface SessionTokenUsage {
   inputTokens: number;
   outputTokens: number;
   turns: number;

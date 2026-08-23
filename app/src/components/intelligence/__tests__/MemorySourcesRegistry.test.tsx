@@ -158,7 +158,7 @@ describe('MemorySourcesRegistry', () => {
     setup([source]);
     await screen.findByText('My Repo');
 
-    const toggle = screen.getByTitle(/disable/i);
+    const toggle = screen.getByRole('switch', { name: /disable/i });
     fireEvent.click(toggle);
 
     await waitFor(() => {

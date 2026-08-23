@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
+import { cn } from '../../../lib/cn';
 import { useT } from '../../../lib/i18n/I18nContext';
+import Button from '../../ui/Button';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import SettingsSearchBar from '../search/SettingsSearchBar';
 import { useSettingsSearch } from '../search/useSettingsSearch';
@@ -110,27 +112,32 @@ const SettingsSidebar = () => {
                     : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary';
                 return (
                   <li key={row.id}>
-                    <button
+                    <Button
                       type="button"
+                      variant="tertiary"
                       data-testid={`settings-nav-${row.id}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => navigateToSettings(row.route)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[14px] transition-colors ${rowClass}`}>
+                      className={cn(
+                        'h-auto w-full justify-start gap-2 rounded-md px-2 py-1 text-left text-[14px] font-normal',
+                        rowClass
+                      )}>
                       <span
                         // `active` is tested first so a row that is both active
                         // and highlighted renders fully neutral — otherwise the
                         // label went neutral while the icon kept the accent.
-                        className={`shrink-0 ${
+                        className={cn(
+                          'shrink-0',
                           active
                             ? 'text-content-secondary'
                             : highlight
                               ? 'text-primary-600 dark:text-primary-400'
                               : 'text-content-faint'
-                        }`}>
+                        )}>
                         {SETTINGS_NAV_ICONS[row.id] ?? null}
                       </span>
                       <span className="truncate">{row.label}</span>
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
