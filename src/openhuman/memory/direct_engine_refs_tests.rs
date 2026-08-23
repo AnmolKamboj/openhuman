@@ -112,8 +112,17 @@
 //!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
 //!   `sha2` in the contract crate.
 //! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
-//!   ensure_reembed_backfill, requeue_failed_after_provider_change,
-//!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
+//!   requeue_failed_after_provider_change, drain_until_idle, wake_workers,
+//!   backfill_in_progress}`. No family.
+//!
+//!   `ensure_reembed_backfill` is off this list, and how it left is the part
+//!   worth keeping: it needed no upstream work at all. `Maintenance::reembed`
+//!   is documented as "recompute embeddings for content whose embedding is
+//!   missing or stale", and the TinyCortex driver implements it by calling
+//!   `ensure_reembed_backfill` and reporting how many jobs that enqueued — so
+//!   the five host call sites were already expressible and this audit had
+//!   simply not checked. Before sizing an upstream ask for anything else here,
+//!   read what the driver already does with the nearest existing method.
 //! - **Engine-shaped integration internals** (~11 files) —
 //!   `tinycortex::{memory_config_from, run_composio_connection,
 //!   load_composio_sync_state, HostSyncAdapter, CodingSession*}`. Named after
@@ -386,7 +395,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/config/ops/model.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
+        "queue::requeue_failed_after_provider_change has no capability family; the enqueue half moved onto Maintenance::reembed, which already was this call",
     ),
     (
         "src/openhuman/cron/scheduler.rs",
@@ -421,7 +430,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/inference/embeddings/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
+        "queue::requeue_failed_after_provider_change has no capability family; the enqueue half moved onto Maintenance::reembed, which already was this call",
     ),
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
@@ -546,7 +555,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/sync_events_bridge.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, sync_events) has no capability family",
+        "sync_events is engine-owned vocabulary with no capability family; the enqueue half moved onto Maintenance::reembed",
     ),
     (
         "src/openhuman/memory/tools/flavour.rs",
@@ -591,7 +600,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/security/credentials/ops.rs",
         Verdict::NeedsWiderSeam,
-        "two blockers: the re-embed queue (queue::ensure_reembed_backfill), which has no capability family; and the in-process engine handle (global::init), which belongs to memory::binding",
+        "the in-process engine handle (global::init), which belongs to memory::binding; the re-embed enqueue that was the second blocker moved onto Maintenance::reembed",
     ),
     (
         "src/openhuman/skills/runtime/run_machinery.rs",

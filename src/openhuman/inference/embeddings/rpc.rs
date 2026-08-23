@@ -376,7 +376,11 @@ pub async fn update_settings(
     config.save().await.map_err(|e| e.to_string())?;
 
     if sig_changed {
-        tinymemory_core::queue::ensure_reembed_backfill(&config);
+        crate::openhuman::memory::ops::maintenance::reembed_best_effort(
+            &config,
+            "embedding settings",
+        )
+        .await;
     }
 
     // #5324: this is the exact screen the "embedding budget reached" alert

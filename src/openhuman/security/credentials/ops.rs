@@ -640,7 +640,11 @@ async fn store_session_inner(
         operation = "store_session",
         "[credentials][auth-store] scheduler gate cleared; ensuring re-embed backfill after login"
     );
-    tinymemory_core::queue::ensure_reembed_backfill(&effective_config);
+    crate::openhuman::memory::ops::maintenance::reembed_best_effort(
+        &effective_config,
+        "session stored",
+    )
+    .await;
     logs.push("memory re-embed backfill checked after login".to_string());
 
     // Bind the Sentry scope to this user so background events that fire

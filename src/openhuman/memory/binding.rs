@@ -476,6 +476,12 @@ pub fn for_workspace(
 #[cfg(test)]
 pub(crate) struct FixedDiagnostics {
     inner: NullMemoryProvider,
+    /// How many times the host has asked this driver to re-embed.
+    ///
+    /// `reembed` enqueues work rather than doing it, so the host's side of that
+    /// contract is only that it *asked* — whether a row appears is the driver's
+    /// business, and pinning it here would test the driver through the host.
+    reembed_calls: std::sync::atomic::AtomicUsize,
     store: crate::openhuman::memory::api::provider::types::StoreStats,
     queue: crate::openhuman::memory::api::provider::types::QueueStats,
     failure: Option<crate::openhuman::memory::api::provider::types::QueueFailure>,
@@ -506,7 +512,13 @@ mod fixed_diagnostics_impl {
                 store,
                 queue,
                 failure: None,
+                reembed_calls: std::sync::atomic::AtomicUsize::new(0),
             }
+        }
+
+        /// How many times [`MemoryMaintenance::reembed`] has been called.
+        pub(crate) fn reembed_calls(&self) -> usize {
+            self.reembed_calls.load(std::sync::atomic::Ordering::SeqCst)
         }
     }
 
@@ -586,6 +598,8 @@ mod fixed_diagnostics_impl {
     #[async_trait]
     impl MemoryMaintenance for FixedDiagnostics {
         async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
+            self.reembed_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(MaintenanceReport::default())
         }
 
@@ -647,12 +661,14 @@ pub(crate) fn install_diagnostics_for_test(
     cfg: &MemorySubsystemConfig,
     store: crate::openhuman::memory::api::provider::types::StoreStats,
     queue: crate::openhuman::memory::api::provider::types::QueueStats,
-) {
+) -> Arc<FixedDiagnostics> {
+    let driver = Arc::new(FixedDiagnostics::new(store, queue));
     install_for_test(
         workspace_dir,
         cfg,
-        Arc::new(FixedDiagnostics::new(store, queue)),
+        Arc::clone(&driver) as Arc<dyn MemoryProvider>,
     );
+    driver
 }
 
 /// Install `provider` as the binding a workspace resolves to.
