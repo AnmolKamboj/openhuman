@@ -115,12 +115,6 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         graph_fn: None,
     },
     BuiltinAgent {
-        id: "tinyplace_agent",
-        toml: include_str!("../../../tinyplace/agent/agent.toml"),
-        prompt_fn: crate::openhuman::tinyplace::agent::prompt::build,
-        graph_fn: None,
-    },
-    BuiltinAgent {
         id: "tools_agent",
         toml: include_str!("tools_agent/agent.toml"),
         prompt_fn: super::tools_agent::prompt::build,
@@ -142,12 +136,6 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         id: "profile_memory_agent",
         toml: include_str!("profile_memory_agent/agent.toml"),
         prompt_fn: super::profile_memory_agent::prompt::build,
-        graph_fn: None,
-    },
-    BuiltinAgent {
-        id: "account_admin_agent",
-        toml: include_str!("account_admin_agent/agent.toml"),
-        prompt_fn: super::account_admin_agent::prompt::build,
         graph_fn: None,
     },
     BuiltinAgent {
