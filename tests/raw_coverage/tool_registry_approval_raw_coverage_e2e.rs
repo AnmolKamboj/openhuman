@@ -673,7 +673,7 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
     // but `None` once another case in this binary has opened a second one — so
     // the ambient form reports nothing connected here purely because of who
     // else ran first.
-    let entries = registry_entries_for_config(&config);
+    let entries = registry_entries_for_config(&other_config);
     let client_entry = entries
         .iter()
         .find(|entry| entry.tool_id == format!("mcp-client::{}::echo", server.server_id))
