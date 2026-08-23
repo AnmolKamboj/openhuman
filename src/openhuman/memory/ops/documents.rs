@@ -478,11 +478,42 @@ pub async fn memory_query_namespace(
     let include_references = request.include_references.unwrap_or(true);
     let requested_limit = request.resolved_limit() as usize;
     let result = async {
-        let client = active_memory_client().await?;
-        let retrieval_limit = query_limit_for_request(client.as_ref(), &request).await?;
-        let mut context = client
-            .query_namespace_context_data(&request.namespace, &request.query, retrieval_limit)
-            .await?;
+        use tinymemory_api::provider::MemoryRetrieval;
+
+        let guard = active_memory_guard().await?;
+        let retrieval_limit = query_limit_for_request(guard.as_ref(), &request).await?;
+        // `recall_namespace_scored` is the contract twin of
+        // `query_namespace_context_data`: both resolve to the query-ranked
+        // `query_namespace_hits` path, and the only thing the wrapper added was
+        // a rendered `context_text` this handler never read — it builds its own
+        // via `build_retrieval_context` / `format_llm_context_message`.
+        //
+        // `exclude_session_id: None` preserves the current behaviour exactly.
+        // The self-echo exclusion belongs to an agent turn recalling mid-turn;
+        // an RPC handler is not one, and passing a session here would start
+        // silently hiding rows from a caller that used to see them.
+        //
+        // NOTE for whoever migrates the two sibling handlers below: this
+        // mapping does **not** generalise. `memory.recall_context` and
+        // `memory.recall_memories` take the *recency* path
+        // (`recall_namespace_memories`), which is a different code path with no
+        // bus twin — an empty query does not degrade to recency. See the gap
+        // note in `memory::direct_engine_refs_tests`.
+        let hits = MemoryRetrieval::recall_namespace_scored(
+            guard.as_ref(),
+            &request.namespace,
+            &request.query,
+            retrieval_limit as usize,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        let mut context = NamespaceRetrievalContext {
+            namespace: request.namespace.clone(),
+            query: Some(request.query.clone()),
+            context_text: String::new(),
+            hits,
+        };
         context.hits = filter_hits_by_document_ids(context.hits, request.document_ids.as_deref());
         // `query_limit_for_request` may have over-fetched on purpose so that
         // the document_id filter has enough candidates; truncate back to what
