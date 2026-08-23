@@ -532,16 +532,27 @@ pub(crate) fn parse_memory_document_summaries(
         .collect()
 }
 
+/// Resolve the retrieval limit, over-fetching when the caller filtered on
+/// document ids so the filter has enough candidates to work with.
+///
+/// Takes the **guard**, not a `MemoryClient`: `MemoryDocuments::list_documents`
+/// is the contract twin of the call this used to make, returns the same
+/// `serde_json::Value`, and runs the read through the policy steps the raw
+/// client skipped.
 pub(crate) async fn query_limit_for_request(
-    client: &MemoryClient,
+    guard: &crate::openhuman::memory::guard::MemoryGuard,
     request: &QueryNamespaceRequest,
 ) -> Result<u32, String> {
+    use tinymemory_api::provider::MemoryDocuments;
+
     let requested = request.resolved_limit();
     if request.document_ids.is_none() {
         return Ok(requested);
     }
 
-    let raw = client.list_documents(Some(&request.namespace)).await?;
+    let raw = MemoryDocuments::list_documents(guard, Some(&request.namespace))
+        .await
+        .map_err(|e| e.to_string())?;
     let documents = parse_memory_document_summaries(raw)?;
     let total_documents = u32::try_from(documents.len()).unwrap_or(u32::MAX);
     Ok(requested.max(total_documents))
