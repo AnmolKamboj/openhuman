@@ -714,6 +714,11 @@ const UserActionBar: FC = () => {
       hideWhenRunning
       autohide="not-last"
       className="aui-user-action-bar-root flex flex-col items-end">
+      <ActionBarPrimitive.Copy asChild>
+        <TooltipIconButton tooltip="Copy response">
+          <CopyIcon />
+        </TooltipIconButton>
+      </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Edit asChild>
         <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
           <PencilIcon />
