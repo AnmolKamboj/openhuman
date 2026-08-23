@@ -295,7 +295,7 @@ impl SystemPromptBuilder {
         // as a closing contract; byte-stable, so it stays cache-friendly.
         output.push_str(GROUNDING_BODY);
         output.push_str("\n\n");
-        output.push_str(GLOBAL_STYLE_SUFFIX);
+        output.push_str(global_style_block(ctx.workspace_dir).trim_end());
         output.push('\n');
         Ok(output)
     }
