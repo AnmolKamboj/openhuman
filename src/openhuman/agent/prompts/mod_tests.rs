@@ -146,8 +146,8 @@ fn grounding_contract_appended_to_every_build_path() {
 
     // Appears before the output-style suffix (tail placement).
     let g = defaults.find("## Grounding and tool use").unwrap();
-    let s = defaults.find("## Output style").unwrap();
-    assert!(g < s, "grounding should precede the output-style suffix");
+    let s = defaults.find("# Writing style").unwrap();
+    assert!(g < s, "grounding should precede the writing-style suffix");
 }
 
 #[test]
