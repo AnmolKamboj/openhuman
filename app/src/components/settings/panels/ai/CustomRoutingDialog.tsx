@@ -282,8 +282,7 @@ export const CustomRoutingDialog = ({
             {t('settings.ai.noCustomProviders')}
           </Alert>
         )}
-        {(
-          <Button
+        <Button
             type="button"
             variant="secondary"
             size="md"
