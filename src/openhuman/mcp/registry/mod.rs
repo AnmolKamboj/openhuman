@@ -88,6 +88,35 @@ pub mod connections {
         }
     }
 
+    /// Every tool on every connected server in `config`'s workspace.
+    ///
+    /// The counterpart to [`all_connected_tools`] for a caller that holds a
+    /// `Config`. It resolves through [`host::for_config`], which is keyed by
+    /// workspace, rather than through the process-wide default — so it answers
+    /// about the workspace the caller named instead of whichever one
+    /// `mcp::init` happened to claim first.
+    ///
+    /// That distinction is invisible in the shipped app, which opens one
+    /// workspace, and decisive in a test binary: `resolve` hands back a lone
+    /// host but returns `None` once a second one exists, so an ambient lookup
+    /// silently reports nothing connected as soon as two tests each open their
+    /// own temporary workspace in one process.
+    ///
+    /// A host that cannot be opened yields an empty list rather than an error:
+    /// the callers fold this into a tool list, and MCP being unavailable must
+    /// not fail the listing.
+    pub async fn all_connected_tools_for_config(
+        config: &Config,
+    ) -> Vec<(String, String, tinymcp_bus::McpTool)> {
+        match host::for_config(config) {
+            Ok(service) => service.dynamic().connections().all_connected_tools().await,
+            Err(error) => {
+                tracing::debug!(?error, "[mcp] no host for workspace; reporting no tools");
+                Vec::new()
+            }
+        }
+    }
+
     /// Every tool on every connected server, paired with its server.
     pub async fn all_connected_tools() -> Vec<(String, String, tinymcp_bus::McpTool)> {
         match host::try_service() {
