@@ -6,7 +6,7 @@
  * needs:
  *
  *   - `button[title="New thread"]`       — icon-only button, no text
- *   - `textarea[placeholder="How can I help you today?"]` — React-controlled
+ *   - `textarea[placeholder="Send a message..."]` — React-controlled
  *     input that should be driven through WebDriver so React observes
  *     the same input events a user would produce
  *   - `button[aria-label="Send message"]` — icon-only button
@@ -57,7 +57,7 @@ export async function clickByTitle(title: string, timeoutMs = 6_000): Promise<bo
   return false;
 }
 
-const COMPOSER_SELECTOR = 'textarea[placeholder="How can I help you today?"]';
+const COMPOSER_SELECTOR = 'textarea[placeholder="Send a message..."]';
 
 /** True once the Conversations page has mounted its composer/header.
  *

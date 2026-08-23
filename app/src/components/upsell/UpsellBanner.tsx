@@ -53,7 +53,7 @@ export default function UpsellBanner({
       className={`p-3 ${rounded ? 'rounded-xl' : ''} border flex items-center justify-between gap-3 ${styles.container}`}>
       <div className="flex items-center gap-2 min-w-0">
         <svg
-          className={`w-4 h-4 flex-shrink-0 ${styles.icon}`}
+          className={`w-4 h-4 shrink-0 ${styles.icon}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24">
@@ -69,7 +69,7 @@ export default function UpsellBanner({
           <p className={`text-xs ${styles.text} truncate`}>{message}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         {ctaLabel && onCtaClick && (
           <button
             onClick={onCtaClick}

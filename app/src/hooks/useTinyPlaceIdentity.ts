@@ -18,9 +18,9 @@
  * user unlocks their wallet), so a one-time startup failure never locks a holder
  * out until an app restart.
  *
- * The check is shared module-side, so the several gates that read it (nav tabs,
- * the agent-world route, the Brain orchestration sub-tab, the notice) share a
- * single in-flight request rather than each firing their own.
+ * The check is shared module-side, so the several gates that read it (the
+ * Brain orchestration sub-tab, the notice) share a single in-flight request
+ * rather than each firing their own.
  */
 import { useEffect, useState } from 'react';
 

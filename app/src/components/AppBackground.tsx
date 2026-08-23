@@ -29,7 +29,9 @@ export default function AppBackground({ className = '' }: AppBackgroundProps) {
           style={{ backgroundImage: `url("${theme.backdrop.imageUrl}")` }}
         />
       )}
-      {showDots && <div className="app-dotted-canvas absolute inset-0" />}
+      {showDots && (
+        <div className="absolute inset-0 bg-transparent bg-[radial-gradient(circle_at_center,rgb(var(--content)/0.1)_1px,transparent_1px)] bg-size-[18px_18px] bg-position-[0_0]" />
+      )}
     </div>
   );
 }

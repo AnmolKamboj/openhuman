@@ -1,12 +1,18 @@
 import debug from 'debug';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useCoreState } from '../../../providers/CoreStateProvider';
 import { teamApi } from '../../../services/api/teamApi';
 import { sanitizeError } from '../../../utils/sanitize';
-import { CenteredLoadingState, ErrorBanner, InlineLoadingStatus, Spinner } from '../../ui';
+import {
+  CenteredLoadingState,
+  ErrorBanner,
+  InlineLoadingStatus,
+  ModalShell,
+  Spinner,
+} from '../../ui';
 import Button from '../../ui/Button';
 import { SettingsBadge, SettingsEmptyState, SettingsSection } from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
@@ -15,6 +21,7 @@ const log = debug('core-rpc:error');
 
 const TeamInvitesPanel = () => {
   const { t } = useT();
+  const revokeTitleId = useId();
   const { teamId } = useParams<{ teamId: string }>();
   const location = useLocation();
   const { snapshot, teams, teamInvitesById, refreshTeamInvites } = useCoreState();
@@ -284,56 +291,57 @@ const TeamInvitesPanel = () => {
 
         {/* Revoke Invite Confirmation Modal */}
         {inviteToRevoke && (
-          <div className="fixed inset-0 bg-neutral-900/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line">
-              <h3 className="text-sm font-semibold text-content mb-4">
-                {t('invites.revokeTitle')}
-              </h3>
-
-              {error && (
-                <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
-                  <p className="text-xs text-coral-400">{error}</p>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="text-sm text-content-muted">
-                  <p>
-                    {t('invites.revokePromptPrefix')}{' '}
-                    <code className="text-content bg-surface-subtle px-1.5 py-0.5 rounded font-mono text-xs">
-                      {inviteToRevoke.code}
-                    </code>
-                    ?
-                  </p>
-                  <p className="mt-2 text-amber-400">{t('invites.revokeWarning')}</p>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => setInviteToRevoke(null)}
-                    disabled={revokingId === inviteToRevoke.id}>
-                    {t('common.cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    tone="danger"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => void confirmRevokeInvite()}
-                    disabled={revokingId === inviteToRevoke.id}>
-                    {revokingId === inviteToRevoke.id
-                      ? t('invites.revoking')
-                      : t('invites.revokeAction')}
-                  </Button>
-                </div>
+          <ModalShell
+            title={t('invites.revokeTitle')}
+            titleId={revokeTitleId}
+            onClose={() => setInviteToRevoke(null)}
+            contentClassName="px-6 py-5"
+            closePolicy={
+              revokingId === inviteToRevoke.id
+                ? { escape: false, backdrop: false, button: false }
+                : undefined
+            }
+            footer={
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  className="flex-1"
+                  onClick={() => setInviteToRevoke(null)}
+                  disabled={revokingId === inviteToRevoke.id}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  tone="danger"
+                  size="md"
+                  className="flex-1"
+                  onClick={() => void confirmRevokeInvite()}
+                  disabled={revokingId === inviteToRevoke.id}>
+                  {revokingId === inviteToRevoke.id
+                    ? t('invites.revoking')
+                    : t('invites.revokeAction')}
+                </Button>
               </div>
+            }>
+            {error && (
+              <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
+                <p className="text-xs text-coral-400">{error}</p>
+              </div>
+            )}
+            <div className="text-sm text-content-muted">
+              <p>
+                {t('invites.revokePromptPrefix')}{' '}
+                <code className="text-content bg-surface-subtle px-1.5 py-0.5 rounded font-mono text-xs">
+                  {inviteToRevoke.code}
+                </code>
+                ?
+              </p>
+              <p className="mt-2 text-amber-400">{t('invites.revokeWarning')}</p>
             </div>
-          </div>
+          </ModalShell>
         )}
       </>
     </SettingsPanel>

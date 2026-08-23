@@ -89,7 +89,7 @@ const ProfilesPanel = () => {
         {profiles.length === 0 ? (
           status === 'loading' ? (
             <div className="flex items-center justify-center py-12 text-content-faint">
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-ocean-500 border-t-transparent" />
+              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
               <span className="text-sm">{t('common.loading')}</span>
             </div>
           ) : (
@@ -97,7 +97,7 @@ const ProfilesPanel = () => {
           )
         ) : (
           <SettingsSection>
-            <ul className="divide-y divide-line-subtle dark:divide-neutral-800">
+            <ul className="divide-y divide-line-subtle">
               {profiles.map(profile => {
                 const isActive = profile.id === activeId;
                 return (

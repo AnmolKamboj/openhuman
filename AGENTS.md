@@ -216,9 +216,16 @@ as `tinyhumans-sdk`).
 | `tinyvoice-bus` | `voice` | `modules/voice.rs` |
 | `tinyjuice-bus` | **none** — `inference::tokenjuice` is kernel | `inference/tokenjuice/types.rs`, `modules/tokenjuice_host.rs` |
 | `tinyruntime-bus` | none — `ShellTool` holds an `Option<Arc<NodeBootstrap>>` field | `modules/runtime.rs`, `runtime/**` |
+| `tinywallet-bus` | `web3` | `modules/wallet.rs`, `web3/**` |
 | `tinymcp-bus` | `mcp` | `mcp/**` |
 
 After cloning: `git submodule update --init --recursive vendor/`.
+
+**What this binary takes from each repository is its `-bus` contract crate, not
+its root crate.** The root crate holds the implementation the TinyBus module
+carries, and this binary does not link it. `tinymcp` is the one exception, and a
+temporary one: its path dependency stays until `tinymcp-bus` grows the members
+the host reaches for (see the `Cargo.toml` comment and tinyhumansai/tinymcp#4).
 
 **Never re-declare a contract type here.** Each of these crates replaced a copy
 that had already drifted or was one edit away from it — `tools/impl/document/
@@ -236,10 +243,10 @@ not `"GenerateDocx"`. A rename upstream is then a compile error here instead of
 a `MemberNotFound` at runtime.
 
 **`registry.rs` is the one place a name is still written out by hand.** It is a
-`const` table and cannot name a gated crate, so `modules/{documents,voice}_tests.rs`
-assert its `bus_name` / `object_path` against the contract's `BUS_NAME` /
-`OBJECT_PATH`. A mismatch is not a compile error — it is a `NameHasNoOwner` at
-first use, in the field, on whichever platform nobody tested.
+`const` table and cannot name a gated crate, so the `_tests.rs` beside each
+module client assert its `bus_name` / `object_path` against the contract's
+`BUS_NAME` / `OBJECT_PATH`. A mismatch is not a compile error — it is a
+`NameHasNoOwner` at first use, in the field, on whichever platform nobody tested.
 
 **Host policy stays host-side.** The contract says what a module may send; it
 does not decide what this host will act on. When a type becomes foreign, the
@@ -248,28 +255,27 @@ policy attached to it becomes a free function rather than moving upstream —
 `vad_config_from_server_config` (this host persists seconds, the module speaks
 milliseconds), and `hallucination_mode_wire`.
 
-### Extracted host-agnostic crates — `vendor/tinywallet`
-
-Separately from the contract crates above, `tinywallet` owns logic that used to
-live in this repo and is not wire vocabulary. The split follows one rule, and it
-is worth stating because it decides where the *next* extraction goes: **a crate
-owns what is the same for every host; the host owns what depends on its own
-runtime, config, or threat model.** The crate is therefore synchronous, I/O-free,
-and runtime-free.
+The split follows one rule, and it is worth stating because it decides where
+the *next* extraction goes: **a crate owns what is the same for every host; the
+host owns what depends on its own runtime, config, or threat model.** The
+contract crates are therefore synchronous, I/O-free, and runtime-free.
 
 | Crate | Owns | OpenHuman keeps |
 | --- | --- | --- |
-| `tinywallet` | the BTC / EVM / Solana / Tron address formats: parsing, validation, encoding conversions | RPC endpoint resolution, transaction assembly and broadcast, key custody — `src/openhuman/web3/` |
+| `tinydocs-bus` | the `.docx` / `.pptx` spec types, their size limits and validation | the artifact pipeline, the `spawn_blocking` hop, and the generation deadline — `src/openhuman/tools/impl/document/` |
+| `tinywallet-bus` | the TinyWallet wire contract and bus member names, the BTC / EVM / Solana / Tron address formats, the EIP-712 and ERC-20 encoders, and the Tron verification codec | RPC endpoint resolution, transaction assembly and broadcast, key custody — `src/openhuman/web3/` |
 
-`tinywallet` has **no `-bus` crate yet**, so it is the one module whose
-contract (`tinywallet::wire`) is reached through a feature of the root crate
-rather than a separate one. The chain and signing core is still out of the
-build — `bitcoin`, `ethers-*` and `coins-bip39` are absent because `key`, `tx`
-and `client` are off — but the arrangement differs from every other module here.
+Consequences worth knowing before touching either seam:
 
-Consequences worth knowing before touching that seam:
-
-- **`tinywallet` rejects an uppercase `0X` EVM prefix, matching the code it
+- **A `-bus` crate may hold logic, not only types, and that is deliberate.**
+  Four wallet rules are the host's to run synchronously: validating an address
+  before a spec is sent (a rejected input rather than a failed call), hashing
+  EIP-712 typed data for the x402 payment path, encoding ERC-20 calldata, and
+  verifying the txid and contents of what a Tron node handed back. That last one
+  is not optional — Tron has the *node* build the transaction, so the check has
+  to happen wherever the decision to sign is made. `tinydocs-bus`' spec
+  validators set the same precedent.
+- **`tinywallet-bus` rejects an uppercase `0X` EVM prefix, matching the code it
   replaced, which rejected that prefix too.** The old path went through `ethers_core::types::Address`'s
   `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
   (`fixed-hash-0.8.0/src/hash.rs`, `input.strip_prefix("0x")`), so `0X…` failed
@@ -278,13 +284,10 @@ Consequences worth knowing before touching that seam:
 - **Bitcoin has two rules, not one.** `btc::validate` is the recipient rule;
   `btc::validate_sender` additionally requires P2WPKH. Using the first where
   the second belongs accepts an address that only fails later, at signing time.
-- **Its gate rides OpenHuman's existing one**: `tinywallet` is exclusive to
-  `web3`, which is default-ON in the product set and already forwarded to the
-  desktop shell.
-
-Two consequences of the document seam survive the move to `tinydocs-bus` and
-still apply:
-
+- **The root `tinywallet` crate survives as a dev-dependency only.** Test
+  fixtures derive a known account through its `key` gate. Cargo does not link
+  dev-dependency features into the shipped binary, so this does not put
+  `bitcoin`, `coins-bip39` or a native `secp256k1` build back into the product.
 - **Document generation is synchronous on purpose.** A crate that guessed at an
   executor or a deadline would be wrong for every host that guessed
   differently, so `document/engine.rs` supplies exactly that policy and nothing
@@ -298,6 +301,10 @@ still apply:
   contract's `DocumentSpec` re-exported under its historical name, with field
   names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
   that.
+- **Each crate's gates ride OpenHuman's existing ones**: `tinydocs-bus` is
+  exclusive to `documents`, `tinywallet-bus` to `web3`. Both are default-OFF for
+  contributors and product-ON, and both are already forwarded to the desktop
+  shell.
 
 ### Backend API access — `src/api/` over `tinyhumans-sdk`
 
@@ -950,7 +957,7 @@ Each domain owns `bus.rs` with handlers. Convention: `<Purpose>Subscriber`, `nam
 
 ## Design & patterns
 
-**Visual**: ocean primary `#4A83DD`, sage/amber/coral semantics, Inter + Cabinet Grotesk + JetBrains Mono. Tokens in [`app/tailwind.config.js`](app/tailwind.config.js).
+**Visual**: primary `#2F6EF4`, sage/amber/coral semantics, Inter + Cabinet Grotesk + JetBrains Mono. Canonical tokens in [`app/src/styles/tokens.css`](app/src/styles/tokens.css) (RGB channel triples); [`app/tailwind.config.js`](app/tailwind.config.js) wraps each as `rgb(var(--token) / <alpha-value>)`.
 
 **Key rules:**
 

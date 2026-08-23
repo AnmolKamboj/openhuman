@@ -31,7 +31,6 @@ type SettingsRoute =
   | 'tools'
   | 'recovery-phrase'
   | 'wallet-balances'
-  | 'local-model-debug'
   | 'notifications'
   | 'notification-routing'
   | 'personality'

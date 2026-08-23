@@ -22,7 +22,7 @@ export interface NavTab {
 
 /**
  * Ordered list of sidebar nav entries:
- *   chat → human → brain → flows → agent-world → connections
+ *   chat → human → brain → flows → connections
  *
  * Orchestration (TinyPlace multi-agent coordination) is no longer a top-level
  * tab — it was folded back under Brain as the `/brain?tab=orchestration`
@@ -45,12 +45,6 @@ export const NAV_TABS: NavTab[] = [
   { id: 'human', labelKey: 'nav.human', path: '/human', walkthroughAttr: 'tab-human' },
   { id: 'brain', labelKey: 'nav.brain', path: '/brain', walkthroughAttr: 'tab-brain' },
   { id: 'flows', labelKey: 'nav.flows', path: '/flows', walkthroughAttr: 'tab-flows' },
-  {
-    id: 'agent-world',
-    labelKey: 'nav.agentWorld',
-    path: '/agent-world',
-    walkthroughAttr: 'tab-agent-world',
-  },
   {
     id: 'connections',
     labelKey: 'nav.connections',
