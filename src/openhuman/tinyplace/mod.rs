@@ -44,8 +44,6 @@
 //! nowhere. The desktop feed composer links users to the web app to attach
 //! media instead of dead-ending. See #4924.
 
-pub(crate) mod agent;
-mod agent_tools;
 mod manifest;
 pub(crate) use manifest::{
     acknowledge_message, decrypt_envelope, ensure_signal_keys_published,
