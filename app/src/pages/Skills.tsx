@@ -35,7 +35,6 @@ import {
 import SkillSearchBar from '../components/skills/SkillSearchBar';
 import SkillsExplorerTab from '../components/skills/SkillsExplorerTab';
 import VoiceSetupModal from '../components/skills/VoiceSetupModal';
-import { DataTable, type DataTableColumn, TableCell, TableRow } from '../components/ui';
 import Badge from '../components/ui/Badge';
 import BetaIndicator from '../components/ui/BetaIndicator';
 import Button from '../components/ui/Button';
