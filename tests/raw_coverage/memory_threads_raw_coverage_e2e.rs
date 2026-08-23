@@ -152,7 +152,10 @@ use openhuman_core::openhuman::memory::rpc_models::{
 };
 use tinymemory_core::{
     remember::RememberSourceKind,
-    rpc_models::{ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest, RecallContextRequest, RecallMemoriesRequest},
+    rpc_models::{
+        ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest,
+        RecallContextRequest, RecallMemoriesRequest,
+    },
     traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
     util::redact::{redact, redact_endpoint},
 };
