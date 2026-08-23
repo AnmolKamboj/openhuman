@@ -47,7 +47,7 @@ fn the_advertised_capabilities_match_the_pinned_artifact() {
     // Renamed from `..._cover_the_complete_memory_api`, which asserted
     // `capabilities == Capabilities::all()`. That encoded #5598 as the expected
     // behaviour: the host advertised all eighteen families the contract crate
-    // declares while the pinned v1.0.1 artifact serves thirteen, so the other
+    // declares while the then-pinned v1.0.1 artifact served thirteen, so the other
     // five answered UnknownMethod instead of reporting themselves absent.
     //
     // The part that was always true is still pinned below: the host assembles

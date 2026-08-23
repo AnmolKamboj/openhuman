@@ -369,8 +369,9 @@ impl ModuleMemoryProvider {
     /// assumes, once per process.
     ///
     /// Compared against [`artifact_capabilities`] rather than
-    /// `Capabilities::all()`: the pinned `v1.0.1` artifact answers thirteen
-    /// families, so comparing with the eighteen the contract declares would warn
+    /// `Capabilities::all()`: the pinned artifact answers fewer families than the
+    /// contract declares (seventeen of eighteen at v1.2.0), so comparing with the
+    /// full contract would warn
     /// on the *expected* state at every first module use and leave the warning
     /// permanently crying wolf. Against the configured set it fires only when
     /// the loaded artifact genuinely disagrees with the pin — including when the

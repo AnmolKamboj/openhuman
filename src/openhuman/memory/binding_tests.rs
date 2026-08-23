@@ -364,8 +364,8 @@ fn module_class_binds_the_module_driver_not_null() {
 fn module_binding_advertises_the_pinned_artifacts_families() {
     // Was `module_binding_advertises_every_family`, asserting `advertised ==
     // Capabilities::all()`. That encoded #5598 as expected: the host claimed
-    // all eighteen contract families while the pinned v1.0.1 artifact serves
-    // thirteen, so the other five (`people`, `chunks`, `retrieval`, `profile`,
+    // all eighteen contract families while the then-pinned v1.0.1 artifact
+    // served thirteen, so the other five (`people`, `chunks`, `retrieval`, `profile`,
     // `episodic`) answered `UnknownMethod` instead of reporting themselves
     // absent. `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match
     // what the pinned release actually serves (see its module docs); this

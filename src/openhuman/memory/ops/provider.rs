@@ -168,7 +168,7 @@ mod tests {
                 crate::openhuman::memory::api::CONTRACT_VERSION
             )
         );
-        // The thirteen families the pinned v1.0.1 tinymemory artifact actually
+        // The seventeen families the pinned v1.2.0 tinymemory artifact actually
         // serves — not the eighteen the contract crate declares. This used to
         // assert all eighteen, including `chunks`, `episodic`, `people`,
         // `profile`, and `retrieval`; that encoded #5598 as expected: those
