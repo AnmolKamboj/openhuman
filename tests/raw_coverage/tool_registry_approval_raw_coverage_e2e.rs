@@ -670,7 +670,10 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
     assert_eq!(client_entry.route["server_id"], json!(server.server_id));
     assert!(client_entry.tags.iter().any(|tag| tag == "mcp_client"));
 
-    assert!(connections::disconnect(&server.server_id).await);
+    // Config-scoped for the same reason as the lookup above: this connection
+    // lives in the host keyed by `config`'s workspace, and the by-id form
+    // resolves through the process default.
+    assert!(connections::disconnect_for_config(&config, &server.server_id).await);
 }
 
 #[tokio::test]
