@@ -52,31 +52,40 @@
 //!
 //! ## The concrete gaps, for whoever picks the upstream work up
 //!
-//! The seam's tree family is `query_source(namespace, source_id, limit, scope)
-//! -> Vec<Chunk>`, `drill_down(namespace, node_id) -> QueryResult`, `append`,
-//! `seal`, `cascade`. What the host actually calls is richer in four ways, and
-//! each is a distinct upstream ask:
+//! **This list was drained on 2026-08-23 and the shape of the problem changed.**
+//! It used to enumerate four things the seam could not express — retrieval
+//! filters, chunk reads, an entity-kind filter, and source listing — plus the
+//! people domain and the `source_scope` task-local. Every one of those now has
+//! a home:
 //!
-//! 1. **Retrieval takes filters the seam has no room for** — a time window, a
-//!    free-text query, a `SourceKind`, a depth and a limit
-//!    (`query::backend`, `query::cover_window`, `query::fast_walk`).
-//! 2. **Chunk reads have no family at all.** `store::chunks::store::{get_chunk,
-//!    list_chunks}` with a nine-field `ListChunksQuery` backs three agent tools
-//!    (`memory_chunk_context`, `raw_chunks`, `vector_search`); the seam's only
-//!    chunk door is `query_source`, keyed on a single source id.
-//! 3. **Entity search has no kind filter.** `MemoryEntities::entities` takes
-//!    `(namespace, query, limit)`; `memory_tree_search_entities` additionally
-//!    filters on `Vec<EntityKind>`.
-//! 4. **Sources cannot be listed.** `MemorySourceSink` is
-//!    `accept_source_items` + `forget_source`; `memory_diff` needs
-//!    `sources::{get_source, list_sources}`.
+//! - **Retrieval filters, chunk reads, entity-kind search** — `MemoryRetrieval`
+//!   (`fast_retrieve`, `cover_window`, `retrieve_source`, `retrieve_children`,
+//!   `retrieve_leaves`, `recall_namespace_scored`, `search_entities`) and
+//!   `MemoryChunks` (`list_chunks`, `get_chunk`, `chunk_detail`,
+//!   `storage_kinds`, `chunk_embeddings`).
+//! - **The people domain** — `MemoryPeople`, seven methods.
+//! - **Profile/facets** — `MemoryProfile`, eleven methods, which
+//!   `memory::guard`'s docs separately described as a missing "fourteenth
+//!   family".
+//! - **`source_scope`** — not a seam gap at all. It is host policy; it lives in
+//!   `memory::source_scope`, and the scope crosses the bus as a `SourceScope`
+//!   value on every scoped method.
 //!
-//! Two more sit outside the tree families entirely: the `people` domain has no
-//! capability family (`PeopleStore`, `Handle`, `PersonId`), and
-//! `source_scope::{current_source_scope, chunk_source_allowed}` is a
-//! task-local the host sets and the engine reads — it is host policy that
-//! happens to live in the engine crate, and it should probably move to
-//! `tinymemory-api` rather than gain a bus method.
+//! `ModuleMemoryProvider` implements all of these bar `as_episodic`, and
+//! `MemoryGuard` wraps all fifteen families.
+//!
+//! **So what blocks the migration is release lag, not seam width.**
+//! `modules::registry` pins a SHA-256-verified artifact, and the five families
+//! above shipped in no release until v1.2.0. Before migrating a call site onto
+//! one, check the *tag* rather than the vendored source — the submodule is
+//! routinely ahead of what is pinned. A method the pinned artifact does not
+//! serve answers `Unsupported` at run time, which is strictly worse than the
+//! direct call it replaced.
+//!
+//! What genuinely has no bus representation yet, and is the next upstream ask:
+//! the ingest `queue`, the `chat` runtime seam, and the composio sync
+//! pipelines. Those live inside `tinymemory-core` and would each need a design
+//! pass, not just a trait method.
 //!
 //! # Known weaknesses, stated rather than hidden
 //!
