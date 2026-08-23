@@ -523,7 +523,10 @@ tinyhosts = { path = "vendor/tinyhosts", default-features = false, features = ["
 # published to crates.io, so there is no `[patch.crates-io]` entry for it.
 # After cloning: `git submodule update --init vendor/tinywallet`.
 #
-# Optional: exclusive to the default-ON `web3` feature.
+# Optional: exclusive to the `web3` feature — OFF in the contributor set
+# (`[features] default`) and ON in the product set
+# (`scripts/ci/product-features.txt`), so it ships but a bare `cargo check` does
+# not pay for it. See the two-set note above `default`.
 #
 # Taken as `tinywallet-bus`, the contract crate, and NOT the root `tinywallet`
 # crate. The root crate is where key derivation, transaction building, signing

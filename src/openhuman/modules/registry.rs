@@ -105,8 +105,10 @@ const TINYDOCS: ModuleRecord = ModuleRecord {
 ///
 /// **This host sends it the recovery phrase, over confidential calls, and never
 /// derives or signs itself.** All four chains — Bitcoin, EVM, Solana and Tron —
-/// derive and sign inside the module. This binary links neither `tinywallet`'s
-/// `key` feature nor `k256`; see the note on the `tinywallet` dependency.
+/// derive and sign inside the module. This binary does not link the root
+/// `tinywallet` crate at all — it takes `tinywallet-bus`, the wire contract,
+/// which carries no `key` gate — nor does it link `k256`; see the note on the
+/// `tinywallet-bus` dependency.
 ///
 /// The phrase is only sent to a module tinybus has attested *and* whose digest
 /// matches one of the entries below — `super::wallet::attested_proxy` checks

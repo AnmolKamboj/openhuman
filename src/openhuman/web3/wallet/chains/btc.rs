@@ -664,8 +664,10 @@ mod tests {
         assert!(matches!(pubkey[0], 0x02 | 0x03));
 
         // The known-good vector for this mnemonic and path, unchanged by the
-        // move off the `bitcoin` crate. Derived through `tinywallet`, which is
-        // the same code the address in `execute_btc_quote` comes from.
+        // move off the `bitcoin` crate. Derived through the root `tinywallet`
+        // crate, which is the same code that produces the address in
+        // `execute_btc_quote` — in production it runs inside the wallet module
+        // rather than here, but it is the same crate and the same walk.
         let derived =
             tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, "m/84'/0'/0'/0/0").unwrap();
         assert_eq!(
