@@ -799,17 +799,38 @@ async fn hardened_git_neutralises_hookspath_even_if_the_allowlist_check_never_ra
 
 /// `commit.gpgsign` is on `ALLOWED_REPO_CONFIG` as an ordinary boolean, but
 /// left un-neutralised it would let a repository force every commit through
-/// this tool to be signed with whatever key the host happens to have
-/// configured. If the override in `hardened_git` were missing or wrong, this
-/// commit would fail (no usable signing key in a test environment) rather
-/// than succeed.
+/// this tool to be signed. `output.status.success()` alone does not prove
+/// that: a repository that also configures a *working* `gpg.program` would
+/// make a signed commit succeed too, so this plants a fake one that always
+/// signs successfully and then inspects the commit object itself for a
+/// `gpgsig` header — the only assertion that actually distinguishes "signing
+/// was skipped" from "signing was attempted and happened to work".
+#[cfg(unix)]
 #[tokio::test]
 async fn hardened_git_neutralises_forced_commit_signing() {
+    use std::os::unix::fs::PermissionsExt;
+
     let tmp = TempDir::new().unwrap();
     init_git_repo(tmp.path());
     set_config(tmp.path(), "user.email", "test@example.com");
     set_config(tmp.path(), "user.name", "Test");
     set_config(tmp.path(), "commit.gpgsign", "true");
+
+    // A `gpg.program` that always "signs" successfully, so a regression here
+    // fails by finding a signature, not by the commit merely erroring out —
+    // the same distinction CodeRabbit's review raised.
+    let fake_gpg = tmp.path().join("fake-gpg.sh");
+    std::fs::write(
+        &fake_gpg,
+        "#!/bin/sh\n\
+         printf '%s\\n' '[GNUPG:] BEGIN_SIGNING H10' >&2\n\
+         cat >/dev/null\n\
+         printf -- '-----BEGIN PGP SIGNATURE-----\\n\\nZmFrZQ==\\n-----END PGP SIGNATURE-----\\n'\n\
+         printf '%s\\n' '[GNUPG:] SIG_CREATED D 1 10 00 0 0123456789ABCDEF' >&2\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake_gpg, std::fs::Permissions::from_mode(0o755)).unwrap();
+    set_config(tmp.path(), "gpg.program", &fake_gpg.to_string_lossy());
 
     std::fs::write(tmp.path().join("f.txt"), "hi").unwrap();
     let staged = hermetic(
@@ -827,11 +848,23 @@ async fn hardened_git_neutralises_forced_commit_signing() {
         .output()
         .await
         .unwrap();
-
     assert!(
         output.status.success(),
-        "commit.gpgsign=true must not be honoured, got: {}",
+        "commit failed: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+
+    let commit_object = super::hardened_git(tmp.path())
+        .args(["cat-file", "-p", "HEAD"])
+        .output()
+        .await
+        .unwrap();
+    assert!(commit_object.status.success());
+    let commit_object = String::from_utf8_lossy(&commit_object.stdout);
+    assert!(
+        !commit_object.lines().any(|l| l.starts_with("gpgsig ")),
+        "commit.gpgsign=true must not be honoured, but HEAD carries a \
+         signature: {commit_object}"
     );
 }
 
