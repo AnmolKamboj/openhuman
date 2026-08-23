@@ -12,7 +12,13 @@ import { Button } from '../ui';
 interface ModelQualityPillProps {
   className?: string;
   value?: string | null;
-  onValueChange?: (value: string, contextWindow?: number | null) => void;
+  /**
+   * `null` means "managed" — the host clears its override and routing falls
+   * back to whatever the product picks. It is deliberately not the empty
+   * string: the host resolves its override with `??`, which passes `''`
+   * straight through as a real (and empty) model id.
+   */
+  onValueChange?: (value: string | null, contextWindow?: number | null) => void;
 }
 
 function selectionFromValue(value: string | null | undefined): ProviderModelSelection | null {
@@ -25,9 +31,12 @@ function selectionFromValue(value: string | null | undefined): ProviderModelSele
   };
 }
 
-function selectionValue(selection: ProviderModelSelection): string {
+function selectionValue(selection: ProviderModelSelection): string | null {
   const { source, model } = selection;
   switch (source.kind) {
+    // Managed has no model id to encode — clearing the override IS the choice.
+    case 'managed':
+      return null;
     case 'cloud':
       return `${source.providerSlug}:${model}`;
     case 'local':

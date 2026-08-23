@@ -250,8 +250,15 @@
   --shadow-float: 0 12px 32px -8px rgba(0, 0, 0, 0.12), 0 24px 48px -12px rgba(0, 0, 0, 0.12);
   --shadow-crisp: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.08);
   --shadow-cmd-palette: var(--cmd-shadow-palette);
+  /* The hairline around the routed content card (`SidebarInset` / the app's
+     `app-content-surface`). Drawn as a zero-blur inset box-shadow rather than a
+     border so it costs no layout box and cannot fight a caller's own border.
+     Near-opaque on purpose: the card sits on the themed chrome, and at the
+     original 0.45/0.7 the edge read as a smudge rather than an edge on a light
+     surface. The bottom edge stays the stronger of the two so the card still
+     reads as resting on the chrome rather than floating in it. */
   --shadow-content-edge:
-    inset 0 0 0 1px rgb(var(--line-chrome) / 0.45), inset 0 -1px 0 rgb(var(--line-chrome) / 0.7);
+    inset 0 0 0 1px rgb(var(--line-chrome) / 0.9), inset 0 -1px 0 rgb(var(--line-chrome));
 
   --animate-fade-in: fadeIn 0.2s ease-out forwards;
   --animate-fade-up: fadeUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -307,14 +314,30 @@
       transform: translateY(0);
     }
   }
+  /* Entrance for the centered dialog surfaces (`ui/Dialog`, `ui/AlertDialog`).
+     Animates the `translate` PROPERTY, not `transform`, and that distinction is
+     the whole point of this keyframe.
+
+     Those dialogs center with `-translate-x-1/2 -translate-y-1/2`. Under
+     Tailwind v3 those utilities compiled into `transform`, so a keyframe
+     setting `transform` *replaced* the centering for the animation's duration
+     and only had to carry the -50% pair itself. Under v4 they compile to
+     `translate: var(--tw-translate-x) var(--tw-translate-y)` instead — a
+     separate property that composes with `transform` rather than being
+     overridden by it. A `transform: translate(-50%, …)` keyframe therefore
+     *added* to the utility, so every modal opened at -100%/-100% (up and to
+     the left of center) and snapped into place when the animation ended.
+
+     Animating `translate` overrides the same property the utility sets and
+     lands on the identical value, so there is nothing left to snap. */
   @keyframes dialogIn {
     0% {
       opacity: 0;
-      transform: translate(-50%, calc(-50% + 10px));
+      translate: -50% calc(-50% + 10px);
     }
     100% {
       opacity: 1;
-      transform: translate(-50%, -50%);
+      translate: -50% -50%;
     }
   }
   @keyframes slideIn {
@@ -529,8 +552,15 @@
     line-height: 1.6;
 
     /* Themes may supply a decorative `--app-gradient`; fall back to the flat
-       canvas colour when they don't. */
-    background: var(--app-gradient, var(--color-background));
+       canvas colour when they don't.
+
+       `--color-surface-canvas`, NOT `--color-background`: the latter is the
+       shadcn alias and resolves to `--surface`, i.e. the *card* colour, so the
+       app canvas and the content card painted the same value and the frame
+       around the card had nothing but the chrome scrim to separate them. The
+       canvas token is what "app background — primary background" means in
+       `styles/tokens.css`. */
+    background: var(--app-gradient, var(--color-surface-canvas));
     color: var(--color-content);
     position: absolute;
     top: 0;

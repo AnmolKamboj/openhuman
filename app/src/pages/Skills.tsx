@@ -35,7 +35,6 @@ import {
 import SkillSearchBar from '../components/skills/SkillSearchBar';
 import SkillsExplorerTab from '../components/skills/SkillsExplorerTab';
 import VoiceSetupModal from '../components/skills/VoiceSetupModal';
-import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import BetaIndicator from '../components/ui/BetaIndicator';
 import Button from '../components/ui/Button';
@@ -47,9 +46,11 @@ import { canonicalizeComposioToolkitSlug } from '../lib/composio/toolkitSlug';
 import { type ComposioConnection, deriveComposioState } from '../lib/composio/types';
 import { getCoreStateSnapshot } from '../lib/coreState/store';
 import { useT } from '../lib/i18n/I18nContext';
+import { classifyIntegrationError } from '../lib/userErrors/classify';
 import { channelConnectionsApi } from '../services/api/channelConnectionsApi';
 import { setDefaultMessagingChannel } from '../store/channelConnectionsSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { dismissUserError, reportUserError } from '../store/userErrorsSlice';
 import type { ChannelConnectionStatus, ChannelDefinition, ChannelType } from '../types/channels';
 import type { ToastNotification } from '../types/intelligence';
 import { IS_DEV } from '../utils/config';
@@ -700,6 +701,27 @@ export default function Skills() {
     composioError,
   ]);
 
+  // Raise a Composio outage as an app-wide notice rather than an alert on this
+  // page. The state is about the user's account, not about this screen: while
+  // it is set, every tool-calling surface in the app is degraded, yet only a
+  // visitor to Connections used to be told. `NoticeCenter` keeps it visible on
+  // whatever route they are on, and the entry survives navigating away.
+  //
+  // The per-card `hasComposioError` degradation below stays — that IS local,
+  // and it is what marks *which* cards are unreliable.
+  useEffect(() => {
+    const descriptor = classifyIntegrationError(composioError, 'composio');
+    if (!descriptor) return;
+    dispatch(reportUserError({ descriptor, at: Date.now() }));
+  }, [composioError, dispatch]);
+
+  // Clear it the moment the poll succeeds, so a recovered integration does not
+  // leave a stale warning the user has to dismiss by hand.
+  useEffect(() => {
+    if (composioError) return;
+    dispatch(dismissUserError({ id: 'integration_degraded:integration:composio' }));
+  }, [composioError, dispatch]);
+
   // Unified item list
   const allItems: SkillItem[] = useMemo(() => {
     const items: SkillItem[] = [];
@@ -1151,29 +1173,6 @@ export default function Skills() {
                 </button>
               </div>
             </div> */}
-
-                {composioError && (
-                  <Alert variant="warning" className="p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h2 className="text-sm font-semibold text-amber-900">
-                          {t('skills.composio.staleStatusTitle')}
-                        </h2>
-                        <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                          {composioError}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="xs"
-                        onClick={() => void refreshComposio()}
-                        className="shrink-0">
-                        {t('common.retry')}
-                      </Button>
-                    </div>
-                  </Alert>
-                )}
 
                 {
                   <>

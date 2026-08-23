@@ -109,22 +109,7 @@ const agentDebugGroup: DevGroup = {
 const automationDebugGroup: DevGroup = {
   labelKey: 'settings.devGroups.automationIntegrations',
   items: [
-    {
-      id: 'cron-jobs',
-      titleKey: 'settings.developerMenu.cronJobs.title',
-      descriptionKey: 'settings.developerMenu.cronJobs.desc',
-      route: 'cron-jobs',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
+    // Cron jobs moved to the Workflows page (`/flows?view=schedules`).
     {
       id: 'mcp-server',
       titleKey: 'settings.developerMenu.mcpServer.title',

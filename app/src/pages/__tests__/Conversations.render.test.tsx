@@ -735,33 +735,6 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     expect(writeText).toHaveBeenCalledWith(agentContent);
   });
 
-  // Covers budget banner: budget-exhausted banner + OpenRouter CTA
-  it('renders budget-limit banner when teamUsage is present', async () => {
-    // cycleBudgetUsd: 0 → renders "Your included budget is complete" branch
-    const teamUsage = { cycleBudgetUsd: 0, remainingUsd: 0, cycleSpentUsd: 0, cycleEndsAt: null };
-
-    mockUseUsageState.mockReturnValue({
-      teamUsage,
-      currentPlan: null,
-      currentTier: 'PRO' as const,
-      isFreeTier: false,
-      usagePct: 1.0,
-      isNearLimit: true,
-      isAtLimit: true,
-      isBudgetExhausted: true,
-      shouldShowBudgetCompletedMessage: true,
-      isLoading: false,
-      refresh: vi.fn(),
-    });
-
-    await act(async () => {
-      await renderConversations({ thread: emptyThreadState });
-    });
-
-    expect(screen.getByText(/Your included budget is complete/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Use OpenRouter free models/i })).toBeInTheDocument();
-  });
-
   // Covers line 247: if (cancelled) return — the non-cancelled path through loadThreads callback
   it('selects first thread after loadThreads resolves (non-cancelled path)', async () => {
     const threads = [makeThread({ id: 't-1', title: 'First Thread' })];
@@ -853,140 +826,6 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
 
     await waitFor(() => expect(threadApi.deleteThread).toHaveBeenCalledWith('t-del'));
     expect(screen.getByTestId('route-path')).toHaveTextContent('/chat');
-  });
-
-  // Covers lines 1399, 1409-1410: isNearLimit UpsellBanner render + onCtaClick
-  it('renders near-limit UpsellBanner and clicking Upgrade calls openUrl', async () => {
-    const { openUrl } = await import('../../utils/openUrl');
-
-    mockUseUsageState.mockReturnValue({
-      teamUsage: null,
-      currentPlan: null,
-      currentTier: 'FREE' as const,
-      isFreeTier: true,
-      usagePct: 0.85,
-      isNearLimit: true,
-      isAtLimit: false,
-      isBudgetExhausted: false,
-      shouldShowBudgetCompletedMessage: false,
-      isLoading: false,
-      refresh: vi.fn(),
-    });
-
-    await act(async () => {
-      await renderConversations({ thread: emptyThreadState });
-    });
-
-    // UpsellBanner renders with "Approaching usage limit" (line 1399 branch)
-    expect(screen.getByText('Approaching usage limit')).toBeInTheDocument();
-
-    // Click the "Upgrade" button — covers line 1409-1410 (onCtaClick callback)
-    const upgradeBtn = screen.getByText('Upgrade');
-    await act(async () => {
-      fireEvent.click(upgradeBtn);
-    });
-
-    expect(openUrl).toHaveBeenCalled();
-  });
-
-  // Covers line 1413: onDismiss callback inside UpsellBanner
-  it('dismissing the near-limit UpsellBanner writes to localStorage (onDismiss executes)', async () => {
-    mockUseUsageState.mockReturnValue({
-      teamUsage: null,
-      currentPlan: null,
-      currentTier: 'FREE' as const,
-      isFreeTier: true,
-      usagePct: 0.9,
-      isNearLimit: true,
-      isAtLimit: false,
-      isBudgetExhausted: false,
-      shouldShowBudgetCompletedMessage: false,
-      isLoading: false,
-      refresh: vi.fn(),
-    });
-
-    await act(async () => {
-      await renderConversations({ thread: emptyThreadState });
-    });
-
-    // UpsellBanner renders
-    expect(screen.getByText('Approaching usage limit')).toBeInTheDocument();
-
-    // Click dismiss button (aria-label="Dismiss") — covers line 1413 (onDismiss callback)
-    const dismissBtn = screen.getByRole('button', { name: 'Dismiss' });
-    await act(async () => {
-      fireEvent.click(dismissBtn);
-    });
-
-    // dismissBanner writes to localStorage with the banner key — confirms line 1413 executed
-    expect(localStorage.getItem('openhuman:upsell:conversations-warning')).not.toBeNull();
-  });
-
-  // Covers line 1443: onClick inside "Top Up" button in budget-exceeded banner
-  it('clicking "Top Up" in the budget banner calls openUrl', async () => {
-    const { openUrl } = await import('../../utils/openUrl');
-
-    const teamUsage = { cycleBudgetUsd: 10, remainingUsd: 0, cycleSpentUsd: 10, cycleEndsAt: null };
-
-    mockUseUsageState.mockReturnValue({
-      teamUsage,
-      currentPlan: null,
-      currentTier: 'PRO' as const,
-      isFreeTier: false,
-      usagePct: 1.0,
-      isNearLimit: true,
-      isAtLimit: true,
-      isBudgetExhausted: true,
-      shouldShowBudgetCompletedMessage: true,
-      isLoading: false,
-      refresh: vi.fn(),
-    });
-
-    await act(async () => {
-      await renderConversations({ thread: emptyThreadState });
-    });
-
-    // Budget banner renders — cycleBudgetUsd: 10 > 0 → cycle-budget exhausted copy
-    expect(screen.getByText(/used your included cycle budget/i)).toBeInTheDocument();
-
-    // Click "Top Up" button — covers line 1442-1443 (onClick callback)
-    const topUpBtn = screen.getByText('Top Up');
-    await act(async () => {
-      fireEvent.click(topUpBtn);
-    });
-
-    expect(openUrl).toHaveBeenCalled();
-  });
-
-  it('clicking OpenRouter free models in the budget banner routes chat workloads', async () => {
-    const teamUsage = { cycleBudgetUsd: 10, remainingUsd: 0, cycleSpentUsd: 10, cycleEndsAt: null };
-    mockUseOpenRouterFreeModels.mockResolvedValueOnce(undefined);
-
-    mockUseUsageState.mockReturnValue({
-      teamUsage,
-      currentPlan: null,
-      currentTier: 'PRO' as const,
-      isFreeTier: false,
-      usagePct: 1.0,
-      isNearLimit: true,
-      isAtLimit: true,
-      isBudgetExhausted: true,
-      shouldShowBudgetCompletedMessage: true,
-      isLoading: false,
-      refresh: vi.fn(),
-    });
-
-    await act(async () => {
-      await renderConversations({ thread: emptyThreadState });
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Use OpenRouter free models/i }));
-    });
-
-    await waitFor(() => {
-      expect(mockUseOpenRouterFreeModels).toHaveBeenCalledTimes(1);
-    });
   });
 
   it('handles /new from the composer without a selected thread or sending chat text', async () => {
@@ -1399,11 +1238,17 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     expect(screen.getByTestId('stopped-marker')).toHaveTextContent('Stopped');
   });
 
-  it('shows Send and no Stop button while the thread is idle (#4862)', async () => {
+  it('shows no Stop button while the thread is idle (#4862)', async () => {
     await renderSelectedConversation();
 
     expect(screen.queryByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument();
+    // An idle thread with an empty composer gives the primary slot to the
+    // Human-page shortcut rather than a Send button that would refuse the
+    // click; Send returns as soon as there is something to send, which
+    // `queues via the Send button while a turn streams` covers. What #4862
+    // pins here is the absence of Stop.
+    expect(screen.getByTestId('composer-human-mode')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
   });
 
   it('releases the pending-send lock when appendMessage rejects with a generic error', async () => {

@@ -217,7 +217,7 @@ export const ChatThreadView = forwardRef<ChatThreadViewHandle, ChatThreadViewPro
       state => state.chatRuntime.inferenceTurnLifecycleByThread
     );
     const agentMessageViewMode = useAppSelector(
-      state => state.theme?.agentMessageViewMode ?? 'bubbles'
+      state => state.theme?.agentMessageViewMode ?? 'text'
     );
     // When ON, the verbose per-agent "Agentic task insights" timeline is hidden
     // from chat; a compact blinking "Processing" link (and the existing message

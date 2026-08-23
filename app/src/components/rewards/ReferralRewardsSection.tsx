@@ -165,17 +165,6 @@ const ReferralRewardsSection = () => {
   return (
     <div className="space-y-4">
       <div className="bg-surface rounded-2xl shadow-soft border border-line p-6 space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
-            <h2 className="text-2xl font-semibold text-content">
-              {t('rewards.referralSection.title')}
-            </h2>
-            <p className="text-sm text-content-secondary max-w-xl">
-              {t('rewards.referralSection.subtitle')}
-            </p>
-          </div>
-        </div>
-
         {loading && !stats ? (
           <p className="text-sm text-content-muted">{t('rewards.referralSection.loading')}</p>
         ) : null}

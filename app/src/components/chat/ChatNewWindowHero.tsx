@@ -1,18 +1,13 @@
-import debugFactory from 'debug';
 import { useEffect, useMemo, useState } from 'react';
 
-import { useUsageState } from '../../hooks/useUsageState';
 import { useUser } from '../../hooks/useUser';
 import { useT } from '../../lib/i18n/I18nContext';
-import { applyOpenRouterFreeModels } from '../../services/api/openrouterFreeModels';
 import { restartCoreProcess } from '../../services/coreProcessControl';
 import { selectBlockingState } from '../../store/connectivitySelectors';
 import { useAppSelector } from '../../store/hooks';
 import { resolveUserName } from '../../utils/userName';
-import { DiscordBanner, PromotionalCreditsBanner, UsageLimitBanner } from '../home/HomeBanners';
+import { DiscordBanner, PromotionalCreditsBanner } from '../home/HomeBanners';
 import { Button } from '../ui';
-
-const debug = debugFactory('chat:new-window-hero');
 
 /**
  * Hero shown above the composer in the chat "new window" (empty thread) state —
@@ -25,7 +20,6 @@ const debug = debugFactory('chat:new-window-hero');
 export default function ChatNewWindowHero() {
   const { t } = useT();
   const { user } = useUser();
-  const { shouldShowBudgetCompletedMessage } = useUsageState();
 
   const userName = resolveUserName(user).split(' ')[0];
   const promoCredits = user?.usage?.promotionBalanceUsd ?? 0;
@@ -37,7 +31,6 @@ export default function ChatNewWindowHero() {
 
   const [isRestartingCore, setIsRestartingCore] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
-  const [openRouterStatus, setOpenRouterStatus] = useState<'idle' | 'saving' | 'error'>('idle');
 
   const welcomeVariants = useMemo(
     () => [
@@ -67,17 +60,6 @@ export default function ChatNewWindowHero() {
       setRestartError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsRestartingCore(false);
-    }
-  };
-
-  const handleUseOpenRouterFree = async () => {
-    setOpenRouterStatus('saving');
-    try {
-      await applyOpenRouterFreeModels();
-      setOpenRouterStatus('idle');
-    } catch (err) {
-      debug('applyOpenRouterFreeModels failed: %o', err);
-      setOpenRouterStatus('error');
     }
   };
 
@@ -117,29 +99,6 @@ export default function ChatNewWindowHero() {
 
   return (
     <div className="mx-auto flex h-full w-full max-w-md flex-col justify-center py-4">
-      {shouldShowBudgetCompletedMessage && (
-        <UsageLimitBanner
-          tone="danger"
-          icon="⚠️"
-          title={t('home.usageExhaustedTitle')}
-          message={t('home.usageExhaustedBody')}
-          ctaLabel={t('home.usageExhaustedCta')}
-          secondaryCtaLabel={
-            openRouterStatus === 'saving' ? t('openrouterFree.saving') : t('openrouterFree.cta')
-          }
-          onSecondaryCtaClick={() => {
-            if (openRouterStatus !== 'saving') {
-              void handleUseOpenRouterFree();
-            }
-          }}
-        />
-      )}
-      {openRouterStatus === 'error' && (
-        <div className="mb-3 rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-900/20 dark:text-coral-200">
-          {t('openrouterFree.error')}
-        </div>
-      )}
-
       {showPromoBanner && <PromotionalCreditsBanner promoCredits={promoCredits} />}
 
       {/* Main card — sizes to its content. The full height lives on the

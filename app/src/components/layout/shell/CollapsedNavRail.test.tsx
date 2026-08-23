@@ -26,7 +26,6 @@ describe('CollapsedNavRail', () => {
       'nav.home',
       'shortcuts.title',
       'nav.chat',
-      'nav.human',
       'nav.brain',
       'nav.flows',
       'nav.connections',
@@ -35,6 +34,10 @@ describe('CollapsedNavRail', () => {
     }
     // The wallet shortcut was removed from the rail.
     expect(screen.queryByRole('button', { name: 'nav.wallet' })).not.toBeInTheDocument();
+    // Human is reached from the chat composer's idle button, not a nav row.
+    expect(screen.queryByRole('button', { name: 'nav.human' })).not.toBeInTheDocument();
+    // Rewards is cloud-gated; this store has no resolved cloud session.
+    expect(screen.queryByRole('button', { name: 'nav.rewards' })).not.toBeInTheDocument();
   });
 
   it('renders rail icons as sidebar menu primitives', () => {

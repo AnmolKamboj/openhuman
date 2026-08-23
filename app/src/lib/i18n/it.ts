@@ -563,6 +563,12 @@ const messages: TranslationMap = {
   'common.create': 'Crea',
   'common.search': 'Cerca',
   'common.loading': 'caricamento…',
+  'common.noResults': 'Nessun risultato',
+  'common.filter': 'Filtra',
+  'skills.explorer.colSkill': 'Competenza',
+  'skills.explorer.colDescription': 'Descrizione',
+  'skills.explorer.colProvider': 'Fornitore',
+  'skills.explorer.colAction': 'Azione',
   'sync.runs': 'sincronizzazioni',
   'sync.totalCost': 'totale',
   'sync.when': 'Quando',
@@ -584,6 +590,7 @@ const messages: TranslationMap = {
   'common.next': 'Avanti',
   'common.finish': 'Fine',
   'common.close': 'Chiudi',
+  'notices.title': 'Notifiche',
   'common.enabled': 'Abilitato',
   'common.disabled': 'Disabilitato',
   'common.on': 'Attivo',
@@ -3098,6 +3105,9 @@ const messages: TranslationMap = {
     "Riconnettiti per riattivare gli strumenti {name}. OpenHuman manterrà questa integrazione non disponibile finché non aggiornerai l'accesso a OAuth.",
   'composio.envVarOverrides': 'è impostata, sovrascrive questa impostazione.',
   'composio.previewBadge': 'Anteprima',
+  'composio.colApp': 'App',
+  'composio.colStatus': 'Stato',
+  'composio.colAccounts': 'Account',
   'composio.previewTooltip':
     "Integrazione dell'agente disponibile a breve: puoi connetterti, ma l'agente non può ancora utilizzare questo toolkit.",
   'memory.day.sun': 'Dom',
@@ -4375,7 +4385,7 @@ const messages: TranslationMap = {
   'overlay.orbTitle': 'Trascina per spostare · Doppio clic per ripristinare la posizione',
   'pages.settings.account.connections': 'Connessioni',
   'pages.settings.account.connectionsDesc': 'Descrizione connessioni',
-  'pages.settings.account.migration': 'Importa da un altro assistente',
+  'pages.settings.account.migration': 'Importa',
   'pages.settings.account.migrationDesc':
     'Migra memoria e note da OpenClaw (e presto Hermes) in questo spazio di lavoro.',
   'pages.settings.account.privacy': 'Privacy',
@@ -4751,6 +4761,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Sondaggi del Memory Worker',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Gestiti',
+  'settings.ai.managedSourceLabel': 'Gestito da OpenHuman',
+  'settings.ai.managedSourceDetail': 'Selezione automatica del modello',
   'settings.ai.routing.managedAlwaysOn': 'Sempre attivo',
   'settings.ai.routing.managedHint':
     'Gestito è sempre disponibile come fallback. Per utilizzare il tuo modello, scegli una modalità di routing di seguito.',
@@ -6156,6 +6168,10 @@ const messages: TranslationMap = {
   'pages.settings.account.walletBalancesDesc':
     'Visualizza i saldi multi-chain del tuo portafoglio locale',
   'walletBalances.title': 'Saldi portafoglio',
+  'walletBalances.colNetwork': 'Rete',
+  'walletBalances.colAddress': 'Indirizzo',
+  'walletBalances.colBalance': 'Saldo',
+  'walletBalances.colActions': 'Azioni',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'Caricamento saldi…',
   'walletBalances.retry': 'Retry',
@@ -6557,6 +6573,7 @@ const messages: TranslationMap = {
   'composer.attachFile': 'Allega file',
   'composer.modelSelector': 'Modello',
   'composer.voiceMode': 'Modalità vocale',
+  'composer.humanMode': 'Modalità umano',
   'composer.qualityHigh': 'Alta',
   // Agent activity level
   'activityLevel.title': "Livello di attività dell'agente",
@@ -6833,6 +6850,10 @@ const messages: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Azione necessaria',
   'userErrors.dismiss': 'Ignora',
+  'userErrors.action.openConnections': 'Apri connessioni',
+  'userErrors.integrationDegraded.title': 'Le connessioni mostrano uno stato non aggiornato',
+  'userErrors.integrationDegraded.body':
+    "Un'integrazione collegata restituisce errori, quindi lo stato delle connessioni mostrato nell'app potrebbe non essere aggiornato.",
   'userErrors.action.openBilling': 'Apri fatturazione',
   'userErrors.action.openProviderSettings': 'Impostazioni del provider',
   'userErrors.action.openEmbeddingsSettings': 'Configura gli embedding',

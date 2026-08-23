@@ -18,9 +18,6 @@ import QueuedFollowups from '../../components/chat/QueuedFollowups';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
 import { SidebarContent } from '../../components/layout/shell/SidebarSlot';
-import { settingsNavState } from '../../components/settings/modal/settingsOverlay';
-import UpsellBanner from '../../components/upsell/UpsellBanner';
-import { dismissBanner, shouldShowBanner } from '../../components/upsell/upsellDismissState';
 import { AssistantUiChat } from '../../features/conversations/components/AssistantUiChat';
 import { selectBackgroundProcesses } from '../../features/conversations/components/BackgroundProcessesPanel';
 import {
@@ -40,7 +37,6 @@ import {
   handleComposerSlashCommand,
 } from '../../features/conversations/composerSendDecision';
 import { useMemorySyncActive } from '../../features/conversations/hooks/useBackgroundActivity';
-import { formatResetTime } from '../../features/conversations/utils/format';
 import {
   GENERAL_TAB_VALUE,
   isThreadVisibleInTab,
@@ -63,7 +59,6 @@ import {
   validateAndReadFile,
 } from '../../lib/attachments';
 import { useT } from '../../lib/i18n/I18nContext';
-import { applyOpenRouterFreeModels } from '../../services/api/openrouterFreeModels';
 import { threadApi } from '../../services/api/threadApi';
 import { fetchThreadTokenUsage } from '../../services/api/threadUsageApi';
 import {
@@ -117,8 +112,6 @@ import type { ConfirmationModal as ConfirmationModalType } from '../../types/int
 import type { ThreadMessage } from '../../types/thread';
 import { chatThreadPath } from '../../utils/chatRoutes';
 import { CHAT_ATTACHMENTS_ENABLED } from '../../utils/config';
-import { PRICING_URL } from '../../utils/links';
-import { openUrl } from '../../utils/openUrl';
 import {
   notifyOverlaySttState,
   openhumanVoiceStatus,
@@ -339,7 +332,6 @@ const Conversations = ({
   );
   const sendAdvisoryRef = useRef(sendAdvisory);
   sendAdvisoryRef.current = sendAdvisory;
-  const [openRouterStatus, setOpenRouterStatus] = useState<'idle' | 'saving' | 'error'>('idle');
   // Threads whose send is mid-flight (dispatched locally, backend not yet
   // accepted). A Set so concurrent sends to different threads each track their
   // own pending state instead of clobbering a single slot.
@@ -429,15 +421,14 @@ const Conversations = ({
   const ignoreNextTitleBlurRef = useRef(false);
 
   const {
-    teamUsage,
     isAtLimit,
-    isNearLimit,
-    isFreeTier,
-    shouldShowBudgetCompletedMessage,
-    usagePct,
     // #3767: gate on the tier for the selected chat mode — Quick runs on the
     // `chat` tier, Reasoning on the `reasoning` tier — so the credits prompt
     // reflects the mode the user actually picked.
+    //
+    // Only `isAtLimit` is read here now: the near-limit and spent-budget
+    // banners this file rendered are notices in `NoticeCenter`, which reads
+    // the same hook once for the whole app.
   } = useUsageState(selectedAgentProfileId === 'reasoning' ? 'reasoning' : 'chat');
   const [deleteModal, setDeleteModal] = useState<ConfirmationModalType>({
     isOpen: false,
@@ -579,17 +570,6 @@ const Conversations = ({
     } catch (error) {
       debug('[chat] create thread failed: %O', error);
       setSendError(chatSendError('create_thread_failed', t('chat.createThreadFailed')));
-    }
-  };
-
-  const handleUseOpenRouterFree = async () => {
-    setOpenRouterStatus('saving');
-    try {
-      await applyOpenRouterFreeModels();
-      setOpenRouterStatus('idle');
-    } catch (err) {
-      console.warn('[chat] applyOpenRouterFreeModels failed', err);
-      setOpenRouterStatus('error');
     }
   };
 
@@ -2044,82 +2024,7 @@ const Conversations = ({
             ? 'mx-auto w-full max-w-195 min-h-0 overflow-y-auto px-4 py-3'
             : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-195 px-4 pb-4 pt-6'
         }>
-        <>
-          {isNearLimit &&
-            !isAtLimit &&
-            isFreeTier &&
-            shouldShowBanner('conversations-warning', 24 * 60 * 60 * 1000) && (
-              <div className="mb-3">
-                <UpsellBanner
-                  variant="warning"
-                  title={t('chat.approachingLimit')}
-                  message={t('chat.approachingLimitMsg').replace(
-                    '{pct}',
-                    String(Math.round(usagePct * 100))
-                  )}
-                  ctaLabel={t('chat.upgrade')}
-                  onCtaClick={() => {
-                    void openUrl(PRICING_URL);
-                  }}
-                  dismissible
-                  onDismiss={() => dismissBanner('conversations-warning')}
-                />
-              </div>
-            )}
-          {teamUsage && shouldShowBudgetCompletedMessage && (
-            <div className="mb-3 p-3 rounded-xl bg-coral-50 border border-coral-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <svg
-                  className="w-4 h-4 text-coral-400 shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-xs text-coral-600">
-                  {teamUsage.cycleBudgetUsd > 0
-                    ? `${t('chat.weeklyLimitHit')}${teamUsage.cycleEndsAt ? ` ${t('chat.resets')} ${formatResetTime(teamUsage.cycleEndsAt)}.` : ''} ${t('chat.topUpToContinue')}`
-                    : t('chat.budgetComplete')}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  data-analytics-id="chat-budget-openrouter-free"
-                  disabled={openRouterStatus === 'saving'}
-                  onClick={() => {
-                    void handleUseOpenRouterFree();
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-coral-300 bg-surface text-coral-700 hover:bg-coral-100 disabled:cursor-wait disabled:opacity-70 text-xs font-medium transition-colors">
-                  {openRouterStatus === 'saving'
-                    ? t('openrouterFree.saving')
-                    : t('openrouterFree.cta')}
-                </button>
-                <button
-                  type="button"
-                  data-analytics-id="chat-budget-top-up"
-                  onClick={() => {
-                    void openUrl(PRICING_URL);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-400 text-content-inverted text-xs font-medium transition-colors">
-                  {t('chat.topUp')}
-                </button>
-              </div>
-            </div>
-          )}
-          {openRouterStatus === 'error' && (
-            <div className="mb-3 rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700">
-              {t('openrouterFree.error')}
-            </div>
-          )}
-
-          {/* Cycle usage pill moved into ChatComposer toolbar */}
-        </>
+        <>{/* Cycle usage pill moved into ChatComposer toolbar */}</>
 
         {sendAdvisory && (
           <div className="flex items-center justify-between mb-2">
@@ -2171,7 +2076,7 @@ const Conversations = ({
                     // STT/TTS provider settings live on the Voice panel
                     // since PR 2; the legacy local-model route was for
                     // back when speech assets were lumped with Ollama.
-                    navigate('/settings/voice', settingsNavState(location));
+                    navigate('/settings/voice');
                   }}
                   className="text-xs text-primary-500 hover:text-primary-600 font-medium transition-colors">
                   {t('chat.setup')}
@@ -2376,6 +2281,10 @@ const Conversations = ({
               setInputValue={setInputValue}
               onSend={handleComposerSend}
               onStopGeneration={rustChat ? handleStopGeneration : undefined}
+              // Idle-composer shortcut to the full-bleed mascot stage. Chat and
+              // Human share one mascot (mascotSlice), so this is a change of
+              // venue for the same conversation partner, not a second one.
+              onOpenHumanMode={() => navigate('/human')}
               textInputRef={textInputRef}
               fileInputRef={fileInputRef}
               composerInteractionBlocked={composerInteractionBlocked}
@@ -2574,54 +2483,6 @@ const Conversations = ({
 
   const assistantComposerHeader = (
     <>
-      {isNearLimit &&
-        !isAtLimit &&
-        isFreeTier &&
-        shouldShowBanner('conversations-warning', 24 * 60 * 60 * 1000) && (
-          <UpsellBanner
-            variant="warning"
-            title={t('chat.approachingLimit')}
-            message={t('chat.approachingLimitMsg').replace(
-              '{pct}',
-              String(Math.round(usagePct * 100))
-            )}
-            ctaLabel={t('chat.upgrade')}
-            onCtaClick={() => void openUrl(PRICING_URL)}
-            dismissible
-            onDismiss={() => dismissBanner('conversations-warning')}
-          />
-        )}
-      {teamUsage && shouldShowBudgetCompletedMessage && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-coral-200 bg-coral-50 p-3">
-          <p className="min-w-0 text-xs text-coral-600">
-            {teamUsage.cycleBudgetUsd > 0
-              ? `${t('chat.weeklyLimitHit')}${teamUsage.cycleEndsAt ? ` ${t('chat.resets')} ${formatResetTime(teamUsage.cycleEndsAt)}.` : ''} ${t('chat.topUpToContinue')}`
-              : t('chat.budgetComplete')}
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              data-analytics-id="chat-budget-openrouter-free"
-              disabled={openRouterStatus === 'saving'}
-              onClick={() => void handleUseOpenRouterFree()}
-              className="rounded-lg border border-coral-300 bg-surface px-3 py-1.5 text-xs font-medium text-coral-700 transition-colors hover:bg-coral-100 disabled:cursor-wait disabled:opacity-70">
-              {openRouterStatus === 'saving' ? t('openrouterFree.saving') : t('openrouterFree.cta')}
-            </button>
-            <button
-              type="button"
-              data-analytics-id="chat-budget-top-up"
-              onClick={() => void openUrl(PRICING_URL)}
-              className="rounded-lg bg-coral-500 px-3 py-1.5 text-xs font-medium text-content-inverted transition-colors hover:bg-coral-400">
-              {t('chat.topUp')}
-            </button>
-          </div>
-        </div>
-      )}
-      {openRouterStatus === 'error' && (
-        <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700">
-          {t('openrouterFree.error')}
-        </div>
-      )}
       {attachError && (
         <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2">
           <p className="text-xs text-coral-500" data-chat-send-error-code={attachError.code}>
@@ -2660,6 +2521,10 @@ const Conversations = ({
         attachmentsEnabled={CHAT_ATTACHMENTS_ENABLED}
         attachmentInteractionBlocked={composerInteractionBlocked || isSending}
         onAttachmentOnlySend={() => void handleComposerSend()}
+        // Idle-composer shortcut to the full-bleed mascot stage. Chat and Human
+        // share one mascot (mascotSlice), so this is a change of venue for the
+        // same conversation partner, not a second one.
+        onOpenHumanMode={() => navigate('/human')}
         onModelChange={(value, contextWindow) => {
           setComposerModelOverride(value);
           setComposerModelContextWindow(contextWindow ?? null);

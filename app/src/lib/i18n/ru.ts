@@ -553,6 +553,12 @@ const messages: TranslationMap = {
   'common.create': 'Создать',
   'common.search': 'Поиск',
   'common.loading': 'загрузка…',
+  'common.noResults': 'Нет результатов',
+  'common.filter': 'Фильтр',
+  'skills.explorer.colSkill': 'Навык',
+  'skills.explorer.colDescription': 'Описание',
+  'skills.explorer.colProvider': 'Поставщик',
+  'skills.explorer.colAction': 'Действие',
   'sync.runs': 'синхронизаций',
   'sync.totalCost': 'итого',
   'sync.when': 'Когда',
@@ -574,6 +580,7 @@ const messages: TranslationMap = {
   'common.next': 'Далее',
   'common.finish': 'Завершить',
   'common.close': 'Закрыть',
+  'notices.title': 'Уведомления',
   'common.enabled': 'Включено',
   'common.disabled': 'Отключено',
   'common.on': 'Вкл',
@@ -3065,6 +3072,9 @@ const messages: TranslationMap = {
     'Повторно подключитесь, чтобы повторно включить инструменты {name}. OpenHuman будет держать эту интеграцию недоступной, пока вы не обновите доступ к OAuth.',
   'composio.envVarOverrides': 'задана, она переопределяет этот параметр.',
   'composio.previewBadge': 'Предварительный просмотр',
+  'composio.colApp': 'Приложение',
+  'composio.colStatus': 'Статус',
+  'composio.colAccounts': 'Аккаунты',
   'composio.previewTooltip':
     'Скоро интеграция агента: вы можете подключиться, но агент пока не может использовать этот набор инструментов.',
   'memory.day.sun': 'Вс',
@@ -4344,7 +4354,7 @@ const messages: TranslationMap = {
   'overlay.orbTitle': 'Перетащи для перемещения · Двойной клик для сброса позиции',
   'pages.settings.account.connections': 'Подключения',
   'pages.settings.account.connectionsDesc': 'Описание подключений',
-  'pages.settings.account.migration': 'Импорт из другого ассистента',
+  'pages.settings.account.migration': 'Импорт',
   'pages.settings.account.migrationDesc':
     'Перенесите память и заметки из OpenClaw (а вскоре и Hermes) в это рабочее пространство.',
   'pages.settings.account.privacy': 'Конфиденциальность',
@@ -4721,6 +4731,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Опросы работников памяти',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Управляемый',
+  'settings.ai.managedSourceLabel': 'Управляется OpenHuman',
+  'settings.ai.managedSourceDetail': 'Автоматический выбор модели',
   'settings.ai.routing.managedAlwaysOn': 'Всегда включен',
   'settings.ai.routing.managedHint':
     'Управляемый всегда доступен в качестве резервного варианта. Чтобы использовать собственную модель, выберите режим маршрутизации ниже.',
@@ -6111,6 +6123,10 @@ const messages: TranslationMap = {
   'pages.settings.account.walletBalancesDesc':
     'Просмотр мультичейн-балансов вашего локального кошелька',
   'walletBalances.title': 'Баланс кошелька',
+  'walletBalances.colNetwork': 'Сеть',
+  'walletBalances.colAddress': 'Адрес',
+  'walletBalances.colBalance': 'Баланс',
+  'walletBalances.colActions': 'Действия',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'Загрузка балансов…',
   'walletBalances.retry': 'Retry',
@@ -6509,6 +6525,7 @@ const messages: TranslationMap = {
   'composer.attachFile': 'Прикрепить файл',
   'composer.modelSelector': 'Модель',
   'composer.voiceMode': 'Голосовой режим',
+  'composer.humanMode': 'Режим человека',
   'composer.qualityHigh': 'Высокое',
   // Agent activity level
   'activityLevel.title': 'Уровень активности агента',
@@ -6781,6 +6798,10 @@ const messages: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Требуется действие',
   'userErrors.dismiss': 'Отклонить',
+  'userErrors.action.openConnections': 'Открыть подключения',
+  'userErrors.integrationDegraded.title': 'Подключения показывают устаревший статус',
+  'userErrors.integrationDegraded.body':
+    'Подключенная интеграция возвращает ошибки, поэтому отображаемый статус подключений может быть неактуальным.',
   'userErrors.action.openBilling': 'Открыть оплату',
   'userErrors.action.openProviderSettings': 'Настройки провайдера',
   'userErrors.action.openEmbeddingsSettings': 'Настроить эмбеддинги',

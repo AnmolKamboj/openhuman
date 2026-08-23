@@ -18,6 +18,7 @@ import {
   SidebarMenuLabel,
 } from '../../ui';
 import { NavIcon } from './navIcons';
+import { useCloudNavGate } from './useCloudNavGate';
 
 /**
  * Active-route matching for a nav entry. Mirrors the rules the former
@@ -54,7 +55,15 @@ export default function SidebarNav() {
   const navigate = useNavigate();
   const unreadCount = useAppSelector(state => selectUnreadCount(state.notifications.items));
 
-  const tabs = useMemo(() => NAV_TABS.map(tab => ({ ...tab, label: t(tab.labelKey) })), [t]);
+  const cloudAllowed = useCloudNavGate();
+  const tabs = useMemo(
+    () =>
+      NAV_TABS.filter(tab => !tab.cloudOnly || cloudAllowed).map(tab => ({
+        ...tab,
+        label: t(tab.labelKey),
+      })),
+    [cloudAllowed, t]
+  );
   const activeTab = tabs.find(tab => matchActive(tab.path, location.pathname));
 
   const handleClick = (tab: NavTab, active: boolean) => {
@@ -71,7 +80,7 @@ export default function SidebarNav() {
   };
 
   return (
-    // `SidebarGroup` supplies the px-2/py-1 flex-column band that used to sit
+    // `SidebarGroup` supplies the px-3/py-1 flex-column band that used to sit
     // directly on `<nav>`; the semantic landmark element stays a plain `<nav>`
     // (no primitive substitutes for that a11y role) and picks up
     // `shrink-0` so the caller no longer needs a wrapping div for it.

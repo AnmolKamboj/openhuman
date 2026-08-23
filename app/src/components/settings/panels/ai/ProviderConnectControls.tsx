@@ -209,8 +209,8 @@ export const ProviderKeyDialog = ({
   // (`connectProviderDialog`, e.g. "Connect {label}") — two different i18n
   // strings that read identically in English but diverge in translation.
   // `ModalShell`'s single `title` slot can only serve one of the two, so this
-  // composes `DialogRoot`/`DialogContent` directly (same pattern as
-  // `SettingsModalFrame`), which still gets the real focus trap, scroll lock,
+  // composes `DialogRoot`/`DialogContent` directly, which still gets the real
+  // focus trap, scroll lock,
   // and `aria-hidden`-the-rest-of-the-tree behavior `ModalShell` is built on.
   return (
     <DialogRoot

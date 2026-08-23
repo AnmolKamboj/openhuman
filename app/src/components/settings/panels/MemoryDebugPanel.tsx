@@ -12,9 +12,7 @@ import {
   memoryRecallNamespace,
 } from '../../../utils/tauriCommands';
 import { MemoryTextWithEntities } from '../../intelligence/MemoryTextWithEntities';
-import PanelPage from '../../layout/PanelPage';
 import Button from '../../ui/Button';
-import SettingsBackButton from '../components/SettingsBackButton';
 import {
   SettingsEmptyState,
   SettingsSection,
@@ -23,12 +21,11 @@ import {
   SettingsTextArea,
   SettingsTextField,
 } from '../controls';
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+import SettingsPanel from '../layout/SettingsPanel';
 import { normalizeMemoryDocuments } from './memoryDebugUtils';
 
 const MemoryDebugPanel = () => {
   const { t } = useT();
-  const { navigateBack } = useSettingsNavigation();
   const [documents, setDocuments] = useState<MemoryDebugDocument[]>([]);
   const [documentsRaw, setDocumentsRaw] = useState<unknown>(null);
   const [documentsNamespaceFilter, setDocumentsNamespaceFilter] = useState('');
@@ -197,13 +194,8 @@ const MemoryDebugPanel = () => {
   }, [clearNamespaceInput, refreshAll, t]);
 
   return (
-    <PanelPage
-      className="z-10"
-      contentClassName=""
-      testId="memory-debug-panel"
-      description={t('devOptions.debugPanelsDesc')}
-      leading={<SettingsBackButton onBack={navigateBack} />}>
-      <div className="p-4 space-y-5">
+    <SettingsPanel testId="memory-debug-panel" description={t('devOptions.debugPanelsDesc')}>
+      <div className="space-y-5">
         {/* Documents */}
         <SettingsSection title={t('memory.documents')}>
           <div className="px-4 py-3 space-y-3">
@@ -440,7 +432,7 @@ const MemoryDebugPanel = () => {
           </div>
         </SettingsSection>
       </div>
-    </PanelPage>
+    </SettingsPanel>
   );
 };
 

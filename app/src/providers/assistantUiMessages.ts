@@ -103,6 +103,18 @@ function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
   };
 }
 
+/**
+ * Project one assistant message into assistant-ui parts.
+ *
+ * **Every tool part must have a distinct `toolCallId`.** assistant-ui keys them
+ * as `toolCallId-${id}` and *throws* on a repeat ("Duplicate key … in
+ * useResources"), which takes the whole thread render down rather than dropping
+ * a row — so this is a hard invariant, not a tidiness rule, and it is enforced
+ * here at the boundary as well as at each producer. `emittedToolIds` guards
+ * both passes below; the sources upstream (the live Redux slice and the derived
+ * transcript mapper) also mint unique ids, but threads persisted before those
+ * fixes still carry colliding ones.
+ */
 function assistantParts(
   text: string,
   timeline: readonly ToolTimelineEntry[],
@@ -119,9 +131,13 @@ function assistantParts(
     }
     if (item.kind === 'toolCall') {
       const entry = timelineById.get(item.callId);
-      if (entry) {
-        parts.push(toolPart(entry));
+      // Guarded here too, not only in the timeline pass below: two transcript
+      // pointers can name the same `callId` (a provider that emits tool calls
+      // without ids writes the empty string for all of them), and both resolve
+      // to the same timeline row.
+      if (entry && !emittedToolIds.has(entry.id)) {
         emittedToolIds.add(entry.id);
+        parts.push(toolPart(entry));
       }
     }
     // Narration is process commentary, not the final assistant answer. The
@@ -130,7 +146,9 @@ function assistantParts(
   }
 
   for (const entry of [...timeline].sort((a, b) => a.seq - b.seq)) {
-    if (!emittedToolIds.has(entry.id)) parts.push(toolPart(entry));
+    if (emittedToolIds.has(entry.id)) continue;
+    emittedToolIds.add(entry.id);
+    parts.push(toolPart(entry));
   }
   if (text.length > 0) parts.push({ type: 'text', text });
   return parts;

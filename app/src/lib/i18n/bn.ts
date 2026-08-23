@@ -549,6 +549,12 @@ const messages: TranslationMap = {
   'common.create': 'তৈরি করুন',
   'common.search': 'খুঁজুন',
   'common.loading': 'লোড হচ্ছে…',
+  'common.noResults': 'কোনো ফলাফল নেই',
+  'common.filter': 'ফিল্টার',
+  'skills.explorer.colSkill': 'দক্ষতা',
+  'skills.explorer.colDescription': 'বিবরণ',
+  'skills.explorer.colProvider': 'সরবরাহকারী',
+  'skills.explorer.colAction': 'অ্যাকশন',
   'sync.runs': 'সিঙ্ক রান',
   'sync.totalCost': 'মোট',
   'sync.when': 'কখন',
@@ -570,6 +576,7 @@ const messages: TranslationMap = {
   'common.next': 'পরবর্তী',
   'common.finish': 'সম্পন্ন',
   'common.close': 'বন্ধ করুন',
+  'notices.title': 'বিজ্ঞপ্তি',
   'common.enabled': 'সক্রিয়',
   'common.disabled': 'নিষ্ক্রিয়',
   'common.on': 'চালু',
@@ -3044,6 +3051,9 @@ const messages: TranslationMap = {
     'পুনরায় সংযোগ করতে PH__0 টুল পুনরায় সংযুক্ত করুন। আপনি OAuth অ্যাক্সেস রিফ্রেশ না করা পর্যন্ত OpenHuman এই ইন্টিগ্রেশনটি অনুপলব্ধ রাখবে৷',
   'composio.envVarOverrides': 'সেট থাকলে, এই সেটিং ওভাররাইড করে।',
   'composio.previewBadge': 'পূর্বরূপ',
+  'composio.colApp': 'অ্যাপ',
+  'composio.colStatus': 'স্ট্যাটাস',
+  'composio.colAccounts': 'অ্যাকাউন্ট',
   'composio.previewTooltip':
     'এজেন্ট ইন্টিগ্রেশন শীঘ্রই আসছে: আপনি সংযোগ করতে পারেন, কিন্তু এজেন্ট এখনও এই টুলকিটটি ব্যবহার করতে পারবেন না।',
   'memory.day.sun': 'রবি',
@@ -4308,7 +4318,7 @@ const messages: TranslationMap = {
   'overlay.orbTitle': 'সরাতে টেনে আনুন · পজিশন রিসেট করতে ডাবল-ক্লিক করুন',
   'pages.settings.account.connections': 'সংযোগ',
   'pages.settings.account.connectionsDesc': 'সংযোগের বিবরণ',
-  'pages.settings.account.migration': 'অন্য সহকারী থেকে আমদানি করুন',
+  'pages.settings.account.migration': 'আমদানি',
   'pages.settings.account.migrationDesc':
     'OpenClaw (এবং শীঘ্রই Hermes) থেকে মেমরি ও নোট এই ওয়ার্কস্পেসে স্থানান্তর করুন।',
   'pages.settings.account.privacy': 'গোপনীয়তা',
@@ -4680,6 +4690,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'মেমরি কর্মী পোল',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'পরিচালিত',
+  'settings.ai.managedSourceLabel': 'OpenHuman দ্বারা পরিচালিত',
+  'settings.ai.managedSourceDetail': 'স্বয়ংক্রিয় মডেল নির্বাচন',
   'settings.ai.routing.managedAlwaysOn': 'সর্বদা চালু',
   'settings.ai.routing.managedHint':
     'পরিচালিত সবসময় একটি ফলব্যাক হিসাবে উপলব্ধ. আপনার নিজের মডেল ব্যবহার করতে, নীচে একটি রাউটিং মোড চয়ন করুন.',
@@ -6053,6 +6065,10 @@ const messages: TranslationMap = {
   'pages.settings.account.walletBalancesDesc':
     'আপনার স্থানীয় ওয়ালেটের মাল্টি-চেইন ব্যালেন্স দেখুন',
   'walletBalances.title': 'ওয়ালেট ব্যালেন্স',
+  'walletBalances.colNetwork': 'নেটওয়ার্ক',
+  'walletBalances.colAddress': 'ঠিকানা',
+  'walletBalances.colBalance': 'ব্যালেন্স',
+  'walletBalances.colActions': 'অ্যাকশন',
   'walletBalances.refresh': 'Refresh',
   'walletBalances.loading': 'ব্যালেন্স লোড হচ্ছে…',
   'walletBalances.retry': 'Retry',
@@ -6447,6 +6463,7 @@ const messages: TranslationMap = {
   'composer.attachFile': 'ফাইল সংযুক্ত করুন',
   'composer.modelSelector': 'মডেল',
   'composer.voiceMode': 'ভয়েস মোড',
+  'composer.humanMode': 'হিউম্যান মোড',
   'composer.qualityHigh': 'উচ্চ',
   // Agent activity level
   'activityLevel.title': 'এজেন্ট কার্যকলাপের স্তর',
@@ -6709,6 +6726,10 @@ const messages: TranslationMap = {
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'পদক্ষেপ প্রয়োজন',
   'userErrors.dismiss': 'বাতিল করুন',
+  'userErrors.action.openConnections': 'সংযোগ খুলুন',
+  'userErrors.integrationDegraded.title': 'সংযোগগুলি পুরনো অবস্থা দেখাচ্ছে',
+  'userErrors.integrationDegraded.body':
+    'একটি সংযুক্ত ইন্টিগ্রেশন ত্রুটি ফেরত দিচ্ছে, তাই অ্যাপে দেখানো সংযোগের অবস্থা পুরনো হতে পারে।',
   'userErrors.action.openBilling': 'বিলিং খুলুন',
   'userErrors.action.openProviderSettings': 'প্রদানকারী সেটিংস',
   'userErrors.action.openEmbeddingsSettings': 'এমবেডিং সেট আপ করুন',
