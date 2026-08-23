@@ -146,11 +146,28 @@ describe('<DataTable />', () => {
     expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('replaces the body with a spinner while loading, keeping the toolbar', () => {
-    renderTable({ loading: true, toolbarStart: <button type="button">Install</button> });
+  /**
+   * Skeleton ROWS, not a centred spinner. The columns are known while the data
+   * is not, so the table holds its shape instead of collapsing and then jolting
+   * back to full width when rows arrive — and a host that had a skeleton before
+   * (the OAuth integrations grid, which used one to stop a hardcoded fallback
+   * list flashing) does not lose it by moving onto this primitive.
+   */
+  it('draws skeleton rows in the real columns while loading, keeping the toolbar', () => {
+    renderTable({
+      loading: true,
+      loadingRows: 3,
+      loadingTestId: 'skeleton',
+      toolbarStart: <button type="button">Install</button>,
+    });
 
-    expect(screen.queryByRole('table')).toBeNull();
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // No data rows, but the header and the column grid survive.
+    expect(screen.queryByText('Alpha')).toBeNull();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(2);
+
+    const region = screen.getByTestId('skeleton');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getAllByTestId('skeleton-row')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument();
   });
 
