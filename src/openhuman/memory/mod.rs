@@ -124,7 +124,13 @@ pub use tinymemory_core::ingestion::{
     IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
     MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
 };
-pub use tinymemory_core::rpc_models::*;
+// The host's own JSON-RPC request/response shapes. They lived in
+// `tinymemory_core::rpc_models` and were re-exported here by a glob; nothing
+// in `tinymemory` ever named one, so the engine crate was carrying this host's
+// RPC surface (#5560). Same glob, same paths, same wire bytes — the definitions
+// are simply ours now. See `rpc_models`'s module docs.
+pub mod rpc_models;
+pub use rpc_models::*;
 pub use tinymemory_core::traits::{
     Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };

@@ -332,7 +332,10 @@ mod tests {
 
     // The read-back goes through the engine handle directly, so its entries
     // carry the engine's category type rather than the contract's.
-    use tinymemory_core::MemoryCategory as EngineMemoryCategory;
+    // The contract's type, not the engine's: `tinymemory-core` re-exports
+    // `tinymemory_api::traits::MemoryCategory` (#18 §A1). Named at its source
+    // so this test does not hold the engine crate in the build (#5560).
+    use tinymemory_api::types::MemoryCategory as EngineMemoryCategory;
 
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy::default())

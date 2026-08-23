@@ -436,11 +436,11 @@ fn debug_dump_writer_sanitizes_names_and_writes_summary_sidecars() -> Result<()>
         workspace_dir: PathBuf::from("/tmp/round21-workspace"),
         text: "SYSTEM PROMPT\n".to_string(),
         tool_names: vec!["echo".to_string(), "search".to_string()],
-        skill_tool_count: 1,
         tool_specs: vec![
-            json!({"name": "echo", "description": "echo", "parameters": {}}),
-            json!({"name": "search", "description": "search", "parameters": {}}),
+            json!({"name": "echo", "description": "echo back", "parameters": {}}),
+            json!({"name": "search", "description": "search docs", "parameters": {}}),
         ],
+        skill_tool_count: 1,
     }];
 
     let summary = write_prompt_dumps(tmp.path(), &dumps)?;
@@ -461,5 +461,14 @@ fn debug_dump_writer_sanitizes_names_and_writes_summary_sidecars() -> Result<()>
     let summary_text = std::fs::read_to_string(summary.summary_path)?;
     assert!(summary_text.contains("agent/with spaces@gmail:primary"));
     assert!(summary_text.contains("tools=2"));
+    // The per-dump tools sidecar carries the rendered tool schemas verbatim,
+    // one entry per tool in `tool_names` order.
+    let tools_json = std::fs::read_to_string(
+        tmp.path().join("1_agent_with_spaces_gmail_primary.tools.json"),
+    )?;
+    let specs: Vec<serde_json::Value> = serde_json::from_str(&tools_json)?;
+    assert_eq!(specs.len(), 2);
+    assert_eq!(specs[0]["name"], "echo");
+    assert_eq!(specs[1]["name"], "search");
     Ok(())
 }

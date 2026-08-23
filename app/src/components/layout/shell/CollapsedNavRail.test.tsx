@@ -16,12 +16,6 @@ vi.mock('./useHomeNav', () => ({ useHomeNav: () => mockHome }));
 // Deterministic labels: render the i18n key so queries don't depend on locale.
 vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
-// The agent-world tab is gated on a tiny.place identity (#5424). These tests
-// exercise the full rail, so pin identity present; the gate is covered by
-// useNavTabs.test.ts.
-vi.mock('../../../hooks/useTinyPlaceIdentity', () => ({
-  useTinyPlaceIdentity: () => ({ status: 'ready', hasIdentity: true }),
-}));
 
 describe('CollapsedNavRail', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -35,13 +29,21 @@ describe('CollapsedNavRail', () => {
       'nav.human',
       'nav.brain',
       'nav.flows',
-      'nav.agentWorld',
       'nav.connections',
     ]) {
       expect(screen.getByRole('button', { name: key })).toBeInTheDocument();
     }
     // The wallet shortcut was removed from the rail.
     expect(screen.queryByRole('button', { name: 'nav.wallet' })).not.toBeInTheDocument();
+  });
+
+  it('renders rail icons as sidebar menu primitives', () => {
+    renderWithProviders(<CollapsedNavRail />, { initialEntries: ['/connections'] });
+    const connections = screen.getByRole('button', { name: 'nav.connections' });
+    expect(connections.dataset.slot).toBe('sidebar-menu-button');
+    expect(connections.dataset.active).toBe('true');
+    expect(connections.closest('[data-slot="sidebar-menu-item"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'nav.chat' }).dataset.active).toBe('false');
   });
 
   it('shortcuts button opens the keyboard-shortcuts help directory', () => {
@@ -74,8 +76,8 @@ describe('CollapsedNavRail', () => {
   });
 
   it('marks the active destination with aria-current', () => {
-    renderWithProviders(<CollapsedNavRail />, { initialEntries: ['/agent-world'] });
-    expect(screen.getByRole('button', { name: 'nav.agentWorld' })).toHaveAttribute(
+    renderWithProviders(<CollapsedNavRail />, { initialEntries: ['/connections'] });
+    expect(screen.getByRole('button', { name: 'nav.connections' })).toHaveAttribute(
       'aria-current',
       'page'
     );

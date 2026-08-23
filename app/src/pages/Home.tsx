@@ -132,7 +132,7 @@ const Home = () => {
   return (
     <div className="min-h-full flex flex-col items-center justify-center p-4">
       {/* Welcome title */}
-      <h1 className="min-h-[3.5rem] text-32l font-bold text-content text-center">
+      <h1 className="min-h-14 text-32l font-bold text-content text-center">
         {typedWelcome}
         <span aria-hidden="true" className="ml-0.5 inline-block text-primary-500 animate-pulse">
           |

@@ -2,7 +2,21 @@ import { fireEvent, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/test-utils';
+import { SidebarProvider } from '../../ui';
 import AppSidebar from './AppSidebar';
+
+/** `AppSidebar` reads `useSidebar()` — it must render inside a `<SidebarProvider>`. */
+function renderAppSidebar(
+  options?: Parameters<typeof renderWithProviders>[1],
+  providerProps?: { open?: boolean }
+) {
+  return renderWithProviders(
+    <SidebarProvider open={providerProps?.open ?? true}>
+      <AppSidebar />
+    </SidebarProvider>,
+    options
+  );
+}
 
 const mockNavigate = vi.fn();
 const mockTrackEvent = vi.fn();
@@ -40,7 +54,7 @@ describe('AppSidebar — Rewards footer entry', () => {
   });
 
   it('shows the Rewards row for a resolved cloud session and navigates + tracks on click', () => {
-    renderWithProviders(<AppSidebar />, { initialEntries: ['/chat'] });
+    renderAppSidebar({ initialEntries: ['/chat'] });
 
     const rewards = screen.getByTitle('nav.rewards');
     expect(rewards).toBeInTheDocument();
@@ -55,7 +69,7 @@ describe('AppSidebar — Rewards footer entry', () => {
   });
 
   it('normalizes from_path to a route template so entity IDs never reach analytics', () => {
-    renderWithProviders(<AppSidebar />, { initialEntries: ['/chat/thread-abc123'] });
+    renderAppSidebar({ initialEntries: ['/chat/thread-abc123'] });
 
     fireEvent.click(screen.getByTitle('nav.rewards'));
 
@@ -67,7 +81,7 @@ describe('AppSidebar — Rewards footer entry', () => {
 
   it('hides the Rewards row for a local session but keeps Feedback', () => {
     mockCoreState = { snapshot: { sessionToken: 'header.payload.local' }, isReady: true };
-    renderWithProviders(<AppSidebar />, { initialEntries: ['/chat'] });
+    renderAppSidebar({ initialEntries: ['/chat'] });
 
     expect(screen.queryByTitle('nav.rewards')).not.toBeInTheDocument();
     expect(screen.getByTitle('nav.feedback')).toBeInTheDocument();
@@ -78,15 +92,49 @@ describe('AppSidebar — Rewards footer entry', () => {
     // isLocalSessionToken(null) is false, so gating on the token alone would
     // briefly show Rewards here — the isReady guard prevents that flash.
     mockCoreState = { snapshot: { sessionToken: null }, isReady: false };
-    renderWithProviders(<AppSidebar />, { initialEntries: ['/chat'] });
+    renderAppSidebar({ initialEntries: ['/chat'] });
 
     expect(screen.queryByTitle('nav.rewards')).not.toBeInTheDocument();
     expect(screen.getByTitle('nav.feedback')).toBeInTheDocument();
   });
 
   it('marks the Rewards row active on the /rewards route', () => {
-    renderWithProviders(<AppSidebar />, { initialEntries: ['/rewards'] });
+    renderAppSidebar({ initialEntries: ['/rewards'] });
 
     expect(screen.getByTitle('nav.rewards')).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+// The `Sidebar` column stays mounted while collapsed (`collapsible="icon"`),
+// so `AppSidebar` — not `RootShellLayout` — is what switches to the compact
+// rail body. These render inside a collapsed `SidebarProvider` directly,
+// bypassing the mocked SidebarHeader/SidebarNav above so the real collapsed
+// branch (drag strip, reopen trigger, CollapsedNavRail) is under test.
+describe('AppSidebar — collapsed rail', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders the reopen trigger and collapsed nav rail instead of the header/nav', () => {
+    renderAppSidebar({ initialEntries: ['/chat'] }, { open: false });
+
+    expect(screen.getByTestId('root-shell-reopen')).toBeInTheDocument();
+    // The primary nav destinations still resolve via CollapsedNavRail.
+    expect(screen.getByRole('button', { name: 'nav.chat' })).toBeInTheDocument();
+  });
+
+  it('reserves a draggable strip above the reopen trigger for the macOS traffic lights', () => {
+    const { container } = renderAppSidebar({ initialEntries: ['/chat'] }, { open: false });
+    expect(container.querySelector('[data-tauri-drag-region]')).toBeInTheDocument();
+  });
+
+  it('gives the reopen trigger the expected analytics id and label', () => {
+    renderAppSidebar({ initialEntries: ['/chat'] }, { open: false });
+    const reopen = screen.getByTestId('root-shell-reopen');
+    expect(reopen).toHaveAttribute('data-analytics-id', 'root-shell-reopen-sidebar');
+    expect(reopen).toHaveAttribute('aria-label', 'layout.showSidebar');
+  });
+
+  it('does not render the reopen trigger while expanded', () => {
+    renderAppSidebar({ initialEntries: ['/chat'] }, { open: true });
+    expect(screen.queryByTestId('root-shell-reopen')).not.toBeInTheDocument();
   });
 });

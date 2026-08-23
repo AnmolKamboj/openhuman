@@ -104,7 +104,7 @@ function UserErrorCenter() {
                       type="button"
                       data-testid="user-error-action"
                       onClick={() => runAction(entry)}
-                      className="rounded-md bg-ocean px-2.5 py-1 text-xs font-medium text-white hover:bg-ocean/90">
+                      className="rounded-md bg-primary-500 px-2.5 py-1 text-xs font-medium text-content-inverted hover:bg-primary-600">
                       {t(ACTION_LABEL_KEY[entry.action])}
                     </button>
                   )}

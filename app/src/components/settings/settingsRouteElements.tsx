@@ -153,12 +153,10 @@ export function settingsRouteElements(): ReactNode {
       <Route path="mcp-server" element={wrapSettingsPage(<McpServerPanel />)} />
       {/* Search engine settings moved to the Connections page. */}
       <Route path="search" element={<Navigate to="/connections?tab=search" replace />} />
-      {/* Agent Chat debug tester moved to the Connections page. */}
-      {/* Agent Chat is a chip on the Connections → LLM page. */}
-      <Route
-        path="agent-chat"
-        element={<Navigate to="/connections?tab=llm#agent-chat" replace />}
-      />
+      {/* Agent Chat debug tester retired — the panel is deleted. The slug is
+          kept as a redirect so an old deep link lands on the LLM page rather
+          than the settings index via the catch-all. */}
+      <Route path="agent-chat" element={<Navigate to="/connections?tab=llm" replace />} />
       <Route path="cron-jobs" element={wrapSettingsPage(<CronJobsPanel />)} />
       {/* Tasks now live on Brain's Orchestration Kanban board. */}
       <Route path="tasks" element={<Navigate to="/brain?tab=orchestration&ov=tasks" replace />} />
@@ -170,11 +168,9 @@ export function settingsRouteElements(): ReactNode {
       <Route path="skills-runner" element={wrapSettingsPage(<WorkflowRunnerPanel />)} />
       {/* Voice Debug page retired. */}
       <Route path="voice-debug" element={<SettingsRedirect to="/settings/developer-options" />} />
-      {/* Local Model Debug is a chip on the Connections → LLM page. */}
-      <Route
-        path="local-model-debug"
-        element={<Navigate to="/connections?tab=llm#local-model" replace />}
-      />
+      {/* Local Model Debug retired — the panel is deleted. Redirect kept for
+          the same reason as agent-chat above. */}
+      <Route path="local-model-debug" element={<Navigate to="/connections?tab=llm" replace />} />
       {/* Webhooks were retired from the UI — bounce old debug/trigger deep
           links to the Connections page. */}
       <Route path="webhooks-debug" element={<Navigate to="/connections" replace />} />
