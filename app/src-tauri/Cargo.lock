@@ -7254,7 +7254,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7362,6 +7362,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "log",
+ "rusqlite",
  "serde",
  "serde_json",
  "tinycortex",
