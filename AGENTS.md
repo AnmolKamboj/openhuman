@@ -207,15 +207,13 @@ submodules consumed by `path` (not published to crates.io, so no
 `[patch.crates-io]` entry — same shape as `tinyhumans-sdk`). After cloning:
 `git submodule update --init vendor/tinydocs vendor/tinywallet`.
 
-**Both are taken as their `-bus` contract crate, not as the repository's root
-crate.** `vendor/tinydocs/crates/tinydocs-bus` and
-`vendor/tinywallet/crates/tinywallet-bus` are transport-free libraries holding
-the interface name, the object path, one constant per member, the payload types
-and the contract version — plus the pure rules a host genuinely runs itself. The
-root crates in those repositories hold the implementation the TinyBus module
-carries (`.docx` synthesis; key derivation, transaction building and signing),
-and this binary does not link them. Same shape as `tinyvoice-bus`,
-`tinyjuice-bus` and `tinyruntime-bus`.
+**What this binary takes from each repository is its `-bus` contract crate, not
+its root crate.** A `-bus` crate is transport-free and holds the interface name,
+the object path, one constant per member, the payload types and the contract
+version — plus the pure rules a host genuinely runs itself. The root crate holds
+the implementation the TinyBus module carries, and this binary does not link it.
+`vendor/tinywallet/crates/tinywallet-bus` is the entry here; the same shape as
+`tinyvoice-bus`, `tinyjuice-bus`, `tinyruntime-bus` and `tinydocs-bus`.
 
 The split follows one rule, and it is worth stating because it decides where
 the *next* extraction goes: **a crate owns what is the same for every host; the
@@ -257,8 +255,9 @@ Consequences worth knowing before touching either seam:
   data for the x402 payment path, encoding ERC-20 calldata, and verifying the
   txid and contents of what a Tron node handed back. That last one is not
   optional — Tron has the *node* build the transaction, so the check has to
-  happen wherever the decision to sign is made. Same precedent `tinydocs-bus`
-  set with its spec validators.
+  happen wherever the decision to sign is made. Same precedent `tinydocs`'
+  spec validators set: a bus crate carrying host-side rules is established here,
+  not a novelty.
 - **Member names come from `tinywallet_bus::names::methods`, never a literal.**
   `src/openhuman/modules/wallet.rs` calls by constant, and
   `wallet_tests.rs`'s `contract` module pins `registry.rs`'s `bus_name` /
@@ -270,7 +269,7 @@ Consequences worth knowing before touching either seam:
   fixtures derive a known account through its `key` gate. Cargo does not link
   dev-dependency features into the shipped binary, so this does not put
   `bitcoin`, `coins-bip39` or a native `secp256k1` build back into the product.
-- **Each crate's gates ride OpenHuman's existing ones**: `tinydocs-bus` is
+- **Each crate's gates ride OpenHuman's existing ones**: the tinydocs entry is
   exclusive to `documents`, `tinywallet-bus` to `web3`. Both are default-ON and
   already forwarded to the desktop shell. Both are taken with
   `default-features = false` — the wire contract, not the implementation, which
