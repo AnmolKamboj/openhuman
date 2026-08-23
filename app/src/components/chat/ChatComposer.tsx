@@ -116,7 +116,8 @@ export interface ChatComposerProps {
   mascotDock?: React.ReactNode;
   /** Per-composer model route selected from the assistant-ui-style control. */
   modelOverride?: string | null;
-  onModelOverrideChange?: (value: string, contextWindow?: number | null) => void;
+  /** `null` means managed — see `ModelQualityPill`'s `onValueChange`. */
+  onModelOverrideChange?: (value: string | null, contextWindow?: number | null) => void;
 }
 
 /**
