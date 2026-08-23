@@ -200,38 +200,75 @@ Audit new Tauri plugins for `js_init_script` calls.
 
 ## Rust core (`src/`)
 
-### Extracted host-agnostic crates — `vendor/tinydocs`, `vendor/tinywallet`
+### Module wire contracts — one `*-bus` crate per loadable module
 
-Two vendored crates own logic that used to live in this repo. Both are git
-submodules consumed by `path` (not published to crates.io, so no
-`[patch.crates-io]` entry — same shape as `tinyhumans-sdk`). After cloning:
-`git submodule update --init vendor/tinydocs vendor/tinywallet`.
+A capability that runs in a loaded module is reached over the bus, and a host
+cannot import Rust items from a `cdylib`. So every module ships an ordinary
+crate carrying its **call vocabulary** — interface names, member names, request
+and response types, and the contract version — and this crate links that and
+nothing else from the module's repository. Each is a git submodule consumed by
+`path` (not published to crates.io, so no `[patch.crates-io]` entry — same shape
+as `tinyhumans-sdk`).
 
-The split follows one rule, and it is worth stating because it decides where
-the *next* extraction goes: **a crate owns what is the same for every host; the
-host owns what depends on its own runtime, config, or threat model.** Both
-crates are therefore synchronous, I/O-free, and runtime-free.
+| Contract crate | Gate | Reached from |
+| --- | --- | --- |
+| `tinydocs-bus` | `documents` | `modules/documents.rs`, `tools/impl/document/` (as `format`) |
+| `tinyvoice-bus` | `voice` | `modules/voice.rs` |
+| `tinyjuice-bus` | **none** — `inference::tokenjuice` is kernel | `inference/tokenjuice/types.rs`, `modules/tokenjuice_host.rs` |
+| `tinyruntime-bus` | none — `ShellTool` holds an `Option<Arc<NodeBootstrap>>` field | `modules/runtime.rs`, `runtime/**` |
+| `tinymcp-bus` | `mcp` | `mcp/**` |
+
+After cloning: `git submodule update --init --recursive vendor/`.
+
+**Never re-declare a contract type here.** Each of these crates replaced a copy
+that had already drifted or was one edit away from it — `tools/impl/document/
+format/` was 1,873 lines differing from `crates/tinydocs-bus/src/` only in
+doc-link paths, `modules/voice.rs` redeclared four types with a comment
+explaining that it had to, and `inference/tokenjuice/types.rs` was 259 lines
+headed "shared with the separately compiled module" and shared by convention
+alone. A field added on one side of a copy is a decode failure on the other with
+nothing to catch it, and for the document specs it is worse than that: those
+specs are also what an LLM is shown as a JSON tool schema, so a limit that moves
+upstream becomes a tool description promising what the module does not enforce.
+
+**Call members by their constant, never by a string.** `methods::GENERATE_DOCX`,
+not `"GenerateDocx"`. A rename upstream is then a compile error here instead of
+a `MemberNotFound` at runtime.
+
+**`registry.rs` is the one place a name is still written out by hand.** It is a
+`const` table and cannot name a gated crate, so `modules/{documents,voice}_tests.rs`
+assert its `bus_name` / `object_path` against the contract's `BUS_NAME` /
+`OBJECT_PATH`. A mismatch is not a compile error — it is a `NameHasNoOwner` at
+first use, in the field, on whichever platform nobody tested.
+
+**Host policy stays host-side.** The contract says what a module may send; it
+does not decide what this host will act on. When a type becomes foreign, the
+policy attached to it becomes a free function rather than moving upstream —
+`modules/voice.rs`'s `clamped` (a volume that reaches an `osascript` command),
+`vad_config_from_server_config` (this host persists seconds, the module speaks
+milliseconds), and `hallucination_mode_wire`.
+
+### Extracted host-agnostic crates — `vendor/tinywallet`
+
+Separately from the contract crates above, `tinywallet` owns logic that used to
+live in this repo and is not wire vocabulary. The split follows one rule, and it
+is worth stating because it decides where the *next* extraction goes: **a crate
+owns what is the same for every host; the host owns what depends on its own
+runtime, config, or threat model.** The crate is therefore synchronous, I/O-free,
+and runtime-free.
 
 | Crate | Owns | OpenHuman keeps |
 | --- | --- | --- |
-| `tinydocs` | the `.docx` spec types, their size limits, validation, and OOXML synthesis (`docx-rs` sits behind it) | the artifact pipeline, the `spawn_blocking` hop, and the generation deadline — `src/openhuman/tools/impl/document/` |
 | `tinywallet` | the BTC / EVM / Solana / Tron address formats: parsing, validation, encoding conversions | RPC endpoint resolution, transaction assembly and broadcast, key custody — `src/openhuman/web3/` |
 
-Consequences worth knowing before touching either seam:
+`tinywallet` has **no `-bus` crate yet**, so it is the one module whose
+contract (`tinywallet::wire`) is reached through a feature of the root crate
+rather than a separate one. The chain and signing core is still out of the
+build — `bitcoin`, `ethers-*` and `coins-bip39` are absent because `key`, `tx`
+and `client` are off — but the arrangement differs from every other module here.
 
-- **`tinydocs::docx::generate` is synchronous on purpose.** A crate that
-  guessed at an executor or a deadline would be wrong for every host that
-  guessed differently, so `document/engine.rs` supplies exactly that policy and
-  nothing else. `DocumentError::GenerationTimeout` therefore has no `tinydocs`
-  equivalent and can only be produced host-side.
-- **`tinydocs::Error` is `#[non_exhaustive]`.** The `From` impl in
-  `document/types.rs` needs its catch-all arm; it degrades an unmapped variant
-  to `GenerationFailed` and logs, so a crate bump that adds a case worth
-  handling structurally shows up rather than being swallowed.
-- **The JSON tool schema did not change.** `GenerateDocumentInput` is
-  `tinydocs`' `DocumentSpec` re-exported under its historical name, with field
-  names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
-  that.
+Consequences worth knowing before touching that seam:
+
 - **`tinywallet` rejects an uppercase `0X` EVM prefix, matching the code it
   replaced, which rejected that prefix too.** The old path went through `ethers_core::types::Address`'s
   `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
@@ -241,11 +278,26 @@ Consequences worth knowing before touching either seam:
 - **Bitcoin has two rules, not one.** `btc::validate` is the recipient rule;
   `btc::validate_sender` additionally requires P2WPKH. Using the first where
   the second belongs accepts an address that only fails later, at signing time.
-- **Each crate's gates ride OpenHuman's existing ones**: `tinydocs` is
-  exclusive to `documents`, `tinywallet` to `web3`. Both are default-ON and
-  already forwarded to the desktop shell. Note `tinydocs` is now taken with
-  `default-features = false` — the wire contract, not the writers, which run in
-  the TinyBus module instead (see the module host section).
+- **Its gate rides OpenHuman's existing one**: `tinywallet` is exclusive to
+  `web3`, which is default-ON in the product set and already forwarded to the
+  desktop shell.
+
+Two consequences of the document seam survive the move to `tinydocs-bus` and
+still apply:
+
+- **Document generation is synchronous on purpose.** A crate that guessed at an
+  executor or a deadline would be wrong for every host that guessed
+  differently, so `document/engine.rs` supplies exactly that policy and nothing
+  else. `DocumentError::GenerationTimeout` therefore has no contract equivalent
+  and can only be produced host-side.
+- **`tinydocs_bus::Error` is `#[non_exhaustive]`.** The `From` impl in
+  `document/types.rs` needs its catch-all arm; it degrades an unmapped variant
+  to `GenerationFailed` and logs, so a crate bump that adds a case worth
+  handling structurally shows up rather than being swallowed.
+- **The JSON tool schema did not change.** `GenerateDocumentInput` is the
+  contract's `DocumentSpec` re-exported under its historical name, with field
+  names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
+  that.
 
 ### Backend API access — `src/api/` over `tinyhumans-sdk`
 
