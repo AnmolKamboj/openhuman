@@ -762,7 +762,6 @@ mod tests {
             "tools_agent",
             "crypto_agent",
             "scheduler_agent",
-            "tinyplace_agent",
         ] {
             let def = find(id);
             assert!(
@@ -904,7 +903,6 @@ mod tests {
             "scheduler_agent",
             "task_manager_agent",
             "crypto_agent",
-            "tinyplace_agent",
         ];
         for id in ids {
             let def = find(id);
@@ -1259,8 +1257,6 @@ mod tests {
                 // A representative slice of the read-only gathering surface.
                 for required in [
                     "memory_recall",
-                    "transcript_search",
-                    "thread_list",
                     "list_flows",
                     "list_flow_connections",
                     "search_tool_catalog",
@@ -1307,60 +1303,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn tinyplace_agent_is_registered_and_narrow() {
-        let def = find("tinyplace_agent");
-        assert!(matches!(def.model, ModelSpec::Hint(ref h) if h == "burst"));
-        assert_eq!(def.sandbox_mode, SandboxMode::None);
-        assert!(!def.omit_safety_preamble);
-        assert_eq!(def.delegate_name.as_deref(), Some("use_tinyplace"));
-        match &def.tools {
-            ToolScope::Named(names) => {
-                // Curated flow surface (replaced the per-controller 1:1 tools).
-                for required in [
-                    "tinyplace_whoami",
-                    "tinyplace_status",
-                    "tinyplace_feed",
-                    "tinyplace_find_work",
-                    "tinyplace_register",
-                    "tinyplace_post_bounty",
-                    "tinyplace_submit_work",
-                    "tinyplace_job_apply",
-                    "tinyplace_graphql",
-                    "tinyplace_call",
-                    "tinyplace_help",
-                    "ask_user_clarification",
-                    "resolve_time",
-                    "current_time",
-                ] {
-                    assert!(
-                        names.iter().any(|name| name == required),
-                        "tinyplace_agent tool list missing `{required}`"
-                    );
-                }
-                for forbidden in [
-                    "shell",
-                    "file_write",
-                    "composio_execute",
-                    "mcp_registry_tool_call",
-                ] {
-                    assert!(
-                        !names.iter().any(|name| name == forbidden),
-                        "tinyplace_agent must not expose broad tool `{forbidden}`"
-                    );
-                }
-            }
-            other => panic!("tinyplace_agent must use Named tool scope, got {other:?}"),
-        }
-
-        let orchestrator = find("orchestrator");
-        assert!(
-            orchestrator.subagents.iter().any(
-                |entry| matches!(entry, SubagentEntry::AgentId(id) if id == "tinyplace_agent")
-            ),
-            "orchestrator must allow `tinyplace_agent` so use_tinyplace can spawn it"
-        );
-    }
 
     #[test]
     fn specialist_agents_are_registered_with_narrow_tools() {
@@ -1510,10 +1452,6 @@ mod tests {
                 for required in [
                     "memory_recall",
                     // Transcripts + thread metadata + message reader (read-only).
-                    "transcript_search",
-                    "thread_list",
-                    "thread_read",
-                    "thread_message_list",
                     // Skill discovery (read-only).
                     "list_workflows",
                     "skill_registry_browse",
@@ -1586,11 +1524,6 @@ mod tests {
                     "memory_recall",
                     "memory_hybrid_search",
                     "memory_flavour",
-                    "people_list",
-                    "transcript_search",
-                    "thread_list",
-                    "thread_read",
-                    "thread_message_list",
                 ];
                 for required in expected {
                     assert!(
@@ -2061,7 +1994,6 @@ mod tests {
             "task_manager_agent",
             "settings_agent",
             "profile_memory_agent",
-            "account_admin_agent",
         ] {
             assert!(
                 subagents.contains(expected),
@@ -2078,7 +2010,6 @@ mod tests {
             "task_manager_agent",
             "settings_agent",
             "profile_memory_agent",
-            "account_admin_agent",
         ] {
             let def = find(expected);
             assert_eq!(def.agent_tier, AgentTier::Worker);
