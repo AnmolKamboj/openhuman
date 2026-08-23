@@ -476,6 +476,14 @@ pub fn for_workspace(
 #[cfg(test)]
 pub(crate) struct FixedDiagnostics {
     inner: NullMemoryProvider,
+    /// How many times the host has asked this driver to retry failed work,
+    /// and how many jobs it should say it requeued when asked.
+    ///
+    /// The gate in front of the ask is host logic — only an embedder change
+    /// should un-park anything — so a test needs to see whether the ask
+    /// happened, separately from what the driver would have done.
+    retry_calls: std::sync::atomic::AtomicUsize,
+    retry_requeues: u64,
     /// How many times the host has asked this driver to re-embed.
     ///
     /// `reembed` enqueues work rather than doing it, so the host's side of that
@@ -512,8 +520,21 @@ mod fixed_diagnostics_impl {
                 store,
                 queue,
                 failure: None,
+                retry_calls: std::sync::atomic::AtomicUsize::new(0),
+                retry_requeues: 0,
                 reembed_calls: std::sync::atomic::AtomicUsize::new(0),
             }
+        }
+
+        /// Report `requeued` jobs from [`MemoryMaintenance::retry_failed`].
+        pub(crate) fn requeueing(mut self, requeued: u64) -> Self {
+            self.retry_requeues = requeued;
+            self
+        }
+
+        /// How many times [`MemoryMaintenance::retry_failed`] has been called.
+        pub(crate) fn retry_calls(&self) -> usize {
+            self.retry_calls.load(std::sync::atomic::Ordering::SeqCst)
         }
 
         /// How many times [`MemoryMaintenance::reembed`] has been called.
@@ -597,6 +618,17 @@ mod fixed_diagnostics_impl {
 
     #[async_trait]
     impl MemoryMaintenance for FixedDiagnostics {
+        async fn retry_failed(&self) -> Result<MaintenanceReport, MemoryError> {
+            self.retry_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(MaintenanceReport {
+                operation: "retry_failed".to_string(),
+                examined: self.retry_requeues,
+                changed: self.retry_requeues,
+                findings: Vec::new(),
+            })
+        }
+
         async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
             self.reembed_calls
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -666,6 +698,24 @@ pub(crate) fn install_diagnostics_for_test(
     install_for_test(
         workspace_dir,
         cfg,
+        Arc::clone(&driver) as Arc<dyn MemoryProvider>,
+    );
+    driver
+}
+
+/// Bind a driver that reports `requeued` from `retry_failed` and counts the
+/// asks, for tests about *when* the host asks rather than what a queue does.
+#[cfg(test)]
+pub(crate) fn install_retrying_driver_for_test(
+    config: &crate::openhuman::config::Config,
+    requeued: u64,
+) -> Arc<FixedDiagnostics> {
+    let driver = Arc::new(
+        FixedDiagnostics::new(Default::default(), Default::default()).requeueing(requeued),
+    );
+    install_for_test(
+        &config.workspace_dir,
+        &config.subsystems.memory,
         Arc::clone(&driver) as Arc<dyn MemoryProvider>,
     );
     driver

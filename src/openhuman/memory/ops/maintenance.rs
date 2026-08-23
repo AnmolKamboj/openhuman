@@ -54,6 +54,42 @@ pub async fn reembed(config: &Config) -> Result<u64, String> {
     Ok(report.changed)
 }
 
+/// Ask the bound driver to give terminally-failed queue work another attempt.
+///
+/// Answers how many jobs were requeued. The driver wakes whatever drains the
+/// queue as part of the same operation, so there is no second call to forget:
+/// jobs flipped back to `ready` that then wait for the next scheduled window
+/// look, to the user who pressed the button, exactly like a retry that did
+/// nothing.
+///
+/// A driver that does not serve `Maintenance` reports `0`, which is what it
+/// requeued.
+///
+/// # Errors
+///
+/// Whatever the driver reports.
+pub async fn retry_failed(config: &Config) -> Result<u64, String> {
+    let binding = binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        log::debug!(
+            "[memory::maintenance] retry_failed: driver '{}' does not serve Maintenance; nothing requeued",
+            binding.driver_id()
+        );
+        return Ok(0);
+    };
+    let report = maintenance
+        .retry_failed()
+        .await
+        .map_err(|error| format!("retry_failed: {error}"))?;
+    log::debug!(
+        "[memory::maintenance] retry_failed: driver '{}' examined={} requeued={}",
+        binding.driver_id(),
+        report.examined,
+        report.changed
+    );
+    Ok(report.changed)
+}
+
 /// Log-and-continue wrapper for the call sites that have nothing to report the
 /// count to.
 ///

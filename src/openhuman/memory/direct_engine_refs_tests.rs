@@ -111,9 +111,11 @@
 //!   a caller can depend on it and compile almost nothing. Only
 //!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
 //!   `sha2` in the contract crate.
-//! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
-//!   requeue_failed_after_provider_change, drain_until_idle, wake_workers,
-//!   backfill_in_progress}`. No family.
+//! - **The re-embed queue** (~4 files) — `queue::{start, types,
+//!   drain_until_idle}`, plus a bare `wake_workers` after a tree reset. What
+//!   is left is queue *lifecycle* rather than queue operations: starting the
+//!   worker belongs with driver construction, and the reset nudge is not
+//!   paired with a requeue the way the retry path was.
 //!
 //!   `ensure_reembed_backfill` is off this list, and how it left is the part
 //!   worth keeping: it needed no upstream work at all. `Maintenance::reembed`
@@ -393,11 +395,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/config/ops/model.rs",
-        Verdict::NeedsWiderSeam,
-        "queue::requeue_failed_after_provider_change has no capability family; the enqueue half moved onto Maintenance::reembed, which already was this call",
-    ),
-    (
         "src/openhuman/cron/scheduler.rs",
         Verdict::NeedsWiderSeam,
         "task-local host policy living in the engine crate (source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
@@ -426,11 +423,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/hosted/orchestration/effect_executor.rs",
         Verdict::NeedsWiderSeam,
         "engine-internal ingest pipeline entry (ingest_pipeline::ingest_document_with_scope); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
-    ),
-    (
-        "src/openhuman/inference/embeddings/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "queue::requeue_failed_after_provider_change has no capability family; the enqueue half moved onto Maintenance::reembed, which already was this call",
     ),
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
@@ -585,7 +577,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, queue::wake_workers, ingest_pipeline) has no capability family, and chunk reads still need MemoryChunks widened (list_chunks/get_chunk); its queue and chunk *diagnostics* have moved onto Maintenance::{store_stats, queue_stats, latest_queue_failure} and no longer open a connection here",
+        "the ingest pipeline (ingest_pipeline, tinycortex canonicalize) has no capability family, chunk reads still need MemoryChunks widened (list_chunks/get_chunk), and queue::backfill_in_progress is a process-global the engine cannot yet scope per store; diagnostics moved onto Maintenance::{store_stats, queue_stats, latest_queue_failure} and retry onto Maintenance::retry_failed",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",

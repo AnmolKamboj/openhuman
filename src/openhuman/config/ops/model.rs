@@ -265,7 +265,7 @@ pub async fn apply_model_settings(
     // would read identically to "nothing was parked" and hide that the parked
     // jobs are still stuck. Surface the error in the outcome line instead.
     let requeued_note = if embedder_changed {
-        match tinymemory_core::queue::requeue_failed_after_provider_change(config) {
+        match crate::openhuman::memory::ops::maintenance::retry_failed(config).await {
             Ok(n) => n.to_string(),
             Err(e) => format!("error ({e})"),
         }
@@ -360,7 +360,7 @@ pub async fn apply_memory_settings(
     // #5324: same as the model-settings path — keep the save successful but
     // report an un-park failure instead of a misleading `requeued_failed=0`.
     let requeued_note = if embedder_changed {
-        match tinymemory_core::queue::requeue_failed_after_provider_change(config) {
+        match crate::openhuman::memory::ops::maintenance::retry_failed(config).await {
             Ok(n) => n.to_string(),
             Err(e) => format!("error ({e})"),
         }
