@@ -768,6 +768,13 @@ pub fn default_workspace_file_content(filename: &str) -> &'static str {
     match filename {
         "SOUL.md" => include_str!("SOUL.md"),
         "IDENTITY.md" => include_str!("IDENTITY.md"),
+        // The user-facing agent's role brief and writing style, moved out of
+        // the compiled `orchestrator/prompt.md` so both are tunable on disk
+        // without a rebuild (#5701). Same sync-and-inject contract as
+        // SOUL.md / IDENTITY.md: the bundled copy seeds the workspace, and a
+        // user edit wins from the next session on.
+        "ROLE.md" => include_str!("ROLE.md"),
+        "STYLE.md" => include_str!("STYLE.md"),
         "HEARTBEAT.md" => {
             "# Periodic Tasks\n\n# Add tasks below (one per line, starting with `- `)\n"
         }
