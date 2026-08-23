@@ -6515,7 +6515,7 @@ dependencies = [
 
 [[package]]
 name = "tinyjuice-bus"
-version = "0.2.2"
+version = "0.2.4"
 dependencies = [
  "serde",
 ]
