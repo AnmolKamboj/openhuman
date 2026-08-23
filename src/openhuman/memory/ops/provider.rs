@@ -168,12 +168,17 @@ mod tests {
                 crate::openhuman::memory::api::CONTRACT_VERSION
             )
         );
-        // The thirteen families the pinned v1.0.1 tinymemory artifact actually
+        // The seventeen families the pinned v1.2.0 tinymemory artifact actually
         // serves — not the eighteen the contract crate declares. This used to
         // assert all eighteen, including `chunks`, `episodic`, `people`,
         // `profile`, and `retrieval`; that encoded #5598 as expected: those
-        // five have no bus member in the pinned release, so calling them
+        // five had no bus member in the pre-v1.2.0 release, so calling them
         // answered `UnknownMethod` rather than reporting themselves absent.
+        // The v1.2.0 re-pin gave `chunks`, `people`, `profile` and `retrieval`
+        // bus members, widening the boundary from thirteen to seventeen;
+        // `episodic` alone stays withheld, because the artifact serves it but
+        // `ModuleMemoryProvider` has no `as_episodic`, so advertising it would
+        // be the same over-claim in a different coat.
         // `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match what
         // is actually served (see its module docs); this pins the same
         // corrected boundary. Spelled out rather than derived from
@@ -185,6 +190,12 @@ mod tests {
         assert_eq!(
             status.capabilities,
             vec![
+                // Widened from thirteen to seventeen with the v1.2.0 registry
+                // re-pin, which is where `chunks`, `people`, `profile` and
+                // `retrieval` gained bus members. `episodic` stays absent: the
+                // artifact serves it, but `ModuleMemoryProvider` has no
+                // `as_episodic`, so advertising it would over-claim.
+                "chunks",
                 "core",
                 "diff",
                 "documents",
@@ -193,8 +204,11 @@ mod tests {
                 "graph",
                 "ingest",
                 "maintenance",
+                "people",
                 "portability",
+                "profile",
                 "recall",
+                "retrieval",
                 "sources",
                 "tool_memory",
                 "tree"

@@ -3,10 +3,10 @@ use rusqlite::params;
 
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
+use tinymemory_api::chunks::SourceKind;
 use tinymemory_core::store::chunks::store::{
     delete_chunks_by_source, delete_orphaned_source_tree, with_connection,
 };
-use tinymemory_core::store::chunks::types::SourceKind;
 
 use super::types::{
     DeleteSourceResponse, FlushNowResponse, FlushSourceTreeResponse, ResetTreeResponse,
@@ -418,7 +418,7 @@ pub async fn delete_source_rpc(
     let log = format!(
         // Redact the source id: it can embed user-linked identifiers.
         "memory_tree::read: delete_source source_id_hash={} deleted={} chunks_removed={} tree_cleaned={}",
-        tinymemory_core::util::redact::redact(&source_id),
+        crate::openhuman::util::redact::redact(&source_id),
         resp.deleted,
         resp.chunks_removed,
         tree_cleaned

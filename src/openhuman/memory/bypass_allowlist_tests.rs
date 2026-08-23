@@ -318,9 +318,9 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "resolved only to reach profile_store()",
     ),
     (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types_test_support.rs",
         "MemoryClient::from_workspace_dir(",
-        "provider trait takes &MemoryClientRef; the contract has no such shape",
+        "engine-side test fixture; upstream moved this out of types.rs when it externalised inline tests",
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
@@ -362,18 +362,8 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // scanner does not brace-track.
     (
         "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
-        "MemoryClient::from_workspace_dir(",
-        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",
-        "MemoryClient::from_workspace_dir(",
-        "inline #[cfg(test)] module only (the connection-guard tests); not brace-tracked",
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",

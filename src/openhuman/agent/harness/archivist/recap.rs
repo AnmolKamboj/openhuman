@@ -156,7 +156,7 @@ impl ArchivistHook {
             .iter()
             .filter(|e| !e.content.trim().is_empty())
             .map(|e| {
-                use tinymemory_core::store::chunks::types::approx_token_count;
+                use tinymemory_api::chunks::approx_token_count;
                 let content = e.content.clone();
                 let token_count = approx_token_count(&content);
                 let ts = chrono::DateTime::from_timestamp(e.timestamp as i64, 0)

@@ -356,12 +356,23 @@ impl AgentMemory for OpenHumanAgentMemory {
     async fn recall(&self, req: RecallRequest) -> TaResult<Vec<MemoryItem>> {
         let limit = self.effective_limit(req.limit);
         let session = req.thread_id.as_ref().map(|t| t.as_str());
+        // Bound outside the `RecallOpts` literal: the struct borrows it.
+        let current_thread_id_ref =
+            crate::openhuman::agent::tinyagents::thread_context::current_thread_id();
 
         let opts = RecallOpts {
             namespace: Some(self.namespace.as_str()),
             category: None,
             session_id: session,
             min_score: Some(self.min_score),
+            // The self-echo exclusion, passed explicitly rather than left to the
+            // engine's `thread_context` task-local. That task-local is only
+            // visible to an in-process engine; once memory is reached through
+            // the loadable module it reads as absent on the far side, and
+            // absent means "exclude nothing" — the agent gets handed back what
+            // it just said. Resolving it here keeps the behaviour identical on
+            // both paths.
+            exclude_session_id: current_thread_id_ref.as_deref(),
             // Widening past the requested session is a wiring decision, never a
             // runtime hint.
             cross_session: self.cross_session,

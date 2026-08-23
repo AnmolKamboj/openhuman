@@ -4,8 +4,8 @@ use crate::openhuman::channels::providers::yuanbao::YuanbaoConfig;
 use crate::openhuman::config::schema::{DiscordConfig, IMessageConfig};
 use chrono::{TimeZone, Utc};
 use tempfile::tempdir;
+use tinymemory_api::chunks::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
 use tinymemory_core::store::chunks::store as memory_tree_store;
-use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
 
 fn isolated_test_config() -> (tempfile::TempDir, Config) {
     let tmp = tempdir().expect("failed to create temp dir");

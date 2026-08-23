@@ -84,7 +84,7 @@ pub async fn graph_export_rpc(
         mode,
         resp.nodes.len(),
         resp.edges.len(),
-        tinymemory_core::util::redact::redact(&resp.content_root_abs),
+        crate::openhuman::util::redact::redact(&resp.content_root_abs),
     );
     Ok(RpcOutcome::single_log(resp, log))
 }

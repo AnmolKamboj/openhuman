@@ -6,7 +6,7 @@
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::memory::sync::composio;
 use crate::rpc::RpcOutcome;
-use tinymemory_core::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
+use tinymemory_api::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 
 /// Parameters for `memory_sync_channel`.
 #[derive(Debug, serde::Deserialize)]

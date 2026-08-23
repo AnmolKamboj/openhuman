@@ -49,8 +49,8 @@ use crate::openhuman::memory::ops::{
     GraphUpsertParams, KvGetDeleteParams, KvSetParams, NamespaceOnlyParams, PutDocParams,
 };
 use crate::openhuman::memory::rpc_models::QueryNamespaceRequest;
+use tinymemory_api::chunks::{Chunk, Metadata, SourceKind, SourceRef};
 use tinymemory_core::store::chunks;
-use tinymemory_core::store::chunks::types::{Chunk, Metadata, SourceKind, SourceRef};
 use tinymemory_core::store::namespace_store::{events, fts5, profile, segments};
 use tinymemory_core::store::trees;
 use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind, TreeStatus};

@@ -433,8 +433,8 @@ fn auth_me_store_validation_budget_reads_env_override() {
 #[tokio::test]
 async fn store_session_requeues_reembed_backfill_after_login() {
     use chrono::TimeZone;
+    use tinymemory_api::chunks::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
     use tinymemory_core::store::chunks::store::{upsert_chunks, upsert_staged_chunks_tx};
-    use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
     use tinymemory_core::store::content as content_store;
 
     let _env_guard = crate::openhuman::config::TEST_ENV_LOCK

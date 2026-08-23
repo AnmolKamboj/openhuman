@@ -21,7 +21,7 @@ async fn with_profile_memory_source_scope<F, T>(
 where
     F: std::future::Future<Output = T>,
 {
-    tinymemory_core::source_scope::with_source_scope(
+    crate::openhuman::memory::source_scope::with_source_scope(
         active_profile.and_then(|profile| profile.memory_sources.clone()),
         fut,
     )
@@ -385,7 +385,7 @@ mod tests {
         profile.memory_sources = Some(vec!["slack:#eng".into(), "github:openhuman".into()]);
 
         let visible = with_profile_memory_source_scope(Some(&profile), async {
-            tinymemory_core::source_scope::current_source_scope()
+            crate::openhuman::memory::source_scope::current_source_scope()
         })
         .await;
 
@@ -397,7 +397,7 @@ mod tests {
             ]))
         );
         assert_eq!(
-            tinymemory_core::source_scope::current_source_scope(),
+            crate::openhuman::memory::source_scope::current_source_scope(),
             None,
             "workflow scope must not leak after the run future finishes"
         );

@@ -34,34 +34,45 @@
 //!
 //! # Errors round-trip through the shared table
 //!
-//! `crate::openhuman::memory::api::wire` maps a `MemoryError` to a `(name, message)` pair and
+//! `tinymemory_api::wire` maps a `MemoryError` to a `(name, message)` pair and
 //! back, and **both ends use it**. Reimplementing the mapping here is what would
 //! let a `PathEscape` arrive as an `Invalid`, silently reclassifying a sandbox
 //! escape as a caller mistake.
 
 use std::sync::Arc;
 
-use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use tinymemory_api::capabilities::{Capabilities, Capability};
 
 /// The release whose capability set [`ARTIFACT_CAPABILITIES`] was read from.
 ///
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.0.1";
+const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
 /// Deliberately not `Capabilities::all()`. `Capability::ALL` is what the
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
-/// an older release and serves fewer families. Read from `Capability::ALL` in
-/// `api/src/capabilities.rs` at tag `v1.0.1` — thirteen entries. The five the
-/// contract has since added (`People`, `Chunks`, `Retrieval`, `Profile`,
-/// `Episodic`) have no bus member in that artifact, so calling them returns
-/// `tinybus::Error::UnknownMethod` (#5598).
+/// a specific release and may serve fewer families.
+///
+/// Read at tag `v1.2.0`, which is where four of the five families that v1.0.1
+/// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
+/// members there, so the under-claim that made them unreachable is over.
+///
+/// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
+/// artifact gap.** The v1.2.0 module does declare the episodic methods
+/// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
+/// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
+/// trait default and returns `None`. Advertising a family this host cannot
+/// reach is the same over-claim in a different coat: callers would be told the
+/// capability exists and then get "family unsupported" from the accessor.
+/// Add `Episodic` here in the same change that implements `as_episodic`, not
+/// before.
 ///
 /// **Widen this only together with the `version` bump in
-/// [`super::registry`].**
+/// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
+/// fails if the two drift.
 const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Core,
     Capability::Recall,
@@ -76,6 +87,13 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Sources,
     Capability::Maintenance,
     Capability::Portability,
+    // Arrived in v1.2.0. Verified against the module's declared `methods` list
+    // at that tag rather than against the contract crate, which is always ahead
+    // of whatever is pinned.
+    Capability::People,
+    Capability::Chunks,
+    Capability::Retrieval,
+    Capability::Profile,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -122,15 +140,16 @@ fn capabilities_for(assume_full: bool) -> Capabilities {
 fn artifact_serves(capability: Capability) -> bool {
     assume_full_capabilities() || ARTIFACT_CAPABILITIES.contains(&capability)
 }
-use crate::openhuman::memory::api::chunks::Chunk;
-use crate::openhuman::memory::api::error::MemoryError;
-use crate::openhuman::memory::api::goals::GoalsDoc;
-use crate::openhuman::memory::api::health::MemoryHealth;
-use crate::openhuman::memory::api::provider::types::{
+use async_trait::async_trait;
+use tinymemory_api::chunks::Chunk;
+use tinymemory_api::error::MemoryError;
+use tinymemory_api::goals::GoalsDoc;
+use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::types::{
     DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
-use crate::openhuman::memory::api::provider::{
+use tinymemory_api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
     FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
     MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
@@ -139,16 +158,15 @@ use crate::openhuman::memory::api::provider::{
     PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
     SourceRetrievalQuery, UserState,
 };
-use crate::openhuman::memory::api::recall::OwnedRecallOpts;
-use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
-use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
-use crate::openhuman::memory::api::types::{
+use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::tool_memory::ToolMemoryRule;
+use tinymemory_api::tree::{IngestRequest, QueryResult, TreeStatus};
+use tinymemory_api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
     NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
     StoredMemoryDocument,
 };
-use crate::openhuman::memory::api::wire;
-use async_trait::async_trait;
+use tinymemory_api::wire;
 
 use super::{host, ops, registry};
 use crate::openhuman::config::Config;
@@ -351,8 +369,9 @@ impl ModuleMemoryProvider {
     /// assumes, once per process.
     ///
     /// Compared against [`artifact_capabilities`] rather than
-    /// `Capabilities::all()`: the pinned `v1.0.1` artifact answers thirteen
-    /// families, so comparing with the eighteen the contract declares would warn
+    /// `Capabilities::all()`: the pinned artifact answers fewer families than the
+    /// contract declares (seventeen of eighteen at v1.2.0), so comparing with the
+    /// full contract would warn
     /// on the *expected* state at every first module use and leave the warning
     /// permanently crying wolf. Against the configured set it fires only when
     /// the loaded artifact genuinely disagrees with the pin — including when the

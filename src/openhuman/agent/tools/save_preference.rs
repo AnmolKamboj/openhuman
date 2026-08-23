@@ -23,12 +23,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::openhuman::memory::api::provider::MemoryCore as _;
-use crate::openhuman::memory::api::types::MemoryCategory;
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinymemory_api::provider::MemoryCore as _;
+use tinymemory_api::types::MemoryCategory;
 use tinymemory_core::store::safety;
 
 // Namespace constants live in `memory::preferences` so the write path (here),
@@ -248,7 +248,7 @@ impl Tool for SavePreferenceTool {
                 value,
                 MemoryCategory::Core,
                 None,
-                crate::openhuman::memory::api::types::MemoryTaint::Internal,
+                tinymemory_api::types::MemoryTaint::Internal,
             )
             .await
         {

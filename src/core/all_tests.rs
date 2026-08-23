@@ -1608,7 +1608,7 @@ fn memory_controllers_form_one_contiguous_run_in_aggregator_order() {
 // present and failing, because a registered-but-failing method teaches a model
 // the capability exists and makes it retry.
 
-use crate::openhuman::memory::api::capabilities::Capability;
+use tinymemory_api::capabilities::Capability;
 
 /// A workspace path unique to one test.
 ///

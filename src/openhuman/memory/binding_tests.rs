@@ -364,8 +364,8 @@ fn module_class_binds_the_module_driver_not_null() {
 fn module_binding_advertises_the_pinned_artifacts_families() {
     // Was `module_binding_advertises_every_family`, asserting `advertised ==
     // Capabilities::all()`. That encoded #5598 as expected: the host claimed
-    // all eighteen contract families while the pinned v1.0.1 artifact serves
-    // thirteen, so the other five (`people`, `chunks`, `retrieval`, `profile`,
+    // all eighteen contract families while the then-pinned v1.0.1 artifact
+    // served thirteen, so the other five (`people`, `chunks`, `retrieval`, `profile`,
     // `episodic`) answered `UnknownMethod` instead of reporting themselves
     // absent. `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match
     // what the pinned release actually serves (see its module docs); this
@@ -397,20 +397,32 @@ fn module_binding_advertises_the_pinned_artifacts_families() {
         assert!(advertised.contains(family), "{family} must be advertised");
     }
 
-    const NOT_YET_SERVED: [Capability; 5] = [
+    // Arrived in the v1.2.0 artifact. Asserted PRESENT so a re-pin that
+    // silently narrows the advertised set is caught the same way an over-claim
+    // would be.
+    const SERVED_SINCE_1_2_0: [Capability; 4] = [
         Capability::People,
         Capability::Chunks,
         Capability::Retrieval,
         Capability::Profile,
-        Capability::Episodic,
     ];
-    for family in NOT_YET_SERVED {
+    for family in SERVED_SINCE_1_2_0 {
         assert!(
-            !advertised.contains(family),
-            "{family} has no bus member in the pinned v1.0.1 artifact (#5598); \
-             widen this only together with the registry version bump"
+            advertised.contains(family),
+            "{family} has a bus member in the pinned artifact but is not advertised — \
+             the host is under-claiming and hiding a family it can reach"
         );
     }
+
+    // The last of the five, and the only one still withheld. The artifact
+    // serves it; `ModuleMemoryProvider` has no `as_episodic`, so the accessor
+    // returns `None` and advertising it would be the #5598 over-claim in a
+    // different coat. Move it into the loop above in the same change that
+    // implements the accessor.
+    assert!(
+        !advertised.contains(Capability::Episodic),
+        "Episodic is advertised but ModuleMemoryProvider has no `as_episodic`"
+    );
 
     // The contract may be ahead of the artifact but never behind it.
     assert!(Capabilities::all().contains_all(advertised));

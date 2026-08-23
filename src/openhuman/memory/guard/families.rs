@@ -398,7 +398,7 @@ impl MemoryTree for GuardedTree {
     /// `ListChunksQuery.source_scope`, which reaches SQL *before* `LIMIT`.
     ///
     /// The ambient allowlist
-    /// ([`source_scope::current_source_scope`](tinymemory_core::source_scope::current_source_scope))
+    /// ([`source_scope::current_source_scope`](crate::openhuman::memory::source_scope::current_source_scope))
     /// is therefore read at this boundary and passed down, rather than being
     /// applied to the returned rows. An explicit `scope` argument may only
     /// *narrow* it: the two are intersected by

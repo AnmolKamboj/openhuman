@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::json;
 use tinycortex::memory::ingest::canonicalize::document::DocumentInput;
-use tinymemory_core::store::chunks::types::SourceKind;
+use tinymemory_api::chunks::SourceKind;
 
 pub struct MemoryTreeIngestDocumentTool;
 
@@ -151,7 +151,7 @@ mod tests {
     use crate::openhuman::config::TEST_ENV_LOCK;
     use crate::openhuman::tools::traits::Tool;
     use serde_json::json;
-    use tinymemory_core::store::chunks::types::SourceRef;
+    use tinymemory_api::chunks::SourceRef;
 
     struct WorkspaceEnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,

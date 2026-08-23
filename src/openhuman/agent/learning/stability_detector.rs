@@ -39,7 +39,7 @@ use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::agent::learning::candidate::{
     self, CueFamily, FacetClass, LearningCandidate,
 };
-use crate::openhuman::memory::api::provider::{FacetState, FacetType, ProfileFacet, UserState};
+use tinymemory_api::provider::{FacetState, FacetType, ProfileFacet, UserState};
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 
@@ -509,9 +509,7 @@ fn dominant_cue(cands: &[LearningCandidate], _existing: Option<&ProfileFacet>) -
 /// domain knowledge, not engine storage, and belongs host-side with the rest of
 /// the learning subsystem. Tracked as stage 4 in
 /// `docs/specs/2026-08-13-memory-module-port.md`.
-fn evidence_to_contract(
-    refs: &[candidate::EvidenceRef],
-) -> Vec<crate::openhuman::memory::api::host::EvidenceRef> {
+fn evidence_to_contract(refs: &[candidate::EvidenceRef]) -> Vec<tinymemory_api::host::EvidenceRef> {
     refs.iter()
         .filter_map(|r| {
             serde_json::to_value(r)
@@ -523,7 +521,7 @@ fn evidence_to_contract(
 
 /// The inverse of [`evidence_to_contract`].
 fn evidence_from_contract(
-    refs: &[crate::openhuman::memory::api::host::EvidenceRef],
+    refs: &[tinymemory_api::host::EvidenceRef],
 ) -> Vec<candidate::EvidenceRef> {
     refs.iter()
         .filter_map(|r| {
@@ -851,7 +849,7 @@ mod tests {
         let now = 1_000_000.0;
 
         // Manually insert a Pinned row.
-        use crate::openhuman::memory::api::provider::{FacetState, FacetType, UserState};
+        use tinymemory_api::provider::{FacetState, FacetType, UserState};
         let pinned = ProfileFacet {
             facet_id: "f-pinned".into(),
             facet_type: FacetType::Preference,

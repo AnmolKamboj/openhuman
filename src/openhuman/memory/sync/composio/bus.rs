@@ -615,8 +615,8 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                                 .collect();
                             toolkits.sort();
                             toolkits.dedup();
-                            tinymemory_core::events::publish(
-                                tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
+                            tinymemory_api::events::publish(
+                                tinymemory_api::events::MemoryEvent::ComposioIntegrationsChanged {
                                     toolkits: toolkits.clone(),
                                 },
                             );
@@ -918,8 +918,8 @@ impl EventHandler<DomainEvent> for ComposioConfigChangedSubscriber {
                         .collect();
                     toolkits.sort();
                     toolkits.dedup();
-                    tinymemory_core::events::publish(
-                        tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
+                    tinymemory_api::events::publish(
+                        tinymemory_api::events::MemoryEvent::ComposioIntegrationsChanged {
                             toolkits: toolkits.clone(),
                         },
                     );

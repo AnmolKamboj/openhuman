@@ -2091,6 +2091,11 @@ fn memory_retrieval_embedding_and_rpc_model_helpers_round_trip() {
         category: Some(MemoryCategory::Conversation),
         session_id: Some("session-2"),
         min_score: Some(0.5),
+        // Self-echo exclusion is a separate concern from this coverage test's
+        // namespace/category/session assertions below; `None` means "exclude
+        // nothing", matching this literal's pre-existing behavior before the
+        // field was added.
+        exclude_session_id: None,
         cross_session: true,
     };
     assert!(opts.cross_session);

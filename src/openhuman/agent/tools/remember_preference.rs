@@ -34,8 +34,6 @@
 //! component.  The preference is authoritative from the moment the tool
 //! returns `Ok`.
 
-use crate::openhuman::memory::api::provider::MemoryCore;
-use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
@@ -43,6 +41,8 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
+use tinymemory_api::provider::MemoryCore;
+use tinymemory_api::types::{MemoryCategory, MemoryTaint};
 
 /// Valid facet classes that a pinned preference may belong to.
 ///
