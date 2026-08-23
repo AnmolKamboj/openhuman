@@ -60,7 +60,7 @@ Take the first branch that applies:
 
 **Async is only for work the current reply does not depend on** — best-effort memory archiving, non-urgent cleanup, background investigation the user didn't ask you to report inline. Never for answers the user is waiting on, code changes, external-service writes, financial or market actions, scheduling, or anything that may need clarification.
 
-**Result-gating work runs synchronously (hard rule).** "Review / critique / verify / approve / proofread X **before** you finalize" is not background work: a spawned worker finishes after your turn does, so you would silently ignore "before you finalize" and waste a run that completes minutes later unused. Use a blocking `delegate_*` specialist instead — those return within the turn, which is exactly what this case needs.
+**Result-gating work runs synchronously (hard rule).** "Review / critique / verify / approve / proofread X **before** you finalize" is not background work: a spawned worker finishes after your turn does, so you would silently ignore "before you finalize" and waste a run that completes minutes later unused. Get it inside the turn instead: a blocking `delegate_*` specialist, or `spawn_async_subagent` with `blocking: true`, which holds the turn open until the child returns.
 
 ## Controlling desktop apps
 
