@@ -91,9 +91,6 @@ allowlist = [
     # `trigger_memory_agent = "always"` pre-fetch — the orchestrator now walks
     # the memory tree only when a message needs it, not before every turn.
     "agent_memory",
-    # Account/admin specialist. Route billing, team membership/invites/roles,
-    # OAuth/credential/session, and referral requests here.
-    "account_admin_agent",
     # Image-understanding specialist. Route anything that hinges on the content
     # of an attached or on-disk user-provided image file here — it rides the
     # multimodal `vision-v1` tier, so it can actually see the image.
@@ -125,13 +122,6 @@ allowlist = [
     # the agent enforces a strict read → simulate → confirm → execute
     # contract that the generic delegation surface does not.
     "crypto_agent",
-    # tiny.place specialist. Synthesised into a `use_tinyplace` tool
-    # at agent-build time. Route requests about tiny.place/tinyplace, Agent
-    # Cards, @handles, jobs, proposals, groups, messages, escrow,
-    # registration/status, and x402 payment challenges here. This keeps the
-    # tinyplace_* tool surface behind one worker instead of leaking individual
-    # social-economy actions into the chat agent.
-    "tinyplace_agent",
     # MCP setup specialist (#3039). Synthesised into a `delegate_setup_mcp_server`
     # tool at agent-build time. Route any "install / add / set up / connect an MCP
     # server" request here — the agent owns the full flow: search registries →
@@ -221,14 +211,6 @@ named = [
     "file_write",
     "shell",
     "git_operations",
-    # Conversation-thread listing is a read-only, zero-arg, local lookup —
-    # exactly the kind of "small touch" this direct surface exists for. Without
-    # it, "list my recent threads / conversations" has no correct route (the
-    # thread-owning `context_scout` is not in this agent's subagent allowlist),
-    # so the model misroutes to `agent_memory`, which walks the memory tree
-    # (`memory_tree` / `memory_doctor`) instead of listing threads (#4744).
-    # Reading a thread's messages still delegates — this is list-only.
-    "thread_list",
     # Quick web/API lookups. A single fact ("what's the capital of X", "latest
     # version of Y") is one `web_search_tool` / `web_fetch` / `http_request`
     # call — spawning the `research` worker for that is overkill. Multi-source
