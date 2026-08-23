@@ -365,15 +365,22 @@ impl AgentMemory for OpenHumanAgentMemory {
             // Widening past the requested session is a wiring decision, never a
             // runtime hint.
             cross_session: self.cross_session,
-            // TODO(pin bump): decide this deliberately before shipping the
-            // engine bump that introduced the field. `None` reproduces exactly
-            // what this call did before it existed — the engine falls back to
-            // its ambient task-local. But the engine's own comment says that
-            // ambient reads `None` on the far side of the module boundary,
-            // because a `cdylib` has its own statics, and this call goes
-            // through the module. So `None` here is bug-compatible, not
-            // correct: it hands the agent back what it just said.
-            exclude_session_id: None,
+            // The turn's own auto-saved request must not come back as its own
+            // best hit. The harness writes the user's message as a
+            // `[conversation]` document tagged with this thread id, so a recall
+            // issued *during* that turn retrieves it unless this is set.
+            //
+            // It does not fight `session_id` above: the engine filters only
+            // document-kind hits by this field, while `session_id` /
+            // `cross_session` scope the episodic and event tiers. Different
+            // tiers, so scoping to a session and excluding it is not a
+            // contradiction.
+            //
+            // Explicit rather than left to the engine's ambient task-local: a
+            // `cdylib` has its own statics, so that fallback reads `None` on
+            // the far side of the module boundary — which is the path this
+            // call takes.
+            exclude_session_id: session,
         };
 
         let entries = crate::openhuman::agent::tinyagents::retriever::recall_through_facade(
@@ -528,6 +535,17 @@ mod tests {
         rows: Mutex<Vec<MemoryEntry>>,
         /// When set, every fallible method returns this error.
         fail: Option<String>,
+        /// The `exclude_session_id` the adapter last asked for.
+        ///
+        /// Recorded rather than acted on. The real backend applies that field
+        /// to document-kind hits only, while `session_id` / `cross_session`
+        /// scope the episodic and event tiers — a flat row list cannot tell
+        /// those apart, and a stub that filtered every row by it asserts a
+        /// backend behaviour that does not exist. That is not hypothetical:
+        /// doing so broke the two thread-hint tests below, which pin that a
+        /// hint *narrows to* a session rather than away from it. What is the
+        /// host's to get right is which exclusion it asks for.
+        last_exclusion: Mutex<Option<Option<String>>>,
     }
 
     impl StubMemory {
@@ -535,6 +553,7 @@ mod tests {
             Self {
                 rows: Mutex::new(rows),
                 fail: None,
+                last_exclusion: Mutex::new(None),
             }
         }
 
@@ -542,11 +561,17 @@ mod tests {
             Self {
                 rows: Mutex::new(Vec::new()),
                 fail: Some("backend down".to_string()),
+                last_exclusion: Mutex::new(None),
             }
         }
 
         fn snapshot(&self) -> Vec<MemoryEntry> {
             self.rows.lock().unwrap().clone()
+        }
+
+        /// The `exclude_session_id` of the last recall, if one has run.
+        fn last_exclusion(&self) -> Option<Option<String>> {
+            self.last_exclusion.lock().unwrap().clone()
         }
     }
 
@@ -625,6 +650,8 @@ mod tests {
             limit: usize,
             opts: RecallOpts<'_>,
         ) -> anyhow::Result<Vec<MemoryEntry>> {
+            *self.last_exclusion.lock().unwrap() =
+                Some(opts.exclude_session_id.map(str::to_string));
             if let Some(err) = &self.fail {
                 anyhow::bail!("{err}");
             }
@@ -770,6 +797,37 @@ mod tests {
 
         let items = mem.recall(RecallRequest::new("note")).await.unwrap();
         assert_eq!(items.len(), DEFAULT_RECALL_LIMIT);
+    }
+
+    #[tokio::test]
+    async fn recall_asks_the_backend_to_exclude_the_turns_own_thread() {
+        // The harness saves the user's message as a `[conversation]` document
+        // tagged with the active thread *before* the agent runs, so a recall
+        // issued during that turn can retrieve its own trigger as the best
+        // "relevant" hit unless the backend is told to drop that thread's
+        // documents.
+        //
+        // Asserted on the request rather than the result: the drop is the
+        // engine's, and it applies to document-kind hits only, which a flat
+        // stub cannot model without contradicting the thread-hint tests below.
+        // Asking for the right exclusion is the part that lives here.
+        let stub = Arc::new(StubMemory::with_rows(vec![entry("r1", "k1", "note")]));
+        let memory: Arc<dyn Memory> = stub.clone();
+        let mem = OpenHumanAgentMemory::new(memory);
+
+        mem.recall(RecallRequest::new("note").with_thread(ThreadId::new("t1")))
+            .await
+            .unwrap();
+        assert_eq!(
+            stub.last_exclusion(),
+            Some(Some("t1".to_string())),
+            "the active thread must be excluded, or recall returns the turn's own request"
+        );
+
+        // No thread, nothing to echo: excluding a session the caller never
+        // named would drop rows for no reason.
+        mem.recall(RecallRequest::new("note")).await.unwrap();
+        assert_eq!(stub.last_exclusion(), Some(None));
     }
 
     #[tokio::test]

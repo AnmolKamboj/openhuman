@@ -288,10 +288,11 @@ async fn store_stats(
 
 /// The bound driver's queue state, optionally narrowed to one job kind.
 ///
-/// Unlike [`store_stats`] this propagates the error, because both callers
-/// already decide for themselves whether to degrade — and the one that does
-/// not (`backfill_status_rpc`) is asked whether a modal may close, where
-/// guessing "nothing pending" would dismiss it over a live backfill.
+/// A driver error propagates, the same way [`store_stats`] propagates its own.
+/// That matters most for `backfill_status_rpc`, which is asked whether a modal
+/// may close: guessing "nothing pending" would dismiss it over a live
+/// backfill. A driver that does not serve `Maintenance` still reports empty
+/// rather than erroring, because it has no queue to be behind on.
 async fn queue_stats(
     config: &Config,
     kind: Option<&str>,
@@ -345,6 +346,12 @@ pub async fn backfill_status_rpc(
     // Ready + running, not `total - done`: a failed backfill job is finished
     // with, and counting it as pending leaves the modal open forever.
     let pending_jobs: u64 = queue.ready + queue.running;
+    // Still the engine's process-global. It covers the instant between one
+    // backfill link settling and the next being enqueued, which the counts
+    // cannot see — but it is scoped to the process, not to this store, and a
+    // second memory subtree running its own backfill would answer `true` here.
+    // Putting it on `QueueStats` would have made a per-store API promise that
+    // scoping; it stays a visibly global call until the engine can scope it.
     let in_progress = tinymemory_core::queue::backfill_in_progress() || pending_jobs > 0;
     Ok(RpcOutcome::single_log(
         BackfillStatusResponse {
@@ -636,14 +643,10 @@ pub struct RetryFailedResponse {
 /// budget, typed reason cleared) so jobs that failed under a now-fixed config
 /// re-run without re-ingesting source data. Backs the "Retry failed" button.
 pub async fn retry_failed_rpc(config: &Config) -> Result<RpcOutcome<RetryFailedResponse>, String> {
-    let cfg = config.clone();
-    let requeued =
-        tokio::task::spawn_blocking(move || tinymemory_core::queue::store::requeue_failed(&cfg))
-            .await
-            .map_err(|e| format!("retry_failed join error: {e}"))?
-            .map_err(|e| format!("retry_failed: {e:#}"))?;
-    // Wake the worker pool so the requeued jobs are picked up promptly.
-    tinymemory_core::queue::wake_workers();
+    // Requeue and wake are one operation at the driver. They were two calls
+    // here, which is one call away from a retry that moves rows and then lets
+    // them sit until the next scheduled window.
+    let requeued = crate::openhuman::memory::ops::maintenance::retry_failed(config).await?;
     Ok(RpcOutcome::single_log(
         RetryFailedResponse { requeued },
         format!("memory_tree: retry_failed requeued={requeued}"),
