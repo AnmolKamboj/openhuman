@@ -576,7 +576,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, ingest_pipeline) has no capability family",
+        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, queue::wake_workers, ingest_pipeline) has no capability family, and chunk reads still need MemoryChunks widened (list_chunks/get_chunk); its queue and chunk *diagnostics* have moved onto Maintenance::{store_stats, queue_stats, latest_queue_failure} and no longer open a connection here",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",
@@ -597,11 +597,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/skills/runtime/run_machinery.rs",
         Verdict::NeedsWiderSeam,
         "task-local host policy living in the engine crate (source_scope::current_source_scope, source_scope::with_source_scope); belongs in tinymemory-api, not a bus method",
-    ),
-    (
-        "src/openhuman/tools/registry/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/web_chat/run_task.rs",

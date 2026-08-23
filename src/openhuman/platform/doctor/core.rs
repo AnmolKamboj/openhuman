@@ -825,6 +825,12 @@ fn check_memory_tree_db(config: &Config, items: &mut Vec<DiagnosticItem>) {
     }
 
     // ── Probe connection ─────────────────────────────────────────────
+    // Still counts the rows directly, and cannot stop until `run` can await.
+    // `MemoryMaintenance::store_stats` answers this exactly — a driver-neutral
+    // chunk count — but it is `async`, and this function's own module doc is
+    // explicit that `run` stays blocking-only with async probes hoisted into
+    // the caller. Hoisting one probe is that restructure, not a side effect of
+    // moving a read behind the contract.
     match tinymemory_core::store::chunks::store::with_connection(config, |conn| {
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM mem_tree_chunks", [], |r| r.get(0))?;
         Ok(n)

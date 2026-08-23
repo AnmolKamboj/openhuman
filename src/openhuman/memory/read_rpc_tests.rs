@@ -932,6 +932,16 @@ async fn vault_health_check_reports_missing_content_root_for_fresh_workspace() {
     // baseline so the assertion is deterministic. See #4691.
     let _g = crate::openhuman::memory::tree::health::test_guard();
     let (_tmp, cfg) = test_config();
+    // `vault_health_check_rpc` folds in `pipeline_status_rpc`, which reads
+    // through the bound driver. Bind an empty one explicitly: resolving the
+    // real driver means loading the compiled module, which a test process
+    // can block on rather than fail.
+    crate::openhuman::memory::binding::install_diagnostics_for_test(
+        &cfg.workspace_dir,
+        &cfg.subsystems.memory,
+        Default::default(),
+        Default::default(),
+    );
     let outcome = vault_health_check_rpc(&cfg, None).await.unwrap();
 
     assert!(!outcome.value.exists);
@@ -948,6 +958,16 @@ async fn vault_health_check_reports_missing_content_root_for_fresh_workspace() {
 #[tokio::test]
 async fn vault_rpcs_report_core_host_os() {
     let (_tmp, cfg) = test_config();
+    // `vault_health_check_rpc` folds in `pipeline_status_rpc`, which reads
+    // through the bound driver. Bind an empty one explicitly: resolving the
+    // real driver means loading the compiled module, which a test process
+    // can block on rather than fail.
+    crate::openhuman::memory::binding::install_diagnostics_for_test(
+        &cfg.workspace_dir,
+        &cfg.subsystems.memory,
+        Default::default(),
+        Default::default(),
+    );
 
     let status = obsidian_vault_status_rpc(&cfg, None).await.unwrap();
     assert_eq!(status.value.host_os, std::env::consts::OS);
@@ -963,6 +983,21 @@ async fn vault_rpcs_report_core_host_os() {
 #[tokio::test]
 async fn vault_health_check_reports_writable_and_obsidian_registered_when_ready() {
     let (_tmp, cfg) = test_config();
+    // `vault_health_check_rpc` folds in `pipeline_status_rpc`, and
+    // `last_sync_ms` comes from the bound driver rather than from a `SELECT`
+    // over the seeded chunk. The seed below still matters — it is what makes
+    // `content_root` exist, which is what this test is actually about — but
+    // the sync time has to come from a driver that reports one.
+    crate::openhuman::memory::binding::install_diagnostics_for_test(
+        &cfg.workspace_dir,
+        &cfg.subsystems.memory,
+        crate::openhuman::memory::api::provider::types::StoreStats {
+            chunks: 1,
+            chunks_with_structure: 0,
+            most_recent_chunk_ms: Some(1_800_000_000_000),
+        },
+        Default::default(),
+    );
     seed_chat_chunk(
         &cfg,
         "slack:#eng",
@@ -994,7 +1029,7 @@ async fn vault_health_check_reports_writable_and_obsidian_registered_when_ready(
     // correctly reads as unhealthy, so asserting healthy here would be flaky.
     // The health mapping is covered deterministically by the `pipeline_is_healthy`
     // unit tests in `read_rpc/vault.rs`; this test covers the filesystem readiness
-    // wiring. See also `memory_tree::tree::rpc::pipeline_status_reports_chunk_aggregates_after_ingest`.
+    // wiring. See also `memory_tree::tree::rpc::pipeline_status_renders_the_drivers_chunk_aggregates`.
     assert!(outcome.value.last_sync_ms > 0);
     assert!(
         !outcome.logs[0].contains(content_root.to_str().unwrap()),

@@ -7,7 +7,6 @@
 //! - `openhuman.memory_tree_list_chunks` — listing with filters.
 //! - `openhuman.memory_tree_get_chunk` — single chunk fetch.
 
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -251,6 +250,66 @@ pub async fn get_chunk_rpc(
     ))
 }
 
+// ── Driver diagnostics ───────────────────────────────────────────────────
+//
+// The numbers below used to come from `SELECT`s against TinyCortex's tables.
+// They come from the bound driver now, which is what lets a workspace run on
+// a driver that is not TinyCortex and still answer "how far behind is the
+// pipeline".
+
+/// The driver's identifier for a re-embed backfill job.
+///
+/// Job kinds are the driver's own vocabulary, not the contract's — a driver
+/// that never enqueues this one answers zero for it, which is the honest
+/// count and exactly what a status poll wants to hear.
+const REEMBED_BACKFILL_KIND: &str = "reembed_backfill";
+
+/// Aggregate counts over the bound driver's stored chunks.
+///
+/// Zeroed rather than refused when the driver does not serve `Maintenance`:
+/// this feeds a status surface, and a status surface that errors tells the
+/// user less than one reporting an empty store.
+async fn store_stats(
+    config: &Config,
+) -> Result<crate::openhuman::memory::api::provider::types::StoreStats, String> {
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        log::debug!(
+            "[memory-tree][rpc] store_stats: driver '{}' does not serve Maintenance; reporting empty",
+            binding.driver_id()
+        );
+        return Ok(Default::default());
+    };
+    maintenance
+        .store_stats()
+        .await
+        .map_err(|e| format!("store_stats: {e}"))
+}
+
+/// The bound driver's queue state, optionally narrowed to one job kind.
+///
+/// Unlike [`store_stats`] this propagates the error, because both callers
+/// already decide for themselves whether to degrade — and the one that does
+/// not (`backfill_status_rpc`) is asked whether a modal may close, where
+/// guessing "nothing pending" would dismiss it over a live backfill.
+async fn queue_stats(
+    config: &Config,
+    kind: Option<&str>,
+) -> Result<crate::openhuman::memory::api::provider::types::QueueStats, String> {
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        log::debug!(
+            "[memory-tree][rpc] queue_stats: driver '{}' does not serve Maintenance; reporting empty",
+            binding.driver_id()
+        );
+        return Ok(Default::default());
+    };
+    maintenance
+        .queue_stats(kind)
+        .await
+        .map_err(|e| format!("queue_stats: {e}"))
+}
+
 /// Response from the `memory_backfill_status` RPC (#1574 §4b). The frontend
 /// polls this while the re-embed modal is open to surface progress and to
 /// dismiss the modal once the new embedding space is fully covered.
@@ -272,29 +331,20 @@ pub async fn backfill_status_rpc(
     config: &Config,
 ) -> Result<RpcOutcome<BackfillStatusResponse>, String> {
     log::debug!("[memory::rpc] backfill_status: entry");
-    // SQLite I/O off the async runtime thread, matching the sibling
-    // DB-backed handlers in this module (`get_chunk_rpc`, etc.).
-    let pending_jobs: u64 = tokio::task::spawn_blocking({
-        let config = config.clone();
-        move || {
-            chunk_store::with_connection(&config, |conn| {
-                let n: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM mem_tree_jobs
-                      WHERE kind = 'reembed_backfill' AND status IN ('ready', 'running')",
-                    [],
-                    |r| r.get(0),
-                )?;
-                Ok(n.max(0) as u64)
-            })
-        }
-    })
-    .await
-    .map_err(|e| format!("memory_backfill_status join error: {e}"))?
-    .map_err(|e| {
-        let msg = format!("memory_backfill_status: {e}");
-        log::debug!("[memory::rpc] backfill_status: error: {msg}");
-        msg
-    })?;
+    // Asked of the bound driver rather than of TinyCortex's tables. No
+    // `spawn_blocking` here any more: the driver owns whether its own reads
+    // block, and a host that wraps them a second time is guessing about
+    // storage it no longer talks to.
+    let queue = queue_stats(config, Some(REEMBED_BACKFILL_KIND))
+        .await
+        .map_err(|e| {
+            let msg = format!("memory_backfill_status: {e}");
+            log::debug!("[memory::rpc] backfill_status: error: {msg}");
+            msg
+        })?;
+    // Ready + running, not `total - done`: a failed backfill job is finished
+    // with, and counting it as pending leaves the modal open forever.
+    let pending_jobs: u64 = queue.ready + queue.running;
     let in_progress = tinymemory_core::queue::backfill_in_progress() || pending_jobs > 0;
     Ok(RpcOutcome::single_log(
         BackfillStatusResponse {
@@ -404,78 +454,46 @@ pub async fn pipeline_status_rpc(
     config: &Config,
 ) -> Result<RpcOutcome<PipelineStatusResponse>, String> {
     use tinymemory_api::host::SchedulerGateMode;
-    use tinymemory_core::queue::store as queue_store;
-    use tinymemory_core::queue::types::JobStatus;
 
     log::debug!("[memory-tree][rpc] pipeline_status: entry");
 
-    // Chunk aggregates — total count + latest timestamp from
-    // `mem_tree_chunks` in a single SQL round-trip so we don't materialise
-    // the full source list just to sum two columns.
-    let cfg_for_sources = config.clone();
-    let (total_chunks, last_sync_ms) =
-        tokio::task::spawn_blocking(move || -> Result<(u64, i64), String> {
-            chunk_store::with_connection(&cfg_for_sources, |conn| {
-                let (count, max_ts): (i64, Option<i64>) = conn.query_row(
-                    "SELECT COUNT(*), MAX(timestamp_ms) FROM mem_tree_chunks",
-                    [],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )?;
-                Ok((count.max(0) as u64, max_ts.unwrap_or(0).max(0)))
-            })
-            .map_err(|e| format!("chunk aggregates: {e:#}"))
-        })
-        .await
-        .map_err(|e| {
-            let msg = format!("pipeline_status join error: {e}");
-            log::warn!("[memory-tree][rpc] pipeline_status: {msg}");
-            msg
-        })??;
+    // Chunk aggregates — count, extracted count and newest timestamp, in one
+    // observation of the driver. Splitting them is what let a write land
+    // between the count and the extracted count and report an extraction
+    // coverage above 100%.
+    let store = store_stats(config).await.map_err(|e| {
+        log::warn!("[memory-tree][rpc] pipeline_status: {e}");
+        e
+    })?;
+    let total_chunks = store.chunks;
+    // The wire field is a plain `i64` where the driver answers `Option`, and
+    // `0` is its established "never synced" value — an empty store has no
+    // newest chunk, which is not a chunk stamped at the epoch.
+    let last_sync_ms = store.most_recent_chunk_ms.unwrap_or(0).max(0);
 
-    // Job counters — parallel-safe blocking calls. `failed_unrecoverable` is the
-    // #3365 left-right split: of the failed jobs, how many are the hard,
-    // user-actionable kind (`failure_class = 'unrecoverable'`) vs transient ones
-    // that self-heal via auto-requeue. Only the former escalates to `error`.
+    // Job counters — one observation of the queue, where this used to be five
+    // separate reads at five instants. That mattered: `failed_unrecoverable`
+    // is the #3365 left-right split (of the failed jobs, how many are the
+    // hard, user-actionable kind vs transient ones that self-heal via
+    // auto-requeue, since only the former escalates to `error`), and a retry
+    // landing between the two reads could report more unrecoverable failures
+    // than failures.
     //
-    // #5324 rides along in the same blocking task: `oldest_ready_age_ms` is the
-    // stall signal (queued work that never drains). Kept here rather than in
-    // its own `spawn_blocking` so a polled status call still costs one
-    // blocking-pool dispatch for all queue reads. Best-effort — a read error
-    // degrades to `None` (no stall claimed) instead of failing the RPC, so a
-    // broken measurement path can never manufacture a `degraded` verdict.
-    let cfg_for_jobs = config.clone();
+    // #5324's stall signal comes from the same snapshot for the same reason —
+    // an idle time computed against counts taken at a different instant reads
+    // as a stall that never happened.
     let now_ms = chrono::Utc::now().timestamp_millis();
-    let (pipeline_jobs, failed_unrecoverable, queue_idle_ms) = tokio::task::spawn_blocking(
-        move || -> Result<(PipelineJobCounts, u64, Option<i64>), String> {
-            let ready = queue_store::count_by_status(&cfg_for_jobs, JobStatus::Ready)
-                .map_err(|e| format!("count_by_status(ready): {e:#}"))?;
-            let running = queue_store::count_by_status(&cfg_for_jobs, JobStatus::Running)
-                .map_err(|e| format!("count_by_status(running): {e:#}"))?;
-            let failed = queue_store::count_by_status(&cfg_for_jobs, JobStatus::Failed)
-                .map_err(|e| format!("count_by_status(failed): {e:#}"))?;
-            let failed_unrecoverable = queue_store::count_failed_unrecoverable(&cfg_for_jobs)
-                .map_err(|e| format!("count_failed_unrecoverable: {e:#}"))?;
-            let queue_idle_ms = queue_idle_ms(&cfg_for_jobs, now_ms).unwrap_or_else(|e| {
-                log::warn!("[memory-tree][rpc] pipeline_status: queue_idle_ms read failed: {e}");
-                None
-            });
-            Ok((
-                PipelineJobCounts {
-                    ready,
-                    running,
-                    failed,
-                },
-                failed_unrecoverable,
-                queue_idle_ms,
-            ))
-        },
-    )
-    .await
-    .map_err(|e| {
-        let msg = format!("pipeline_status job-count join error: {e}");
-        log::warn!("[memory-tree][rpc] pipeline_status: {msg}");
-        msg
-    })??;
+    let queue = queue_stats(config, None).await.map_err(|e| {
+        log::warn!("[memory-tree][rpc] pipeline_status: {e}");
+        e
+    })?;
+    let pipeline_jobs = PipelineJobCounts {
+        ready: queue.ready,
+        running: queue.running,
+        failed: queue.failed,
+    };
+    let failed_unrecoverable = queue.failed_unrecoverable;
+    let queue_idle_ms = queue_idle_ms(&queue, now_ms);
 
     // Disk size — best-effort. Permission errors etc. degrade to 0 with a
     // warn log rather than failing the whole RPC. Scoped to the `wiki/`
@@ -515,46 +533,37 @@ pub async fn pipeline_status_rpc(
         queue_idle_ms,
     );
 
-    // #002: both of these touch SQLite, so run them off the async runtime
-    // thread in a single blocking task (a contended DB could otherwise pin a
-    // Tokio worker for the busy-timeout window). Best-effort — failures degrade
-    // to `None` rather than failing the polled status RPC.
-    //   - first_blocking_cause (FR-004): the most-recent failed job's typed
-    //     reason, surfaced verbatim by the UI.
-    //   - extraction_coverage (FR-010/US5): fraction of chunks with structure,
-    //     surfaced as its own display metric — deliberately NOT folded into the
-    //     status pill (#3365: coverage is a cumulative measure, unrelated to the
-    //     live structure-degraded liveness signal).
-    //     `None` (not `0.0`) on a read error, so a broken measurement path is
-    //     never mistaken for a genuine 0% extraction rate.
-    let (latest_failure, extraction_coverage) = {
-        let cfg = config.clone();
-        tokio::task::spawn_blocking(move || {
-            // Log-then-drop: keep the None fallback (these reads must not fail
-            // the polled status RPC) but emit a grep-friendly diagnostic so a
-            // DB/query failure is distinguishable from "no blocking cause" /
-            // "metric unavailable by design".
-            let failure = latest_failed_job_failure(&cfg).unwrap_or_else(|e| {
-                log::warn!(
-                    "[memory-tree][rpc] pipeline_status: latest_failed_job_failure read failed: {e:#}"
-                );
-                None
-            });
-            let coverage = tinymemory_core::store::chunks::store::extraction_coverage(&cfg)
-                .map_err(|e| {
-                    log::warn!(
-                        "[memory-tree][rpc] pipeline_status: extraction_coverage read failed: {e:#}"
-                    );
-                })
-                .ok();
-            (failure, coverage)
-        })
-        .await
-        .unwrap_or_else(|e| {
-            log::warn!("[memory-tree][rpc] pipeline_status: ancillary metrics join error: {e:#}");
-            (None, None)
-        })
-    };
+    // #002 first_blocking_cause (FR-004): the most-recent failed job's typed
+    // reason, surfaced verbatim by the UI. Best-effort — log-then-drop, so a
+    // read failure is distinguishable in the log from "no blocking cause"
+    // while never failing the polled status RPC. The `spawn_blocking` this
+    // used to sit in is the driver's business now.
+    let latest_failure = latest_failed_job_failure(config).await.unwrap_or_else(|e| {
+        log::warn!(
+            "[memory-tree][rpc] pipeline_status: latest_failed_job_failure read failed: {e}"
+        );
+        None
+    });
+
+    // #002 extraction_coverage (FR-010/US5): fraction of chunks with
+    // structure, surfaced as its own display metric — deliberately NOT folded
+    // into the status pill (#3365: coverage is a cumulative measure, unrelated
+    // to the live structure-degraded liveness signal).
+    //
+    // Derived from the `store_stats` snapshot above, so the numerator and
+    // denominator are one observation and the fraction cannot exceed 1.0 —
+    // which two separate reads could produce, and did.
+    //
+    // An empty store still reports `Some(0.0)`, matching what this returned
+    // before. `None` here has always meant "unavailable", and while `0.0` for
+    // a store with nothing to extract is arguably the wrong reading, changing
+    // it is a decision about what the panel shows, not a consequence of moving
+    // the read behind the contract.
+    let extraction_coverage = Some(if store.chunks == 0 {
+        0.0
+    } else {
+        store.chunks_with_structure as f32 / store.chunks as f32
+    });
 
     // A hard failed-job reason is more urgent than a soft degradation; fall
     // back to the active degradation cause, then `None` when healthy.
@@ -671,55 +680,44 @@ pub async fn retry_failed_rpc(config: &Config) -> Result<RpcOutcome<RetryFailedR
 /// `error` and the "N unrecoverable failure(s) need action" reason), and "Retry
 /// failed" is how the user clears it — but the *remediation text*, which tells
 /// the user what to go and do right now, is withheld once it stops being true.
-fn latest_failed_job_failure(
+async fn latest_failed_job_failure(
     config: &Config,
 ) -> Result<Option<crate::openhuman::memory::tree::health::PipelineFailure>, String> {
-    use crate::openhuman::memory::tree::health::{FailureClass, FailureCode, PipelineFailure};
-
-    // Read the newest failed row AND the success watermark on the SAME
-    // connection. `with_connection` holds the process-global connection mutex
-    // for the whole closure, so no job can settle between the two reads and
-    // flip the supersession decision (a race the #5427 review flagged). The
-    // watermark is only queried when the failed row carries a timestamp to
-    // compare against.
-    type FailureWatermark = (Option<String>, Option<String>, Option<i64>, Option<i64>);
-    let row: Option<FailureWatermark> = chunk_store::with_connection(config, |conn| {
-        let failed: Option<(Option<String>, Option<String>, Option<i64>)> = conn
-            .query_row(
-                "SELECT failure_reason, failure_class, completed_at_ms FROM mem_tree_jobs
-              WHERE status = 'failed' AND failure_reason IS NOT NULL
-              ORDER BY completed_at_ms DESC LIMIT 1",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()?;
-
-        let Some((reason, class, failed_at_ms)) = failed else {
-            return Ok(None);
-        };
-
-        let last_success_ms: Option<i64> = if failed_at_ms.is_some() {
-            conn.query_row(
-                "SELECT MAX(completed_at_ms) FROM mem_tree_jobs WHERE status = 'done'",
-                [],
-                |r| r.get(0),
-            )
-            .optional()
-            .map(Option::flatten)?
-        } else {
-            None
-        };
-
-        Ok(Some((reason, class, failed_at_ms, last_success_ms)))
-    })
-    .map_err(|e| format!("latest_failed_job_failure: {e:#}"))?;
-
-    let Some((Some(reason), class, failed_at_ms, last_success_ms)) = row else {
+    // The failure and the success watermark arrive together, as ONE answer.
+    // That is not a convenience: asking twice lets a job settle between the
+    // two and flip the supersession decision below, which is the race the
+    // #5427 review flagged. The driver reads both on one connection; taking
+    // `QueueFailure::last_success_ms` from a second call would undo that.
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
         log::debug!(
-            "[memory-tree][rpc] pipeline_status: no typed failed row present — no blocking cause"
+            "[memory-tree][rpc] pipeline_status: driver '{}' does not serve Maintenance; no blocking cause",
+            binding.driver_id()
         );
         return Ok(None);
     };
+    let reported = maintenance
+        .latest_queue_failure()
+        .await
+        .map_err(|e| format!("latest_failed_job_failure: {e}"))?;
+    Ok(reported.as_ref().and_then(blocking_cause))
+}
+
+/// The supersession rule, over one failure the driver reported.
+///
+/// Split from the fetch above so it stays exercisable without a bound driver.
+/// The rule is the part with edge cases — an untimestamped failure, a
+/// watermark on the same millisecond, a reason this build does not know — and
+/// a test that has to stand up a driver to reach it tends not to cover them.
+fn blocking_cause(
+    reported: &crate::openhuman::memory::api::provider::types::QueueFailure,
+) -> Option<crate::openhuman::memory::tree::health::PipelineFailure> {
+    use crate::openhuman::memory::tree::health::{FailureClass, FailureCode, PipelineFailure};
+
+    let reason = &reported.reason;
+    let class = reported.class.clone();
+    let failed_at_ms = reported.completed_at_ms;
+    let last_success_ms = reported.last_success_ms;
 
     // Log every supersession branch, not only the withheld one, so the decision
     // is greppable from the logs alone.
@@ -731,7 +729,7 @@ fn latest_failed_job_failure(
                 "[memory-tree][rpc] pipeline_status: withholding blocking cause reason={reason} \
                  — the queue has completed a job since it failed (superseded)"
             );
-            return Ok(None);
+            return None;
         }
         Some(_) => {
             log::debug!(
@@ -747,9 +745,8 @@ fn latest_failed_job_failure(
         }
     }
 
-    let Some(code) = FailureCode::from_str(&reason) else {
-        return Ok(None);
-    };
+    // A reason this build has no code for is not a cause it can render.
+    let code = FailureCode::from_str(reason)?;
     // Trust the persisted class when present and parseable; otherwise derive
     // from the code (keeps a forward-compatible default if the column is NULL
     // on an older row).
@@ -761,7 +758,7 @@ fn latest_failed_job_failure(
             failure.class = FailureClass::Unrecoverable;
         }
     }
-    Ok(Some(failure))
+    Some(failure)
 }
 
 /// #5324: how long the queue has been sitting on eligible work without
@@ -794,33 +791,19 @@ fn latest_failed_job_failure(
 /// ever settled (fresh workspace whose worker has never run), idle time falls
 /// back to how long the oldest eligible job has been waiting.
 ///
-/// Best-effort like its siblings — a DB error degrades to `Ok(None)` at the
-/// call site rather than failing the polled status RPC.
-fn queue_idle_ms(config: &Config, now_ms: i64) -> Result<Option<i64>, String> {
-    let row: Option<(i64, Option<i64>, Option<i64>)> =
-        chunk_store::with_connection(config, |conn| {
-            conn.query_row(
-                "SELECT
-                   (SELECT COUNT(*) FROM mem_tree_jobs
-                     WHERE status = 'ready' AND available_at_ms <= ?1),
-                   (SELECT MAX(completed_at_ms) FROM mem_tree_jobs),
-                   (SELECT MIN(available_at_ms) FROM mem_tree_jobs
-                     WHERE status = 'ready' AND available_at_ms <= ?1)",
-                [now_ms],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()
-            .map_err(Into::into)
-        })
-        .map_err(|e| format!("queue_idle_ms: {e:#}"))?;
-
-    let Some((eligible_ready, last_settled_ms, oldest_eligible_ms)) = row else {
-        return Ok(None);
-    };
+/// Derived from a snapshot rather than read on its own, so the eligible count
+/// and the timestamps it is measured against come from one instant. Reading
+/// them separately is what makes an idle window appear across a settle that
+/// happened between two queries.
+fn queue_idle_ms(
+    queue: &crate::openhuman::memory::api::provider::types::QueueStats,
+    now_ms: i64,
+) -> Option<i64> {
     // Nothing eligible is waiting ⇒ nothing is being held up.
-    if eligible_ready <= 0 {
-        return Ok(None);
+    if queue.eligible_now == 0 {
+        return None;
     }
+    let (last_settled_ms, oldest_eligible_ms) = (queue.last_completed_ms, queue.oldest_eligible_ms);
     // Idle time is "how long since the queue last made progress on the work
     // that is waiting *now*" — so start the clock at the LATER of the last
     // settle and the oldest eligible job's arrival. Using `last_settled_ms`
@@ -839,7 +822,7 @@ fn queue_idle_ms(config: &Config, now_ms: i64) -> Result<Option<i64>, String> {
     };
     // Clamp at zero: clock skew / a future-dated row must read as "just now",
     // never as a negative age.
-    Ok(reference_ms.map(|since| (now_ms - since).max(0)))
+    reference_ms.map(|since| (now_ms - since).max(0))
 }
 
 /// Recursive byte-count of files under `root`. Returns `0` when the root
@@ -1105,7 +1088,6 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
     use tinycortex::memory::ingest::canonicalize::document::DocumentInput;
-    use tinymemory_core::queue as jobs;
     use tinymemory_core::store::chunks::types::SourceKind;
 
     fn test_config() -> (TempDir, Config) {
@@ -1116,6 +1098,24 @@ mod tests {
         cfg.memory_tree.embedding_model = None;
         cfg.memory_tree.embedding_strict = false;
         (tmp, cfg)
+    }
+
+    /// Bind a driver reporting fixed diagnostics as `cfg`'s memory driver.
+    ///
+    /// See `binding::FixedDiagnostics` for why the status handlers need one:
+    /// they read through the contract now, and the real driver is a compiled
+    /// module that a unit test cannot load.
+    fn bind_diagnostics(
+        cfg: &Config,
+        store: crate::openhuman::memory::api::provider::types::StoreStats,
+        queue: crate::openhuman::memory::api::provider::types::QueueStats,
+    ) {
+        crate::openhuman::memory::binding::install_diagnostics_for_test(
+            &cfg.workspace_dir,
+            &cfg.subsystems.memory,
+            store,
+            queue,
+        );
     }
 
     /// #5169 (`CORE-RUST-1P0`) — a chat batch whose messages omit `timestamp`
@@ -1421,27 +1421,42 @@ mod tests {
         assert!(outcome.value.chunk.is_none());
     }
 
-    /// #1574 §4b: `backfill_status_rpc` reports 0 pending on an idle space
-    /// and reflects a queued `reembed_backfill` job (forcing `in_progress`).
+    /// #1574 §4b: `backfill_status_rpc` reports what the driver says is
+    /// queued for the backfill kind, and a non-zero count forces
+    /// `in_progress` so the modal stays open.
+    ///
     /// `in_progress` for the empty case is intentionally not asserted — the
     /// underlying flag is a process-global shared across parallel tests.
+    ///
+    /// Ready + running, and deliberately not `total - done`: a backfill job
+    /// that failed is finished with, and counting it as pending would leave
+    /// the modal open forever.
     #[tokio::test]
-    async fn backfill_status_reports_pending_jobs() {
+    async fn backfill_status_reports_the_drivers_pending_count() {
+        use crate::openhuman::memory::api::provider::types::QueueStats;
+
         let (_tmp, cfg) = test_config();
 
+        bind_diagnostics(&cfg, Default::default(), QueueStats::default());
         let s0 = backfill_status_rpc(&cfg).await.unwrap().value;
         assert_eq!(s0.pending_jobs, 0, "idle space has no pending backfill");
 
-        let job = jobs::types::NewJob::reembed_backfill(&jobs::types::ReembedBackfillPayload {
-            signature: "provider=test;model=x;dims=1".into(),
-        })
-        .unwrap();
-        jobs::enqueue(&cfg, &job).unwrap();
-
+        bind_diagnostics(
+            &cfg,
+            Default::default(),
+            QueueStats {
+                ready: 1,
+                running: 2,
+                // Neither of these is pending work.
+                done: 7,
+                failed: 3,
+                ..Default::default()
+            },
+        );
         let s1 = backfill_status_rpc(&cfg).await.unwrap().value;
         assert_eq!(
-            s1.pending_jobs, 1,
-            "a ready reembed_backfill job must count"
+            s1.pending_jobs, 3,
+            "ready + running is what is still to do; done and failed are not"
         );
         assert!(s1.in_progress, "pending>0 forces in_progress=true");
     }
@@ -1750,74 +1765,60 @@ mod tests {
     /// two shapes that must NOT be reported as stalled, both of which a
     /// backlog-age metric would have flagged — and both of which describe the
     /// heavy users this issue is about.
+    /// One queue snapshot, spelled out.
+    ///
+    /// These read as SQL fixtures before the driver owned the query. What
+    /// `queue_idle_ms` decides has never depended on the rows, only on the
+    /// three numbers below, so the tests say those directly now. Which rows
+    /// produce which numbers is the driver's rule and is pinned in the
+    /// driver's own suite — notably that deferred work counts as `ready`
+    /// without becoming `eligible_now`, the distinction the third case here
+    /// relies on.
+    fn queue(
+        eligible_now: u64,
+        last_completed_ms: Option<i64>,
+        oldest_eligible_ms: Option<i64>,
+    ) -> crate::openhuman::memory::api::provider::types::QueueStats {
+        crate::openhuman::memory::api::provider::types::QueueStats {
+            eligible_now,
+            last_completed_ms,
+            oldest_eligible_ms,
+            ..Default::default()
+        }
+    }
+
     #[tokio::test]
     async fn queue_idle_ms_ignores_deep_but_draining_and_deferred_backlogs() {
-        use tinymemory_core::queue::store as queue_store;
-        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
-
-        let (_tmp, cfg) = test_config();
         let now = 1_800_000_000_000_i64;
         let long_ago = now - 48 * 60 * 60 * 1000;
 
         // Nothing queued at all ⇒ not stalled (an empty queue is done, not stuck).
-        assert_eq!(queue_idle_ms(&cfg, now).unwrap(), None);
+        assert_eq!(queue_idle_ms(&queue(0, None, None), now), None);
 
-        // A deep backlog whose oldest row was enqueued 48h ago. A naive
-        // MIN(created_at_ms) reads 48h and cries "stalled"; the pipeline is in
-        // fact draining, which we simulate by settling one job just now.
-        for i in 0..3 {
-            let job =
-                NewJob::flush_stale(&FlushStalePayload::default(), &format!("2026-08-0{i}"), 3)
-                    .unwrap();
-            queue_store::enqueue(&cfg, &job).unwrap();
-        }
-        chunk_store::with_connection(&cfg, |conn| {
-            conn.execute(
-                "UPDATE mem_tree_jobs SET created_at_ms = ?1, available_at_ms = ?1",
-                [long_ago],
-            )?;
-            Ok(())
-        })
-        .unwrap();
-
-        // Never settled anything yet ⇒ falls back to the oldest eligible wait,
-        // which is the genuine "worker has never run" case.
+        // A deep backlog whose oldest eligible job arrived 48h ago, and which
+        // has never settled anything. A naive backlog-age metric reads 48h and
+        // cries "stalled" — and here it is right, because a queue that has
+        // never settled a job IS stalled.
         assert!(
-            queue_idle_ms(&cfg, now).unwrap().unwrap() >= QUEUE_STALL_THRESHOLD_MS,
+            queue_idle_ms(&queue(3, None, Some(long_ago)), now).unwrap()
+                >= QUEUE_STALL_THRESHOLD_MS,
             "a queue that has never settled a job IS stalled"
         );
 
-        // Now mark one job as settled a minute ago — the pipeline is draining.
-        chunk_store::with_connection(&cfg, |conn| {
-            conn.execute(
-                "UPDATE mem_tree_jobs SET status = 'done', completed_at_ms = ?1
-                  WHERE id = (SELECT id FROM mem_tree_jobs LIMIT 1)",
-                [now - 60_000],
-            )?;
-            Ok(())
-        })
-        .unwrap();
-        let idle = queue_idle_ms(&cfg, now)
-            .unwrap()
+        // Same 48h-old backlog, but one job settled a minute ago — the
+        // pipeline is draining. This is the shape a backlog-age metric gets
+        // wrong, and it describes the heavy users this issue is about.
+        let idle = queue_idle_ms(&queue(3, Some(now - 60_000), Some(long_ago)), now)
             .expect("work still queued");
         assert!(
             idle < QUEUE_STALL_THRESHOLD_MS,
             "a deep but draining backlog must not read as stalled (idle={idle}ms)"
         );
 
-        // Deferred work: `mark_deferred` leaves status='ready' and pushes
-        // available_at_ms into the future. Those rows are asleep on purpose and
-        // must not count as eligible waiting work.
-        chunk_store::with_connection(&cfg, |conn| {
-            conn.execute(
-                "UPDATE mem_tree_jobs SET status = 'ready', available_at_ms = ?1",
-                [now + 60 * 60 * 1000],
-            )?;
-            Ok(())
-        })
-        .unwrap();
+        // Wholly deferred: every job is backing off, so nothing is runnable.
+        // Asleep on purpose is not stuck.
         assert_eq!(
-            queue_idle_ms(&cfg, now).unwrap(),
+            queue_idle_ms(&queue(0, Some(long_ago), None), now),
             None,
             "wholly-deferred work is asleep, not stalled"
         );
@@ -1831,44 +1832,13 @@ mod tests {
     /// appeared, before the worker had any chance to touch it.
     #[tokio::test]
     async fn queue_idle_ms_starts_from_fresh_work_not_ancient_completion() {
-        use tinymemory_core::queue::store as queue_store;
-        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
-
-        let (_tmp, cfg) = test_config();
         let now = 1_800_000_000_000_i64;
         let long_ago = now - 48 * 60 * 60 * 1000;
         let just_now = now - 60_000;
 
-        // Job A: the last thing the queue settled, 48h ago, then it went quiet.
-        let job_a = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-01", 3).unwrap();
-        let id_a = queue_store::enqueue(&cfg, &job_a)
-            .unwrap()
-            .expect("enqueue A");
-        // Job B: a brand-new eligible job that arrived a minute ago.
-        let job_b = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-02", 3).unwrap();
-        let id_b = queue_store::enqueue(&cfg, &job_b)
-            .unwrap()
-            .expect("enqueue B");
-
-        chunk_store::with_connection(&cfg, |conn| {
-            conn.execute(
-                "UPDATE mem_tree_jobs
-                    SET status = 'done', completed_at_ms = ?2, available_at_ms = ?2
-                  WHERE id = ?1",
-                rusqlite::params![id_a, long_ago],
-            )?;
-            conn.execute(
-                "UPDATE mem_tree_jobs
-                    SET status = 'ready', completed_at_ms = NULL, available_at_ms = ?2
-                  WHERE id = ?1",
-                rusqlite::params![id_b, just_now],
-            )?;
-            Ok(())
-        })
-        .unwrap();
-
-        let idle = queue_idle_ms(&cfg, now)
-            .unwrap()
+        // The queue settled its last job 48h ago and went quiet; one fresh
+        // eligible job arrived a minute ago.
+        let idle = queue_idle_ms(&queue(1, Some(long_ago), Some(just_now)), now)
             .expect("fresh work is waiting");
         assert!(
             idle < QUEUE_STALL_THRESHOLD_MS,
@@ -1882,53 +1852,24 @@ mod tests {
         );
     }
 
-    /// Plant one terminally-`failed` row carrying a typed reason, and
-    /// optionally one `done` row, at explicit timestamps. Returns nothing — the
-    /// tests read the derived cause back through `latest_failed_job_failure`.
-    fn plant_failed_and_done(
-        cfg: &Config,
+    /// One failure as the driver reports it.
+    ///
+    /// These used to plant rows and read the answer back through a `SELECT`.
+    /// Which rows the driver reports is the driver's rule and is pinned in the
+    /// driver's own suite; what the host decides to *do* with a reported
+    /// failure is the rule below, and it depends on nothing but these three
+    /// values.
+    fn reported_failure(
         reason: &str,
-        failed_at_ms: i64,
-        done_at_ms: Option<i64>,
-    ) {
-        use tinymemory_core::queue::store as queue_store;
-        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
-
-        let failed_job =
-            NewJob::flush_stale(&FlushStalePayload::default(), "2026-07-10", 3).unwrap();
-        let failed_id = queue_store::enqueue(cfg, &failed_job)
-            .unwrap()
-            .expect("enqueue failed-row");
-
-        let done_id = done_at_ms.map(|_| {
-            let done_job =
-                NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-06", 3).unwrap();
-            queue_store::enqueue(cfg, &done_job)
-                .unwrap()
-                .expect("enqueue done-row")
-        });
-
-        chunk_store::with_connection(cfg, |conn| {
-            conn.execute(
-                "UPDATE mem_tree_jobs
-                    SET status = 'failed',
-                        failure_reason = ?2,
-                        failure_class = 'unrecoverable',
-                        completed_at_ms = ?3
-                  WHERE id = ?1",
-                rusqlite::params![failed_id, reason, failed_at_ms],
-            )?;
-            if let (Some(done_id), Some(done_at_ms)) = (done_id.as_ref(), done_at_ms) {
-                conn.execute(
-                    "UPDATE mem_tree_jobs
-                        SET status = 'done', completed_at_ms = ?2
-                      WHERE id = ?1",
-                    rusqlite::params![done_id, done_at_ms],
-                )?;
-            }
-            Ok(())
-        })
-        .unwrap();
+        failed_at_ms: Option<i64>,
+        last_success_ms: Option<i64>,
+    ) -> crate::openhuman::memory::api::provider::types::QueueFailure {
+        crate::openhuman::memory::api::provider::types::QueueFailure {
+            reason: reason.to_string(),
+            class: Some("unrecoverable".to_string()),
+            completed_at_ms: failed_at_ms,
+            last_success_ms,
+        }
     }
 
     /// The active production defect: a signed-in user was told "No embeddings
@@ -1940,14 +1881,16 @@ mod tests {
     /// blocking cause, so no remediation is surfaced for it.
     #[test]
     fn blocking_cause_is_withheld_once_the_queue_has_succeeded_since() {
-        let (_tmp, cfg) = test_config();
         let failed_at = 1_800_000_000_000_i64;
         let succeeded_after = failed_at + 27 * 24 * 60 * 60 * 1000;
 
-        plant_failed_and_done(&cfg, "auth_missing", failed_at, Some(succeeded_after));
-
         assert!(
-            latest_failed_job_failure(&cfg).unwrap().is_none(),
+            blocking_cause(&reported_failure(
+                "auth_missing",
+                Some(failed_at),
+                Some(succeeded_after)
+            ))
+            .is_none(),
             "a month-old auth failure the queue has since worked past must not be \
              presented as the user's current problem"
         );
@@ -1960,20 +1903,15 @@ mod tests {
     fn blocking_cause_surfaces_when_nothing_has_succeeded_since() {
         use crate::openhuman::memory::tree::health::{FailureClass, FailureCode};
 
-        let (_tmp, cfg) = test_config();
         let succeeded_before = 1_800_000_000_000_i64;
         let failed_after = succeeded_before + 60_000;
 
-        plant_failed_and_done(
-            &cfg,
+        let failure = blocking_cause(&reported_failure(
             "budget_exhausted",
-            failed_after,
+            Some(failed_after),
             Some(succeeded_before),
-        );
-
-        let failure = latest_failed_job_failure(&cfg)
-            .unwrap()
-            .expect("a failure with no success after it is the live cause");
+        ))
+        .expect("a failure with no success after it is the live cause");
         assert_eq!(failure.code, FailureCode::BudgetExhausted);
         assert_eq!(failure.class, FailureClass::Unrecoverable);
         assert_eq!(
@@ -1987,16 +1925,44 @@ mod tests {
     /// sync" shape, where the diagnosis matters most.
     #[test]
     fn blocking_cause_surfaces_when_the_queue_has_never_succeeded() {
-        let (_tmp, cfg) = test_config();
-
-        plant_failed_and_done(&cfg, "auth_invalid", 1_800_000_000_000_i64, None);
-
-        let failure = latest_failed_job_failure(&cfg)
-            .unwrap()
-            .expect("no successful settle exists to supersede this failure");
+        let failure = blocking_cause(&reported_failure(
+            "auth_invalid",
+            Some(1_800_000_000_000_i64),
+            None,
+        ))
+        .expect("no successful settle exists to supersede this failure");
         assert_eq!(
             failure.remediation_key,
             "memory.health.remediation.auth_invalid"
+        );
+    }
+
+    /// A settle on the same millisecond as the failure does NOT supersede it.
+    ///
+    /// The comparison is strictly `>`, and it has to be: `completed_at_ms` is
+    /// stamped on failure as well as success, so a job that fails and a job
+    /// that succeeds within the same millisecond are ordered by nothing. `>=`
+    /// would resolve that tie by hiding the failure, which is the direction
+    /// that loses a real diagnosis.
+    #[test]
+    fn a_settle_in_the_same_millisecond_does_not_supersede_the_failure() {
+        let at = 1_800_000_000_000_i64;
+        assert!(
+            blocking_cause(&reported_failure("auth_invalid", Some(at), Some(at))).is_some(),
+            "a success that cannot be shown to be later must not withhold the diagnosis"
+        );
+    }
+
+    /// A failure carrying no completion time has nothing to compare against,
+    /// so it surfaces unconditionally rather than being withheld by a
+    /// watermark it cannot be ordered against.
+    #[test]
+    fn an_untimestamped_failure_surfaces_regardless_of_the_watermark() {
+        let succeeded_at = 1_800_000_000_000_i64;
+        assert!(
+            blocking_cause(&reported_failure("auth_invalid", None, Some(succeeded_at))).is_some(),
+            "without a failure timestamp there is no ordering, and withholding would \
+             hide a live cause on a guess"
         );
     }
 
@@ -2010,6 +1976,10 @@ mod tests {
         // a "degraded" signal into this fresh-workspace assertion.
         let _g = crate::openhuman::memory::tree::health::test_guard();
         let (_tmp, cfg) = test_config();
+        // An empty driver, bound explicitly. Without a binding installed this
+        // resolves the real one, which means loading the compiled module — and
+        // in a test process that blocks rather than failing.
+        bind_diagnostics(&cfg, Default::default(), Default::default());
         let out = pipeline_status_rpc(&cfg).await.unwrap().value;
         assert_eq!(out.status, "idle");
         assert_eq!(out.total_chunks, 0);
@@ -2032,6 +2002,7 @@ mod tests {
 
         let (_tmp, mut cfg) = test_config();
         cfg.scheduler_gate.mode = SchedulerGateMode::Off;
+        bind_diagnostics(&cfg, Default::default(), Default::default());
         let out = pipeline_status_rpc(&cfg).await.unwrap().value;
         assert_eq!(out.status, "paused");
         assert!(out.is_paused);
@@ -2039,48 +2010,50 @@ mod tests {
         assert!(reason.contains("off"), "reason should name the mode");
     }
 
-    /// `pipeline_status` reflects chunks that have been ingested — total
-    /// count rolls up and `last_sync_ms` picks up the most-recent
-    /// timestamp from `mem_tree_chunks`. Depending on test environment provider
-    /// availability, ingest may also mark semantic recall degraded; either way,
-    /// the status must be terminally healthy/degraded rather than syncing/error.
+    /// `pipeline_status` renders the aggregates the driver reports, and
+    /// derives a terminal status from them.
+    ///
+    /// This used to ingest a document and assert the counters moved. That
+    /// half — an ingest raising the chunk count — is the driver's, and is
+    /// pinned in the driver's conformance suite against a real store. What is
+    /// the host's, and what this pins, is that the reported numbers reach the
+    /// wire unchanged and that a populated, idle store reads as terminal
+    /// rather than syncing.
     #[tokio::test]
-    async fn pipeline_status_reports_chunk_aggregates_after_ingest() {
+    async fn pipeline_status_renders_the_drivers_chunk_aggregates() {
+        use crate::openhuman::memory::api::provider::types::{QueueStats, StoreStats};
+
         // #002: reset+serialise the process-global degraded flags so this
         // "running" assertion isn't flipped to "degraded" by a parallel test.
         let _g = crate::openhuman::memory::tree::health::test_guard();
         let (_tmp, cfg) = test_config();
 
-        // Seed one document so `mem_tree_chunks` is non-empty.
-        ingest_rpc(
+        let ingested_at = 1_800_000_000_000_i64;
+        bind_diagnostics(
             &cfg,
-            IngestRequest {
-                source_kind: SourceKind::Document,
-                source_id: "doc-status".into(),
-                owner: "alice".into(),
-                tags: vec![],
-                payload: serde_json::to_value(sample_document(
-                    "Status",
-                    "Pipeline status smoke document.",
-                ))
-                .unwrap(),
+            StoreStats {
+                chunks: 4,
+                chunks_with_structure: 1,
+                most_recent_chunk_ms: Some(ingested_at),
             },
-        )
-        .await
-        .unwrap();
+            QueueStats::default(),
+        );
 
         let out = pipeline_status_rpc(&cfg).await.unwrap().value;
-        assert!(out.total_chunks > 0, "ingest must populate chunk count");
-        assert!(
-            out.last_sync_ms > 0,
-            "ingest must populate last_sync_ms (got {})",
-            out.last_sync_ms
+        assert_eq!(out.total_chunks, 4, "the driver's count reaches the wire");
+        assert_eq!(
+            out.last_sync_ms, ingested_at,
+            "and so does its newest chunk's timestamp"
         );
-        // No jobs running. Provider availability differs between local and CI
-        // harnesses, so a completed ingest may be fully running or degraded
-        // because semantic recall or wiki structure was skipped. Both are
-        // terminal, non-syncing states and both preserve the aggregate counters
-        // asserted above.
+        assert_eq!(
+            out.extraction_coverage,
+            Some(0.25),
+            "coverage is the pair the driver reported, divided once"
+        );
+        // Provider availability differs between local and CI harnesses, so a
+        // populated store may read as fully running or as degraded because
+        // semantic recall or wiki structure was skipped. Both are terminal,
+        // non-syncing states and both preserve the aggregates above.
         match out.status.as_str() {
             "running" => assert!(out.reason.is_none()),
             "degraded" => {
@@ -2092,7 +2065,7 @@ mod tests {
                     out.reason
                 );
             }
-            other => panic!("expected running or degraded after ingest, got {other}"),
+            other => panic!("expected running or degraded for a populated store, got {other}"),
         }
         assert!(!out.is_syncing);
     }
