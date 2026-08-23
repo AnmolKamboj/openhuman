@@ -1,0 +1,141 @@
+---
+name: E2E (Linux) - agent-review
+#
+# Runs the agent-review spec on Linux via the unified Appium Chromium
+# driver attached to CEF's CDP port. Same driver path as `e2e.yml`; this
+# workflow exists because agent-review needs its own artifact retention.
+# Timeout: 30m (recent runs complete in ~10-20m).
+#
+# Previously: tauri-driver + WebKitWebDriver, which can't drive a
+# CEF-backed WebView. That path is dead.
+on:
+  workflow_dispatch:
+permissions:
+  # `actions: read` lets scripts/ci-cancel-aware.sh poll the run status so
+  # cancelled builds inside container jobs stop themselves (docker exec
+  # swallows the runner's signals).
+  actions: read
+  contents: read
+env:
+  # Consumed by scripts/ci-cancel-aware.sh's cancellation watchdog.
+  GH_TOKEN: ${{ github.token }}
+
+concurrency:
+  group: e2e-agent-review-${{ github.event.pull_request.number || github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e-agent-review:
+    name: E2E agent-review (Linux / Appium Chromium)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: recursive
+      - name: Gate on spec presence
+        id: gate
+        run: |
+          if [ -f app/test/e2e/specs/agent-review.spec.ts ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "agent-review.spec.ts not present - skipping remaining steps."
+          fi
+      - name: Setup pnpm
+        if: steps.gate.outputs.present == 'true'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+          cache: true
+      - name: Setup Node.js 24.x
+        if: steps.gate.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+      - name: Install Rust (rust-toolchain.toml)
+        if: steps.gate.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@1.96.1
+      - name: Install system dependencies (CEF + Xvfb)
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf \
+            xvfb at-spi2-core dbus-x11 \
+            libasound2-dev libxdo-dev libxtst-dev libx11-dev libevdev-dev \
+            unzip curl python3
+      - name: Cargo.lock fingerprint (deps only)
+        if: steps.gate.outputs.present == 'true'
+        id: cargo-lock-fingerprint
+        shell: bash
+        run: |
+          echo "hash=$(tail -n +8 Cargo.lock | openssl dgst -sha256 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Cargo registry and build
+        if: steps.gate.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key:
+            ${{ runner.os }}-e2e-agentreview-cargo-${{ steps.cargo-lock-fingerprint.outputs.hash
+            }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-agentreview-cargo-
+            ${{ runner.os }}-e2e-cargo-
+      - name: Install Appium and chromium driver
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          APPIUM_ROOT="$(printf '%s' "$RUNNER_TEMP" | tr '\\' '/')/openhuman-appium"
+          APPIUM_BIN_DIR="$(printf '%s' "$RUNNER_TEMP" | tr '\\' '/')/openhuman-e2e-bin"
+          mkdir -p "$APPIUM_ROOT" "$APPIUM_BIN_DIR"
+          npm install --no-audit --no-fund --prefix "$APPIUM_ROOT" appium@3
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' \
+            'APPIUM_ROOT="$(cd "$SCRIPT_DIR/../openhuman-appium" && pwd)"' \
+            'exec node "$APPIUM_ROOT/node_modules/appium/index.js" "$@"' \
+            > "$APPIUM_BIN_DIR/appium"
+          chmod +x "$APPIUM_BIN_DIR/appium"
+          echo "$APPIUM_BIN_DIR" >> "$GITHUB_PATH"
+          "$APPIUM_BIN_DIR/appium" driver install --source=npm appium-chromium-driver
+      - name: Install JS dependencies
+        if: steps.gate.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Ensure .env exists for E2E build
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          touch .env
+          touch app/.env
+      - name: Build E2E app
+        if: steps.gate.outputs.present == 'true'
+        run: pnpm --filter openhuman-app test:e2e:build
+      - name: Run agent-review E2E spec under Xvfb
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x1024x24 &
+          sleep 2
+          eval "$(dbus-launch --sh-syntax)"
+          mkdir -p ~/.local/share/applications
+          export RUST_BACKTRACE=1
+          mkdir -p app/test/e2e/artifacts
+          if ! bash app/scripts/e2e-run-session.sh test/e2e/specs/agent-review.spec.ts agent-review; then
+            echo "First agent-review run failed; retrying once..."
+            bash app/scripts/e2e-run-session.sh test/e2e/specs/agent-review.spec.ts agent-review-retry
+          fi
+      - name: Upload E2E artifacts
+        if: always() && steps.gate.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-agent-review-artifacts
+          path: |
+            app/test/e2e/artifacts/**
+            /tmp/openhuman-e2e-app-*.log
+            /tmp/appium-e2e-*.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,91 @@
+export type MascotColor = 'yellow' | 'burgundy' | 'black' | 'navy' | 'custom';
+
+interface MascotPalette {
+  armHighlightMatrix: string;
+  armShadowMatrix: string;
+  bodyFill: string;
+  bodyHighlightMatrix: string;
+  bodyShadowMatrix: string;
+  headHighlightMatrix: string;
+  headShadowMatrix: string;
+  neckShadowColor: string;
+}
+
+const YELLOW_PALETTE: MascotPalette = {
+  armHighlightMatrix: '0 0 0 0 0.973501 0 0 0 0 0.909066 0 0 0 0 0.671677 0 0 0 1 0',
+  armShadowMatrix: '0 0 0 0 0.796078 0 0 0 0 0.576471 0 0 0 0 0.0980392 0 0 0 1 0',
+  bodyFill: '#F7D145',
+  bodyHighlightMatrix: '0 0 0 0 0.962384 0 0 0 0 0.860378 0 0 0 0 0.484572 0 0 0 1 0',
+  bodyShadowMatrix: '0 0 0 0 0.797063 0 0 0 0 0.575703 0 0 0 0 0.0980312 0 0 0 1 0',
+  headHighlightMatrix: '0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0',
+  headShadowMatrix: '0 0 0 0 0.797063 0 0 0 0 0.575703 0 0 0 0 0.0980312 0 0 0 1 0',
+  neckShadowColor: '#B23C05',
+};
+
+const BLACK_PALETTE: MascotPalette = {
+  armHighlightMatrix: '0 0 0 0 0.439216 0 0 0 0 0.439216 0 0 0 0 0.439216 0 0 0 1 0',
+  armShadowMatrix: '0 0 0 0 0.0235294 0 0 0 0 0.0196078 0 0 0 0 0.0156863 0 0 0 1 0',
+  bodyFill: '#3A3A3A',
+  bodyHighlightMatrix: '0 0 0 0 0.439078 0 0 0 0 0.439078 0 0 0 0 0.439078 0 0 0 1 0',
+  bodyShadowMatrix: '0 0 0 0 0.0229492 0 0 0 0 0.0207891 0 0 0 0 0.0161271 0 0 0 1 0',
+  headHighlightMatrix: '0 0 0 0 0.439216 0 0 0 0 0.439216 0 0 0 0 0.439216 0 0 0 1 0',
+  headShadowMatrix: '0 0 0 0 0.0235294 0 0 0 0 0.0196078 0 0 0 0 0.0156863 0 0 0 1 0',
+  neckShadowColor: '#030100',
+};
+
+const palettes: Record<MascotColor, MascotPalette> = {
+  yellow: YELLOW_PALETTE,
+  burgundy: {
+    armHighlightMatrix: '0 0 0 0 0.607843 0 0 0 0 0.235294 0 0 0 0 0.313726 0 0 0 1 0',
+    armShadowMatrix: '0 0 0 0 0.27451 0 0 0 0 0.0745098 0 0 0 0 0.129412 0 0 0 1 0',
+    bodyFill: '#8A2647',
+    bodyHighlightMatrix: '0 0 0 0 0.607843 0 0 0 0 0.235294 0 0 0 0 0.313726 0 0 0 1 0',
+    bodyShadowMatrix: '0 0 0 0 0.27451 0 0 0 0 0.0745098 0 0 0 0 0.129412 0 0 0 1 0',
+    headHighlightMatrix: '0 0 0 0 0.854902 0 0 0 0 0.611765 0 0 0 0 0.690196 0 0 0 1 0',
+    headShadowMatrix: '0 0 0 0 0.27451 0 0 0 0 0.0745098 0 0 0 0 0.129412 0 0 0 1 0',
+    neckShadowColor: '#541128',
+  },
+  black: BLACK_PALETTE,
+  navy: {
+    armHighlightMatrix: '0 0 0 0 0.270588 0 0 0 0 0.447059 0 0 0 0 0.654902 0 0 0 1 0',
+    armShadowMatrix: '0 0 0 0 0.0705882 0 0 0 0 0.14902 0 0 0 0 0.270588 0 0 0 1 0',
+    bodyFill: '#234B74',
+    bodyHighlightMatrix: '0 0 0 0 0.270588 0 0 0 0 0.447059 0 0 0 0 0.654902 0 0 0 1 0',
+    bodyShadowMatrix: '0 0 0 0 0.0705882 0 0 0 0 0.14902 0 0 0 0 0.270588 0 0 0 1 0',
+    headHighlightMatrix: '0 0 0 0 0.603922 0 0 0 0 0.760784 0 0 0 0 0.905882 0 0 0 1 0',
+    headShadowMatrix: '0 0 0 0 0.0705882 0 0 0 0 0.14902 0 0 0 0 0.270588 0 0 0 1 0',
+    neckShadowColor: '#16324D',
+  },
+  custom: YELLOW_PALETTE,
+};
+
+export function getMascotPalette(color: MascotColor): MascotPalette {
+  return palettes[color] ?? YELLOW_PALETTE;
+}
+
+export function hexToArgbInt(hex: string): number {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return ((0xff << 24) | (r << 16) | (g << 8) | b) >>> 0;
+}
+
+/**
+ * Lighten (`amount > 0`) or darken (`amount < 0`) a `#rrggbb` colour by a
+ * fraction in `[-1, 1]`. Used to derive highlight/shadow stops for a flat,
+ * bright mascot body that mirrors the Rive mascot's look for any palette
+ * colour (including user custom colours). Falls back to the input on a
+ * malformed hex so a bad custom value never throws.
+ */
+export function shadeHex(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return hex;
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const mix = (channel: number) =>
+    amount >= 0 ? channel + (255 - channel) * amount : channel * (1 + amount);
+  const r = clamp(mix(parseInt(h.slice(0, 2), 16)));
+  const g = clamp(mix(parseInt(h.slice(2, 4), 16)));
+  const b = clamp(mix(parseInt(h.slice(4, 6), 16)));
+  return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
