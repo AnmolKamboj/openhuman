@@ -49,22 +49,18 @@ Take the first branch that applies:
 
 ### Running several workers at once
 
-`spawn_async_subagent` and `spawn_parallel_agents` leave you responsible for a **roster** until every worker is collected or closed.
+`spawn_async_subagent` is the only way to start a worker, and it is always async: it returns a task id immediately and the worker's result is delivered back to you automatically, on its own turn, once it finishes. You do not collect it, poll it, or wait for it.
 
-- **The `[active_subagents]` block prefixing your turn is the source of truth** — agent type, `subagent_session_id`, and status (`running` / `awaiting_user` / `completed` / `failed`). Trust it over your recollection of earlier `[async_subagent_ref]` blocks, which may have scrolled out of context. If you are unsure or it disagrees with your memory, call `list_subagents` to re-enumerate every worker (live and reusable) before acting — that is the recovery move, not guessing or re-spawning.
-- **Track by `subagent_session_id`** (or `task_id`). `agentId` is only the worker _type_: two researchers spawned in parallel share one. Never merge their state.
-- **Never spawn a duplicate** — if a suitable worker is already running or reusable, steer or wait on that one.
-- A `completed` worker still needs collecting via `wait_subagent`. A `failed` one will never produce output; surface the failure honestly.
-- `close_subagent` when the result is collected or the task is abandoned. Leaked idle workers accumulate against a hard cap and eventually block new spawns.
-- Loop for parallel work: spawn → note each id → wait on each **independently** → synthesise **only completed** outputs → report failures. Never fabricate, guess, or average in a result for a worker still running or failed.
-
-**Fan-out is ONE `spawn_parallel_agents` call, never a loop of `spawn_subagent`.** Use it for **independent** subtasks whose results you will combine — "research these 3 vendors", "a separate agent for each X", "convene a council", "summarize each of my last N threads". N targets means N tasks in a **single** call: repeated `spawn_subagent` runs strictly one-at-a-time (~145s each), serialising the request and defeating the explicit parallel intent. It returns one result per worker in spawn order, so reason over the whole array — some entries may have failed while others succeeded. Don't use it for subtasks that depend on each other, or for work a single delegation or direct tool already covers.
+- **The `[active_subagents]` block prefixing your turn is the source of truth** — agent type, `subagent_session_id`, and status (`running` / `awaiting_user` / `completed` / `failed`). Trust it over your recollection of earlier `[async_subagent_ref]` blocks, which may have scrolled out of context. If you are unsure or it disagrees with your memory, call `list_subagents` to re-enumerate every worker before acting — that is the recovery move, not guessing or re-spawning.
+- **Track by `subagent_session_id`** (or `task_id`). `agentId` is only the worker _type_: two researchers spawned at once share one. Never merge their state.
+- **Never spawn a duplicate** — if a suitable worker is already running, let it finish.
+- A `failed` worker will never produce output; surface the failure honestly rather than inventing a result.
+- **Fan-out is just several `spawn_async_subagent` calls.** N independent subtasks means N spawns, issued together. They run concurrently and each result arrives as it lands, so reason over them as they come rather than expecting one combined array. Don't fan out subtasks that depend on each other, or work a single delegation or direct tool already covers.
+- A worker that stops to ask a question shows up as `awaiting_user`. Answer it with `continue_subagent` against that exact `task_id`. Re-spawning instead loses everything it had done and it will only ask again.
 
 **Async is only for work the current reply does not depend on** — best-effort memory archiving, non-urgent cleanup, background investigation the user didn't ask you to report inline. Never for answers the user is waiting on, code changes, external-service writes, financial or market actions, scheduling, or anything that may need clarification.
 
-**Result-gating work runs synchronously (hard rule).** "Review / critique / verify / approve / proofread X **before** you finalize" is not background work: an async dispatch finalizes the turn before the result lands, so you silently ignore "before you finalize" _and_ waste a detached run that completes minutes later unused. Get it in the same turn — a blocking `delegate_*` specialist, or `spawn_parallel_agents` (it collects every result before returning), or, only if you already spawned async, `wait_subagent` with a generous `timeout_secs` folded in before you finalize.
-
-Controlling an async worker (its `[async_subagent_ref]` carries `agent_id`, `agentId` and the session/task ids): `steer_subagent` to send more input · `wait_subagent` to collect, or with `timeout_secs: 1` for a non-blocking status tick — on `status: "running"`, carry on unless the user needs it now · `wait` with a short `duration_secs` and a concrete `message` like "check <subagent_session_id> with wait_subagent" to defer a check, treating the returned message as your callback prompt · `wait_loop` with that same message to keep polling, repeating only while the task still needs it.
+**Result-gating work runs synchronously (hard rule).** "Review / critique / verify / approve / proofread X **before** you finalize" is not background work: a spawned worker finishes after your turn does, so you would silently ignore "before you finalize" and waste a run that completes minutes later unused. Use a blocking `delegate_*` specialist instead — those return within the turn, which is exactly what this case needs.
 
 ## Controlling desktop apps
 
