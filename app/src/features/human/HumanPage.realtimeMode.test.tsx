@@ -11,6 +11,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import chatRuntimeReducer from '../../store/chatRuntimeSlice';
@@ -75,9 +76,13 @@ async function renderPage() {
   const store = configureStore({
     reducer: { mascot: mascotReducer, thread: threadReducer, chatRuntime: chatRuntimeReducer },
   });
+  // HumanPage routes (the composer's idle action opens /human, and the page
+  // navigates back), so it needs a router in scope.
   return render(
     <Provider store={store}>
-      <HumanPage />
+      <MemoryRouter initialEntries={['/human']}>
+        <HumanPage />
+      </MemoryRouter>
     </Provider>
   );
 }
