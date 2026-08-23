@@ -1297,7 +1297,7 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "monitor_stop",
         "notify_user",
     ];
-    const THREADS_EXTRA: &[&str] = &["transcript_search", "goal_get", "goal_set", "goal_complete"];
+    const THREADS_EXTRA: &[&str] = &["goal_get", "goal_set", "goal_complete"];
     // Memory extras not covered by the `memory_`/`goals_` prefixes.
     const MEMORY_EXTRA: &[&str] = &[
         "remember_preference",

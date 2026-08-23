@@ -2310,7 +2310,6 @@ fn tool_group_classifies_gate_and_harness_families() {
     assert_eq!(tool_group("memory_store"), DomainGroup::Memory);
     assert_eq!(tool_group("goals_add"), DomainGroup::Memory);
     assert_eq!(tool_group("update_memory_md"), DomainGroup::Memory);
-    assert_eq!(tool_group("thread_list"), DomainGroup::Threads);
     assert_eq!(tool_group("todo_add"), DomainGroup::Threads);
     assert_eq!(tool_group("goal_get"), DomainGroup::Threads);
     assert_eq!(tool_group("artifact_list"), DomainGroup::Agent);
@@ -2327,7 +2326,6 @@ fn tool_group_classifies_gate_and_harness_families() {
     ] {
         assert_eq!(tool_group(name), DomainGroup::Agent);
     }
-    assert_eq!(tool_group("people_list"), DomainGroup::Memory);
     assert_eq!(tool_group("config_snapshot"), DomainGroup::Config);
     assert_eq!(tool_group("workspace_init"), DomainGroup::Config);
     assert_eq!(tool_group("security_policy_info"), DomainGroup::Security);
@@ -2364,7 +2362,7 @@ fn tool_group_gate_families_dropped_under_harness_not_full() {
     }
     // Harness keeps memory/threads, drops gate families AND platform.
     assert!(harness.allows(tool_group("memory_store")));
-    assert!(harness.allows(tool_group("thread_list")));
+    assert!(harness.allows(tool_group("todo_add")));
     assert!(harness.allows(tool_group("artifact_list")));
     assert!(harness.allows(tool_group("config_snapshot")));
     assert!(harness.allows(tool_group("security_policy_info")));
@@ -2501,7 +2499,7 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
     &[
         ("delegate", G::Agent),
         ("memory_search", G::Memory),
-        ("thread_list", G::Threads),
+        ("todo_add", G::Threads),
         ("mcp_list_servers", G::Mcp),
         ("wallet_get_address", G::Web3),
         ("media_generate_image", G::Media),
@@ -2511,8 +2509,7 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
         ("run_workflow", G::Skills),
         ("cron_add", G::Automation),
         ("composio_execute", G::Integrations),
-        ("billing_top_up_credits", G::Hosted),
-        ("tinyplace_call", G::Relay),
+        ("orchestration_list_sessions", G::Hosted),
         ("dashboard_model_health", G::Desktop),
         ("node_exec", G::Runtimes),
         ("tinyjuice_retrieve", G::Inference),
@@ -2526,7 +2523,10 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     // `Modules` is the loader, not a capability: a loaded module's own surface
     // is reached through whichever domain calls it (documents go through the
     // document tools), so the family itself owns no agent tool.
-    &[G::Config, G::Security, G::Medulla, G::Modules]
+    // `Relay` joined this list when the `tinyplace_*` agent-tool family was
+    // removed: the domain still exists and still serves its controllers, it
+    // just advertises no agent tool any more.
+    &[G::Config, G::Security, G::Medulla, G::Modules, G::Relay]
 };
 
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
@@ -2696,8 +2696,7 @@ const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
 
 /// Memory-family tools that remain available when a null driver deliberately
 /// disables every driver-backed capability.
-const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] =
-    &["update_memory_md", "memory_store_kinds", "people_list"];
+const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] = &["update_memory_md", "memory_store_kinds"];
 
 /// The ~4000-pre-boot-test default-open property, asserted once directly: with
 /// no ambient context at all the capability filter removes nothing.
@@ -2815,7 +2814,7 @@ async fn narrow_capabilities_do_not_narrow_the_domain_axis() {
         Some(null_driver_memory_cfg()),
     );
     let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
-    for name in ["shell", "file_read", "file_write", "thread_list"] {
+    for name in ["shell", "file_read", "file_write", "todo_add"] {
         assert!(
             names.iter().any(|n| n == name),
             "a narrowed memory capability set must not remove `{name}`"
