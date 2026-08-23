@@ -245,3 +245,62 @@ mod request_shapes {
         .is_err());
     }
 }
+
+// ---------------------------------------------------------------------------
+// The contract this client compiles against
+// ---------------------------------------------------------------------------
+
+/// `registry.rs` is a compiled-in `const` table, and it cannot name a gated
+/// crate: its `bus_name` and `object_path` are string literals sitting next to
+/// the module's own spelling of them with nothing between the two. A mismatch is
+/// therefore not a compile error — it is a `NameHasNoOwner` at first use, in the
+/// field, on whichever platform nobody tested. These two tests are what stands
+/// in for the compiler.
+mod contract {
+    use crate::openhuman::modules::registry;
+
+    #[test]
+    fn the_registry_entry_matches_the_interface_this_client_calls() {
+        let record =
+            registry::find("tinywallet").expect("the tinywallet record is compiled in");
+        assert_eq!(record.bus_name, tinywallet_bus::BUS_NAME);
+        assert_eq!(record.object_path, tinywallet_bus::OBJECT_PATH);
+        assert!(
+            record.object_path.starts_with('/') && !record.object_path.contains('.'),
+            "an object path with a dot in it is rejected by the loader, not by the compiler"
+        );
+    }
+
+    #[test]
+    fn every_member_this_client_calls_is_one_the_contract_declares() {
+        // The direction that matters. A name this host sends that the module
+        // does not serve fails at call time with nothing to catch it earlier;
+        // the reverse — a member the module serves and this host never calls —
+        // is fine, and two of them are exactly that. `BuildUnsigned` and
+        // `AttachSignature` are the two-round-trip flow for a backend that
+        // cannot be trusted with a key, which does not apply to a module whose
+        // artifact this build hashed, so the confidential members are the ones
+        // used here.
+        use tinywallet_bus::names::methods;
+
+        let called = [
+            methods::SIGN_TRANSACTION,
+            methods::DERIVE_ACCOUNT,
+            methods::SIGN_MESSAGE,
+            methods::EXPORT_KEY,
+        ];
+        for member in called {
+            assert!(
+                tinywallet_bus::METHODS.contains(&member),
+                "{member} is not a member of {}",
+                tinywallet_bus::BUS_NAME
+            );
+            // And every one of them carries a recovery phrase, so every one has
+            // to go out over a confidential call rather than a plain one.
+            assert!(
+                tinywallet_bus::CONFIDENTIAL_METHODS.contains(&member),
+                "{member} is called confidentially but not declared confidential"
+            );
+        }
+    }
+}
