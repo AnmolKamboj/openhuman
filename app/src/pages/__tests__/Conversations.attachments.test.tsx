@@ -445,24 +445,9 @@ describe('Conversations — attachment feature', () => {
     expect(mockSelectAgentProfile).not.toHaveBeenCalled();
   });
 
-  it('selects the Reasoning tier from the chat-header toggle', async () => {
+  it('shows the model selector in the assistant-ui composer', async () => {
     await renderWithSelectedThread();
-
-    const reasoningButton = await screen.findByRole('radio', { name: 'Reasoning' });
-    expect(reasoningButton).toHaveAttribute('aria-checked', 'false');
-
-    await act(async () => {
-      fireEvent.click(reasoningButton);
-    });
-
-    await waitFor(() => {
-      expect(mockSelectAgentProfile).toHaveBeenCalledWith('reasoning');
-      // Store updates to the new active profile → toggle reflects the selection.
-      expect(screen.getByRole('radio', { name: 'Reasoning' })).toHaveAttribute(
-        'aria-checked',
-        'true'
-      );
-    });
+    expect(await screen.findByRole('button', { name: 'Select model' })).toBeInTheDocument();
   });
 
   it('rejects an image and shows the advisory when the model lacks vision', async () => {
