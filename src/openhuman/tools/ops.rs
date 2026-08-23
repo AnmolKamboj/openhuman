@@ -1345,6 +1345,10 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         return DomainGroup::Memory;
     }
     // Threads family (harness-kept): thread_* + todo_* + per-thread goal + search.
+    // `thread_` is kept as a prefix even though the `thread_*` agent-tool
+    // family was removed: `todo_`, `goal_*` and the THREADS_EXTRA entries still
+    // classify here, and a future threads tool should land in Threads rather
+    // than falling through to Platform.
     if name.starts_with("thread_") || name.starts_with("todo_") || THREADS_EXTRA.contains(&name) {
         return DomainGroup::Threads;
     }
@@ -1372,9 +1376,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     }
     if name.starts_with("config_") || name.starts_with("workspace_") {
         return DomainGroup::Config;
-    }
-    if name.starts_with("people_") {
-        return DomainGroup::Memory;
     }
     if name.starts_with("security_")
         || name.starts_with("credential_")
