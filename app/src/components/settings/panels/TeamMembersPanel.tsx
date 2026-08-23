@@ -8,6 +8,7 @@ import { teamApi } from '../../../services/api/teamApi';
 import type { TeamMember, TeamRole } from '../../../types/team';
 import { sanitizeError } from '../../../utils/sanitize';
 import { CenteredLoadingState, ConfirmDialog, ErrorBanner, InlineLoadingStatus } from '../../ui';
+import { AvatarFallback, AvatarRoot } from '../../ui/Avatar';
 import Button from '../../ui/Button';
 import { SettingsBadge, SettingsEmptyState, SettingsSection, SettingsSelect } from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
@@ -159,11 +160,11 @@ const TeamMembersPanel = () => {
                   className="flex items-center justify-between px-4 py-3 border-b border-line-subtle last:border-b-0">
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Avatar */}
-                    <div className="w-8 h-8 rounded-full bg-neutral-700/60 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-semibold text-white">
+                    <AvatarRoot className="h-8 w-8 shrink-0 bg-surface-strong">
+                      <AvatarFallback className="bg-surface-strong text-xs font-semibold text-content-secondary">
                         {displayName(member).charAt(0).toUpperCase()}
-                      </span>
-                    </div>
+                      </AvatarFallback>
+                    </AvatarRoot>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-content truncate">
@@ -181,7 +182,7 @@ const TeamMembersPanel = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {/* Role badge / dropdown */}
                     {isAdmin && !isCurrentUser(member) ? (
                       <SettingsSelect

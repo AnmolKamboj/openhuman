@@ -5,7 +5,7 @@ import { useUser } from '../../hooks/useUser';
 import { useT } from '../../lib/i18n/I18nContext';
 import { useCoreState } from '../../providers/CoreStateProvider';
 import { type CreditBalance, creditsApi, type RedeemedCoupon } from '../../services/api/creditsApi';
-import Button from '../ui/Button';
+import { Button, TextField } from '../ui';
 
 const log = createDebug('openhuman:rewards-coupons');
 
@@ -166,7 +166,7 @@ const RewardsCouponSection = () => {
 
         <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4 space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
+            <TextField
               type="text"
               value={couponCode}
               onChange={event => {
@@ -181,7 +181,8 @@ const RewardsCouponSection = () => {
               }}
               placeholder={t('rewards.coupon.placeholder')}
               disabled={submitLoading}
-              className="flex-1 px-4 py-2.5 rounded-xl border border-line bg-surface font-mono text-content placeholder:text-stone-400 dark:text-content-faint dark:placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+              mono
+              className="flex-1"
             />
             <Button
               variant="primary"
@@ -250,7 +251,7 @@ const RewardsCouponSection = () => {
                     <th className="px-3 py-2 font-medium">{t('rewards.coupon.colRedeemed')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line-subtle dark:divide-neutral-800">
+                <tbody className="divide-y divide-line-subtle">
                   {redeemedCoupons.map(coupon => (
                     <tr
                       key={`${coupon.code}-${coupon.redeemedAt ?? coupon.activationType}`}

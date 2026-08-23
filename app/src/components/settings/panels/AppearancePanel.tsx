@@ -1,4 +1,4 @@
-import { type ChangeEvent, type ReactElement, useState } from 'react';
+import { type ReactElement, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
@@ -20,6 +20,7 @@ import {
   type ThemeMode,
 } from '../../../store/themeSlice';
 import LanguageSelect from '../../LanguageSelect';
+import Slider from '../../ui/Slider';
 import { SettingsNumberField, SettingsRow, SettingsSection, SettingsSwitch } from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
 
@@ -116,8 +117,8 @@ const AppearancePanel = () => {
       setPxDraft(String(effectiveFontSizePx));
     }
   };
-  const handleFontSizeSlider = (event: ChangeEvent<HTMLInputElement>) => {
-    const px = Number(event.target.value);
+  const handleFontSizeSlider = (values: number[]) => {
+    const px = values[0];
     console.debug('[appearance] custom font-size slider', { px });
     dispatch(setCustomFontSizePx(px));
   };
@@ -199,7 +200,7 @@ const AppearancePanel = () => {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => dispatch(setThemeMode(opt.id))}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors focus:outline-none focus-visible:bg-primary-50 dark:focus-visible:bg-primary-900/30 ${
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors focus:outline-hidden focus-visible:bg-primary-50 dark:focus-visible:bg-primary-900/30 ${
                   idx !== 0 ? 'border-t border-line-subtle' : ''
                 } ${selected ? 'bg-primary-50 dark:bg-primary-500/10' : 'hover:bg-surface-hover'}`}>
                 <span
@@ -258,7 +259,7 @@ const AppearancePanel = () => {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => dispatch(setFontSize(opt.id))}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors focus:outline-none focus-visible:bg-primary-50 dark:focus-visible:bg-primary-900/30 ${
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors focus:outline-hidden focus-visible:bg-primary-50 dark:focus-visible:bg-primary-900/30 ${
                   idx !== 0 ? 'border-t border-line-subtle' : ''
                 } ${selected ? 'bg-primary-50 dark:bg-primary-500/10' : 'hover:bg-surface-hover'}`}>
                 <span
@@ -312,17 +313,16 @@ const AppearancePanel = () => {
               data-testid="font-size-custom-number"
             />
           </div>
-          <input
+          <Slider
             id="font-size-slider"
-            type="range"
             min={MIN_FONT_SIZE_PX}
             max={MAX_FONT_SIZE_PX}
             step={1}
-            value={effectiveFontSizePx}
-            onChange={handleFontSizeSlider}
-            aria-label={t('settings.appearance.fontSizeCustomSliderAria')}
+            value={[effectiveFontSizePx]}
+            onValueChange={handleFontSizeSlider}
+            thumbLabels={[t('settings.appearance.fontSizeCustomSliderAria')]}
             aria-valuetext={`${effectiveFontSizePx}${t('settings.appearance.fontSizeUnit')}`}
-            className="w-full mt-3 accent-primary-500 cursor-pointer"
+            className="mt-3"
             data-testid="font-size-slider"
           />
           <div className="flex items-center justify-between mt-1 text-[11px] text-content-faint">

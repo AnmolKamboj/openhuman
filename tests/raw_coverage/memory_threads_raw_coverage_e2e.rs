@@ -132,27 +132,30 @@ use openhuman_core::openhuman::memory::{
     read_rpc as memory_read_rpc,
     MemoryIngestionConfig, MemoryIngestionRequest,
 };
-// `remember`, `traits` and `util` live in the extracted engine crate. The RPC
-// models do not any more — the host brought its own home, and both crates now
-// define all twenty-four names. They are distinct types with identical
-// spelling, so importing the engine's and handing them to a host function is a
-// type error that reads like a typo. These come from the host, which is what
-// the host's handlers take.
+// `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
+// crate with the rest of the memory implementation; the host re-exports some of
+// their contents flat but not the modules themselves.
 // The guard exposes `store` through the contract's mandatory core trait, and
 // stamps provenance from an explicit taint argument.
 use openhuman_core::openhuman::memory::api::provider::MemoryCore;
 use openhuman_core::openhuman::memory::api::types::MemoryTaint;
+// These request/record types are consumed directly by `openhuman_core::openhuman::memory::ops`
+// and `openhuman::threads::ops` handlers below, which take the host's own `rpc_models` types,
+// not the engine crate's same-named ones — so they must come from the host, not `tinymemory_core`.
 use openhuman_core::openhuman::memory::rpc_models::{
-    ApiEnvelope, ApiError, ApiMeta, AppendConversationMessageRequest, ConversationMessageRecord,
-    ConversationMessagesRequest, CreateConversationThreadRequest, DeleteConversationThreadRequest,
-    DeleteDocumentRequest, EmptyRequest, GenerateConversationThreadTitleRequest,
-    ListDocumentsRequest, ListMemoryFilesRequest, MemoryInitRequest, PaginationMeta,
-    QueryNamespaceRequest, ReadMemoryFileRequest, RecallContextRequest, RecallMemoriesRequest,
+    AppendConversationMessageRequest, ConversationMessageRecord, ConversationMessagesRequest,
+    CreateConversationThreadRequest, DeleteConversationThreadRequest, DeleteDocumentRequest,
+    EmptyRequest, GenerateConversationThreadTitleRequest, ListDocumentsRequest,
+    ListMemoryFilesRequest, MemoryInitRequest, ReadMemoryFileRequest,
     UpdateConversationMessageRequest, UpdateConversationThreadLabelsRequest,
     UpdateConversationThreadTitleRequest, UpsertConversationThreadRequest, WriteMemoryFileRequest,
 };
 use tinymemory_core::{
     remember::RememberSourceKind,
+    rpc_models::{
+        ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest,
+        RecallContextRequest, RecallMemoriesRequest,
+    },
     traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
     util::redact::{redact, redact_endpoint},
 };

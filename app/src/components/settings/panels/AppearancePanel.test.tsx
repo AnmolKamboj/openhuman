@@ -55,8 +55,11 @@ describe('<AppearancePanel /> font size', () => {
 
   it('reflects the effective size on the slider and highlights a matching preset', () => {
     // 18px == the Large preset, so the slider reads 18 and Large stays checked.
-    const { getByTestId, getByRole } = renderPanel('medium', 18);
-    expect((getByTestId('font-size-slider') as HTMLInputElement).value).toBe('18');
+    // The slider migrated from a raw `<input type="range">` to the Radix-backed
+    // `Slider` primitive (ui/Slider.tsx): the thumb carries `role="slider"` +
+    // `aria-valuenow` instead of an `<input>` `.value`.
+    const { getByRole } = renderPanel('medium', 18);
+    expect(getByRole('slider')).toHaveAttribute('aria-valuenow', '18');
     const group = getByRole('radiogroup', { name: 'settings.appearance.fontSizeAria' });
     expect(within(group).getByRole('radio', { name: /fontSizeLarge/ })).toHaveAttribute(
       'aria-checked',
@@ -65,9 +68,14 @@ describe('<AppearancePanel /> font size', () => {
   });
 
   it('dispatches a clamped custom px as the slider moves', () => {
-    const { getByTestId, store } = renderPanel('medium');
-    fireEvent.change(getByTestId('font-size-slider'), { target: { value: '26' } });
-    expect(store.getState().theme.customFontSizePx).toBe(26);
+    // Radix `Slider` has no layout in jsdom (pointer drags all resolve to the
+    // same zero-width rect), so keyboard is the reliable interaction path here
+    // too — same rationale as ui/Slider.test.tsx's own arrow-key coverage.
+    const { getByRole, store } = renderPanel('medium');
+    const thumb = getByRole('slider');
+    thumb.focus();
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    expect(store.getState().theme.customFontSizePx).toBe(17);
   });
 
   it('commits the numeric field on blur, clamped to the supported range', () => {

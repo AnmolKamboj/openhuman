@@ -159,7 +159,7 @@ describe('Chat harness — mid-stream cancel', () => {
           browser.execute(() => {
             const stop = document.querySelector('[data-testid="stop-generation-button"]');
             const ta = document.querySelector(
-              'textarea[placeholder="How can I help you today?"]'
+              'textarea[placeholder="Send a message..."]'
             ) as HTMLTextAreaElement | null;
             return !stop && !!ta && !ta.disabled;
           }),
@@ -209,7 +209,7 @@ describe('Chat harness — mid-stream cancel', () => {
     // The textarea must be re-enabled.
     const composerEnabled = await browser.execute(() => {
       const ta = document.querySelector(
-        'textarea[placeholder="How can I help you today?"]'
+        'textarea[placeholder="Send a message..."]'
       ) as HTMLTextAreaElement | null;
       return !!ta && !ta.disabled;
     });

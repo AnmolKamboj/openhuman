@@ -1,7 +1,7 @@
 import debugFactory from 'debug';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { apiClient } from '../../agentworld/AgentWorldShell';
+import { apiClient } from '../../lib/agentworld/apiClient';
 import { type PairingSnapshot, PaymentRequiredError } from '../../lib/agentworld/invokeApiClient';
 import { useT } from '../../lib/i18n/I18nContext';
 import {

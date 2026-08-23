@@ -6,6 +6,25 @@ import { SettingsModalFrame } from './SettingsModalFrame';
 // Identity translator so we can assert on stable i18n keys.
 vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (key: string) => key }) }));
 
+/**
+ * The frame is backed by Radix `Dialog` now (see ui/ModalShell.test.tsx for
+ * the same pattern). Radix registers its outside-pointer listener in a
+ * macrotask, so a click synchronous with render is not observed — flush first.
+ */
+async function flushDeferredWork(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/**
+ * Radix treats an outside interaction as pointerdown *followed by* a click, so
+ * dragging out of the dialog doesn't dismiss it. Fire both against the same
+ * target to trigger a real dismiss.
+ */
+function dismissByOutsideClick(target: HTMLElement): void {
+  fireEvent.pointerDown(target);
+  fireEvent.click(target);
+}
+
 describe('SettingsModalFrame', () => {
   it('renders its children', () => {
     render(
@@ -38,25 +57,27 @@ describe('SettingsModalFrame', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onClose when the backdrop is clicked', () => {
+  it('calls onClose when the backdrop is clicked', async () => {
     const onClose = vi.fn();
     render(
       <SettingsModalFrame onClose={onClose}>
         <div>body</div>
       </SettingsModalFrame>
     );
-    fireEvent.click(screen.getByTestId('settings-modal-backdrop'));
+    await flushDeferredWork();
+    dismissByOutsideClick(screen.getByTestId('settings-modal-backdrop'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call onClose when the card body is clicked', () => {
+  it('does not call onClose when the card body is clicked', async () => {
     const onClose = vi.fn();
     render(
       <SettingsModalFrame onClose={onClose}>
         <div data-testid="child">body</div>
       </SettingsModalFrame>
     );
-    fireEvent.click(screen.getByTestId('child'));
+    await flushDeferredWork();
+    dismissByOutsideClick(screen.getByTestId('child'));
     expect(onClose).not.toHaveBeenCalled();
   });
 

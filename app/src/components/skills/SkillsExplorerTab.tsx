@@ -1,5 +1,6 @@
 import debug from 'debug';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LuFilter } from 'react-icons/lu';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import { type CatalogEntry, skillRegistryApi } from '../../services/api/skillRegistryApi';
@@ -9,8 +10,16 @@ import {
   type WorkflowSummary,
 } from '../../services/api/skillsApi';
 import EmptyStateCard from '../EmptyStateCard';
-import ChipTabs from '../layout/ChipTabs';
+import { Badge, Checkbox, ModalShell, TabsList, TabsRoot, TabsTrigger, TextField } from '../ui';
 import Button from '../ui/Button';
+import Card from '../ui/Card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/Table';
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from '../ui/DropdownMenu';
 import InstallSkillDialog from './InstallSkillDialog';
 import UninstallSkillConfirmDialog from './UninstallSkillConfirmDialog';
 
@@ -158,7 +167,7 @@ interface SkillTileProps {
   onClick: () => void;
 }
 
-function SkillTile({ skill, onUninstall, onClick }: SkillTileProps) {
+export function SkillTile({ skill, onUninstall, onClick }: SkillTileProps) {
   const { t } = useT();
   const canUninstall = skill.scope === 'user';
 
@@ -178,7 +187,7 @@ function SkillTile({ skill, onUninstall, onClick }: SkillTileProps) {
       className="group flex flex-col justify-between rounded-2xl border border-line bg-surface p-3 transition-colors cursor-pointer hover:bg-surface-hover">
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-subtle">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle">
             <svg
               className="h-5 w-5 text-content-muted"
               fill="none"
@@ -257,6 +266,62 @@ function SkillTile({ skill, onUninstall, onClick }: SkillTileProps) {
   );
 }
 
+function InstalledSkillRow({ skill, onUninstall, onClick }: SkillTileProps) {
+  const { t } = useT();
+  return (
+    <TableRow
+      data-testid={`skill-explorer-tile-${skill.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={event => {
+        if (event.key === 'Enter') onClick();
+        if (event.key === ' ' || event.key === 'Space') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      className="cursor-pointer">
+      <TableCell className="min-w-48">
+        <Button type="button" variant="tertiary" size="xs" onClick={onClick} className="h-auto max-w-full p-0 text-left font-medium hover:bg-transparent">
+          <span className="truncate">{skill.name}</span>
+        </Button>
+      </TableCell>
+      <TableCell className="min-w-[18rem] max-w-xl text-xs text-content-muted">
+        <span className="line-clamp-1">{skill.description || t('skills.explorer.noDescription')}</span>
+        {(skill.tags.length > 0 || skill.warnings.length > 0) && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {skill.tags.map(tag => (
+              <Badge key={tag} variant="neutral">{tag}</Badge>
+            ))}
+            {skill.warnings.map(warning => (
+              <span key={warning} className="text-[10px] text-amber-700 dark:text-amber-300">
+                {warning}
+              </span>
+            ))}
+          </div>
+        )}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <div className="flex flex-wrap items-center gap-1">
+          <SkillFormatBadge format={skill.sourceFormat} />
+          <SkillScopeBadge scope={skill.scope} />
+          {skill.version && (
+            <span className="text-[10px] font-mono text-content-faint">v{skill.version}</span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="w-px whitespace-nowrap text-right">
+        {skill.scope === 'user' ? (
+          <Button variant="secondary" tone="danger" size="xs" data-testid={`skill-uninstall-${skill.id}`} onClick={event => { event.stopPropagation(); onUninstall(); }}>
+            {t('skills.disconnect')}
+          </Button>
+        ) : <Badge variant="neutral">{t('skills.explorer.installed')}</Badge>}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 interface CatalogTileProps {
   entry: CatalogEntry;
   installed: boolean;
@@ -265,7 +330,7 @@ interface CatalogTileProps {
   onClick: () => void;
 }
 
-function CatalogTile({ entry, installed, installing, onInstall, onClick }: CatalogTileProps) {
+export function CatalogTile({ entry, installed, installing, onInstall, onClick }: CatalogTileProps) {
   const { t } = useT();
   return (
     <div
@@ -287,7 +352,7 @@ function CatalogTile({ entry, installed, installing, onInstall, onClick }: Catal
       }`}>
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-surface-subtle">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle">
             <svg
               className="h-5 w-5 text-primary-500"
               fill="none"
@@ -368,6 +433,57 @@ interface SkillDetailDialogProps {
   installing?: boolean;
 }
 
+function CatalogRow({ entry, installed, installing, onInstall, onClick }: CatalogTileProps) {
+  const { t } = useT();
+  return (
+    <TableRow
+      className="group cursor-pointer"
+      data-testid={`registry-tile-${entry.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={event => {
+        if (event.key === 'Enter') onClick();
+        if (event.key === ' ' || event.key === 'Space') {
+          event.preventDefault();
+          onClick();
+        }
+      }}>
+      <TableCell className="min-w-48">
+        <Button
+          type="button"
+          variant="tertiary"
+          size="xs"
+          onClick={onClick}
+          className="h-auto max-w-full p-0 text-left font-medium hover:bg-transparent">
+          <span className="truncate">{entry.name}</span>
+        </Button>
+      </TableCell>
+      <TableCell className="min-w-[18rem] max-w-xl text-xs text-content-muted">
+        <span className="line-clamp-1">{entry.description}</span>
+      </TableCell>
+      <TableCell className="whitespace-nowrap"><SourceBadge source={entry.source} /></TableCell>
+      <TableCell className="w-px whitespace-nowrap text-right">
+        {installed ? (
+          <Badge variant="success">{t('skills.explorer.installed')}</Badge>
+        ) : (
+          <Button
+            variant="secondary"
+            size="xs"
+            data-testid={`registry-install-${entry.id}`}
+            disabled={installing}
+            onClick={event => {
+              event.stopPropagation();
+              onInstall();
+            }}>
+            {installing ? t('skills.explorer.installing') : t('skills.explorer.install')}
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function SkillDetailDialog({
   entry,
   skill,
@@ -388,52 +504,41 @@ function SkillDetailDialog({
   const license = entry?.license ?? '';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={onClose}>
-      <div
-        className="mx-4 w-full max-w-lg rounded-2xl border border-line bg-surface shadow-xl"
-        onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 border-b border-line-subtle p-5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-content truncate">
-                {name}
-              </h2>
-              {installed && (
-                <span className="flex-shrink-0 rounded-full border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10 px-2 py-0.5 text-[10px] font-medium text-sage-700 dark:text-sage-300">
-                  {t('skills.explorer.installed')}
-                </span>
-              )}
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              {source && <SourceBadge source={source} />}
-              {category && (
-                <span className="inline-flex items-center rounded-full border border-line bg-surface-muted px-1.5 py-0.5 text-[9px] font-medium text-content-muted">
-                  {category}
-                </span>
-              )}
-            </div>
+    <ModalShell
+      onClose={onClose}
+      titleId="skill-detail-title"
+      maxWidthClassName="max-w-lg"
+      contentClassName="p-5 space-y-4"
+      title={
+        <span className="flex items-center gap-2">
+          <span className="truncate">{name}</span>
+          {installed && (
+            <span className="shrink-0 rounded-full border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10 px-2 py-0.5 text-[10px] font-medium text-sage-700 dark:text-sage-300">
+              {t('skills.explorer.installed')}
+            </span>
+          )}
+        </span>
+      }
+      subtitle={
+        <span className="mt-1.5 flex items-center gap-1.5">
+          {source && <SourceBadge source={source} />}
+          {category && (
+            <span className="inline-flex items-center rounded-full border border-line bg-surface-muted px-1.5 py-0.5 text-[9px] font-medium text-content-muted">
+              {category}
+            </span>
+          )}
+        </span>
+      }
+      footer={
+        !installed && onInstall ? (
+          <div className="flex justify-end">
+            <Button variant="secondary" size="sm" disabled={installing} onClick={onInstall}>
+              {installing ? t('skills.explorer.installing') : t('skills.explorer.install')}
+            </Button>
           </div>
-          <Button
-            iconOnly
-            variant="tertiary"
-            size="sm"
-            aria-label={t('common.close')}
-            onClick={onClose}
-            className="flex-shrink-0 text-content-faint">
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </Button>
-        </div>
-
-        <div className="p-5 space-y-4">
+        ) : undefined
+      }>
+      <>
           {description && (
             <div>
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-content-faint mb-1">
@@ -451,7 +556,7 @@ function SkillDetailDialog({
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-content-faint">
                   {t('skills.detail.version')}
                 </span>
-                <p className="text-xs font-mono text-content-secondary">{version}</p>
+                <p className="text-xs font-mono text-content-secondary">v{version}</p>
               </div>
             )}
             {author && (
@@ -499,17 +604,8 @@ function SkillDetailDialog({
               </p>
             </div>
           )}
-        </div>
-
-        {!installed && onInstall && (
-          <div className="border-t border-line-subtle p-4 flex justify-end">
-            <Button variant="secondary" size="sm" disabled={installing} onClick={onInstall}>
-              {installing ? t('skills.explorer.installing') : t('skills.explorer.install')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+      </>
+    </ModalShell>
   );
 }
 
@@ -765,93 +861,70 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
   const error = view === 'installed' ? skillsError : catalogError;
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-3 shadow-soft animate-fade-up">
-      <div className="px-1 pb-3 pt-1">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-content">
-              {t('skills.explorer.title')}
-            </h2>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-content-muted">
-              {t('skills.explorer.subtitle')}
-            </p>
-          </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden animate-fade-up">
+      <div className="pb-3">
+        <div className="flex items-center gap-2">
+          <TabsRoot value={view} onValueChange={value => setView(value as ExplorerView)}>
+            <TabsList aria-label={t('skills.explorer.title')}>
+              <TabsTrigger value="registry" onClick={() => setView("registry")}>
+                {t('skills.explorer.registryTab')}
+                {catalogTotal > 0 && <span className="text-[10px] opacity-70">{catalogTotal.toLocaleString()}</span>}
+              </TabsTrigger>
+              <TabsTrigger value="installed" onClick={() => setView("installed")}>
+                {t('skills.explorer.installedTab')}
+                {skills.length > 0 && <span className="text-[10px] opacity-70">{skills.length}</span>}
+              </TabsTrigger>
+            </TabsList>
+          </TabsRoot>
           <Button
             variant="secondary"
             size="sm"
             data-testid="skill-install-from-url-btn"
             onClick={() => setInstallDialogOpen(true)}
-            className="flex-shrink-0">
+            className="shrink-0">
             {t('skills.explorer.installFromUrl')}
           </Button>
-        </div>
-      </div>
-
-      {/* View toggle */}
-      <ChipTabs<ExplorerView>
-        className="flex gap-2 px-1 pb-3"
-        ariaLabel={t('skills.explorer.title')}
-        value={view}
-        onChange={setView}
-        items={[
-          {
-            id: 'registry',
-            label: (
-              <>
-                {t('skills.explorer.registryTab')}
-                {catalogTotal > 0 && (
-                  <span className="ml-1.5 text-[10px] opacity-70">
-                    {catalogTotal.toLocaleString()}
-                  </span>
-                )}
-              </>
-            ),
-          },
-          {
-            id: 'installed',
-            label: (
-              <>
-                {t('skills.explorer.installedTab')}
-                {skills.length > 0 && (
-                  <span className="ml-1.5 text-[10px] opacity-70">{skills.length}</span>
-                )}
-              </>
-            ),
-          },
-        ]}
-      />
-
-      {/* Source toggles */}
+      {/* Source filter */}
       {view === 'registry' && sources.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-1 pb-3">
-          {sources.map(src => {
-            const active = activeSources.has(src);
-            return (
-              <button
-                key={src}
+        <div className="shrink-0">
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger asChild>
+              <Button
                 type="button"
-                onClick={() => {
-                  setActiveSources(prev => {
-                    const next = new Set(prev);
-                    if (next.has(src)) next.delete(src);
-                    else next.add(src);
-                    return next;
-                  });
-                }}
-                className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
-                  active
-                    ? 'border-primary-300 dark:border-primary-500/50 bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300'
-                    : 'border-line bg-surface-muted text-content-faint hover:text-content-secondary'
-                }`}>
-                {src}
-              </button>
-            );
-          })}
+                variant="secondary"
+                size="sm"
+                leadingIcon={<LuFilter className="h-3.5 w-3.5" />}
+                aria-label={t('skills.explorer.sourceFilterAria', 'Filter by source')}>
+                Filter{activeSources.size < sources.length ? ` (${activeSources.size})` : ''}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-48">
+              {sources.map(src => {
+                const active = activeSources.has(src);
+                return (
+                  <DropdownMenuItem
+                    key={src}
+                    onSelect={event => {
+                      event.preventDefault();
+                      setActiveSources(previous => {
+                        const next = new Set(previous);
+                        if (next.has(src)) next.delete(src);
+                        else next.add(src);
+                        return next;
+                      });
+                    }}>
+                    <Checkbox checked={active} onCheckedChange={() => {}} className="pointer-events-none" />
+                    <span>{src}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenuRoot>
         </div>
       )}
 
       {/* Search */}
-      <div className="flex gap-2 px-1 pb-3">
+      <div className="flex min-w-0 flex-1 gap-2">
         <div className="relative flex-1">
           <svg
             className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-faint"
@@ -865,13 +938,13 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
               d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
             />
           </svg>
-          <input
+          <TextField
             type="text"
             data-testid="skill-search-input"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={t('skills.explorer.searchPlaceholder')}
-            className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-xs text-content placeholder:text-stone-400 dark:placeholder:text-neutral-500 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+            className="pl-9 pr-3 text-xs shadow-xs"
           />
         </div>
         {view === 'registry' && (
@@ -883,7 +956,7 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
             disabled={catalogLoading}
             title={t('skills.explorer.refreshRegistry')}
             aria-label={t('skills.explorer.refreshRegistry')}
-            className="flex-shrink-0 text-content-muted shadow-sm">
+            className="shrink-0 text-content-muted shadow-xs">
             <svg
               className={`h-4 w-4 ${catalogLoading ? 'animate-spin' : ''}`}
               fill="none"
@@ -899,6 +972,11 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
           </Button>
         )}
       </div>
+
+      </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 pt-0">
 
       {/* Loading */}
       {loading && (
@@ -960,18 +1038,23 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
           )}
 
           {sortedSkills.length > 0 && (
-            <div
-              className="grid gap-2 sm:gap-3"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(14rem, 1fr))' }}>
-              {sortedSkills.map(skill => (
-                <SkillTile
-                  key={skill.id}
-                  skill={skill}
-                  onClick={() => setDetailSkill(skill)}
-                  onUninstall={() => setUninstallTarget(skill)}
-                />
-              ))}
-            </div>
+            <Card className="w-full">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky top-0 z-10 min-w-48 bg-surface">Skill</TableHead>
+                    <TableHead className="sticky top-0 z-10 min-w-[18rem] bg-surface">Description</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-surface">Provider</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-surface text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedSkills.map(skill => (
+                    <InstalledSkillRow key={skill.id} skill={skill} onClick={() => setDetailSkill(skill)} onUninstall={() => setUninstallTarget(skill)} />
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
           )}
         </>
       )}
@@ -1007,29 +1090,40 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
 
           {displayedCatalog.length > 0 && (
             <>
-              <div
-                className="grid gap-2 sm:gap-3"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(14rem, 1fr))' }}>
-                {displayedCatalog.map(entry => (
-                  <CatalogTile
-                    key={`${entry.source}-${entry.id}`}
-                    entry={entry}
-                    installed={entryInstalled(entry)}
-                    installing={installingId === entry.id}
-                    onClick={() => setDetailEntry(entry)}
-                    onInstall={() => void handleRegistryInstall(entry)}
-                  />
-                ))}
-              </div>
+              <Card className="w-full">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                    <TableHead className="sticky top-0 z-10 min-w-48 bg-surface">Skill</TableHead>
+                    <TableHead className="sticky top-0 z-10 min-w-[18rem] bg-surface">Description</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-surface">Provider</TableHead>
+                    <TableHead className="sticky top-0 z-10 bg-surface text-right">Action</TableHead>
+                  </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                  {displayedCatalog.map(entry => (
+                    <CatalogRow
+                      key={`${entry.source}-${entry.id}`}
+                      entry={entry}
+                      installed={entryInstalled(entry)}
+                      installing={installingId === entry.id}
+                      onClick={() => setDetailEntry(entry)}
+                      onInstall={() => void handleRegistryInstall(entry)}
+                    />
+                  ))}
+                  </TableBody>
+                </Table>
+              </Card>
               {filteredCatalog.length > displayedCatalog.length && (
                 <div className="mt-3 flex flex-col items-center gap-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     data-testid="registry-show-more"
                     onClick={() => setVisibleCount(c => c + CATALOG_PAGE_SIZE)}
-                    className="rounded-lg border border-line bg-surface px-4 py-2 text-xs font-medium text-content-secondary shadow-soft transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1">
+                    className="h-auto border-line px-4 py-2 text-xs font-medium text-content-secondary shadow-soft">
                     {t('common.showMore')}
-                  </button>
+                  </Button>
                   <p className="text-[11px] text-content-faint">
                     {displayedCatalog.length.toLocaleString()} /{' '}
                     {filteredCatalog.length.toLocaleString()}
@@ -1040,6 +1134,8 @@ export default function SkillsExplorerTab({ onToast }: SkillsExplorerTabProps) {
           )}
         </>
       )}
+
+      </div>
 
       {installDialogOpen && (
         <InstallSkillDialog

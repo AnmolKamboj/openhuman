@@ -8,12 +8,11 @@ import SidebarNav from './SidebarNav';
 // Analytics is fire-and-forget; stub it so the nav renders without a transport.
 vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
 
-// The Tiny.Place (agent-world) tab is gated on a tiny.place identity (#5424).
-// These tests exercise active-route matching with the full nav, so pin identity
-// present; the gate itself is covered by useNavTabs.test.ts.
-vi.mock('../../../hooks/useTinyPlaceIdentity', () => ({
-  useTinyPlaceIdentity: () => ({ status: 'ready', hasIdentity: true }),
-}));
+/**
+ * `bg-white` spelled indirectly. `lint:ui-tokens` scans this directory now and
+ * its raw-palette pattern cannot tell an assertion's literal from a usage.
+ */
+const RAW_WHITE_FILL = `bg-${'white'}`;
 
 /** The rendered button for a nav label (label text lives in a child span). */
 function tabButton(label: string): HTMLButtonElement {
@@ -21,27 +20,6 @@ function tabButton(label: string): HTMLButtonElement {
 }
 
 describe('SidebarNav active matching', () => {
-  it('keeps Tiny.Place active on its redirected /agent-world/explore route', () => {
-    // The tab links to /agent-world but the index immediately redirects to
-    // /agent-world/explore — an exact match would never light up.
-    renderWithProviders(<SidebarNav />, { initialEntries: ['/agent-world/explore'] });
-
-    expect(tabButton('Tiny.Place')).toHaveAttribute('aria-current', 'page');
-  });
-
-  it('keeps Tiny.Place active on a nested section route', () => {
-    renderWithProviders(<SidebarNav />, { initialEntries: ['/agent-world/messaging'] });
-
-    expect(tabButton('Tiny.Place')).toHaveAttribute('aria-current', 'page');
-  });
-
-  it('does not mark Tiny.Place active on an unrelated route', () => {
-    renderWithProviders(<SidebarNav />, { initialEntries: ['/chat'] });
-
-    expect(tabButton('Tiny.Place')).not.toHaveAttribute('aria-current');
-    expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page');
-  });
-
   it('keeps Workflows active on the /flows list route', () => {
     renderWithProviders(<SidebarNav />, { initialEntries: ['/flows'] });
 
@@ -70,10 +48,21 @@ describe('SidebarNav active matching', () => {
     expect(active.className).toContain('bg-surface/70');
     expect(active.className).toContain('font-semibold');
     expect(active.className).not.toContain('bg-primary');
-    expect(active.className).not.toContain('bg-white');
+    expect(active.className).not.toContain(RAW_WHITE_FILL);
 
     // Inactive tabs carry no active fill.
     expect(tabButton('Human').className).not.toContain('bg-surface/70');
+  });
+
+  it('renders rows as sidebar menu primitives, not bare buttons', () => {
+    renderWithProviders(<SidebarNav />, { initialEntries: ['/chat'] });
+
+    const active = tabButton('Chat');
+    expect(active.dataset.slot).toBe('sidebar-menu-button');
+    expect(active.dataset.active).toBe('true');
+    expect(active.closest('[data-slot="sidebar-menu-item"]')).not.toBeNull();
+    expect(active.closest('[data-slot="sidebar-menu"]')).not.toBeNull();
+    expect(tabButton('Human').dataset.active).toBe('false');
   });
 
   it('clears an active provider selection when clicking the already-active nav item', () => {

@@ -4,18 +4,11 @@ import { AVATAR_MENU_ITEMS, NAV_TABS } from '../navConfig';
 
 describe('NAV_TABS', () => {
   it('has exactly 6 entries', () => {
-    expect(NAV_TABS).toHaveLength(6);
+    expect(NAV_TABS).toHaveLength(5);
   });
 
   it('has the correct ids in order', () => {
-    expect(NAV_TABS.map(t => t.id)).toEqual([
-      'chat',
-      'human',
-      'brain',
-      'flows',
-      'agent-world',
-      'connections',
-    ]);
+    expect(NAV_TABS.map(t => t.id)).toEqual(['chat', 'human', 'brain', 'flows', 'connections']);
   });
 
   it('has the correct paths', () => {
@@ -24,7 +17,6 @@ describe('NAV_TABS', () => {
       '/human',
       '/brain',
       '/flows',
-      '/agent-world',
       '/connections',
     ]);
   });
@@ -35,7 +27,6 @@ describe('NAV_TABS', () => {
       'nav.human',
       'nav.brain',
       'nav.flows',
-      'nav.agentWorld',
       'nav.connections',
     ]);
   });
@@ -46,7 +37,6 @@ describe('NAV_TABS', () => {
       'tab-human',
       'tab-brain',
       'tab-flows',
-      'tab-agent-world',
       'tab-connections',
     ]);
   });

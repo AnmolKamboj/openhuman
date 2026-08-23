@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useCoreState } from '../../../providers/CoreStateProvider';
 import { teamApi } from '../../../services/api/teamApi';
+import { AvatarFallback, AvatarRoot } from '../../ui/Avatar';
 import Button from '../../ui/Button';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
+import { ModalShell } from '../../ui/ModalShell';
 import SettingsMenuItem from '../components/SettingsMenuItem';
 import { SettingsSection, SettingsTextField } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
@@ -14,6 +17,8 @@ const TeamManagementPanel = () => {
   const { t } = useT();
   const { teamId } = useParams<{ teamId: string }>();
   const { navigateBack, navigateToSettings } = useSettingsNavigation();
+  const editTitleId = useId();
+  const deleteTitleId = useId();
   const { teams, refreshTeams } = useCoreState();
   const initialFetchAttemptedRef = useRef(false);
 
@@ -125,11 +130,11 @@ const TeamManagementPanel = () => {
         {/* Team Info */}
         <SettingsSection>
           <div className="flex items-center gap-3 px-4 py-3">
-            <div className="w-10 h-10 rounded-lg bg-surface-strong flex items-center justify-center">
-              <span className="text-sm font-semibold text-content-secondary">
+            <AvatarRoot className="h-10 w-10 rounded-lg bg-surface-strong">
+              <AvatarFallback className="rounded-lg bg-surface-strong text-sm font-semibold text-content-secondary">
                 {team.name.charAt(0).toUpperCase()}
-              </span>
-            </div>
+              </AvatarFallback>
+            </AvatarRoot>
             <div>
               <h3 className="text-sm font-semibold text-content">{team.name}</h3>
               <p className="text-xs text-content-muted">
@@ -233,99 +238,79 @@ const TeamManagementPanel = () => {
 
         {/* Edit Team Modal */}
         {isEditModalOpen && (
-          <div className="fixed inset-0 bg-neutral-900/40 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line">
-              <h3 className="text-sm font-semibold text-content mb-4">{t('team.editSettings')}</h3>
-
-              {error && (
-                <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
-                  <p className="text-xs text-coral-600 dark:text-coral-300">{error}</p>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-content-secondary mb-2">
-                    {t('team.teamName')}
-                  </label>
-                  <SettingsTextField
-                    value={editTeamName}
-                    onChange={e => setEditTeamName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && void handleUpdateTeam()}
-                    placeholder={t('team.enterName')}
-                    aria-label={t('team.teamName')}
-                    inputSize="sm"
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => setIsEditModalOpen(false)}
-                    disabled={isUpdating}>
-                    {t('common.cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => void handleUpdateTeam()}
-                    disabled={isUpdating || !editTeamName.trim()}>
-                    {isUpdating ? t('team.saving') : t('team.saveChanges')}
-                  </Button>
-                </div>
+          <ModalShell
+            title={t('team.editSettings')}
+            titleId={editTitleId}
+            onClose={() => setIsEditModalOpen(false)}
+            contentClassName="px-6 py-5"
+            closePolicy={isUpdating ? { escape: false, backdrop: false, button: false } : undefined}
+            footer={
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  className="flex-1"
+                  onClick={() => setIsEditModalOpen(false)}
+                  disabled={isUpdating}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  className="flex-1"
+                  onClick={() => void handleUpdateTeam()}
+                  disabled={isUpdating || !editTeamName.trim()}>
+                  {isUpdating ? t('team.saving') : t('team.saveChanges')}
+                </Button>
               </div>
-            </div>
-          </div>
+            }>
+            {error && (
+              <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
+                <p className="text-xs text-coral-600 dark:text-coral-300">{error}</p>
+              </div>
+            )}
+            <label className="block text-sm font-medium text-content-secondary mb-2">
+              {t('team.teamName')}
+            </label>
+            <SettingsTextField
+              value={editTeamName}
+              onChange={e => setEditTeamName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && void handleUpdateTeam()}
+              placeholder={t('team.enterName')}
+              aria-label={t('team.teamName')}
+              inputSize="sm"
+              className="w-full"
+            />
+          </ModalShell>
         )}
 
         {/* Delete Team Modal */}
         {isDeleteModalOpen && (
-          <div className="fixed inset-0 bg-neutral-900/40 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line">
-              <h3 className="text-sm font-semibold text-content mb-4">{t('team.delete')}</h3>
-
-              {error && (
-                <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
-                  <p className="text-xs text-coral-600 dark:text-coral-300">{error}</p>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="text-sm text-content-muted">
+          <ConfirmDialog
+            title={t('team.delete')}
+            titleId={deleteTitleId}
+            destructive
+            busy={isDeleting}
+            busyLabel={t('team.deleting')}
+            confirmLabel={t('team.delete')}
+            onCancel={() => setIsDeleteModalOpen(false)}
+            onConfirm={() => void handleDeleteTeam()}
+            body={
+              <>
+                {error && (
+                  <div className="rounded-xl bg-coral-500/10 border border-coral-500/20 p-3 mb-4">
+                    <p className="text-xs text-coral-600 dark:text-coral-300">{error}</p>
+                  </div>
+                )}
+                <div className="text-content-muted">
                   <p>{t('team.confirmDelete').replace('{name}', teamEntry?.team.name ?? '')}</p>
                   <p className="mt-2 text-coral-400">{t('team.deleteWarning')}</p>
                 </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => setIsDeleteModalOpen(false)}
-                    disabled={isDeleting}>
-                    {t('common.cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    tone="danger"
-                    size="md"
-                    className="flex-1"
-                    onClick={() => void handleDeleteTeam()}
-                    disabled={isDeleting}>
-                    {isDeleting ? t('team.deleting') : t('team.delete')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
+              </>
+            }
+          />
         )}
       </>
     </SettingsPanel>

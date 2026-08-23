@@ -7,10 +7,12 @@ pub mod schemas;
 pub mod tools;
 pub mod types;
 
-use serde::Serialize;
+use tinyjuice_bus::names::methods;
 
 pub use tools::TokenjuiceRetrieveTool;
 pub use types::{AgentTokenjuiceCompression, CompressorKind, ContentKind};
+
+use types::InstallRequest;
 
 pub const RETRIEVE_TOOL_NAME: &str = "tinyjuice_retrieve";
 pub const LEGACY_RETRIEVE_TOOL_NAME: &str = "retrieve_tool_output";
@@ -22,16 +24,6 @@ pub const RECOVERY_TOOL_NAMES: &[&str] = &[
 
 pub fn is_recovery_tool(name: &str) -> bool {
     RECOVERY_TOOL_NAMES.contains(&name)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct InstallRequest {
-    options: types::CompressOptions,
-    max_cache_entries: usize,
-    max_cache_bytes: usize,
-    ccr_ttl_secs: Option<u64>,
-    disk_tier_root: Option<String>,
 }
 
 pub async fn install_from_config(config: &crate::openhuman::config::Config) -> Result<(), String> {
@@ -76,7 +68,7 @@ pub async fn install_from_config(config: &crate::openhuman::config::Config) -> R
     }
     proxy(config)
         .await?
-        .call::<()>("Install", (request,))
+        .call::<()>(methods::INSTALL, (request,))
         .await
         .map_err(|e| e.to_string())?;
     *installed = Some(fingerprint);
@@ -161,7 +153,7 @@ pub async fn compact_output_with_policy(
     };
     let response: types::CompactResponse = match proxy
         .call(
-            "Compact",
+            methods::COMPACT,
             (content.clone(), tool_name.to_string(), enabled, profile),
         )
         .await
@@ -194,7 +186,7 @@ pub async fn detect(content: String, hint: types::ContentHint) -> Result<String,
         .map_err(|error| error.to_string())?;
     proxy(&config)
         .await?
-        .call("Detect", (content, hint))
+        .call(methods::DETECT, (content, hint))
         .await
         .map_err(|error| error.to_string())
 }
@@ -209,7 +201,7 @@ pub async fn compress(
     install_from_config(&config).await?;
     let response: types::CompressedOutput = proxy(&config)
         .await?
-        .call("Compress", (content, hint))
+        .call(methods::COMPRESS, (content, hint))
         .await
         .map_err(|error| error.to_string())?;
     savings::record(
@@ -231,7 +223,7 @@ pub async fn retrieve(
     install_from_config(&config).await?;
     proxy(&config)
         .await?
-        .call("Retrieve", (token, range))
+        .call(methods::RETRIEVE, (token, range))
         .await
         .map_err(|error| error.to_string())
 }
@@ -243,7 +235,7 @@ pub async fn cache_stats() -> Result<types::CacheStats, String> {
     install_from_config(&config).await?;
     proxy(&config)
         .await?
-        .call("CacheStats", ())
+        .call(methods::CACHE_STATS, ())
         .await
         .map_err(|error| error.to_string())
 }

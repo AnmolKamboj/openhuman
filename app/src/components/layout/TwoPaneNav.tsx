@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { Button } from '../ui';
+
 interface TwoPaneNavItem {
   value: string;
   label: string;
@@ -61,8 +63,8 @@ export default function TwoPaneNav({
                 const active = item.value === selected;
                 return (
                   <li key={item.value}>
-                    <button
-                      type="button"
+                    <Button
+                      variant="tertiary"
                       data-testid={`two-pane-nav-${item.value}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => onSelect(item.value)}
@@ -70,10 +72,10 @@ export default function TwoPaneNav({
                       // ThreadList: 15px, medium by default and semibold when
                       // selected, with an alpha fill that lifts against both the
                       // translucent chrome and an opaque pane.
-                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] transition-colors ${
+                      className={`h-auto w-full justify-start rounded-md px-2.5 py-1.5 text-left text-[14px] ${
                         active
-                          ? 'bg-surface/70 font-semibold text-content'
-                          : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
+                          ? 'bg-surface/70 font-semibold text-content hover:bg-surface/70'
+                          : 'font-normal text-content-muted hover:bg-surface/40 hover:text-content-secondary'
                       }`}>
                       <span
                         className={`shrink-0 ${
@@ -82,7 +84,7 @@ export default function TwoPaneNav({
                         {item.icon ?? null}
                       </span>
                       <span className="truncate">{item.label}</span>
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
