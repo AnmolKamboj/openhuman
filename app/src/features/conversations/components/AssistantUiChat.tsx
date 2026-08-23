@@ -3,6 +3,8 @@ import { type AssistantState, useAui, useAuiState } from '@assistant-ui/react';
 import { PlusIcon } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 
+import AttachmentPreview from '../../../components/chat/AttachmentPreview';
+import { Button } from '../../../components/ui';
 import type { Attachment } from '../../../lib/attachments';
 import { useRegisterAction } from '../../../lib/commands/useRegisterAction';
 import { useSlashCommands } from '../../../lib/commands/useSlashCommands';
@@ -10,8 +12,6 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { AssistantUiRuntimeProvider } from '../../../providers/AssistantUiRuntimeProvider';
 import { emptySessionTokenUsage } from '../../../store/chatRuntimeSlice';
 import { useAppSelector } from '../../../store/hooks';
-import AttachmentPreview from '../../../components/chat/AttachmentPreview';
-import { Button } from '../../../components/ui';
 import { ChatToolFallback, ChatToolGroup } from './ChatToolParts';
 import { contextUsageFromTokenUsage, ContextWindowPill } from './composer/ContextWindowPill';
 import {

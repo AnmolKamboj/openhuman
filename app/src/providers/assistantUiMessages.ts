@@ -4,8 +4,8 @@ import type {
   ThreadUserMessagePart,
 } from '@assistant-ui/react';
 
-import { unwrapToolCallEnvelope } from '../lib/chat/toolCallEnvelope';
 import { parseMessageImages } from '../lib/attachments';
+import { unwrapToolCallEnvelope } from '../lib/chat/toolCallEnvelope';
 import type {
   ProcessingTranscriptItem,
   StreamingAssistantState,
@@ -137,7 +137,9 @@ function assistantParts(
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function mimeTypeFromDataUri(dataUri: string): string {
@@ -177,12 +179,7 @@ function userParts(msg: ThreadMessage): ThreadUserMessagePart[] {
       continue;
     }
     const data = dataUris[index] ?? '';
-    parts.push({
-      type: 'file',
-      filename,
-      data,
-      mimeType: mimeTypeFromDataUri(data),
-    });
+    parts.push({ type: 'file', filename, data, mimeType: mimeTypeFromDataUri(data) });
   }
   return parts;
 }
@@ -201,10 +198,7 @@ export function toThreadMessageLike(
   const converted: ThreadMessageLike = {
     id: msg.id,
     role: msg.sender === 'agent' ? 'assistant' : 'user',
-    content:
-      msg.sender === 'agent'
-        ? assistantParts(text, timeline, transcript)
-        : userParts(msg),
+    content: msg.sender === 'agent' ? assistantParts(text, timeline, transcript) : userParts(msg),
     createdAt: new Date(msg.createdAt),
     ...(msg.sender === 'agent' && msg.extraMetadata?.stopped === true
       ? { status: { type: 'incomplete' as const, reason: 'cancelled' as const } }
