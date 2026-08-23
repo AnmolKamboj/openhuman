@@ -298,8 +298,9 @@ async fn the_published_module_answers_through_this_client() {
         .await
         .expect("VadPush");
     match events.as_slice() {
-        [super::VadEvent::SpeechEnd {
-            voiced_ms, emit, ..
+        [super::IndexedVadEvent {
+            event: super::VadEvent::SpeechEnd { voiced_ms, emit, .. },
+            ..
         }] => {
             assert_eq!(*voiced_ms, 120, "voiced time carries across pushes");
             assert!(emit);
@@ -364,7 +365,7 @@ async fn every_entry_point_degrades_rather_than_hanging_when_the_module_is_gone(
     assert!(matches!(
         super::VadSession::open(
             &config,
-            super::vad_config_from_server_config(&
+            super::vad_config_from_server_config(
                 &crate::openhuman::config::VoiceServerConfig::default()
             )
         )
