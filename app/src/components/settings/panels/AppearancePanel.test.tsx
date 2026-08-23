@@ -85,5 +85,4 @@ describe('<AppearancePanel /> font size', () => {
     fireEvent.blur(field);
     expect(store.getState().theme.customFontSizePx).toBe(28);
   });
-
 });
