@@ -654,9 +654,9 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
         .expect("connect test mcp server");
     assert_eq!(tools.first().map(|tool| tool.name.as_str()), Some("echo"));
 
-    // A second workspace, so that scoping is what the assertions below测 test.
-    // With one workspace open, `registry_entries()` and the config-scoped form
-    // agree, and this case would keep passing if the forwarding regressed.
+    // A second workspace, so that scoping is what the assertions below actually
+    // test. With one workspace open, `registry_entries()` and the config-scoped
+    // form agree, and this case would keep passing if the forwarding regressed.
     let other_tmp = tempdir().expect("second tempdir");
     let other_config = Config {
         workspace_dir: other_tmp.path().to_path_buf(),
