@@ -78,37 +78,6 @@ pub fn seed_proactive_agents(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Boot-time entry point: backfill the autopilot job for an already-onboarded
-/// user who upgraded from a build that predates it.
-///
-/// Crucially this does **not** replay the full onboarding seed set
-/// ([`seed_proactive_agents`]) — a user may have *deliberately removed* a
-/// default job (e.g. `morning_briefing` via Settings → Cron Jobs), and
-/// re-creating it on every boot would silently override that opt-out. So we only
-/// ensure the one job this build introduces (`tinyplace_autopilot`) exists.
-/// Future default jobs should get their own narrow boot-backfill like this one.
-///
-/// No-op until onboarding is complete (a fresh user is seeded by the
-/// `false→true` transition, [`set_onboarding_completed`]) and idempotent (skips
-/// if the autopilot job already exists).
-///
-/// [`set_onboarding_completed`]: crate::openhuman::config::ops::ui::set_onboarding_completed
-pub fn seed_proactive_agents_on_boot(config: &Config) -> Result<()> {
-    if !config.onboarding_completed {
-        tracing::debug!("[cron::seed] boot seed skipped — onboarding not complete");
-        return Ok(());
-    }
-    let exists = list_jobs(config)?
-        .iter()
-        .any(|j| j.name.as_deref() == Some(TINYPLACE_AUTOPILOT_JOB_NAME));
-    if exists {
-        tracing::debug!("[cron::seed] boot seed — tinyplace_autopilot already present, skipping");
-        return Ok(());
-    }
-    tracing::info!("[cron::seed] boot seed — backfilling tinyplace_autopilot (disabled, opt-in)");
-    seed_tinyplace_autopilot(config)
-}
-
 /// Remove any persisted cron job named `"welcome"` from a prior build.
 ///
 /// The one-shot welcome job `delete_after_run = true + Schedule::At`
@@ -192,66 +161,6 @@ fn seed_morning_briefing(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Seed the autonomous tiny.place "autopilot" as a recurring (hourly) agent job
-/// — created **disabled**.
-///
-/// The job runs `tinyplace_agent` (the single tiny.place agent) autonomously.
-/// It's named generically (`tinyplace_autopilot`) because the agent can do
-/// anything on tiny.place — bounties are its default activity, not its limit.
-///
-/// This is opt-in for a reason: a cron run bypasses the approval gate, and
-/// `tinyplace_agent`'s prompt authorizes it to take paid/irreversible actions
-/// when running autonomously — and money on tiny.place is real x402/SPL spend.
-/// The safety rails are therefore (1) this opt-in toggle, off by default until
-/// the user enables it via the Settings switch (cron.update_job → enabled=true),
-/// and (2) the devnet-first, be-prudent guidance in the agent's prompt.
-///
-/// Runs in an isolated session with `proactive` delivery so each cycle's report
-/// (what it worked on, submission URLs/IDs, anything it funded) reaches the
-/// user's active channel via the channels module's `ProactiveMessageSubscriber`.
-fn seed_tinyplace_autopilot(config: &Config) -> Result<()> {
-    tracing::debug!("[cron::seed] seed_tinyplace_autopilot start");
-    let schedule = Schedule::Every {
-        every_ms: 60 * 60 * 1000, // hourly
-    };
-
-    let prompt = concat!(
-        "Run an autonomous tiny.place session. Confirm your identity and check ",
-        "your status/inbox, then look for worthwhile work — open bounties are ",
-        "the main opportunity, so recall which you've already attempted, pick the ",
-        "top 1-2 open ones that fit your skills, do the work, publish each ",
-        "deliverable to your feed (tinyplace_post), and submit it. You are running ",
-        "autonomously, so you may take paid actions when worthwhile — be prudent ",
-        "with funds and prefer devnet. Record what you do in memory and report ",
-        "concrete results (submission URLs/IDs, anything funded)."
-    );
-
-    // Insert already-disabled (enabled=false) in a single statement. Opt-in is
-    // load-bearing for an autonomous spender, so we never create it enabled and
-    // then disable it in a second write — a crash between the two could leave it
-    // running without the user opting in.
-    let job = add_agent_job_with_definition(
-        config,
-        Some(TINYPLACE_AUTOPILOT_JOB_NAME.to_string()),
-        schedule,
-        prompt,
-        SessionTarget::Isolated,
-        None,
-        Some(proactive_delivery()),
-        false, // recurring — do not delete after run
-        // Runs the single tiny.place agent autonomously (no dedicated agent def).
-        Some("tinyplace_agent".to_string()),
-        false, // enabled=false — opt-in, created disabled atomically
-        None,  // no profile attribution for the seeded autopilot
-    )?;
-
-    tracing::debug!(
-        job_id = %job.id,
-        enabled = job.enabled,
-        "[cron::seed] seed_tinyplace_autopilot done — created disabled (opt-in)"
-    );
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
