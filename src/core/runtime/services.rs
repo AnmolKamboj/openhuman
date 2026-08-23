@@ -131,14 +131,6 @@ pub fn spawn_cron_service() {
                     return;
                 }
                 log::info!("[cron] spawning scheduler polling loop");
-                // Ensure proactive agent jobs (e.g. the autonomous bounty job)
-                // exist for already-onboarded users upgrading from a build that
-                // predates them — otherwise their Settings toggle stays hidden.
-                // Idempotent; no-op until onboarding is complete.
-                if let Err(e) = crate::openhuman::cron::seed::seed_proactive_agents_on_boot(&config)
-                {
-                    log::warn!("[cron] boot seed of proactive agent jobs failed: {e}");
-                }
                 // Re-register the cron job for every enabled, schedule-trigger
                 // flow (issue B2) — idempotent, so a flow whose binding
                 // predates this feature (or was otherwise lost) gets its

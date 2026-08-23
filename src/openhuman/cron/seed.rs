@@ -27,11 +27,6 @@ use anyhow::Result;
 /// Well-known job names used to detect whether seeding has already run.
 const MORNING_BRIEFING_JOB_NAME: &str = "morning_briefing";
 
-/// Well-known name of the opt-in autonomous tiny.place agent job ("autopilot").
-/// Generic on purpose: it runs `tinyplace_agent`, which can do anything on
-/// tiny.place — bounties are just its default activity, not its limit.
-const TINYPLACE_AUTOPILOT_JOB_NAME: &str = "tinyplace_autopilot";
-
 /// Legacy name of the one-shot welcome cron job created by earlier
 /// builds of `seed_proactive_agents`. Kept as a constant (rather than
 /// a string literal inline) so a grep for `WELCOME_JOB_NAME` still
@@ -78,15 +73,6 @@ pub fn seed_proactive_agents(config: &Config) -> Result<()> {
         seed_morning_briefing(config)?;
     } else {
         tracing::debug!("[cron::seed] morning_briefing job already exists — skipping");
-    }
-
-    if !has(TINYPLACE_AUTOPILOT_JOB_NAME) {
-        tracing::info!(
-            "[cron::seed] creating autonomous tiny.place autopilot job (tinyplace_agent, disabled — opt-in)"
-        );
-        seed_tinyplace_autopilot(config)?;
-    } else {
-        tracing::debug!("[cron::seed] tinyplace_autopilot job already exists — skipping");
     }
 
     Ok(())
