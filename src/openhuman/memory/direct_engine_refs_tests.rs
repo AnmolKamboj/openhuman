@@ -83,9 +83,32 @@
 //! direct call it replaced.
 //!
 //! What genuinely has no bus representation yet, and is the next upstream ask:
-//! the ingest `queue`, the `chat` runtime seam, and the composio sync
-//! pipelines. Those live inside `tinymemory-core` and would each need a design
-//! pass, not just a trait method.
+//! the ingest `queue`, the `chat` runtime seam, the composio sync pipelines,
+//! and **recency recall**. The first three live inside `tinymemory-core` and
+//! would each need a design pass, not just a trait method.
+//!
+//! Recency recall is the subtle one, and it is worth spelling out because the
+//! obvious migration is wrong. `MemoryRetrieval::recall_namespace_scored` looks
+//! like the twin for `memory.recall_context` and `memory.recall_memories`, and
+//! it is not:
+//!
+//! - `recall_namespace_scored` resolves to
+//!   `query_namespace_hits_excluding_session(ns, query, limit, exclude)` — the
+//!   **query-ranked** path.
+//! - Both handlers call `recall_namespace_memories(ns, limit)` — a distinct
+//!   **recency** path. `recall_namespace_context_data` is just that plus a
+//!   rendered `context_text` wrapper.
+//!
+//! Passing an empty query to the scored method does not degrade to recency; it
+//! runs the ranking path with nothing to rank against. The two share a prefix
+//! (`load_documents_for_scope` + `kv_records_for_scope`) and diverge after it,
+//! so the swap compiles, returns plausible hits, and quietly changes what the
+//! user gets back. `memory.query_namespace` *is* safely expressible, because it
+//! has a real query — pass `exclude_session_id: None` there to preserve the
+//! current no-exclusion behaviour, since an RPC handler is not an agent turn.
+//!
+//! The upstream ask is a `RecallNamespaceRecent`-shaped method on
+//! `MemoryRetrieval`.
 //!
 //! # Known weaknesses, stated rather than hidden
 //!
