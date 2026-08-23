@@ -4,8 +4,8 @@
 //! mocked summary record to verify the Obsidian-compatible vault layout and
 //! frontmatter contract without requiring a live summarizer model.
 
-use tempfile::tempdir;
 use std::sync::{Arc, OnceLock};
+use tempfile::tempdir;
 
 use chrono::{TimeZone, Utc};
 
@@ -29,9 +29,9 @@ fn ensure_memory_seams() {
             .name("memory-artifacts-e2e-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    Arc::new(Config::default()),
-                );
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                    Config::default(),
+                ));
             })
             .expect("spawn memory artifact seam installer")
             .join()
