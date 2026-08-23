@@ -488,11 +488,33 @@ mod tests {
         assert!(!out.contains("line one\nline two"), "newlines flattened");
     }
 
+    /// Throwaway workspace for prompt tests.
+    ///
+    /// `build` renders the identity block, and that path *writes* — it seeds
+    /// SOUL.md / IDENTITY.md / ROLE.md / HEARTBEAT.md / MEMORY_GOALS.md into
+    /// whatever directory it is handed. This used to be `Path::new(".")`,
+    /// which was harmless only while nothing in this builder touched the
+    /// workspace; once it did, every run of these tests dropped five files
+    /// plus their `.builtin-hash` siblings into the repo root. Leaked
+    /// deliberately (never cleaned) so the borrowed path outlives the
+    /// returned `PromptContext`.
+    fn scratch_workspace() -> &'static std::path::Path {
+        use std::sync::OnceLock;
+        static DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = tempfile::TempDir::new().expect("temp workspace");
+            let path = dir.path().to_path_buf();
+            std::mem::forget(dir);
+            path
+        })
+        .as_path()
+    }
+
     fn ctx_with<'a>(integrations: &'a [ConnectedIntegration]) -> PromptContext<'a> {
         use std::sync::OnceLock;
         static EMPTY_VISIBLE: OnceLock<HashSet<String>> = OnceLock::new();
         PromptContext {
-            workspace_dir: std::path::Path::new("."),
+            workspace_dir: scratch_workspace(),
             model_name: "test",
             agent_id: "orchestrator",
             tools: &[],
