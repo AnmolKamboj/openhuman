@@ -341,8 +341,7 @@ export const CustomRoutingDialog = ({
               }}
             />
           )}
-        </div>
-      )}
+      </div>
     </ModalShell>
   );
 };
