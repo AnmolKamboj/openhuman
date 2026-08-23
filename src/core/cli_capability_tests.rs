@@ -94,14 +94,17 @@ fn message_never_contains_a_credential_or_endpoint() {
 #[cfg(feature = "modules")]
 #[tokio::test]
 async fn bound_driver_probe_reports_the_default_module_driver() {
-    // Was asserting `capabilities() == Capabilities::all()`. That encoded
-    // #5598 as expected: the pinned v1.0.1 tinymemory artifact serves thirteen
-    // of the contract's eighteen families (missing `chunks`, `episodic`,
-    // `people`, `profile`, `retrieval`), so claiming the full contract made
-    // those five answer `UnknownMethod` instead of reporting themselves
-    // absent. `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match
-    // what is actually served (see its module docs); this pins the same
-    // corrected boundary rather than the stale full-contract claim.
+    // Was asserting `capabilities() == Capabilities::all()`. That encoded #5598
+    // as expected: the then-pinned v1.0.1 artifact served thirteen of the
+    // contract's eighteen families, so claiming the full contract made the
+    // other five answer `UnknownMethod` instead of reporting themselves absent.
+    //
+    // The registry now pins v1.2.0, which added bus members for `chunks`,
+    // `people`, `profile` and `retrieval` — so the boundary moved from thirteen
+    // to seventeen. `episodic` is the one still withheld, and for a different
+    // reason: the artifact serves it, but `ModuleMemoryProvider` has no
+    // `as_episodic`, so advertising it would be the same over-claim in a
+    // different coat. This pins that corrected boundary, not the stale one.
     let cfg = MemorySubsystemConfig::default();
     let binding = binding_for("default", cfg.clone());
     assert_eq!(
@@ -112,8 +115,12 @@ async fn bound_driver_probe_reports_the_default_module_driver() {
     assert!(advertised.contains_all(Capabilities::mandatory()));
     assert!(advertised.contains(Capability::Tree));
     assert!(
-        !advertised.contains(Capability::Retrieval),
-        "the pinned v1.0.1 artifact has no bus member for `retrieval` (#5598)"
+        advertised.contains(Capability::Retrieval),
+        "the pinned v1.2.0 artifact serves `retrieval`; not advertising it is an under-claim"
+    );
+    assert!(
+        !advertised.contains(Capability::Episodic),
+        "`episodic` must stay unadvertised until `ModuleMemoryProvider` implements `as_episodic`"
     );
     assert!(Capabilities::all().contains_all(advertised));
     assert_ne!(
