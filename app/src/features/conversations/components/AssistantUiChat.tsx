@@ -1,12 +1,17 @@
 import { Thread, type ThreadComponents } from '@/components/assistant-ui/thread';
 import { type AssistantState, useAui, useAuiState } from '@assistant-ui/react';
+import { PlusIcon } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 
+import type { Attachment } from '../../../lib/attachments';
 import { useRegisterAction } from '../../../lib/commands/useRegisterAction';
 import { useSlashCommands } from '../../../lib/commands/useSlashCommands';
+import { useT } from '../../../lib/i18n/I18nContext';
 import { AssistantUiRuntimeProvider } from '../../../providers/AssistantUiRuntimeProvider';
 import { emptySessionTokenUsage } from '../../../store/chatRuntimeSlice';
 import { useAppSelector } from '../../../store/hooks';
+import AttachmentPreview from '../../chat/AttachmentPreview';
+import { Button } from '../../ui';
 import { ChatToolFallback, ChatToolGroup } from './ChatToolParts';
 import { contextUsageFromTokenUsage, ContextWindowPill } from './composer/ContextWindowPill';
 import {
@@ -60,6 +65,13 @@ export function AssistantUiChat({
   inputValue,
   onInputValueChange,
   onEscape,
+  attachments,
+  onAttachFiles,
+  onRemoveAttachment,
+  maxAttachments,
+  attachmentsEnabled,
+  attachmentInteractionBlocked,
+  onAttachmentOnlySend,
 }: {
   threadGoal: ThreadGoalController;
   model: string | null;
@@ -69,7 +81,16 @@ export function AssistantUiChat({
   inputValue: string;
   onInputValueChange: (value: string) => void;
   onEscape?: () => void;
+  attachments: Attachment[];
+  onAttachFiles: (files: FileList | File[] | null) => Promise<void>;
+  onRemoveAttachment: (id: string) => void;
+  maxAttachments: number;
+  attachmentsEnabled: boolean;
+  attachmentInteractionBlocked: boolean;
+  onAttachmentOnlySend: () => void;
 }) {
+  const { t } = useT();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedThreadId = useAppSelector(state => state.thread.selectedThreadId);
   const loadError = useAppSelector(state => state.thread.messagesError);
   const tokenUsage = useAppSelector(state =>
@@ -108,6 +129,44 @@ export function AssistantUiChat({
     [contextUsage, threadGoal]
   );
   const ComposerHeader = useCallback(() => <>{composerHeader}</>, [composerHeader]);
+  const ComposerAttachments = useCallback(
+    () => (
+      <AttachmentPreview
+        attachments={attachments}
+        onRemove={onRemoveAttachment}
+        disabled={attachmentInteractionBlocked}
+      />
+    ),
+    [attachmentInteractionBlocked, attachments, onRemoveAttachment]
+  );
+  const ComposerAddAttachment = useCallback(
+    () => (
+      <>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={event => {
+            void onAttachFiles(event.target.files);
+            event.target.value = '';
+          }}
+        />
+        <Button
+          type="button"
+          iconOnly
+          variant="tertiary"
+          size="xs"
+          aria-label={t('composer.attachFile')}
+          title={t('composer.attachFile')}
+          disabled={attachmentInteractionBlocked || attachments.length >= maxAttachments}
+          onClick={() => fileInputRef.current?.click()}>
+          <PlusIcon className="h-4 w-4" />
+        </Button>
+      </>
+    ),
+    [attachmentInteractionBlocked, attachments.length, maxAttachments, onAttachFiles, t]
+  );
 
   const components: ThreadComponents = useMemo(
     () => ({
@@ -115,8 +174,24 @@ export function AssistantUiChat({
       ToolGroup: ChatToolGroup,
       ComposerExtras,
       ComposerHeader,
+      ...(attachmentsEnabled
+        ? {
+            ComposerAttachments,
+            ComposerAddAttachment,
+            hasComposerAttachments: attachments.length > 0,
+            onComposerAttachmentSend: onAttachmentOnlySend,
+          }
+        : {}),
     }),
-    [ComposerExtras, ComposerHeader]
+    [
+      ComposerAddAttachment,
+      ComposerAttachments,
+      ComposerExtras,
+      ComposerHeader,
+      attachments.length,
+      attachmentsEnabled,
+      onAttachmentOnlySend,
+    ]
   );
 
   return (
