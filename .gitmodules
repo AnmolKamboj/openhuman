@@ -49,3 +49,7 @@
 	path = vendor/tinyvoice
 	url = https://github.com/tinyhumansai/tinyvoice
 	branch = main
+[submodule "vendor/tinyjuice"]
+	path = vendor/tinyjuice
+	url = https://github.com/tinyhumansai/tinyjuice
+	branch = main
