@@ -826,17 +826,49 @@ the TinyMemory module to a released, SHA-256-verified artifact, so a new bus
 method is a `tinymemory` release plus a registry re-pin before it is a host
 change. Adding a `MemoryProvider` method without that produces a driver that
 answers `Unsupported` — strictly worse than the direct call, because the failure
-moves from compile time to run time. The concrete gaps (retrieval filters, chunk
-reads, an entity-kind filter, source listing, the people domain, and the
-`source_scope` task-local) are enumerated in that lint's module docs.
+moves from compile time to run time. The gap list in that lint's module docs is **stale as of 2026-08-23**: retrieval
+filters, chunk reads, the entity-kind filter, source listing and the people
+domain all landed as real capability families (`MemoryRetrieval`,
+`MemoryChunks`, `MemoryPeople`, `MemoryProfile`, `MemoryEpisodic`), and
+`ModuleMemoryProvider` implements all of them bar `as_episodic`. What blocks
+migrating onto them is **release lag, not seam width** — see the release note
+below. The `source_scope` task-local is no longer a gap either: it is host
+policy, it lives in `memory::source_scope`, and the scope crosses the bus as a
+`SourceScope` value.
 
-**One trap worth naming: `tinymemory-api` and `tinycortex-api` are two crates
-with near-identical types.** The engine's
-`tinymemory_core::store::chunks::types::SourceKind` resolves to
-`tinycortex_api::chunks::SourceKind`, which is **not** the contract's
-`memory::api::chunks::SourceKind`. Swapping one import for the other looks like
-a free type carve-out and is a type error — the module does that conversion at
-its own boundary.
+**Task-locals do not cross the bus, and both of the ones here are permission
+checks that fail OPEN.** The module is a separately compiled `cdylib` with its
+own statics, so a task-local set host-side reads as absent inside it — and
+absent means *unrestricted* for `source_scope` and *exclude nothing* for the
+self-echo exclusion. Never let a memory call infer either from ambient state:
+pass `memory::source_scope::as_bus_scope()` and `RecallOpts::exclude_session_id`
+explicitly. The engine's scoped/unscoped function pairs exist for this reason —
+`cover_window_scoped`, `query_source_scoped`, `drill_down_scoped`,
+`fetch_leaves_scoped`. **The unsuffixed twin reads the engine's task-local and
+must not be called from this host.**
+
+**The module release lags the vendored source.** `modules::registry` pins a
+released, SHA-256-verified artifact; the vendored submodule is routinely ahead
+of it. Check the *tag*, not the working tree, before migrating onto a family:
+`git -C vendor/tinymemory show <tag>:crates/tinymemory-module/src/lib.rs | grep '"ListChunks"'`.
+Migrating onto a method the pinned artifact does not serve yields a runtime
+`Unsupported` — strictly worse than the direct call, because the failure moves
+from compile time to run time.
+
+**The `SourceKind` trap is gone — do not re-derive it.** This note used to warn
+that `tinymemory_core::store::chunks::types::SourceKind` resolved to
+`tinycortex_api::chunks::SourceKind` and was **not** the contract's
+`SourceKind`, so swapping the import was a type error rather than a free carve-
+out. `tinycortex-api` is now a deprecated re-export of `tinymemory-bus`, and the
+two resolve to the **same item**; the engine's chunk types are re-exported from
+`crate::engine::backend::chunks`, which lands in the same place. Verified with a
+compile-time identity probe (a function taking the engine path and returning the
+contract path), then by repointing every OpenHuman call site — the compiler is
+the proof. Prefer `tinymemory_api::chunks::…` in new code.
+
+The general shape of the warning still holds for *other* pairs: two crates with
+near-identical types are a real hazard, and a "free carve-out" is only free once
+the compiler says so. Probe before assuming, in either direction.
 
 #### The `tui` gate
 
