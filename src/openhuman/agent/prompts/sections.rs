@@ -219,24 +219,23 @@ impl PromptSection for IdentitySection {
         prompt.push_str(
             "The following workspace files define your identity, behavior, and context.\n\n",
         );
-        // When the visible-tool filter is active the main agent is a pure
-        // orchestrator: it routes via spawn_subagent, synthesises results,
-        // and talks to the user. It does NOT need the periodic-task config
-        // (HEARTBEAT.md) — subagents handle their own concerns.
-        let is_orchestrator = !ctx.visible_tool_names.is_empty();
         // ROLE.md is the user-facing agent's own role brief (#5701) — the
         // `# Master Agent` / `## Core Responsibilities` preamble that used to
         // be compiled into `orchestrator/prompt.md`. It is synced for every
         // agent so the file exists on disk to edit, but injected only for the
         // orchestrator: a specialist sub-agent has its own role prompt and
         // must not be told it is the Master Agent.
-        let all_files: &[&str] = &["SOUL.md", "IDENTITY.md", "ROLE.md", "HEARTBEAT.md"];
-        // Synced to disk regardless so builtin updates ship, but kept out of
-        // this agent's prompt.
+        //
+        // HEARTBEAT.md used to ride along here. It was the periodic-task list
+        // the subconscious engine read, and that domain was deleted — nothing
+        // consumed the file any more, so every agent but the orchestrator was
+        // paying for an empty template. Its `WORKSPACE_INTERNAL_FILES` entry
+        // deliberately stays, so a file a user still has on disk keeps its
+        // not-agent-writable protection.
+        let is_orchestrator = !ctx.visible_tool_names.is_empty();
+        let all_files: &[&str] = &["SOUL.md", "IDENTITY.md", "ROLE.md"];
         let skip_in_prompt: &[&str] = if is_orchestrator {
-            // The orchestrator routes and synthesises; periodic-task config is
-            // a sub-agent concern.
-            &["HEARTBEAT.md"]
+            &[]
         } else {
             &["ROLE.md"]
         };
@@ -259,12 +258,6 @@ impl PromptSection for IdentitySection {
             inject_workspace_file(&mut prompt, ctx.workspace_dir, file);
         }
 
-        // Seed MEMORY_GOALS.md to disk (header-only default) so the
-        // long-term goals list is discoverable in the workspace from first
-        // boot. Sync-only: the goals file is deliberately NOT injected into
-        // the system prompt — it is stored state managed by the memory_goals
-        // domain (RPC / tools / enrichment agent).
-        sync_workspace_file(ctx.workspace_dir, "MEMORY_GOALS.md");
 
         // PROFILE.md / MEMORY.md injection lives in the dedicated
         // `UserFilesSection` (below) so agents that strip the identity
