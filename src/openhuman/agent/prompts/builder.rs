@@ -295,8 +295,16 @@ impl SystemPromptBuilder {
         // to splice it in individually. Single source of truth: GROUNDING_BODY.
         // Placed near the tail (just before the output-style rules) so it reads
         // as a closing contract; byte-stable, so it stays cache-friendly.
-        output.push_str(GROUNDING_BODY);
-        output.push_str("\n\n");
+        // Skipped when the agent's own prompt already carries the contract.
+        // The orchestrator folds grounding into its merged `## Rules` section
+        // (#5701) so the rules read as one list rather than two that repeat
+        // each other; appending here as well would ship it twice. Matching on
+        // the heading keeps this self-maintaining: an agent that stops
+        // carrying its own copy silently gets the global one back.
+        if !output.contains(GROUNDING_HEADING) {
+            output.push_str(GROUNDING_BODY);
+            output.push_str("\n\n");
+        }
         output.push_str(global_style_block(ctx.workspace_dir).trim_end());
         output.push('\n');
         Ok(output)
