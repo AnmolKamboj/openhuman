@@ -225,6 +225,10 @@ export const GlobalOwnModelSelector = ({
       </div>
       {pickerOpen && (
         <ProviderModelPickerDialog
+          // This card IS the "own models" routing mode. Offering managed here
+          // would let a click inside it flip the mode out from under the card,
+          // so it is the one surface that opts out.
+          allowManaged={false}
           cloudProviders={customCloud}
           localModels={localModels}
           ollamaRunning={ollamaRunning}
