@@ -1,6 +1,11 @@
-import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
+import type {
+  ThreadAssistantMessagePart,
+  ThreadMessageLike,
+  ThreadUserMessagePart,
+} from '@assistant-ui/react';
 
 import { unwrapToolCallEnvelope } from '../lib/chat/toolCallEnvelope';
+import { parseMessageImages } from '../lib/attachments';
 import type {
   ProcessingTranscriptItem,
   StreamingAssistantState,
@@ -131,6 +136,57 @@ function assistantParts(
   return parts;
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function mimeTypeFromDataUri(dataUri: string): string {
+  return dataUri.match(/^data:([^;,]+)/i)?.[1] ?? 'application/octet-stream';
+}
+
+function userParts(msg: ThreadMessage): ThreadUserMessagePart[] {
+  const parsed = parseMessageImages(msg.content ?? '');
+  const metadata = msg.extraMetadata ?? {};
+  const kinds = stringArray(metadata.attachmentKinds);
+  const names = stringArray(metadata.attachmentNames);
+  const posters = stringArray(metadata.attachmentPosters);
+  const metadataUris = stringArray(metadata.attachmentDataUris);
+  const dataUris = metadataUris.length > 0 ? metadataUris : parsed.dataUris;
+  const parts: ThreadUserMessagePart[] = [];
+
+  if (parsed.text.length > 0) parts.push({ type: 'text', text: parsed.text });
+
+  if (kinds.length === 0) {
+    for (const [index, image] of dataUris.entries()) {
+      parts.push({ type: 'image', image, filename: names[index] });
+    }
+    return parts;
+  }
+
+  for (const [index, kind] of kinds.entries()) {
+    const filename = names[index];
+    if (kind === 'image') {
+      const image = dataUris[index];
+      if (image) parts.push({ type: 'image', image, filename });
+      continue;
+    }
+    if (kind === 'video') {
+      const image = posters[index];
+      if (image) parts.push({ type: 'image', image, filename });
+      else parts.push({ type: 'file', filename, data: '', mimeType: 'video/mp4' });
+      continue;
+    }
+    const data = dataUris[index] ?? '';
+    parts.push({
+      type: 'file',
+      filename,
+      data,
+      mimeType: mimeTypeFromDataUri(data),
+    });
+  }
+  return parts;
+}
+
 export function toThreadMessageLike(
   msg: ThreadMessage,
   timeline: readonly ToolTimelineEntry[] = EMPTY_TIMELINE,
@@ -148,9 +204,7 @@ export function toThreadMessageLike(
     content:
       msg.sender === 'agent'
         ? assistantParts(text, timeline, transcript)
-        : text.length > 0
-          ? [{ type: 'text', text }]
-          : [],
+        : userParts(msg),
     createdAt: new Date(msg.createdAt),
     ...(msg.sender === 'agent' && msg.extraMetadata?.stopped === true
       ? { status: { type: 'incomplete' as const, reason: 'cancelled' as const } }
