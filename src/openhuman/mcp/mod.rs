@@ -127,7 +127,6 @@ pub mod server;
 /// neither is gated — so this is not either, exactly as before the extraction.
 pub mod http_client {
     pub use tinymcp::transport::http::{McpHttpClient, McpHttpClientBuilder};
-    pub use tinymcp::{redact_endpoint, render_tool_result};
     /// The transport's error, re-exported so a caller can inspect a failure
     /// structurally rather than by its rendered text.
     ///
@@ -143,6 +142,7 @@ pub mod http_client {
     /// for an in-process consumer, which holds the real error and should not be
     /// reduced to matching on wording that upstream is free to reword.
     pub use tinymcp::Error as McpError;
+    pub use tinymcp::{redact_endpoint, render_tool_result};
     pub use tinymcp_bus::{
         AuthorizationServerMetadata, McpAuthChallenge, McpAuthorizationContext,
         McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent,
