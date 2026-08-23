@@ -234,7 +234,10 @@ describe('Skills page — Composio catalog fallback', () => {
     expect(gmailTile).toBeInTheDocument();
     expect(within(gmailTile).getByText('Status unavailable')).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0]);
+    // The page-level "Try again" button belonged to the stale-status alert that
+    // moved to NoticeCenter. Retry from a degraded tile still refreshes, which
+    // is the affordance that stayed on this screen.
+    fireEvent.click(gmailTile);
     expect(composioRefresh).toHaveBeenCalledTimes(1);
   });
 
