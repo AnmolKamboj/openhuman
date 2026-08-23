@@ -73,13 +73,10 @@ export const CustomRoutingDialog = ({
         ? { kind: 'local' }
         : initial.kind === 'claude-code'
           ? { kind: 'claude-code' }
-          : customCloud[0]
-            ? { kind: 'cloud', providerSlug: customCloud[0].slug }
-            : localAvailable
-              ? { kind: 'local' }
-              : claudeCodeEnabled
-                ? { kind: 'claude-code' }
-                : null;
+          : // `default` / `openhuman` are the managed refs. They used to fall
+            // through to the first configured provider, which quietly
+            // preselected a different route than the workload was actually on.
+            { kind: 'managed' };
 
   const [source, setSource] = useState<CustomDialogSource | null>(initialSource);
   const [model, setModel] = useState<string>(() => {
@@ -141,8 +138,13 @@ export const CustomRoutingDialog = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrySlug, model, visionLocked]);
 
-  const canSave = source !== null && model.trim().length > 0;
-  const canTest = canSave;
+  // Managed carries no model id — the product picks one per workload — so
+  // requiring one would make it permanently unsavable.
+  const isManagedSource = source?.kind === 'managed';
+  const canSave = source !== null && (isManagedSource || model.trim().length > 0);
+  // …and there is nothing to send a test prompt to: the route is resolved
+  // server-side at request time, not from a provider string here.
+  const canTest = canSave && !isManagedSource;
 
   const resetTestState = () => {
     testRequestIdRef.current += 1;
@@ -153,7 +155,7 @@ export const CustomRoutingDialog = ({
   };
 
   const currentProviderString =
-    source == null
+    source == null || source.kind === 'managed'
       ? null
       : source.kind === 'cloud'
         ? appendTemperatureToProviderString(
@@ -180,8 +182,13 @@ export const CustomRoutingDialog = ({
       );
     } else if (source.kind === 'claude-code') {
       onSubmit({ kind: 'claude-code', model: model.trim(), temperature: temp }, vision);
-    } else {
+    } else if (source.kind === 'local') {
       onSubmit({ kind: 'local', model: model.trim(), temperature: temp }, vision);
+    } else {
+      // Managed. `default` is the backend's managed sentinel; it takes no model
+      // or temperature, so both are deliberately dropped rather than carried
+      // over from whatever was selected before.
+      onSubmit({ kind: 'default' }, vision);
     }
   };
 
