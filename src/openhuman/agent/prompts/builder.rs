@@ -1,9 +1,11 @@
 //! [`SystemPromptBuilder`] — assembles ordered [`PromptSection`]s into a
 //! final system-prompt string.
 
+use super::render_helpers::sync_workspace_file;
 use super::sections::*;
 use super::types::*;
 use anyhow::Result;
+use std::path::Path;
 
 /// Global style rules appended to every assembled system prompt, regardless
 /// of which sections the agent opts in/out of. Kept tiny and byte-stable so
