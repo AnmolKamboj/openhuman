@@ -56,12 +56,12 @@ pub fn estimated_btc_fee_sats() -> u64 {
 /// Used for recipients (we don't care what address type they prefer; the
 /// `bitcoin` crate's script_pubkey() will encode P2WPKH/P2TR/P2SH correctly).
 ///
-/// Delegates to the vendored [`tinywallet`] crate, which owns the address
+/// Delegates to the vendored [`tinywallet_bus`] crate, which owns the address
 /// format itself. Nothing about parsing a Bitcoin address is OpenHuman-
 /// specific, so the rules live where any host can reach them; what stays here
 /// is the `Result<_, String>` shape the rest of this domain speaks.
 pub fn validate_btc_address(addr: &str) -> Result<String, String> {
-    let result = tinywallet::address::btc::validate(addr).map_err(|e| e.to_string());
+    let result = tinywallet_bus::address::btc::validate(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=recipient result={}",
         if result.is_ok() {
@@ -81,7 +81,7 @@ pub fn validate_btc_address(addr: &str) -> Result<String, String> {
 /// the recipient rule for a sender accepts an address that only fails later,
 /// at signing time.
 pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
-    let result = tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string());
+    let result = tinywallet_bus::address::btc::validate_sender(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=sender result={}",
         if result.is_ok() {
@@ -123,7 +123,7 @@ pub async fn broadcast_raw_hex(tx_hex: &str) -> Result<String, String> {
 
 /// Derive the P2WPKH signing key for `derivation_path` from a BIP-39 mnemonic.
 ///
-/// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
+/// Delegates to the vendored [`tinywallet_bus`] crate, which owns BIP-32
 /// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
 /// the keyring by this crate and handed over as a `&str` that is not retained.
 /// Test-only: production derives inside the wallet module.
@@ -206,10 +206,10 @@ pub async fn execute_btc_quote(mut quote: PreparedTransaction) -> Result<Executi
     // private key is reassembled here. The phrase travels over a confidential
     // call to a module that has proved it is an artifact this build pinned —
     // see `modules::wallet::attested_proxy`.
-    let signing_secret = tinywallet::wire::SecretMaterial {
+    let signing_secret = tinywallet_bus::wire::SecretMaterial {
         mnemonic,
         derivation_path: secret.derivation_path.clone(),
-        chain: tinywallet::Chain::Btc,
+        chain: tinywallet_bus::Chain::Btc,
     };
 
     // Selection stays here — this crate knows the fee policy and the UTXO
@@ -219,14 +219,14 @@ pub async fn execute_btc_quote(mut quote: PreparedTransaction) -> Result<Executi
     // in agreement: the module's `select_coins` and `select_utxos` above are
     // the same algorithm, down to the 546-sat dust rule, so it reselects
     // exactly what was chosen here.
-    let transaction = tinywallet::wire::TransactionSpec::Btc {
+    let transaction = tinywallet_bus::wire::TransactionSpec::Btc {
         from: from_addr.clone(),
         to: to_addr.clone(),
         amount_sat: amount_sats,
         fee_sat: fee_sats,
         utxos: selected
             .iter()
-            .map(|utxo| tinywallet::wire::Utxo {
+            .map(|utxo| tinywallet_bus::wire::Utxo {
                 txid: utxo.txid.clone(),
                 vout: utxo.vout,
                 value: utxo.value,

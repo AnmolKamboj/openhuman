@@ -7,8 +7,8 @@
 //! themselves are covered where they can be honest: `tinywallet`'s own loader
 //! E2E, which drives a real module over a real broker.
 
-use tinywallet::wire::{Scheme, Signature, SigningPayload, TransactionSpec};
-use tinywallet::Chain;
+use tinywallet_bus::wire::{Scheme, Signature, SigningPayload, TransactionSpec};
+use tinywallet_bus::Chain;
 
 use super::{classify, WalletCallError};
 use crate::openhuman::config::Config;
@@ -37,8 +37,8 @@ fn failure(name: &str) -> tinybus::Error {
 ///
 /// No key is derived here any more: the module does that. This is the request,
 /// not the secret it produces.
-fn evm_signing_secret() -> tinywallet::wire::SecretMaterial {
-    tinywallet::wire::SecretMaterial {
+fn evm_signing_secret() -> tinywallet_bus::wire::SecretMaterial {
+    tinywallet_bus::wire::SecretMaterial {
         mnemonic: VECTOR.to_string(),
         derivation_path: "m/44'/60'/0'/0/0".to_string(),
         chain: Chain::Evm,
@@ -196,7 +196,7 @@ mod attestation_guard {
 /// These assert the two shapes are genuinely distinct, so the wrapper cannot be
 /// dropped again without a test failing.
 mod request_shapes {
-    use tinywallet::wire::{ExportRequest, SecretMaterial, SignMessageRequest, SignRequest};
+    use tinywallet_bus::wire::{ExportRequest, SecretMaterial, SignMessageRequest, SignRequest};
 
     fn secret() -> SecretMaterial {
         super::evm_signing_secret()
@@ -223,14 +223,14 @@ mod request_shapes {
         let sign_message = serde_json::to_value(SignMessageRequest {
             secret: secret(),
             message_hex: "00".repeat(32),
-            scheme: tinywallet::wire::Scheme::Secp256k1Prehash,
+            scheme: tinywallet_bus::wire::Scheme::Secp256k1Prehash,
         })
         .unwrap();
         assert!(serde_json::from_value::<SignRequest>(sign_message).is_err());
         assert!(serde_json::from_value::<ExportRequest>(
             serde_json::to_value(SignRequest {
                 secret: secret(),
-                transaction: tinywallet::wire::TransactionSpec::Evm {
+                transaction: tinywallet_bus::wire::TransactionSpec::Evm {
                     to: format!("0x{}", "11".repeat(20)),
                     value_wei: "1".to_string(),
                     data_hex: "0x".to_string(),

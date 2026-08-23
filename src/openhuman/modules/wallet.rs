@@ -66,7 +66,7 @@
 //! with which it is, and [`sign_payload`] dispatches on the tag rather than on
 //! the chain — so a chain that changes scheme cannot silently sign wrongly.
 
-use tinywallet::wire::{
+use tinywallet_bus::wire::{
     DerivedAccount, ExportRequest, ExportedKey, Scheme, SecretMaterial, SignMessageRequest,
     SignRequest, Signature, SignedTransaction, TransactionSpec,
 };

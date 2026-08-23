@@ -63,11 +63,11 @@ struct BlockhashValue {
 
 /// Validate a Solana address (a base58 ed25519 public key).
 ///
-/// Delegates to the vendored [`tinywallet`] crate, which owns the address
+/// Delegates to the vendored [`tinywallet_bus`] crate, which owns the address
 /// format; this wrapper keeps the `Result<_, String>` shape the rest of the
 /// domain speaks.
 pub fn validate_solana_address(addr: &str) -> Result<String, String> {
-    let result = tinywallet::address::solana::validate(addr).map_err(|e| e.to_string());
+    let result = tinywallet_bus::address::solana::validate(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address result={}",
         if result.is_ok() {
@@ -92,7 +92,7 @@ pub async fn native_balance(address: &str) -> Result<u128, String> {
 
 /// Derive the Solana signing key for `derivation_path` from a BIP-39 mnemonic.
 ///
-/// Delegates to the vendored [`tinywallet`] crate, which owns SLIP-0010
+/// Delegates to the vendored [`tinywallet_bus`] crate, which owns SLIP-0010
 /// ed25519 derivation. The hand-rolled HMAC walk and path parser that used to
 /// live here moved there wholesale — nothing about "derive an ed25519 key at a
 /// hardened path" is OpenHuman-specific. Custody stays here: the mnemonic
@@ -254,7 +254,7 @@ fn pubkey_to_b58(pubkey: &[u8; 32]) -> String {
 /// the attestation guard. The local branch cannot exist in a shipped binary.
 async fn solana_signer(
     config: &crate::openhuman::config::Config,
-) -> Result<(tinywallet::wire::SecretMaterial, [u8; 32]), String> {
+) -> Result<(tinywallet_bus::wire::SecretMaterial, [u8; 32]), String> {
     let secret = secret_material(WalletChain::Solana).await?;
     let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
         config,
@@ -262,10 +262,10 @@ async fn solana_signer(
     )
     .await?
     .value;
-    let signing_secret = tinywallet::wire::SecretMaterial {
+    let signing_secret = tinywallet_bus::wire::SecretMaterial {
         mnemonic,
         derivation_path: secret.derivation_path.clone(),
-        chain: tinywallet::Chain::Solana,
+        chain: tinywallet_bus::Chain::Solana,
     };
     #[cfg(test)]
     {
@@ -288,7 +288,7 @@ async fn solana_signer(
 /// Sign `message` with the wallet key, inside the module.
 async fn solana_sign(
     config: &crate::openhuman::config::Config,
-    signing_secret: &tinywallet::wire::SecretMaterial,
+    signing_secret: &tinywallet_bus::wire::SecretMaterial,
     message: &[u8],
 ) -> Result<[u8; 64], String> {
     #[cfg(test)]
@@ -304,13 +304,13 @@ async fn solana_sign(
         config,
         signing_secret,
         message,
-        tinywallet::wire::Scheme::Ed25519,
+        tinywallet_bus::wire::Scheme::Ed25519,
     )
     .await
     .map_err(|e| format!("failed to sign the Solana message: {e}"))?;
     #[cfg(not(test))]
     {
-        let tinywallet::wire::Signature::Ed25519 { signature_hex } = signature else {
+        let tinywallet_bus::wire::Signature::Ed25519 { signature_hex } = signature else {
             return Err("the wallet module returned a non-ed25519 Solana signature".to_string());
         };
         let bytes = hex_to_bytes(&signature_hex)?;
@@ -699,10 +699,10 @@ pub(crate) async fn tinyplace_signer_seed() -> Result<[u8; 32], String> {
     )
     .await?
     .value;
-    let signing_secret = tinywallet::wire::SecretMaterial {
+    let signing_secret = tinywallet_bus::wire::SecretMaterial {
         mnemonic,
         derivation_path: secret.derivation_path.clone(),
-        chain: tinywallet::Chain::Solana,
+        chain: tinywallet_bus::Chain::Solana,
     };
 
     // The one path that brings a private key back into this process. Every
