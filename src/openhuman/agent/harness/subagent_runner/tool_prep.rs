@@ -130,9 +130,7 @@ pub(crate) fn build_text_mode_tool_instructions() -> String {
 /// this function and the corresponding generator in
 /// `orchestrator_tools.rs` together.
 pub(super) fn is_subagent_spawn_tool(name: &str) -> bool {
-    if name == "spawn_subagent"
-        || name.starts_with("delegate_")
-        || name == "agent_prepare_context"
+    if name == "spawn_subagent" || name.starts_with("delegate_") || name == "agent_prepare_context"
     {
         return true;
     }

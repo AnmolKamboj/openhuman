@@ -161,7 +161,6 @@ fn seed_morning_briefing(config: &Config) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,7 +196,6 @@ mod tests {
         assert!(d.to.is_none());
         assert!(d.best_effort);
     }
-
 
     #[test]
     fn seeds_morning_briefing_disabled_and_idempotent() {
@@ -246,9 +244,6 @@ mod tests {
             "second seed must not duplicate the morning_briefing job"
         );
     }
-
-
-
 
     #[test]
     fn seed_prunes_legacy_welcome_job() {

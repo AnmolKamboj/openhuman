@@ -1303,7 +1303,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn specialist_agents_are_registered_with_narrow_tools() {
         let scheduler = find("scheduler_agent");
@@ -1515,11 +1514,7 @@ mod tests {
         // no more, no less.
         match &def.tools {
             ToolScope::Named(tools) => {
-                let expected = [
-                    "memory_recall",
-                    "memory_hybrid_search",
-                    "memory_flavour",
-                ];
+                let expected = ["memory_recall", "memory_hybrid_search", "memory_flavour"];
                 for required in expected {
                     assert!(
                         tools.iter().any(|t| t == required),

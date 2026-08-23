@@ -1847,10 +1847,7 @@ fn knowledge_default_off() -> Vec<&'static str> {
 }
 
 fn knowledge_always_on() -> Vec<&'static str> {
-    let mut tools = vec![
-        "learning_list_facets",
-        "learning_cache_stats",
-    ];
+    let mut tools = vec!["learning_list_facets", "learning_cache_stats"];
     // These tools exist only when the skills feature is on (`WorkflowListTool`
     // / `WorkflowRecentRunsTool` — both `#[cfg(feature = "skills")]`).
     if cfg!(feature = "skills") {
@@ -1949,10 +1946,7 @@ fn knowledge_default_off_tools_retained_when_opted_in() {
     let mut tools = expansion_tools_for(&tmp);
     filter_tools_by_user_preference(
         &mut tools,
-        &[
-            "workflow_manage".to_string(),
-            "learning_manage".to_string(),
-        ],
+        &["workflow_manage".to_string(), "learning_manage".to_string()],
     );
     let names = tool_names(&tools);
     let off_tools = knowledge_default_off();
@@ -2541,10 +2535,7 @@ const MEMORY_TOOL_CAPABILITIES: &[(
 
 /// Memory-family tools that are deliberately NOT driver-backed. Each entry is
 /// an argument, not an omission — see `tool_capability`.
-const MEMORY_TOOLS_NOT_DRIVER_BACKED: &[&str] = &[
-    "update_memory_md",
-    "memory_store_kinds",
-];
+const MEMORY_TOOLS_NOT_DRIVER_BACKED: &[&str] = &["update_memory_md", "memory_store_kinds"];
 
 /// Every `DomainGroup::Memory` tool must be a deliberate decision in
 /// [`tool_capability`]: either it maps to a capability, or it is listed as

@@ -361,10 +361,7 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "read_workflow_resource",
             ],
         ),
-        (
-            "documents",
-            &["generate_document", "generate_presentation"],
-        ),
+        ("documents", &["generate_document", "generate_presentation"]),
         (
             "audio",
             &[
@@ -444,7 +441,10 @@ fn a_packs_owner_still_loses_every_other_pack() {
         .collect();
     strip_packed_from_visible(&mut visible, "settings_agent");
     assert!(visible.contains("doctor_health"));
-    assert!(!visible.contains("wallet_status"), "non-owned pack survived");
+    assert!(
+        !visible.contains("wallet_status"),
+        "non-owned pack survived"
+    );
     assert!(visible.contains(LOAD_SKILL) && visible.contains(USE_SKILL));
 }
 
