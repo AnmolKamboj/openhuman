@@ -261,8 +261,7 @@ mod contract {
 
     #[test]
     fn the_registry_entry_matches_the_interface_this_client_calls() {
-        let record =
-            registry::find("tinywallet").expect("the tinywallet record is compiled in");
+        let record = registry::find("tinywallet").expect("the tinywallet record is compiled in");
         assert_eq!(record.bus_name, tinywallet_bus::BUS_NAME);
         assert_eq!(record.object_path, tinywallet_bus::OBJECT_PATH);
         assert!(
