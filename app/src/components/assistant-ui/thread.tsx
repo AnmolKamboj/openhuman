@@ -123,7 +123,7 @@ export type ThreadProps = {
   /** Host-owned model route used for real sends. */
   model?: string | null | undefined;
   /** Updates the host's composer route and selected model metadata. */
-  onModelChange?: ((value: string, contextWindow?: number | null) => void) | undefined;
+  onModelChange?: ((value: string | null, contextWindow?: number | null) => void) | undefined;
   /** Host transport error shown in place of an empty welcome state. */
   loadError?: string | null | undefined;
   /** Host-specific Escape behavior (for example cancel + restore prompt). */
@@ -203,7 +203,7 @@ export const Thread: FC<ThreadProps> = ({
 const ThreadRoot: FC<{
   isEmpty: boolean;
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
   loadError: string | null;
   onEscape?: () => void;
 }> = ({ isEmpty, model, onModelChange, loadError, onEscape }) => {
@@ -324,7 +324,7 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC<{
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
   onEscape?: () => void;
 }> = ({ model, onModelChange, onEscape }) => {
   const aui = useAui();
@@ -405,7 +405,7 @@ const ComposerExtrasSlot: FC = () => {
 
 const ComposerAction: FC<{
   model: string | null;
-  onModelChange?: (value: string, contextWindow?: number | null) => void;
+  onModelChange?: (value: string | null, contextWindow?: number | null) => void;
 }> = ({ model, onModelChange }) => {
   const aui = useAui();
   const composerText = useAuiState(state => state.composer.text);

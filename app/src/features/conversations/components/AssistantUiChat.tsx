@@ -79,7 +79,7 @@ export function AssistantUiChat({
   threadGoal: ThreadGoalController;
   model: string | null;
   modelContextWindow?: number | null;
-  onModelChange: (value: string, contextWindow?: number | null) => void;
+  onModelChange: (value: string | null, contextWindow?: number | null) => void;
   composerHeader?: ReactNode;
   inputValue: string;
   onInputValueChange: (value: string) => void;
