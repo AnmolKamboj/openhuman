@@ -9,7 +9,9 @@ import { cn } from './cn';
 const themeSource = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
 
 const themeKeys = (prefix: string): string[] =>
-  Array.from(themeSource.matchAll(new RegExp(`--${prefix}-([\\w-]+):`, 'g')), match => match[1]);
+  Array.from(themeSource.matchAll(new RegExp(`--${prefix}-([\\w-]+):`, 'g')), match => match[1]).filter(
+    key => !key.includes('--')
+  );
 
 describe('cn', () => {
   it('flattens conditionals like clsx', () => {
