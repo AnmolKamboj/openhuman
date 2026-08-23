@@ -224,13 +224,21 @@ impl PromptSection for IdentitySection {
         // and talks to the user. It does NOT need the periodic-task config
         // (HEARTBEAT.md) — subagents handle their own concerns.
         let is_orchestrator = !ctx.visible_tool_names.is_empty();
-        let all_files: &[&str] = &["SOUL.md", "IDENTITY.md", "HEARTBEAT.md"];
-        // Orchestrator skips these from the prompt but we still sync them
-        // to disk so they stay current.
+        // ROLE.md is the user-facing agent's own role brief (#5701) — the
+        // `# Master Agent` / `## Core Responsibilities` preamble that used to
+        // be compiled into `orchestrator/prompt.md`. It is synced for every
+        // agent so the file exists on disk to edit, but injected only for the
+        // orchestrator: a specialist sub-agent has its own role prompt and
+        // must not be told it is the Master Agent.
+        let all_files: &[&str] = &["SOUL.md", "IDENTITY.md", "ROLE.md", "HEARTBEAT.md"];
+        // Synced to disk regardless so builtin updates ship, but kept out of
+        // this agent's prompt.
         let skip_in_prompt: &[&str] = if is_orchestrator {
+            // The orchestrator routes and synthesises; periodic-task config is
+            // a sub-agent concern.
             &["HEARTBEAT.md"]
         } else {
-            &[]
+            &["ROLE.md"]
         };
         for file in all_files {
             // Always sync to disk so builtin updates ship.
