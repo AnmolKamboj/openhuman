@@ -364,7 +364,7 @@ async fn every_entry_point_degrades_rather_than_hanging_when_the_module_is_gone(
     assert!(matches!(
         super::VadSession::open(
             &config,
-            super::VadConfig::from_server_config(
+            super::vad_config_from_server_config(&
                 &crate::openhuman::config::VoiceServerConfig::default()
             )
         )
