@@ -75,6 +75,16 @@ export type AISettings = {
 export type LocalChipSlug = 'lmstudio' | 'ollama' | 'omlx';
 
 export type CustomDialogSource =
+  /**
+   * Managed routing — OpenHuman picks the model. It carries no model id of its
+   * own, which is the whole point: it is the "let the product decide" option,
+   * and it exists in this union so the shared picker can offer a way BACK to
+   * managed. Without it, choosing any specific model was a one-way door.
+   *
+   * Maps to `ProviderRef` `{ kind: 'default' }` for routing, and to a null
+   * model override in the chat composer.
+   */
+  | { kind: 'managed' }
   | { kind: 'cloud'; providerSlug: string }
   | { kind: 'local' }
   | { kind: 'claude-code' };

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { useT } from '../../../../lib/i18n/I18nContext';
+
 import { listProviderModels, type ModelInfo } from '../../../../services/api/aiSettingsApi';
 import Button from '../../../ui/Button';
 import { ModalShell } from '../../../ui/ModalShell';
@@ -14,6 +16,8 @@ import {
 import { ModelEntryField, useModelEntryMode } from './ModelEntryField';
 import { ProviderSwatch } from './ProviderListRow';
 
+type TFn = (key: string, fallback?: string) => string;
+
 export interface ProviderModelSelection {
   source: CustomDialogSource;
   model: string;
@@ -22,6 +26,16 @@ export interface ProviderModelSelection {
 }
 
 interface ProviderModelPickerDialogProps {
+  /**
+   * Offer "Managed by OpenHuman" as the first source. Default `true`: managed
+   * is the product's own routing and must stay reachable from anywhere a model
+   * is chosen, or picking a specific model becomes a one-way door.
+   *
+   * Pass `false` only where managed would contradict the surface itself — the
+   * "Use Your Own Models" card being the one case: choosing managed inside it
+   * would silently flip the routing mode out from under the card.
+   */
+  allowManaged?: boolean;
   cloudProviders: CloudProvider[];
   localModels: OllamaModel[];
   ollamaRunning: boolean;
@@ -34,27 +48,36 @@ interface ProviderModelPickerDialogProps {
 const sourceKey = (source: CustomDialogSource) =>
   source.kind === 'cloud' ? `cloud:${source.providerSlug}` : source.kind;
 
-const sourceLabel = (source: CustomDialogSource, providers: CloudProvider[]) =>
-  source.kind === 'cloud'
-    ? (providers.find(provider => provider.slug === source.providerSlug)?.label ??
-      source.providerSlug)
-    : source.kind === 'local'
-      ? 'Ollama'
-      : 'Claude Code';
+/** Managed needs no model id — the product chooses one per workload. */
+const isManaged = (source: CustomDialogSource | null): boolean => source?.kind === 'managed';
+
+const sourceLabel = (source: CustomDialogSource, providers: CloudProvider[], t: TFn) =>
+  source.kind === 'managed'
+    ? t('settings.ai.managedSourceLabel')
+    : source.kind === 'cloud'
+      ? (providers.find(provider => provider.slug === source.providerSlug)?.label ??
+        source.providerSlug)
+      : source.kind === 'local'
+        ? 'Ollama'
+        : 'Claude Code';
 
 const sourceSlug = (source: CustomDialogSource) =>
-  source.kind === 'cloud'
-    ? source.providerSlug
-    : source.kind === 'local'
-      ? 'ollama'
-      : 'claude-code';
+  source.kind === 'managed'
+    ? 'openhuman'
+    : source.kind === 'cloud'
+      ? source.providerSlug
+      : source.kind === 'local'
+        ? 'ollama'
+        : 'claude-code';
 
-const sourceDetail = (source: CustomDialogSource) =>
-  source.kind === 'cloud'
-    ? 'Cloud provider'
-    : source.kind === 'local'
-      ? 'Local runtime'
-      : 'CLI provider';
+const sourceDetail = (source: CustomDialogSource, t: TFn) =>
+  source.kind === 'managed'
+    ? t('settings.ai.managedSourceDetail')
+    : source.kind === 'cloud'
+      ? 'Cloud provider'
+      : source.kind === 'local'
+        ? 'Local runtime'
+        : 'CLI provider';
 
 /**
  * Shared, searchable provider and model chooser. It owns discovery and
