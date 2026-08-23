@@ -14,7 +14,7 @@ use crate::openhuman::memory::{
     MemoryRetrievalRelation, QueryNamespaceRequest,
 };
 use tinymemory_core::store::GraphRelationRecord;
-use tinymemory_core::store::{MemoryClient, MemoryClientRef, MemoryItemKind, NamespaceMemoryHit};
+use tinymemory_core::store::{MemoryClientRef, MemoryItemKind, NamespaceMemoryHit};
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
