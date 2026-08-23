@@ -760,9 +760,7 @@ describe('AIPanel', () => {
     // Per-workload rows live behind the advanced routing mode.
     fireEvent.click(await screen.findByRole('tab', { name: /^Routing$/i }));
     fireEvent.click(await screen.findByRole('radio', { name: /Advanced/i }));
-    const chooseButtons = await screen.findAllByRole('button', {
-      name: /Choose a model/i,
-    });
+    const chooseButtons = await screen.findAllByRole('button', { name: /Choose a model/i });
     fireEvent.click(chooseButtons[0]);
 
     // Selecting the Azure provider flips the dialog to free text and relabels.
@@ -823,9 +821,7 @@ describe('AIPanel', () => {
     renderWithProviders(<AIPanel />);
     fireEvent.click(await screen.findByRole('tab', { name: /^Routing$/i }));
     fireEvent.click(await screen.findByRole('radio', { name: /Advanced/i }));
-    const chooseButtons = await screen.findAllByRole('button', {
-      name: /Choose a model/i,
-    });
+    const chooseButtons = await screen.findAllByRole('button', { name: /Choose a model/i });
     fireEvent.click(chooseButtons[0]);
 
     await openGlobalModelPicker();
@@ -1385,9 +1381,7 @@ describe('AIPanel', () => {
     vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
 
     renderWithProviders(<AIPanel />);
-    await waitFor(() =>
-      expect(screen.getByTestId('add-provider-open')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId('add-provider-open')).toBeInTheDocument());
     await openCustomProviderEditor();
 
     await waitFor(() => expect(screen.getByText(/Add cloud provider/i)).toBeInTheDocument());
@@ -1666,9 +1660,7 @@ describe('AIPanel', () => {
     );
 
     renderWithProviders(<AIPanel />);
-    await waitFor(() =>
-      expect(screen.getByTestId('add-provider-open')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId('add-provider-open')).toBeInTheDocument());
 
     await openCustomProviderEditor();
     await waitFor(() => expect(screen.getByText(/Add cloud provider/i)).toBeInTheDocument());
@@ -1696,9 +1688,7 @@ describe('AIPanel', () => {
     vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
 
     renderWithProviders(<AIPanel />);
-    await waitFor(() =>
-      expect(screen.getByTestId('add-provider-open')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId('add-provider-open')).toBeInTheDocument());
 
     await openCustomProviderEditor();
     await waitFor(() => expect(screen.getByText(/Add cloud provider/i)).toBeInTheDocument());

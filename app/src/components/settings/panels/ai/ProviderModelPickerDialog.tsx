@@ -241,20 +241,20 @@ export function ProviderModelPickerDialog({
           {source?.kind !== 'cloud' ? (
             <div className="mt-3 max-h-56 space-y-1 overflow-y-auto">
               {source?.kind === 'claude-code' ? (
-              <p className="text-sm text-content-muted">
-                Use a Claude Code model alias or model ID.
-              </p>
+                <p className="text-sm text-content-muted">
+                  Use a Claude Code model alias or model ID.
+                </p>
               ) : (
                 catalog.map(candidate => (
-                <Button
-                  key={candidate.id}
-                  type="button"
-                  variant="tertiary"
-                  size="sm"
-                  onClick={() => setModel(candidate.id)}
-                  className={`w-full justify-start font-mono ${model === candidate.id ? 'bg-surface-muted' : ''}`}>
-                  {candidate.id}
-                </Button>
+                  <Button
+                    key={candidate.id}
+                    type="button"
+                    variant="tertiary"
+                    size="sm"
+                    onClick={() => setModel(candidate.id)}
+                    className={`w-full justify-start font-mono ${model === candidate.id ? 'bg-surface-muted' : ''}`}>
+                    {candidate.id}
+                  </Button>
                 ))
               )}
             </div>
