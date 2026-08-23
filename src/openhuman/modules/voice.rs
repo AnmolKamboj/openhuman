@@ -182,7 +182,12 @@ pub async fn is_hallucinated(
     text: &str,
     mode: HallucinationMode,
 ) -> Result<bool, VoiceCallError> {
-    call(config, methods::IS_HALLUCINATED, (text, hallucination_mode_wire(mode))).await
+    call(
+        config,
+        methods::IS_HALLUCINATED,
+        (text, hallucination_mode_wire(mode)),
+    )
+    .await
 }
 
 /// Downmix, resample to 16 kHz, optionally silence-gate, and frame as WAV.
@@ -402,7 +407,12 @@ pub async fn encode_wav_pcm16(
     use base64::Engine as _;
     let bytes: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
-    let wav: String = call(config, methods::ENCODE_WAV_PCM16, (encoded, sample_rate, channels)).await?;
+    let wav: String = call(
+        config,
+        methods::ENCODE_WAV_PCM16,
+        (encoded, sample_rate, channels),
+    )
+    .await?;
     decode_audio(&wav)
 }
 

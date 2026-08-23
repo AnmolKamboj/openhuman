@@ -65,7 +65,10 @@ fn an_unrecognised_tag_degrades_to_unknown_rather_than_failing() {
 fn hallucination_modes_use_the_wire_spelling() {
     // The module rejects an unknown mode rather than defaulting, so a typo
     // here is a hard failure at runtime rather than a silent mode swap.
-    assert_eq!(hallucination_mode_wire(HallucinationMode::Dictation), "dictation");
+    assert_eq!(
+        hallucination_mode_wire(HallucinationMode::Dictation),
+        "dictation"
+    );
     assert_eq!(
         hallucination_mode_wire(HallucinationMode::Conversation),
         "conversation"
@@ -305,7 +308,9 @@ async fn the_published_module_answers_through_this_client() {
         .expect("VadPush");
     match events.as_slice() {
         [super::IndexedVadEvent {
-            event: super::VadEvent::SpeechEnd { voiced_ms, emit, .. },
+            event: super::VadEvent::SpeechEnd {
+                voiced_ms, emit, ..
+            },
             ..
         }] => {
             assert_eq!(*voiced_ms, 120, "voiced time carries across pushes");

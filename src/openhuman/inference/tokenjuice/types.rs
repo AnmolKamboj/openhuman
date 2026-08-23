@@ -19,7 +19,9 @@ pub use tinyjuice_bus::types::{
     AgentTokenjuiceCompression, CompressOptions, CompressedOutput, CompressorKind, ContentHint,
     ContentKind,
 };
-pub use tinyjuice_bus::wire::{CacheStats, CompactResponse, InstallRequest, RangeUnit, RetrieveRange};
+pub use tinyjuice_bus::wire::{
+    CacheStats, CompactResponse, InstallRequest, RangeUnit, RetrieveRange,
+};
 
 #[cfg(test)]
 mod tests {
