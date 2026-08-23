@@ -144,20 +144,7 @@ function composioSortRank(connection: ComposioConnection | undefined): number {
   }
 }
 
-/**
- * Columns for the OAuth integrations table. The icon lives inside the first
- * cell rather than in a column of its own — it identifies the app alongside its
- * name, and a bare icon column would leave a ragged empty strip for any toolkit
- * whose logo failed to load.
- */
-const COMPOSIO_COLUMNS = <T,>(t: (key: string) => string): DataTableColumn<T>[] => [
-  { id: 'app', header: t('composio.colApp'), className: 'min-w-56' },
-  { id: 'status', header: t('composio.colStatus') },
-  { id: 'accounts', header: t('composio.colAccounts') },
-  { id: 'action', header: t('skills.explorer.colAction'), align: 'right' },
-];
-
-interface ComposioConnectorRowProps {
+interface ComposioConnectorTileProps {
   meta: ComposioToolkitMeta;
   connection: ComposioConnection | undefined;
   /** Number of active connections for this toolkit (for multi-account badge). */
@@ -169,7 +156,7 @@ interface ComposioConnectorRowProps {
   onRetryGlobal: () => void;
 }
 
-function ComposioConnectorRow({
+function ComposioConnectorTile({
   meta,
   connection,
   activeConnectionCount = 0,
@@ -178,7 +165,7 @@ function ComposioConnectorRow({
   testId,
   onOpen,
   onRetryGlobal,
-}: ComposioConnectorRowProps) {
+}: ComposioConnectorTileProps) {
   const { t } = useT();
   const rawState = deriveComposioState(connection);
   const state = hasComposioError ? 'error' : rawState;
@@ -201,6 +188,10 @@ function ComposioConnectorRow({
             : t('skills.connect');
 
   const isConnected = state === 'connected' && !isPreview;
+  const isPending = state === 'pending';
+  const isExpired = state === 'expired';
+  const isError = state === 'error' || hasComposioError;
+
   const handleClick = () => {
     if (hasComposioError) {
       void onRetryGlobal();
@@ -209,46 +200,50 @@ function ComposioConnectorRow({
     onOpen();
   };
 
-  // A rich row, not a tile: the icon stays (it is how you find an app in a long
-  // list — you recognise the logo before you read the name), but the name,
-  // description, status, account count and action each get their own column so
-  // they line up down the page instead of being stacked inside a 5.5rem square.
-  //
-  // Status was carried by the tile's border and background tint; a tinted table
-  // row would fight the hairline grid, so it is a text badge in its own column
-  // and the row keeps the standard hover.
   return (
-    <TableRow
+    <Button
+      type="button"
+      variant="tertiary"
+      size="md"
       data-testid={testId}
-      role="button"
-      tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(event: React.KeyboardEvent<HTMLTableRowElement>) => {
-        if (event.key === 'Enter') handleClick();
-        if (event.key === ' ' || event.key === 'Space') {
-          event.preventDefault();
-          handleClick();
-        }
-      }}
       title={`${meta.name} — ${isPreview ? t('composio.previewTooltip') : meta.description}`}
       aria-label={`${meta.name}, ${statusLabel}. ${ctaLabel}.`}
-      className="group cursor-pointer">
-      <TableCell className="min-w-56">
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center text-content-secondary [&_img]:max-h-7 [&_img]:max-w-7 [&_svg]:h-6 [&_svg]:w-6">
-            {meta.icon}
-          </span>
-          <div className="min-w-0">
-            <span className="block truncate text-[13px] font-medium text-content">{meta.name}</span>
-            <span className="block truncate text-[11px] text-content-muted">
-              {meta.description}
-            </span>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="whitespace-nowrap">
+      className={`group relative h-full w-full flex-col justify-center rounded-xl border p-3 text-center ${
+        isConnected
+          ? 'border-sage-300 bg-sage-50/80 shadow-[0_0_0_1px_rgba(34,197,94,0.12)] hover:bg-sage-50 dark:border-sage-500/30 dark:bg-sage-500/10 dark:hover:bg-sage-500/15'
+          : isPreview
+            ? 'border-amber-200 bg-amber-50/60 shadow-[0_0_0_1px_rgba(245,158,11,0.12)] hover:bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:hover:bg-amber-500/15'
+            : isPending
+              ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10 dark:hover:bg-amber-500/15'
+              : isExpired || isError
+                ? 'border-coral-200 bg-coral-50/30 hover:bg-coral-50/50 dark:border-coral-500/30 dark:bg-coral-500/10 dark:hover:bg-coral-500/15'
+                : 'border-line bg-surface hover:bg-surface-hover'
+      }`}>
+      {isPreview && (
         <span
-          className={`text-xs font-medium ${
+          data-testid={`composio-preview-badge-${meta.slug}`}
+          className="absolute right-1.5 top-1.5 max-w-18 truncate rounded-full border border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
+          title={t('composio.previewTooltip')}>
+          {t('composio.previewBadge')}
+        </span>
+      )}
+      {!isPreview && activeConnectionCount > 1 && (
+        <span
+          className="absolute right-1.5 top-1.5 rounded-full border border-sage-200 bg-sage-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-sage-800 dark:border-sage-500/40 dark:bg-sage-500/15 dark:text-sage-200"
+          title={t('composio.connect.connectedAccounts')}>
+          {activeConnectionCount}
+        </span>
+      )}
+      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center text-content-secondary [&_img]:max-h-10 [&_img]:max-w-10 [&_svg]:h-8 [&_svg]:w-8">
+        {meta.icon}
+      </div>
+      <div className="flex w-full min-w-0 flex-col items-center justify-start gap-0.5">
+        <span className="line-clamp-2 text-[11px] font-semibold leading-tight text-content">
+          {meta.name}
+        </span>
+        <span
+          className={`line-clamp-1 text-[10px] font-medium ${
             hasComposioError
               ? 'text-amber-700 dark:text-amber-300'
               : isPreview
@@ -257,38 +252,8 @@ function ComposioConnectorRow({
           }`}>
           {statusLabel}
         </span>
-      </TableCell>
-      <TableCell className="whitespace-nowrap">
-        {isPreview ? (
-          <span
-            data-testid={`composio-preview-badge-${meta.slug}`}
-            className="inline-flex max-w-24 truncate rounded-full border border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
-            title={t('composio.previewTooltip')}>
-            {t('composio.previewBadge')}
-          </span>
-        ) : activeConnectionCount > 1 ? (
-          <span
-            className="inline-flex rounded-full border border-sage-200 bg-sage-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-sage-800 dark:border-sage-500/40 dark:bg-sage-500/15 dark:text-sage-200"
-            title={t('composio.connect.connectedAccounts')}>
-            {activeConnectionCount}
-          </span>
-        ) : null}
-      </TableCell>
-      <TableCell className="w-px whitespace-nowrap text-right">
-        {/* The whole row is clickable, so this is the affordance rather than the
-            only way in — hence `stopPropagation`, not a second handler. */}
-        <Button
-          type="button"
-          variant={isConnected ? 'tertiary' : 'secondary'}
-          size="xs"
-          onClick={event => {
-            event.stopPropagation();
-            handleClick();
-          }}>
-          {ctaLabel}
-        </Button>
-      </TableCell>
-    </TableRow>
+      </div>
+    </Button>
   );
 }
 
