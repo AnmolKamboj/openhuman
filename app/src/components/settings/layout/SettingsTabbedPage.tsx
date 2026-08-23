@@ -74,11 +74,16 @@ export default function SettingsTabbedPage<T extends string>({
           {headerAction != null && <div className="shrink-0">{headerAction}</div>}
         </header>
         {headerExtra}
-        {tabs && tabs.length > 0 && value != null && onChange && tabsAriaLabel ? (
+        {/* Deliberately NOT gated on `tabsAriaLabel`. It used to be, which meant
+            a panel that forgot the prop silently rendered no tab row at all —
+            a missing accessible name should degrade the label, not delete the
+            navigation. All five live panels do pass one; the fallback covers
+            the sixth. */}
+        {tabs && tabs.length > 0 && value != null && onChange ? (
           <div>
             <ChipTabs
               className="flex flex-wrap gap-1.5"
-              ariaLabel={tabsAriaLabel}
+              ariaLabel={tabsAriaLabel ?? 'Tabs'}
               testIdPrefix={tabsTestIdPrefix}
               items={tabs}
               value={value}
