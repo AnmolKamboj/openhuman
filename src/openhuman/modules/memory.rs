@@ -48,20 +48,31 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.0.1";
+const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
 /// Deliberately not `Capabilities::all()`. `Capability::ALL` is what the
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
-/// an older release and serves fewer families. Read from `Capability::ALL` in
-/// `api/src/capabilities.rs` at tag `v1.0.1` — thirteen entries. The five the
-/// contract has since added (`People`, `Chunks`, `Retrieval`, `Profile`,
-/// `Episodic`) have no bus member in that artifact, so calling them returns
-/// `tinybus::Error::UnknownMethod` (#5598).
+/// a specific release and may serve fewer families.
+///
+/// Read at tag `v1.2.0`, which is where four of the five families that v1.0.1
+/// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
+/// members there, so the under-claim that made them unreachable is over.
+///
+/// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
+/// artifact gap.** The v1.2.0 module does declare the episodic methods
+/// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
+/// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
+/// trait default and returns `None`. Advertising a family this host cannot
+/// reach is the same over-claim in a different coat: callers would be told the
+/// capability exists and then get "family unsupported" from the accessor.
+/// Add `Episodic` here in the same change that implements `as_episodic`, not
+/// before.
 ///
 /// **Widen this only together with the `version` bump in
-/// [`super::registry`].**
+/// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
+/// fails if the two drift.
 const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Core,
     Capability::Recall,
@@ -76,6 +87,13 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Sources,
     Capability::Maintenance,
     Capability::Portability,
+    // Arrived in v1.2.0. Verified against the module's declared `methods` list
+    // at that tag rather than against the contract crate, which is always ahead
+    // of whatever is pinned.
+    Capability::People,
+    Capability::Chunks,
+    Capability::Retrieval,
+    Capability::Profile,
 ];
 
 /// Escape hatch for a locally-built module.
