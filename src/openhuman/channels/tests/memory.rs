@@ -7,11 +7,11 @@ use super::super::{traits, Channel};
 use super::common::{HistoryCaptureModel, RecordingChannel};
 use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::inference::provider;
-use tinymemory_api::provider::MemoryCore as _;
 use crate::openhuman::memory::{Memory, MemoryCategory};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
+use tinymemory_api::provider::MemoryCore as _;
 use tinymemory_core::store::UnifiedMemory;
 
 fn conversation_memory_key_uses_message_id() {

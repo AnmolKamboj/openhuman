@@ -477,11 +477,9 @@ mod tests {
 
     #[test]
     fn facet_to_json_includes_cue_families_and_evidence_refs() {
-        use tinymemory_api::host::EvidenceRef;
-        use tinymemory_api::provider::{
-            FacetState, FacetType, ProfileFacet, UserState,
-        };
         use std::collections::HashMap;
+        use tinymemory_api::host::EvidenceRef;
+        use tinymemory_api::provider::{FacetState, FacetType, ProfileFacet, UserState};
 
         let mut cue_families = HashMap::new();
         cue_families.insert("explicit".to_string(), 3u32);

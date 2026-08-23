@@ -62,9 +62,7 @@ const SUBCOMMAND_CONTROLLER: &[(&str, &str)] = &[
 
 /// The capability `openhuman memory <sub>` needs, if any. Resolved from the
 /// controller registry, never from a local table.
-fn required_capability(
-    subcommand: &str,
-) -> Option<tinymemory_api::capabilities::Capability> {
+fn required_capability(subcommand: &str) -> Option<tinymemory_api::capabilities::Capability> {
     let function = SUBCOMMAND_CONTROLLER
         .iter()
         .find(|(sub, _)| *sub == subcommand)

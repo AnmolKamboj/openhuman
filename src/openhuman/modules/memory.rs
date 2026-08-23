@@ -140,6 +140,7 @@ fn capabilities_for(assume_full: bool) -> Capabilities {
 fn artifact_serves(capability: Capability) -> bool {
     assume_full_capabilities() || ARTIFACT_CAPABILITIES.contains(&capability)
 }
+use async_trait::async_trait;
 use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
@@ -166,7 +167,6 @@ use tinymemory_api::types::{
     StoredMemoryDocument,
 };
 use tinymemory_api::wire;
-use async_trait::async_trait;
 
 use super::{host, ops, registry};
 use crate::openhuman::config::Config;

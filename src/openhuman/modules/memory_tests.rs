@@ -196,10 +196,7 @@ async fn a_disabled_host_reports_down_rather_than_erroring() {
     let provider = ModuleMemoryProvider::new(Arc::new(config));
     let health = provider.health().await;
     assert!(
-        matches!(
-            health,
-            tinymemory_api::health::MemoryHealth::Down { .. }
-        ),
+        matches!(health, tinymemory_api::health::MemoryHealth::Down { .. }),
         "a disabled module host must report Down, got {health:?}"
     );
 }
@@ -211,8 +208,7 @@ async fn a_call_against_a_disabled_host_fails_instead_of_hanging() {
 
     let provider = ModuleMemoryProvider::new(Arc::new(config));
     let outcome =
-        tinymemory_api::provider::mandatory::MemoryCore::get(&provider, "ns", "key")
-            .await;
+        tinymemory_api::provider::mandatory::MemoryCore::get(&provider, "ns", "key").await;
     assert!(outcome.is_err(), "expected an error, got {outcome:?}");
 }
 

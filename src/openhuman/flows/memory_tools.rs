@@ -32,13 +32,13 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
-use tinymemory_api::provider::{MemoryCore, MemoryRecall};
-use tinymemory_api::recall::OwnedRecallOpts;
-use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinymemory_api::provider::{MemoryCore, MemoryRecall};
+use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 
 /// Returns the flow id the *run itself* is scoped under, when the current
 /// agent turn is executing inside a saved-flow run

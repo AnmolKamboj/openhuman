@@ -373,8 +373,7 @@ impl CoreContext {
     /// there is no context at all. This is the direct analogue of
     /// `core::all::group_allowed` and is the function a future capability
     /// registration filter calls.
-    pub fn current_memory_capabilities() -> tinymemory_api::capabilities::Capabilities
-    {
+    pub fn current_memory_capabilities() -> tinymemory_api::capabilities::Capabilities {
         Self::current()
             .map(|ctx| ctx.memory_capabilities())
             .unwrap_or_else(crate::openhuman::memory::binding::unbound_default_capabilities)

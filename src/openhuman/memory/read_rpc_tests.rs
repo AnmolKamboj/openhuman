@@ -1010,8 +1010,8 @@ async fn vault_health_check_reports_writable_and_obsidian_registered_when_ready(
 /// seal jobs. This pins that a wipe leaves the gate empty so re-sync works.
 #[tokio::test]
 async fn wipe_all_clears_ingest_gate() {
-    use tinymemory_core::store::chunks::store as chunk_store;
     use tinymemory_api::chunks::SourceKind;
+    use tinymemory_core::store::chunks::store as chunk_store;
 
     let (_tmp, cfg) = test_config();
     let gate_key = "notion:conn-1:page-abc@1700000000000";

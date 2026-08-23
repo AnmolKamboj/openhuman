@@ -258,7 +258,10 @@ pub(crate) async fn run_chat_task(
     let turn = Box::pin(agent.run_single(message));
     let result = match crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
         thread_id.to_string(),
-        crate::openhuman::memory::source_scope::with_source_scope(profile.memory_sources.clone(), turn),
+        crate::openhuman::memory::source_scope::with_source_scope(
+            profile.memory_sources.clone(),
+            turn,
+        ),
     )
     .await
     {

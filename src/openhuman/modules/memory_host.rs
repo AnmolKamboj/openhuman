@@ -2,10 +2,10 @@
 
 use crate::core::bus::BUS;
 use crate::openhuman::config::Config;
-use tinymemory_api::host::{MemoryEvent, SpacyResponse};
 use std::sync::Arc;
 use tinyagents::harness::model::{ModelRequest, ModelResponse};
 use tinybus::ObjectPath;
+use tinymemory_api::host::{MemoryEvent, SpacyResponse};
 
 const EMBEDDING_NAME: &str = "ai.tinyhumans.tinymemory.EmbeddingHost";
 const EMBEDDING_PATH: &str = "/ai/tinyhumans/tinymemory/EmbeddingHost";

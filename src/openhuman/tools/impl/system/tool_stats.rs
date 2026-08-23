@@ -1,11 +1,11 @@
 //! Tool that lets the agent query its own tool effectiveness data.
 
 use crate::openhuman::agent::learning::tool_tracker::ToolStats;
-use tinymemory_api::provider::MemoryCore as _;
-use tinymemory_api::types::MemoryCategory;
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
+use tinymemory_api::provider::MemoryCore as _;
+use tinymemory_api::types::MemoryCategory;
 
 /// Holds no memory handle: it resolves the guarded driver per call, so the
 /// tool registry no longer has to be handed an engine just to build this.

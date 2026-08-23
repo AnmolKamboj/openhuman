@@ -249,8 +249,8 @@ pub async fn drill_down_rpc(
         req.limit,
         current_source_scope(),
     )
-        .await
-        .map_err(|e| format!("drill_down: {e}"))?;
+    .await
+    .map_err(|e| format!("drill_down: {e}"))?;
     let n = hits.len();
     // node_id can embed source scope (e.g. "chat:slack:#eng:0") which may
     // carry workspace hints — log only the structural prefix.
@@ -319,8 +319,8 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use tempfile::TempDir;
-    use tinymemory_core::store::chunks::store::upsert_chunks;
     use tinymemory_api::chunks::{chunk_id, Chunk, Metadata, SourceRef};
+    use tinymemory_core::store::chunks::store::upsert_chunks;
     use tinymemory_core::store::content as content_store;
 
     fn stage_test_chunks(cfg: &Config, chunks: &[Chunk]) {

@@ -28,13 +28,13 @@ use crate::openhuman::memory::tree::score::store::lookup_entity;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_api::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 use tinymemory_core::ingest_pipeline::ingest_chat;
 use tinymemory_core::queue::{self as memory_queue, count_total, drain_until_idle, JobStatus};
 use tinymemory_core::store::chunks::store::{
     count_chunks, count_chunks_by_lifecycle_status, CHUNK_STATUS_BUFFERED,
 };
 use tinymemory_core::store::trees::{store as tree_store, types::TreeKind};
-use tinymemory_api::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 
 // ── helpers ─────────────────────────────────────────────────────────────
 

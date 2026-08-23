@@ -404,9 +404,7 @@ fn capability_gated_function_reports_a_config_fact_not_a_typo() {
 fn capability_gated_rpc_method_reports_its_family_unfiltered() {
     assert_eq!(
         capability_for_rpc_method("openhuman.memory_tree_wipe_all"),
-        Some(Some(
-            tinymemory_api::capabilities::Capability::Tree
-        ))
+        Some(Some(tinymemory_api::capabilities::Capability::Tree))
     );
 }
 

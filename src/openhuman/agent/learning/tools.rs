@@ -23,8 +23,8 @@ use serde_json::json;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::agent::learning::stability_detector::StabilityDetector;
 use crate::openhuman::config::rpc as config_rpc;
-use tinymemory_api::provider::{FacetState, ProfileFacet, UserState};
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinymemory_api::provider::{FacetState, ProfileFacet, UserState};
 
 /// Acquire the profile facet cache, mirroring `learning::schemas::get_cache`.
 ///

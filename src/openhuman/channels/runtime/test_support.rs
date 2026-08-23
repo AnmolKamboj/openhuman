@@ -17,7 +17,6 @@ use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig, ReliabilityConfig};
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
-use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -26,6 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 
 #[derive(Debug, Clone)]
 pub struct DispatchHarnessOptions {
@@ -227,8 +227,7 @@ impl tinymemory_api::provider::MemoryCore for HarnessMemory {
         &self,
         _namespace: &str,
         _key: &str,
-    ) -> std::result::Result<Option<MemoryEntry>, tinymemory_api::error::MemoryError>
-    {
+    ) -> std::result::Result<Option<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(None)
     }
 
@@ -245,8 +244,7 @@ impl tinymemory_api::provider::MemoryCore for HarnessMemory {
         _namespace: Option<&str>,
         _category: Option<&MemoryCategory>,
         _session_id: Option<&str>,
-    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError>
-    {
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(Vec::new())
     }
 
@@ -268,8 +266,7 @@ impl tinymemory_api::provider::MemoryRecall for HarnessMemory {
         _limit: usize,
         _opts: &tinymemory_api::recall::OwnedRecallOpts,
         _scope: Option<&tinymemory_api::provider::types::SourceScope>,
-    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError>
-    {
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(self.entries.clone())
     }
 }
@@ -284,9 +281,9 @@ impl tinymemory_api::provider::MemoryPortability for HarnessMemory {
         tinymemory_api::provider::types::ExportPage,
         tinymemory_api::error::MemoryError,
     > {
-        Err(tinymemory_api::error::MemoryError::Other(
-            anyhow::anyhow!("harness memory does not export"),
-        ))
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not export"
+        )))
     }
 
     async fn import_records(
@@ -296,9 +293,9 @@ impl tinymemory_api::provider::MemoryPortability for HarnessMemory {
         tinymemory_api::provider::types::ImportOutcome,
         tinymemory_api::error::MemoryError,
     > {
-        Err(tinymemory_api::error::MemoryError::Other(
-            anyhow::anyhow!("harness memory does not import"),
-        ))
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not import"
+        )))
     }
 }
 

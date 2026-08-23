@@ -2724,10 +2724,7 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
 
 /// Driver-backed memory tools and the capability each requires.
-const MEMORY_TOOL_CAPABILITIES: &[(
-    &str,
-    tinymemory_api::capabilities::Capability,
-)] = {
+const MEMORY_TOOL_CAPABILITIES: &[(&str, tinymemory_api::capabilities::Capability)] = {
     use tinymemory_api::capabilities::Capability as C;
     &[
         ("memory_store", C::Core),

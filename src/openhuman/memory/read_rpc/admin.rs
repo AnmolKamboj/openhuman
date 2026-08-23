@@ -3,10 +3,10 @@ use rusqlite::params;
 
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
+use tinymemory_api::chunks::SourceKind;
 use tinymemory_core::store::chunks::store::{
     delete_chunks_by_source, delete_orphaned_source_tree, with_connection,
 };
-use tinymemory_api::chunks::SourceKind;
 
 use super::types::{
     DeleteSourceResponse, FlushNowResponse, FlushSourceTreeResponse, ResetTreeResponse,

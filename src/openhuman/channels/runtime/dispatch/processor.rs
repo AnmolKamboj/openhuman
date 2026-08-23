@@ -26,11 +26,11 @@ use crate::openhuman::channels::routes::{
 use crate::openhuman::channels::traits;
 use crate::openhuman::channels::{ChannelSendExt, SendMessage};
 use crate::openhuman::inference::provider;
-use tinymemory_api::provider::MemoryCore as _;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tinybus::NativeRequestError;
+use tinymemory_api::provider::MemoryCore as _;
 use tokio_util::sync::CancellationToken;
 
 use super::helpers::{

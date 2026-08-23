@@ -41,14 +41,14 @@ use crate::openhuman::agent::harness::memory_context_safety::{
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::{cross_flow_recall, flow_namespace};
-use tinymemory_api::provider::{MemoryCore, MemoryRecall};
-use tinymemory_api::recall::OwnedRecallOpts;
-use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 use crate::openhuman::memory::tools::flavour::{lookup_flavour, FlavourLookup};
 use crate::openhuman::security::approval::{
     redact_args, summarize_action, ApprovalGate, ExecutionOutcome, GateOutcome,
 };
 use crate::openhuman::security::{CommandClass, SecurityPolicy};
+use tinymemory_api::provider::{MemoryCore, MemoryRecall};
+use tinymemory_api::recall::OwnedRecallOpts;
+use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 
 use super::caps::{enforce_node_tier_gate, gate_call_for_tier};
 

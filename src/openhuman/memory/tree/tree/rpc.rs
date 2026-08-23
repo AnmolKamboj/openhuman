@@ -16,12 +16,12 @@ use crate::rpc::RpcOutcome;
 use tinycortex::memory::ingest::canonicalize::{
     chat::ChatBatch, document::DocumentInput, email::EmailThread,
 };
+use tinymemory_api::chunks::{Chunk, SourceKind};
 use tinymemory_core::ingest_pipeline::{
     ingest_chat as do_ingest_chat, ingest_document as do_ingest_document,
     ingest_email as do_ingest_email, IngestResult,
 };
 use tinymemory_core::store::chunks::store::{self as chunk_store, ListChunksQuery};
-use tinymemory_api::chunks::{Chunk, SourceKind};
 
 /// Unified ingest request. The `payload` shape is adapter-specific and is
 /// validated inside the dispatch based on `source_kind`.
@@ -1105,8 +1105,8 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
     use tinycortex::memory::ingest::canonicalize::document::DocumentInput;
-    use tinymemory_core::queue as jobs;
     use tinymemory_api::chunks::SourceKind;
+    use tinymemory_core::queue as jobs;
 
     fn test_config() -> (TempDir, Config) {
         let tmp = TempDir::new().unwrap();

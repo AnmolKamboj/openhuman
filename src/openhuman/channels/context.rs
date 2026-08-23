@@ -175,9 +175,9 @@ pub(crate) async fn build_memory_context(
 mod tests {
     use super::*;
     use crate::openhuman::channels::traits;
-    use tinymemory_api::types::{MemoryCategory, MemoryEntry};
     use crate::openhuman::tools::{Tool, ToolResult};
     use async_trait::async_trait;
+    use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 
     struct DummyTool;
 

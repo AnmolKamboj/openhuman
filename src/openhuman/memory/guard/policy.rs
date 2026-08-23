@@ -42,11 +42,11 @@ use crate::openhuman::memory::api::types::MemoryTaint;
 
 use crate::core::subsystem::DriverClass;
 use crate::openhuman::config::schema::MemoryHooksConfig;
+use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::security::egress::emit_external_transfer;
 use crate::openhuman::security::egress::types::{DataKind, EgressDescriptor, EgressReason};
 use crate::openhuman::security::live_policy;
 use crate::openhuman::security::policy::ToolOperation;
-use crate::openhuman::memory::source_scope::current_source_scope;
 
 /// Prefix on every guard-authored error message, so a refusal that surfaces to
 /// a caller is attributable to the guard rather than to the driver underneath.
