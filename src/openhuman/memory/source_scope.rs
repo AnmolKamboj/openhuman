@@ -115,7 +115,7 @@ pub fn scope_allowed(scope: &str) -> bool {
 /// and silently blank out recall.
 #[must_use]
 pub fn as_bus_scope() -> Option<SourceScope> {
-    current_source_scope().map(|set| SourceScope::new(set))
+    current_source_scope().map(SourceScope::new)
 }
 
 /// The tag every memory-source–ingested chunk carries (set by
