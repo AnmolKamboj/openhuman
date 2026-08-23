@@ -260,23 +260,36 @@ fn the_advertised_set_does_not_over_claim_the_artifact() {
     // here would make this test fail for anyone running with the documented
     // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override.
     let advertised = super::capabilities_for(false);
+
+    // Four of the five families v1.0.1 lacked arrived in the v1.2.0 artifact,
+    // so the under-claim they used to represent is over — assert they ARE
+    // advertised, or a future re-pin that silently narrows the list goes
+    // unnoticed.
     for capability in [
         Capability::People,
         Capability::Chunks,
         Capability::Retrieval,
         Capability::Profile,
-        // The fifth family the contract added after v1.0.1. Without it the
-        // explicit check below passes if only `Episodic` is added by mistake.
-        Capability::Episodic,
     ] {
         assert!(
-            !advertised.contains(capability),
-            "{capability:?} is advertised but the pinned {} artifact does not serve it — \
-             this is exactly the over-claim that made memory_tree, memory_store_raw_chunks \
-             and memory_diff answer UnknownMethod (#5598)",
+            advertised.contains(capability),
+            "{capability:?} has a bus member in the pinned {} artifact but is not advertised — \
+             the host is under-claiming and hiding a family it can reach",
             super::ARTIFACT_CAPABILITIES_PIN,
         );
     }
+
+    // `Episodic` is the one that must still be absent, and for a different
+    // reason than before: the artifact DOES serve it, but `ModuleMemoryProvider`
+    // has no `as_episodic`, so it inherits the trait default and returns `None`.
+    // Advertising a family this host cannot reach is the #5598 over-claim in a
+    // different coat. Flip this to the loop above in the same change that
+    // implements the accessor.
+    assert!(
+        !advertised.contains(Capability::Episodic),
+        "Episodic is advertised but ModuleMemoryProvider has no `as_episodic`, so the accessor \
+         returns None — implement it before widening ARTIFACT_CAPABILITIES",
+    );
 
     assert_ne!(
         advertised,
