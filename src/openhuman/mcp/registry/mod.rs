@@ -73,6 +73,7 @@ pub use types::{ConnStatus, InstalledServer, McpTool};
 /// completes should see.
 #[cfg(feature = "mcp")]
 pub mod connections {
+    use crate::openhuman::config::Config;
     pub use tinymcp_bus::ConnectedServerOverview;
 
     use crate::openhuman::mcp::host;
