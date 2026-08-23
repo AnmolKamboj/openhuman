@@ -146,9 +146,14 @@ mod tests {
     use tempfile::TempDir;
     use tinymemory_core::store::UnifiedMemory;
 
-    // The read-back below goes through the engine handle directly, so its
-    // entries carry the *engine's* category type, not the contract's.
-    use tinymemory_core::MemoryCategory as EngineMemoryCategory;
+    // The read-back below goes through the engine handle directly, but the
+    // category it hands back is the CONTRACT's type: `tinymemory-core` merely
+    // re-exports `tinymemory_api::traits::MemoryCategory` (issue #18 §A1 moved
+    // the memory value types onto the contract precisely so a second engine
+    // could be bound without translating). Naming the contract here rather
+    // than the engine keeps that true at the import as well as the type, and
+    // is one fewer reference holding the crate in the build (#5560).
+    use tinymemory_api::types::MemoryCategory as EngineMemoryCategory;
 
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy::default())
