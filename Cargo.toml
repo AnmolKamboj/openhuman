@@ -496,7 +496,11 @@ unicode-width = { version = "0.2", optional = true }
 # published to crates.io, so there is no `[patch.crates-io]` entry for it.
 # After cloning: `git submodule update --init vendor/tinydocs`.
 #
-# Optional: exclusive to the default-ON `documents` feature.
+# Optional: exclusive to the `documents` feature, which is **default-OFF,
+# product-ON** — `[features] default` is the contributor set and this is not in
+# it; `scripts/ci/product-features.txt` is what the shipped desktop app has, and
+# it is. The comment here said "default-ON", which was true before #4919 split
+# the two sets and has been wrong since.
 tinydocs-bus = { path = "vendor/tinydocs/crates/tinydocs-bus", optional = true }
 
 # TinyVoice — the voice wire contract, and nothing else.
@@ -510,7 +514,8 @@ tinydocs-bus = { path = "vendor/tinydocs/crates/tinydocs-bus", optional = true }
 #
 # After cloning: `git submodule update --init vendor/tinyvoice`.
 #
-# Optional: exclusive to the default-ON `voice` feature.
+# Optional: exclusive to the `voice` feature — default-OFF, product-ON, the
+# same split as `documents` above.
 tinyvoice-bus = { path = "vendor/tinyvoice/crates/tinyvoice-bus", optional = true }
 
 # TinyJuice — the compression wire contract, and nothing else.
