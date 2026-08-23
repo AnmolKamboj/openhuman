@@ -7,7 +7,7 @@
 //! themselves are covered where they can be honest: `tinywallet`'s own loader
 //! E2E, which drives a real module over a real broker.
 
-use tinywallet::wire::{Scheme, Signature, SigningPayload, TransactionSpec};
+use tinywallet::wire::TransactionSpec;
 use tinywallet::Chain;
 
 use super::{classify, WalletCallError};
