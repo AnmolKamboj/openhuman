@@ -4185,6 +4185,7 @@ dependencies = [
  "tinyflows",
  "tinyhosts",
  "tinyhumans-sdk",
+ "tinyjuice-bus",
  "tinymcp",
  "tinymcp-bus",
  "tinymemory",
@@ -6510,6 +6511,13 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "tinyjuice-bus"
+version = "0.2.2"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -288,7 +288,13 @@ async fn the_published_module_answers_through_this_client() {
         .await
         .expect("VadPush");
     assert!(
-        matches!(events.as_slice(), [super::VadEvent::SpeechStart { .. }]),
+        matches!(
+            events.as_slice(),
+            [super::IndexedVadEvent {
+                event: super::VadEvent::SpeechStart,
+                ..
+            }]
+        ),
         "expected a single speech start, got {events:?}"
     );
     assert!(session.is_speaking(&config).await.expect("is_speaking"));
