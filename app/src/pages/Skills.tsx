@@ -1286,44 +1286,66 @@ export default function Skills() {
                             // KNOWN_COMPOSIO_TOOLKITS list is only used as a post-fetch
                             // fallback (see composioCatalogToolkits), never during the
                             // in-flight loading window (#3933).
-                            <DataTable<(typeof composioSortedEntries)[number]>
-                              columns={COMPOSIO_COLUMNS<(typeof composioSortedEntries)[number]>(t)}
-                              rows={composioSortedEntries}
-                              rowKey={entry => entry.meta.slug}
-                              ariaLabel={t('skills.integrationsSubtitle')}
-                              loading={composioLoading && composioSortedEntries.length === 0}
-                              loadingTestId="composio-integrations-loading"
-                              loadingLabel={t('skills.loadingIntegrations')}
-                              empty={
-                                <p className="px-1 py-4 text-center text-xs text-content-faint">
-                                  {t('skills.noResults')}
-                                </p>
-                              }
-                              renderRow={({ meta, connection }) => {
-                                const allConns = composioConnectionsByToolkit?.get(meta.slug);
-                                const activeCount =
-                                  allConns?.filter(c => deriveComposioState(c) === 'connected')
-                                    .length ?? 0;
-                                return (
-                                  <ComposioConnectorRow
-                                    key={meta.slug}
-                                    meta={meta}
-                                    connection={connection}
-                                    activeConnectionCount={activeCount}
-                                    hasComposioError={Boolean(composioError)}
-                                    agentUnsupported={
-                                      agentReadinessKnown &&
-                                      deriveComposioState(connection) === 'connected' &&
-                                      !agentReadyComposioToolkits.has(meta.slug)
-                                    }
-                                    testId={`skill-row-composio-${meta.slug}`}
-                                    onOpen={() => setComposioModalToolkit(meta)}
-                                    onRetryGlobal={() => void refreshComposio()}
+                            (composioLoading && composioSortedEntries.length === 0 ? (
+                              <div
+                                className="grid gap-2 sm:gap-3"
+                                data-testid="composio-integrations-loading"
+                                role="status"
+                                aria-label={t('skills.loadingIntegrations')}
+                                aria-busy="true"
+                                style={{
+                                  gridTemplateColumns: 'repeat(auto-fill, minmax(5.5rem, 1fr))',
+                                  gridAutoRows: '6.5rem',
+                                }}>
+                                {Array.from({ length: 12 }).map((_, i) => (
+                                  <div
+                                    key={i}
+                                    data-testid="composio-skeleton-tile"
+                                    aria-hidden="true"
+                                    className="animate-pulse rounded-xl border border-line bg-surface-subtle"
                                   />
-                                );
-                              }}
-                            />
-                          )}
+                                ))}
+                              </div>
+                            ) : composioSortedEntries.length > 0 ? (
+                              <div
+                                className="grid gap-2 sm:gap-3"
+                                style={{
+                                  gridTemplateColumns: 'repeat(auto-fill, minmax(5.5rem, 1fr))',
+                                  gridAutoRows: '6.5rem',
+                                }}>
+                                {composioSortedEntries.map(({ meta, connection }) => {
+                                  const allConns = composioConnectionsByToolkit?.get(meta.slug);
+                                  const activeCount =
+                                    allConns?.filter(c => deriveComposioState(c) === 'connected')
+                                      .length ?? 0;
+                                  return (
+                                    <div
+                                      key={meta.slug}
+                                      data-testid={`skill-row-composio-${meta.slug}`}
+                                      className="overflow-hidden">
+                                      <ComposioConnectorTile
+                                        meta={meta}
+                                        connection={connection}
+                                        activeConnectionCount={activeCount}
+                                        hasComposioError={Boolean(composioError)}
+                                        agentUnsupported={
+                                          agentReadinessKnown &&
+                                          deriveComposioState(connection) === 'connected' &&
+                                          !agentReadyComposioToolkits.has(meta.slug)
+                                        }
+                                        testId={`skill-install-composio-${meta.slug}`}
+                                        onOpen={() => setComposioModalToolkit(meta)}
+                                        onRetryGlobal={() => void refreshComposio()}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="px-1 py-4 text-center text-xs text-content-faint">
+                                {t('skills.noResults')}
+                              </p>
+                            ))}
                         </div>
                       </Card>
                     )}
