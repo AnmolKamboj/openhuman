@@ -21,7 +21,7 @@ use std::sync::OnceLock;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Render the `## Project Context` identity block
-/// (`SOUL.md` / `IDENTITY.md` / optionally `HEARTBEAT.md`).
+/// (`SOUL.md` / `IDENTITY.md` / `ROLE.md` for the user-facing agent).
 pub fn render_identity(ctx: &PromptContext<'_>) -> Result<String> {
     IdentitySection.build(ctx)
 }
@@ -530,7 +530,7 @@ pub fn sync_workspace_file(workspace_dir: &Path, filename: &str) {
     // workspace`, or a temp dir under test). A relative one means the caller
     // never had a workspace to begin with — overwhelmingly `Path::new(".")`
     // from the ~20 prompt-test fixtures — and joining onto it seeds SOUL.md,
-    // IDENTITY.md, ROLE.md, HEARTBEAT.md and MEMORY_GOALS.md plus their
+    // IDENTITY.md and ROLE.md plus their
     // `.builtin-hash` siblings into the process's current directory. That is
     // the repo root when the suite runs, which is how they briefly ended up
     // committed (#5701).
@@ -609,7 +609,7 @@ pub fn sync_workspace_file(workspace_dir: &Path, filename: &str) {
 /// Inject `filename` from `workspace_dir` into `prompt`, truncated to
 /// [`BOOTSTRAP_MAX_CHARS`]. Thin wrapper around
 /// [`inject_workspace_file_capped`] for bootstrap-class files
-/// (`SOUL.md`, `IDENTITY.md`, `HEARTBEAT.md`).
+/// (`SOUL.md`, `IDENTITY.md`, `ROLE.md`).
 pub fn inject_workspace_file(prompt: &mut String, workspace_dir: &Path, filename: &str) {
     inject_workspace_file_capped(prompt, workspace_dir, filename, BOOTSTRAP_MAX_CHARS);
 }

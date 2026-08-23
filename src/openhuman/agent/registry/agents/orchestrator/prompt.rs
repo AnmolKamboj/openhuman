@@ -491,7 +491,7 @@ mod tests {
     /// Throwaway workspace for prompt tests.
     ///
     /// `build` renders the identity block, and that path *writes* — it seeds
-    /// SOUL.md / IDENTITY.md / ROLE.md / HEARTBEAT.md / MEMORY_GOALS.md into
+    /// SOUL.md / IDENTITY.md / ROLE.md into
     /// whatever directory it is handed. This used to be `Path::new(".")`,
     /// which was harmless only while nothing in this builder touched the
     /// workspace; once it did, every run of these tests dropped five files
