@@ -1,0 +1,411 @@
+/**
+ * Local AI / Ollama-facing commands routed through the core.
+ *
+ * The renderer never talks to Ollama directly. It always calls the core, and
+ * the core decides whether to route a request to the configured inference
+ * backend (for example an external Ollama endpoint).
+ */
+import { callCoreRpc } from '../../services/coreRpcClient';
+import { CommandResponse, isTauri, tauriErrorMessage } from './common';
+
+export interface LocalAiStatus {
+  state: string;
+  model_id: string;
+  chat_model_id: string;
+  vision_model_id: string;
+  embedding_model_id: string;
+  stt_model_id: string;
+  tts_voice_id: string;
+  quantization: string;
+  vision_state: string;
+  vision_mode: string;
+  embedding_state: string;
+  stt_state: string;
+  tts_state: string;
+  provider: string;
+  download_progress?: number | null;
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  download_speed_bps?: number | null;
+  eta_seconds?: number | null;
+  warning?: string | null;
+  error_detail?: string | null;
+  error_category?: string | null;
+  model_path?: string | null;
+  active_backend: string;
+  backend_reason?: string | null;
+  last_latency_ms?: number | null;
+  prompt_toks_per_sec?: number | null;
+  gen_toks_per_sec?: number | null;
+}
+
+export interface LocalAiAssetStatus {
+  state: string;
+  id: string;
+  provider: string;
+  path?: string | null;
+  warning?: string | null;
+}
+
+export interface LocalAiAssetsStatus {
+  chat: LocalAiAssetStatus;
+  vision: LocalAiAssetStatus;
+  embedding: LocalAiAssetStatus;
+  tts: LocalAiAssetStatus;
+  quantization: string;
+  /**
+   * True when the configured Ollama endpoint is reachable enough for model
+   * checks. When false the UI should render external-runtime guidance instead
+   * of pretending the app can install or launch Ollama itself.
+   */
+  ollama_available: boolean;
+}
+
+export interface LocalAiDownloadProgressItem {
+  id: string;
+  provider: string;
+  state: string;
+  progress?: number | null;
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  eta_seconds?: number | null;
+  warning?: string | null;
+  path?: string | null;
+}
+
+export interface LocalAiDownloadsProgress {
+  state: string;
+  warning?: string | null;
+  progress?: number | null;
+  downloaded_bytes?: number | null;
+  total_bytes?: number | null;
+  speed_bps?: number | null;
+  eta_seconds?: number | null;
+  chat: LocalAiDownloadProgressItem;
+  vision: LocalAiDownloadProgressItem;
+  embedding: LocalAiDownloadProgressItem;
+  tts: LocalAiDownloadProgressItem;
+  /** Mirrors `LocalAiAssetsStatus.ollama_available` — see that field. */
+  ollama_available: boolean;
+}
+
+export interface LocalAiEmbeddingResult {
+  model_id: string;
+  dimensions: number;
+  vectors: number[][];
+}
+
+export interface LocalAiSpeechResult {
+  text: string;
+  model_id: string;
+}
+
+export interface LocalAiTtsResult {
+  output_path: string;
+  voice_id: string;
+}
+
+export interface ReactionDecision {
+  should_react: boolean;
+  emoji: string | null;
+}
+
+export interface SentimentResult {
+  emotion: string;
+  valence: string;
+  confidence: number;
+}
+
+export interface DeviceProfileResult {
+  total_ram_bytes: number;
+  cpu_count: number;
+  cpu_brand: string;
+  os_name: string;
+  os_version: string;
+  has_gpu: boolean;
+  gpu_description: string | null;
+}
+
+export interface ModelPresetResult {
+  tier: string;
+  label: string;
+  description: string;
+  chat_model_id: string;
+  vision_model_id: string;
+  embedding_model_id: string;
+  quantization: string;
+  vision_mode: string;
+  supports_screen_summary: boolean;
+  target_ram_gb: number;
+  min_ram_gb: number;
+  approx_download_gb: number;
+}
+
+export interface PresetsResponse {
+  presets: ModelPresetResult[];
+  recommended_tier: string;
+  current_tier: string;
+  selected_tier?: string | null;
+  device: DeviceProfileResult;
+  /** When true the device is below the RAM floor and cloud fallback is the recommended default. */
+  recommend_disabled?: boolean;
+  /** Current value of `config.local_ai.runtime_enabled`. When false, cloud fallback is in use. */
+  local_ai_enabled?: boolean;
+}
+
+export interface ApplyPresetResult {
+  applied_tier: string;
+  chat_model_id?: string;
+  vision_model_id?: string;
+  embedding_model_id?: string;
+  quantization?: string;
+  vision_mode?: string;
+  local_ai_enabled?: boolean;
+}
+
+export type RepairAction =
+  | { action: 'install_ollama' }
+  | { action: 'start_server'; binary_path: string | null }
+  | { action: 'pull_model'; model: string };
+
+/**
+ * Verdict for a model's native context window against the memory-layer
+ * minimum. Mirrors the Rust `ContextEligibility` enum (serde tagged by
+ * `status`). `below_minimum` means the model is rejected for memory-layer
+ * use; `unknown` means the context window could not be determined (not a
+ * hard rejection).
+ */
+export type ModelContextEligibility =
+  | { status: 'ok'; context_length: number }
+  | { status: 'below_minimum'; context_length: number; required: number }
+  | { status: 'unknown'; required: number };
+
+export interface InstalledModelInfo {
+  name: string;
+  size?: number | null;
+  modified_at?: string | null;
+  /** Native context window in tokens, or null when `/api/show` didn't report it. */
+  context_length?: number | null;
+  eligibility?: ModelContextEligibility | null;
+  /**
+   * Whether the model can serve chat/completions (from Ollama `/api/show`
+   * `capabilities`). `false` = embedding-only model that must be hidden from
+   * the chat-model picker; `null` = unknown (older Ollama / `/api/show` miss),
+   * treated as visible (fail-open). See Sentry TAURI-RUST-4P6.
+   */
+  chat_capable?: boolean | null;
+}
+
+export interface LocalAiDiagnostics {
+  ollama_running: boolean;
+  ollama_runner_ok?: boolean;
+  ollama_base_url: string;
+  ollama_binary_path: string | null;
+  vision_mode?: string;
+  installed_models: InstalledModelInfo[];
+  /** Memory-layer minimum a model's context window must meet to be accepted. */
+  context_requirement?: { min_context_tokens: number };
+  expected: {
+    chat_model: string;
+    chat_found: boolean;
+    chat_eligibility?: ModelContextEligibility | null;
+    embedding_model: string;
+    embedding_found: boolean;
+    embedding_eligibility?: ModelContextEligibility | null;
+    vision_model: string;
+    vision_found: boolean;
+  };
+  issues: string[];
+  repair_actions: RepairAction[];
+  ok: boolean;
+}
+
+export async function openhumanAgentChat(
+  message: string,
+  modelOverride?: string,
+  temperature?: number
+): Promise<CommandResponse<string>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<string>>({
+    method: 'openhuman.agent_chat',
+    params: { message, model_override: modelOverride, temperature },
+  });
+}
+
+export async function openhumanLocalAiStatus(): Promise<CommandResponse<LocalAiStatus>> {
+  try {
+    return await callCoreRpc<CommandResponse<LocalAiStatus>>({
+      method: 'openhuman.inference_status',
+    });
+  } catch (err) {
+    const message = tauriErrorMessage(err);
+    if (message.includes('unknown method: openhuman.inference_status')) {
+      throw new Error(
+        'Local model runtime is unavailable in this core build. Restart app after updating to the latest build.'
+      );
+    }
+    throw new Error(message);
+  }
+}
+
+export async function openhumanLocalAiSummarize(
+  text: string,
+  maxTokens?: number
+): Promise<CommandResponse<string>> {
+  return await callCoreRpc<CommandResponse<string>>({
+    method: 'openhuman.inference_summarize',
+    params: { text, max_tokens: maxTokens },
+  });
+}
+
+export async function openhumanLocalAiPrompt(
+  prompt: string,
+  maxTokens?: number,
+  noThink?: boolean
+): Promise<CommandResponse<string>> {
+  return await callCoreRpc<CommandResponse<string>>({
+    method: 'openhuman.inference_prompt',
+    params: { prompt, max_tokens: maxTokens, no_think: noThink },
+  });
+}
+
+export async function openhumanLocalAiVisionPrompt(
+  prompt: string,
+  imageRefs: string[],
+  maxTokens?: number
+): Promise<CommandResponse<string>> {
+  return await callCoreRpc<CommandResponse<string>>({
+    method: 'openhuman.inference_vision_prompt',
+    params: { prompt, image_refs: imageRefs, max_tokens: maxTokens },
+  });
+}
+
+export async function openhumanLocalAiEmbed(
+  inputs: string[]
+): Promise<CommandResponse<LocalAiEmbeddingResult>> {
+  return await callCoreRpc<CommandResponse<LocalAiEmbeddingResult>>({
+    method: 'openhuman.inference_embed',
+    params: { inputs },
+  });
+}
+
+export async function openhumanLocalAiTranscribe(
+  audioPath: string
+): Promise<CommandResponse<LocalAiSpeechResult>> {
+  return await callCoreRpc<CommandResponse<LocalAiSpeechResult>>({
+    method: 'openhuman.inference_transcribe',
+    params: { audio_path: audioPath },
+  });
+}
+
+export async function openhumanLocalAiTranscribeBytes(
+  audioBytes: number[],
+  extension?: string
+): Promise<CommandResponse<LocalAiSpeechResult>> {
+  return await callCoreRpc<CommandResponse<LocalAiSpeechResult>>({
+    method: 'openhuman.inference_transcribe_bytes',
+    params: { audio_bytes: audioBytes, extension },
+  });
+}
+
+export async function openhumanLocalAiTts(
+  text: string,
+  outputPath?: string
+): Promise<CommandResponse<LocalAiTtsResult>> {
+  return await callCoreRpc<CommandResponse<LocalAiTtsResult>>({
+    method: 'openhuman.inference_tts',
+    params: { text, output_path: outputPath },
+  });
+}
+
+/**
+ * Ask the configured inference provider whether the assistant should react to
+ * a user message with an emoji.
+ */
+export async function openhumanLocalAiShouldReact(
+  message: string,
+  channelType: string
+): Promise<CommandResponse<ReactionDecision>> {
+  return await callCoreRpc<CommandResponse<ReactionDecision>>({
+    method: 'openhuman.inference_should_react',
+    params: { message, channel_type: channelType },
+  });
+}
+
+/**
+ * Classify the emotion and sentiment of a user message via the configured
+ * inference provider.
+ */
+export async function openhumanLocalAiAnalyzeSentiment(
+  message: string
+): Promise<CommandResponse<SentimentResult>> {
+  return await callCoreRpc<CommandResponse<SentimentResult>>({
+    method: 'openhuman.inference_analyze_sentiment',
+    params: { message },
+  });
+}
+
+export async function openhumanLocalAiAssetsStatus(): Promise<
+  CommandResponse<LocalAiAssetsStatus>
+> {
+  return await callCoreRpc<CommandResponse<LocalAiAssetsStatus>>({
+    method: 'openhuman.inference_assets_status',
+  });
+}
+
+export async function openhumanLocalAiDownloadsProgress(): Promise<
+  CommandResponse<LocalAiDownloadsProgress>
+> {
+  return await callCoreRpc<CommandResponse<LocalAiDownloadsProgress>>({
+    method: 'openhuman.inference_downloads_progress',
+  });
+}
+
+export async function openhumanLocalAiDownloadAsset(
+  capability: 'chat' | 'vision' | 'embedding' | 'stt' | 'tts'
+): Promise<CommandResponse<LocalAiAssetsStatus>> {
+  return await callCoreRpc<CommandResponse<LocalAiAssetsStatus>>({
+    method: 'openhuman.inference_download_asset',
+    params: { capability },
+  });
+}
+
+export async function openhumanLocalAiDeviceProfile(): Promise<DeviceProfileResult> {
+  return await callCoreRpc<DeviceProfileResult>({ method: 'openhuman.inference_device_profile' });
+}
+
+export async function openhumanLocalAiPresets(): Promise<PresetsResponse> {
+  return await callCoreRpc<PresetsResponse>({ method: 'openhuman.inference_presets' });
+}
+
+export async function openhumanLocalAiApplyPreset(tier: string): Promise<ApplyPresetResult> {
+  return await callCoreRpc<ApplyPresetResult>({
+    method: 'openhuman.inference_apply_preset',
+    params: { tier },
+  });
+}
+
+export async function openhumanLocalAiDiagnostics(): Promise<LocalAiDiagnostics> {
+  return await callCoreRpc<LocalAiDiagnostics>({
+    method: 'openhuman.inference_diagnostics',
+    params: {},
+  });
+}
+
+export interface OllamaConnectionTestResult {
+  reachable: boolean;
+  error?: string | null;
+  models_count?: number | null;
+}
+
+export async function openhumanLocalAiTestConnection(
+  url: string
+): Promise<OllamaConnectionTestResult> {
+  return await callCoreRpc<OllamaConnectionTestResult>({
+    method: 'openhuman.inference_test_connection',
+    params: { url },
+  });
+}
