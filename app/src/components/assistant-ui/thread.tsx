@@ -99,6 +99,14 @@ export type ThreadComponents = {
   ComposerExtras?: ComponentType | undefined;
   /** Full-width host content immediately above the composer shell. */
   ComposerHeader?: ComponentType | undefined;
+  /** Host-owned attachment previews rendered above the editor. */
+  ComposerAttachments?: ComponentType | undefined;
+  /** Host-owned attachment picker rendered in the action row. */
+  ComposerAddAttachment?: ComponentType | undefined;
+  /** Enables sending when the host has attachments but the editor is empty. */
+  hasComposerAttachments?: boolean | undefined;
+  /** Sends an attachment-only message through the host's normal send path. */
+  onComposerAttachmentSend?: (() => void) | undefined;
 };
 
 export type ThreadProps = {
@@ -314,7 +322,8 @@ const Composer: FC<{
   const commands = useContext(SlashCommandsContext);
   const slash = unstable_useSlashCommandAdapter({ commands, fallbackIcon: SlashIcon });
   const inputWrapperRef = useRef<HTMLDivElement>(null);
-  const { ComposerHeader } = useContext(ThreadComponentsContext);
+  const { ComposerHeader, ComposerAttachments: HostComposerAttachments } =
+    useContext(ThreadComponentsContext);
   useEffect(() => {
     const textbox = inputWrapperRef.current?.querySelector<HTMLElement>('[contenteditable="true"]');
     textbox?.setAttribute('aria-label', 'Message input');
@@ -329,7 +338,7 @@ const Composer: FC<{
           <div
             data-slot="aui_composer-shell"
             className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
-            <ComposerAttachments />
+            {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
              * because `/` commands need a rich input: the trigger popover has to
@@ -389,10 +398,17 @@ const ComposerAction: FC<{
   model: string | null;
   onModelChange?: (value: string, contextWindow?: number | null) => void;
 }> = ({ model, onModelChange }) => {
+  const aui = useAui();
+  const composerText = useAuiState(state => state.composer.text);
+  const {
+    ComposerAddAttachment: HostComposerAddAttachment,
+    hasComposerAttachments,
+    onComposerAttachmentSend,
+  } = useContext(ThreadComponentsContext);
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <div className="flex min-w-0 items-center gap-1">
-        <ComposerAddAttachment />
+        {HostComposerAddAttachment ? <HostComposerAddAttachment /> : <ComposerAddAttachment />}
         <ModelQualityPill value={model} onValueChange={onModelChange} />
         <ComposerExtrasSlot />
       </div>
@@ -428,6 +444,22 @@ const ComposerAction: FC<{
           </AuiIf>
         </AuiIf>
         <AuiIf condition={s => !s.thread.isRunning}>
+          {hasComposerAttachments && composerText.trim().length === 0 ? (
+            <TooltipIconButton
+              tooltip="Send message"
+              side="bottom"
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-7 rounded-full"
+              aria-label="Send message"
+              onClick={() => {
+                onComposerAttachmentSend?.();
+                aui.composer.setText('');
+              }}>
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          ) : (
           <ComposerPrimitive.Send asChild>
             <TooltipIconButton
               tooltip="Send message"
@@ -440,6 +472,7 @@ const ComposerAction: FC<{
               <ArrowUpIcon className="aui-composer-send-icon size-4" />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
+          )}
         </AuiIf>
         <AuiIf condition={s => s.thread.isRunning}>
           <ComposerPrimitive.Cancel asChild>
