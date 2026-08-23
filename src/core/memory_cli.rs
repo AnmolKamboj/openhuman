@@ -1,0 +1,711 @@
+//! `openhuman memory` — CLI for memory ingestion, graph inspection, and debugging.
+//!
+//! Provides direct access to the memory system from the command line, including
+//! document ingestion with heuristic entity/relation extraction, graph querying,
+//! and document listing.
+//!
+//! Usage:
+//!   openhuman memory ingest  <file|->  [--namespace <ns>] [--key <key>] [--title <title>] [-v]
+//!   openhuman memory docs    [--namespace <ns>]
+//!   openhuman memory graph   [--namespace <ns>] [--subject <s>] [--predicate <p>]
+//!   openhuman memory query   --namespace <ns> --query <text> [--limit <n>]
+//!   openhuman memory namespaces
+
+use anyhow::Result;
+use std::io::Read;
+use std::path::PathBuf;
+
+use tinymemory_core::ingestion::{MemoryIngestionConfig, MemoryIngestionRequest};
+use tinymemory_core::store::NamespaceDocumentInput;
+
+/// Entry point for `openhuman memory <subcommand>`.
+pub fn run_memory_command(args: &[String]) -> Result<()> {
+    if args.is_empty() || is_help(&args[0]) {
+        print_memory_help();
+        return Ok(());
+    }
+
+    match args[0].as_str() {
+        "ingest" => run_ingest(&args[1..]),
+        "docs" | "list" => run_docs(&args[1..]),
+        "graph" | "graph-query" => run_graph_query(&args[1..]),
+        "query" => run_query(&args[1..]),
+        "namespaces" | "ns" => run_namespaces(&args[1..]),
+        "clear" => run_clear(&args[1..]),
+        other => Err(anyhow::anyhow!(
+            "unknown memory subcommand '{other}'. Run `openhuman memory --help`."
+        )),
+    }
+}
+
+/// Each `openhuman memory <sub>` subcommand and the registered RPC controller
+/// whose surface it duplicates.
+///
+/// The CAPABILITY is deliberately NOT written here — it is read from the
+/// controller registry via [`crate::core::all::capability_for_parts`], so the
+/// single decision recorded at the `push_cap` site in `src/core/all.rs` governs
+/// both the RPC surface and this CLI. A second hand-maintained table would
+/// drift the first time a family tag moves.
+const SUBCOMMAND_CONTROLLER: &[(&str, &str)] = &[
+    // Full synchronous ingestion — the driver owns chunking and embedding.
+    ("ingest", "doc_ingest"),
+    // Mandatory core/recall surface: ungated, listed so the table is total.
+    ("docs", "list_documents"),
+    ("list", "list_documents"),
+    ("graph", "graph_query"),
+    ("graph-query", "graph_query"),
+    ("query", "query_namespace"),
+    ("namespaces", "list_namespaces"),
+    ("ns", "list_namespaces"),
+    ("clear", "clear_namespace"),
+];
+
+/// The capability `openhuman memory <sub>` needs, if any. Resolved from the
+/// controller registry, never from a local table.
+fn required_capability(
+    subcommand: &str,
+) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
+    let function = SUBCOMMAND_CONTROLLER
+        .iter()
+        .find(|(sub, _)| *sub == subcommand)
+        .map(|(_, function)| *function)?;
+    crate::core::all::capability_for_parts("memory", function).flatten()
+}
+
+// ---------------------------------------------------------------------------
+// Subcommands
+// ---------------------------------------------------------------------------
+
+/// `openhuman memory ingest <file|-> [options]`
+///
+/// Reads a file (or stdin with `-`) and performs full synchronous ingestion
+/// including heuristic entity/relation extraction. Outputs the ingestion result
+/// as JSON for debugging.
+fn run_ingest(args: &[String]) -> Result<()> {
+    let mut file_path: Option<String> = None;
+    let mut namespace = "cli".to_string();
+    let mut key: Option<String> = None;
+    let mut title: Option<String> = None;
+    let mut verbose = false;
+    let mut i = 0;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--namespace" | "-n" => {
+                namespace = next_arg(args, &mut i, "--namespace")?;
+            }
+            "--key" | "-k" => {
+                key = Some(next_arg(args, &mut i, "--key")?);
+            }
+            "--title" | "-t" => {
+                title = Some(next_arg(args, &mut i, "--title")?);
+            }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
+            "-h" | "--help" => {
+                println!("Usage: openhuman memory ingest <file|-> [options]");
+                println!();
+                println!("  <file>               Path to file to ingest (use '-' for stdin)");
+                println!("  -n, --namespace <ns>  Target namespace (default: 'cli')");
+                println!("  -k, --key <key>       Document key for dedup (default: filename)");
+                println!("  -t, --title <title>   Document title (default: filename)");
+                println!("  -v, --verbose         Enable debug logging");
+                return Ok(());
+            }
+            other if file_path.is_none() && (!other.starts_with('-') || other == "-") => {
+                file_path = Some(other.to_string());
+                i += 1;
+            }
+            other => return Err(anyhow::anyhow!("unknown ingest arg: {other}")),
+        }
+    }
+
+    let file_path = file_path.ok_or_else(|| {
+        anyhow::anyhow!("missing file argument. Use a file path or '-' for stdin.")
+    })?;
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let content = read_input(&file_path)?;
+    let doc_key = key.unwrap_or_else(|| file_path.clone());
+    let doc_title = title.unwrap_or_else(|| {
+        if file_path == "-" {
+            "stdin-input".to_string()
+        } else {
+            PathBuf::from(&file_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| file_path.clone())
+        }
+    });
+
+    eprintln!(
+        "[memory:cli] ingesting document: namespace={namespace}, key={doc_key}, title={doc_title}, \
+         content_len={}",
+        content.len()
+    );
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    let result = rt.block_on(async {
+        let client = create_memory_client("ingest").await?;
+
+        let document = NamespaceDocumentInput {
+            namespace: namespace.clone(),
+            key: doc_key,
+            title: doc_title,
+            content,
+            source_type: "doc".to_string(),
+            priority: "medium".to_string(),
+            tags: Vec::new(),
+            metadata: serde_json::json!({}),
+            category: "core".to_string(),
+            session_id: None,
+            document_id: None,
+            taint: crate::openhuman::memory::MemoryTaint::Internal,
+        };
+
+        let ingestion_config = MemoryIngestionConfig::default();
+
+        eprintln!(
+            "[memory:cli] starting ingestion with model={}",
+            ingestion_config.model_name,
+        );
+
+        let result = client
+            .ingest_doc(MemoryIngestionRequest {
+                document,
+                config: ingestion_config,
+            })
+            .await
+            .map_err(anyhow::Error::msg)?;
+
+        Ok::<_, anyhow::Error>(result)
+    })?;
+
+    eprintln!();
+    eprintln!("=== Ingestion Result ===");
+    eprintln!("  document_id:  {}", result.document_id);
+    eprintln!("  namespace:    {}", result.namespace);
+    eprintln!("  model:        {}", result.model_name);
+    eprintln!("  mode:         {}", result.extraction_mode);
+    eprintln!("  chunks:       {}", result.chunk_count);
+    eprintln!("  entities:     {}", result.entity_count);
+    eprintln!("  relations:    {}", result.relation_count);
+    eprintln!("  preferences:  {}", result.preference_count);
+    eprintln!("  decisions:    {}", result.decision_count);
+    eprintln!("  tags:         {:?}", result.tags);
+
+    // Print full JSON to stdout for piping/scripting
+    println!("{}", serde_json::to_string_pretty(&result)?);
+
+    Ok(())
+}
+
+/// `openhuman memory docs [--namespace <ns>]`
+fn run_docs(args: &[String]) -> Result<()> {
+    let mut namespace: Option<String> = None;
+    let mut verbose = false;
+    let mut i = 0;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--namespace" | "-n" => {
+                namespace = Some(next_arg(args, &mut i, "--namespace")?);
+            }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
+            "-h" | "--help" => {
+                println!("Usage: openhuman memory docs [--namespace <ns>] [-v]");
+                return Ok(());
+            }
+            other => return Err(anyhow::anyhow!("unknown docs arg: {other}")),
+        }
+    }
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    let result = rt.block_on(async {
+        let client = create_memory_client("docs").await?;
+        client
+            .list_documents(namespace.as_deref())
+            .await
+            .map_err(anyhow::Error::msg)
+    })?;
+
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// `openhuman memory graph [--namespace <ns>] [--subject <s>] [--predicate <p>]`
+fn run_graph_query(args: &[String]) -> Result<()> {
+    let mut namespace: Option<String> = None;
+    let mut subject: Option<String> = None;
+    let mut predicate: Option<String> = None;
+    let mut verbose = false;
+    let mut i = 0;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--namespace" | "-n" => {
+                namespace = Some(next_arg(args, &mut i, "--namespace")?);
+            }
+            "--subject" | "-s" => {
+                subject = Some(next_arg(args, &mut i, "--subject")?);
+            }
+            "--predicate" | "-p" => {
+                predicate = Some(next_arg(args, &mut i, "--predicate")?);
+            }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
+            "-h" | "--help" => {
+                println!(
+                    "Usage: openhuman memory graph [--namespace <ns>] [--subject <s>] [--predicate <p>] [-v]"
+                );
+                return Ok(());
+            }
+            other => return Err(anyhow::anyhow!("unknown graph arg: {other}")),
+        }
+    }
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    let result = rt.block_on(async {
+        let client = create_memory_client("graph").await?;
+        client
+            .graph_query(
+                namespace.as_deref(),
+                subject.as_deref(),
+                predicate.as_deref(),
+            )
+            .await
+            .map_err(anyhow::Error::msg)
+    })?;
+
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// `openhuman memory query --namespace <ns> --query <text> [--limit <n>]`
+fn run_query(args: &[String]) -> Result<()> {
+    let mut namespace: Option<String> = None;
+    let mut query: Option<String> = None;
+    let mut limit: u32 = 10;
+    let mut verbose = false;
+    let mut i = 0;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--namespace" | "-n" => {
+                namespace = Some(next_arg(args, &mut i, "--namespace")?);
+            }
+            "--query" | "-q" => {
+                query = Some(next_arg(args, &mut i, "--query")?);
+            }
+            "--limit" | "-l" => {
+                let raw = next_arg(args, &mut i, "--limit")?;
+                limit = raw
+                    .parse::<u32>()
+                    .map_err(|e| anyhow::anyhow!("invalid --limit: {e}"))?;
+            }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
+            "-h" | "--help" => {
+                println!(
+                    "Usage: openhuman memory query --namespace <ns> --query <text> [--limit <n>] [-v]"
+                );
+                return Ok(());
+            }
+            other => return Err(anyhow::anyhow!("unknown query arg: {other}")),
+        }
+    }
+
+    let namespace =
+        namespace.ok_or_else(|| anyhow::anyhow!("--namespace is required for query"))?;
+    let query = query.ok_or_else(|| anyhow::anyhow!("--query is required"))?;
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    let result = rt.block_on(async {
+        let client = create_memory_client("query").await?;
+        client
+            .query_namespace(&namespace, &query, limit)
+            .await
+            .map_err(anyhow::Error::msg)
+    })?;
+
+    println!("{result}");
+    Ok(())
+}
+
+/// `openhuman memory namespaces`
+fn run_namespaces(args: &[String]) -> Result<()> {
+    let mut verbose = false;
+    for arg in args {
+        match arg.as_str() {
+            "-v" | "--verbose" => verbose = true,
+            "-h" | "--help" => {
+                println!("Usage: openhuman memory namespaces [-v]");
+                return Ok(());
+            }
+            other => return Err(anyhow::anyhow!("unknown namespaces arg: {other}")),
+        }
+    }
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    let result = rt.block_on(async {
+        let client = create_memory_client("namespaces").await?;
+        client.list_namespaces().await.map_err(anyhow::Error::msg)
+    })?;
+
+    for ns in &result {
+        println!("{ns}");
+    }
+    Ok(())
+}
+
+/// `openhuman memory clear --namespace <ns>`
+fn run_clear(args: &[String]) -> Result<()> {
+    let mut namespace: Option<String> = None;
+    let mut verbose = false;
+    let mut i = 0;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--namespace" | "-n" => {
+                namespace = Some(next_arg(args, &mut i, "--namespace")?);
+            }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
+            "-h" | "--help" => {
+                println!("Usage: openhuman memory clear --namespace <ns> [-v]");
+                return Ok(());
+            }
+            other => return Err(anyhow::anyhow!("unknown clear arg: {other}")),
+        }
+    }
+
+    let namespace =
+        namespace.ok_or_else(|| anyhow::anyhow!("--namespace is required for clear"))?;
+
+    crate::core::logging::init_for_cli_run(verbose, crate::core::logging::CliLogDefault::Global);
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    rt.block_on(async {
+        let client = create_memory_client("clear").await?;
+        client
+            .clear_namespace(&namespace)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        eprintln!("[memory:cli] namespace '{namespace}' cleared");
+        Ok::<_, anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn is_help(s: &str) -> bool {
+    matches!(s, "-h" | "--help" | "help")
+}
+
+fn next_arg(args: &[String], i: &mut usize, flag: &str) -> Result<String> {
+    let value = args
+        .get(*i + 1)
+        .ok_or_else(|| anyhow::anyhow!("missing value for {flag}"))?
+        .clone();
+    *i += 2;
+    Ok(value)
+}
+
+fn read_input(path: &str) -> Result<String> {
+    if path == "-" {
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        Ok(buf)
+    } else {
+        let path = PathBuf::from(path);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("file not found: {}", path.display()));
+        }
+        Ok(std::fs::read_to_string(&path)?)
+    }
+}
+
+/// Resolve the memory client for a subcommand, refusing first when the bound
+/// driver cannot serve it.
+///
+/// Two gates run here, both *config facts* naming the driver rather than silent
+/// absence (`docs/specs/kernel.md` §3.3 makes the CLI its one exception, because
+/// a human reads silence as a typo — same reasoning as the retained `mcp` /
+/// `tui` arms in `src/core/cli.rs`):
+///
+/// 1. **Capability gate** — when the subcommand maps to a gated controller, the
+///    bound driver must advertise that family.
+/// 2. **Legacy-client gate** — every subcommand below operates on the embedded
+///    store directly (via `memory::global::init`), so the bound driver must be
+///    the embedded engine. This is what makes `driver = "null"` (or a fallback)
+///    actually disable `openhuman memory clear` / `docs` / `query` /
+///    `namespaces`, which have no gated capability to refuse on.
+///
+/// Both gates are default-OPEN when the binding cannot be resolved, mirroring
+/// [`crate::core::all::capability_allowed`]: denying is only ever correct after
+/// a driver has actually answered `capabilities()`.
+///
+/// This is the single chokepoint every subcommand already funnels through, and
+/// it already loads config, so the gates cost no extra config read.
+async fn create_memory_client(subcommand: &str) -> Result<tinymemory_core::store::MemoryClientRef> {
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .unwrap_or_default();
+
+    // Resolved through `cli_capability` rather than `binding::for_workspace`
+    // here, so the memory-guard bypass ratchet carries ONE allowlisted line
+    // for the whole CLI layer instead of one per entry point. Default-OPEN
+    // when the binding cannot be resolved.
+    let invocation = format!("openhuman memory {subcommand}");
+    if let Some((driver_id, class, advertised)) =
+        crate::core::cli_capability::bound_memory_driver_for(
+            &config.workspace_dir,
+            &config.subsystems.memory,
+        )
+    {
+        crate::core::cli_capability::legacy_client_verdict(&driver_id, class, &invocation)?;
+        if let Some(required) = required_capability(subcommand) {
+            crate::core::cli_capability::capability_verdict(
+                &driver_id,
+                advertised,
+                Some(required),
+                &invocation,
+            )?;
+        }
+    }
+
+    // The CLI dispatches straight to a subcommand and never runs the runtime
+    // bootstrap, so nothing else installs these. They must be in place before
+    // the first memory call: the embedding, chat, Composio and config seams
+    // fail loudly when unwired rather than degrading, and a `memory` subcommand
+    // that reached one would report a broken subsystem rather than a missing
+    // one. Idempotent, so calling it per invocation is safe.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
+    tinymemory_core::global::init(config.workspace_dir).map_err(anyhow::Error::msg)
+}
+
+fn print_memory_help() {
+    println!("Usage: openhuman memory <subcommand> [options]");
+    println!();
+    println!("Subcommands:");
+    println!("  ingest <file|->     Ingest a document with heuristic extraction");
+    println!("  docs                List stored documents");
+    println!("  graph               Query the knowledge graph");
+    println!("  query               Semantic query against a namespace");
+    println!("  namespaces          List all namespaces");
+    println!("  clear               Clear all data in a namespace");
+    println!();
+    println!("Some subcommands need capability families the bound memory driver may not");
+    println!("advertise. Run `openhuman subsystems` to see what is bound.");
+    println!();
+    println!("Examples:");
+    println!("  openhuman memory ingest notes.md -n my-project -v");
+    println!("  echo 'Alice works on ProjectX' | openhuman memory ingest - -n test -v");
+    println!("  openhuman memory graph -n my-project");
+    println!("  openhuman memory docs -n my-project");
+    println!("  openhuman memory query -n my-project -q 'who works on what?'");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::cli_capability::{capability_verdict, CAPABILITY_UNAVAILABLE_PREFIX};
+    use crate::core::subsystem::DriverClass;
+    use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+
+    /// Drift guard: a renamed controller function must break here rather than
+    /// silently un-gate a subcommand (`required_capability` would start
+    /// returning `None` for it).
+    #[test]
+    fn memory_cli_subcommands_mirror_real_controllers() {
+        for (sub, function) in SUBCOMMAND_CONTROLLER {
+            assert!(
+                crate::core::all::rpc_method_from_parts("memory", function).is_some(),
+                "`openhuman memory {sub}` maps to memory.{function}, which is not registered"
+            );
+        }
+    }
+
+    /// Adding a subcommand without recording a capability decision fails here.
+    #[test]
+    fn every_dispatched_subcommand_is_in_the_controller_table() {
+        for sub in [
+            "ingest",
+            "docs",
+            "list",
+            "graph",
+            "graph-query",
+            "query",
+            "namespaces",
+            "ns",
+            "clear",
+        ] {
+            assert!(
+                SUBCOMMAND_CONTROLLER.iter().any(|(s, _)| *s == sub),
+                "`openhuman memory {sub}` is dispatched but has no controller mapping"
+            );
+        }
+    }
+
+    #[test]
+    fn ingest_and_graph_are_the_gated_subcommands() {
+        assert_eq!(required_capability("ingest"), Some(Capability::Ingest));
+        assert_eq!(required_capability("graph"), Some(Capability::Graph));
+        assert_eq!(required_capability("graph-query"), Some(Capability::Graph));
+        // Core/recall share the Core gate so a null driver can remove the
+        // complete driver-backed memory surface.
+        for sub in ["docs", "list", "query", "namespaces", "ns", "clear"] {
+            assert_eq!(
+                required_capability(sub),
+                Some(Capability::Core),
+                "{sub} must use Core"
+            );
+        }
+    }
+
+    /// A real typo must never be reported as a capability fact.
+    #[test]
+    fn unknown_memory_subcommand_still_reports_unknown_subcommand() {
+        let err = run_memory_command(&["not_a_subcommand".to_string()])
+            .expect_err("an unknown subcommand must error");
+        let msg = err.to_string();
+        assert!(msg.contains("unknown memory subcommand"), "{msg}");
+        assert!(!msg.contains(CAPABILITY_UNAVAILABLE_PREFIX), "{msg}");
+        assert_eq!(required_capability("not_a_subcommand"), None);
+    }
+
+    /// `Capabilities::mandatory()` is exactly what the `null` driver advertises;
+    /// the set is used directly rather than through `binding::for_workspace` so
+    /// this file stays off the memory-guard bypass allowlist (that scanner does
+    /// not strip inline `#[cfg(test)]` modules). The binding-level equivalence
+    /// is pinned in `cli_capability_tests.rs`.
+    #[test]
+    fn gated_subcommand_reports_the_driver_and_capability() {
+        let err = capability_verdict(
+            "null",
+            Capabilities::mandatory(),
+            required_capability("ingest"),
+            "openhuman memory ingest",
+        )
+        .expect_err("the null driver does not advertise `ingest`");
+        let msg = err.to_string();
+        assert!(msg.contains("null"), "{msg}");
+        assert!(msg.contains("ingest"), "{msg}");
+        assert!(!msg.contains("unknown memory subcommand"), "{msg}");
+    }
+
+    /// The default embedded driver advertises every family, so nothing changes.
+    #[test]
+    fn default_embedded_driver_gates_nothing() {
+        for (sub, _) in SUBCOMMAND_CONTROLLER {
+            assert!(
+                capability_verdict(
+                    "tinycortex",
+                    Capabilities::all(),
+                    required_capability(sub),
+                    "openhuman memory <sub>",
+                )
+                .is_ok(),
+                "`openhuman memory {sub}` must stay available under the default driver"
+            );
+        }
+    }
+
+    /// Every legacy subcommand — gated or not — must be rejected under a null
+    /// binding: they all operate on the embedded store directly, and the null
+    /// driver is not that engine. This is the regression the reviewer flagged:
+    /// `openhuman memory clear` used to open the embedded DB even with
+    /// `driver = "null"`.
+    #[test]
+    fn null_driver_rejects_every_legacy_subcommand() {
+        for (sub, _) in SUBCOMMAND_CONTROLLER {
+            let err = crate::core::cli_capability::legacy_client_verdict(
+                "null",
+                DriverClass::Null,
+                &format!("openhuman memory {sub}"),
+            )
+            .expect_err("a null binding must reject legacy subcommands");
+            let msg = err.to_string();
+            assert!(msg.contains("null"), "{msg}");
+            assert!(
+                msg.contains("embedded"),
+                "refusal must explain that the legacy client is the embedded engine: {msg}"
+            );
+        }
+    }
+
+    /// The embedded driver is the only class that may serve legacy subcommands.
+    #[test]
+    fn embedded_driver_serves_every_legacy_subcommand() {
+        for (sub, _) in SUBCOMMAND_CONTROLLER {
+            assert!(
+                crate::core::cli_capability::legacy_client_verdict(
+                    "tinycortex",
+                    DriverClass::Embedded,
+                    &format!("openhuman memory {sub}"),
+                )
+                .is_ok(),
+                "`openhuman memory {sub}` must stay available under the embedded driver"
+            );
+        }
+    }
+
+    /// The legacy-client diagnostic must not leak credentials or endpoints.
+    #[test]
+    fn legacy_message_never_contains_a_credential_or_endpoint() {
+        let msg = crate::core::cli_capability::legacy_client_unavailable_message(
+            "supermemory",
+            "openhuman memory clear",
+        );
+        assert!(!msg.contains("keychain:"), "{msg}");
+        assert!(!msg.contains("api.supermemory.ai"), "{msg}");
+        assert!(
+            msg.starts_with(crate::core::cli_capability::LEGACY_CLIENT_UNAVAILABLE_PREFIX),
+            "{msg}"
+        );
+    }
+}
