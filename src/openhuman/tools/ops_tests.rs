@@ -2068,9 +2068,15 @@ async fn health_system_info_through_registry() {
     assert!(out.output_for_llm(false).contains("os"));
 }
 
-// ── Theme: Account & money ──────────────────────────────────────────────────
+// ── Theme: Account & session ────────────────────────────────────────────────
+//
+// The `billing_*`, `team_*` and `referral_*` agent-tool families were removed:
+// money movement and team administration are dashboard surfaces, and their
+// controllers stay registered for the UI. What remains here is read-only
+// account *state* — who is signed in, what is connected — which moved to
+// `settings_agent` when `account_admin_agent` went with those families.
 
-const MONEY_TOOLS: &[&str] = &[
+const ACCOUNT_TOOLS: &[&str] = &[
     "credential_list",
     "session_state",
     "session_get_user",
@@ -2078,55 +2084,27 @@ const MONEY_TOOLS: &[&str] = &[
     "oauth_list",
 ];
 
-const MONEY_DEFAULT_OFF: &[&str] = &[
-];
-
-const MONEY_ALWAYS_ON: &[&str] = &[
-    "credential_list",
-    "session_state",
-    "oauth_list",
-];
-
 #[test]
-fn money_tools_are_registered() {
+fn account_tools_are_registered() {
     let tmp = TempDir::new().unwrap();
     let names = tool_names(&expansion_tools_for(&tmp));
-    assert_contains_all(&names, MONEY_TOOLS);
+    assert_contains_all(&names, ACCOUNT_TOOLS);
 }
 
 #[test]
-fn money_default_off_tools_are_filtered_when_not_opted_in() {
+fn account_tools_survive_a_narrow_user_preference_set() {
+    // None of these is a user-toggleable family, so a preference snapshot that
+    // names only `file_read` must leave every one of them advertised. This is
+    // the assertion that would catch one of them being quietly added to
+    // `TOOL_FAMILIES` as default-OFF.
     let tmp = TempDir::new().unwrap();
     let mut tools = expansion_tools_for(&tmp);
     filter_tools_by_user_preference(&mut tools, &["file_read".to_string()]);
     let names = tool_names(&tools);
-    for off in MONEY_DEFAULT_OFF {
-        assert!(
-            !names.iter().any(|n| n == off),
-            "default-off tool `{off}` must be filtered out when not opted in; got: {names:?}"
-        );
-    }
-    for on in MONEY_ALWAYS_ON {
+    for on in ACCOUNT_TOOLS {
         assert!(
             names.iter().any(|n| n == on),
-            "always-on tool `{on}` must be retained regardless of preferences"
-        );
-    }
-}
-
-#[test]
-fn money_default_off_tools_retained_when_opted_in() {
-    let tmp = TempDir::new().unwrap();
-    let mut tools = expansion_tools_for(&tmp);
-    filter_tools_by_user_preference(
-        &mut tools,
-        &["billing_writes".to_string(), "team_admin".to_string()],
-    );
-    let names = tool_names(&tools);
-    for on in MONEY_DEFAULT_OFF {
-        assert!(
-            names.iter().any(|n| n == on),
-            "opted-in tool `{on}` must be retained; got: {names:?}"
+            "always-on tool `{on}` must be retained regardless of preferences; got: {names:?}"
         );
     }
 }
