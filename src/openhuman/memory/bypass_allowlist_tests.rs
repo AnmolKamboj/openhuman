@@ -319,11 +319,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
-        "MemoryClient::from_workspace_dir(",
-        "provider trait takes &MemoryClientRef; the contract has no such shape",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
         "global::client_if_ready(",
         "same provider trait shape",
     ),
@@ -362,18 +357,8 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // scanner does not brace-track.
     (
         "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
-        "MemoryClient::from_workspace_dir(",
-        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",
-        "MemoryClient::from_workspace_dir(",
-        "inline #[cfg(test)] module only (the connection-guard tests); not brace-tracked",
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",

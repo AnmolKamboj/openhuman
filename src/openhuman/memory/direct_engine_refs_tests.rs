@@ -615,11 +615,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "installs the eight host seams (embedding, chat, composio, config, nlp, scheduler gate, shutdown, error reporter); mirrored over the bus by modules/memory_host.rs",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
-    (
-        "src/openhuman/memory/query/ingest_document.rs",
-        Verdict::NeedsWiderSeam,
-        "names SourceKind / SourceRef, which are tinycortex-api types the engine re-exports — NOT the same type as the contract's api::chunks::SourceKind, so this is not a type carve-out",
-    ),
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
     (
         "src/openhuman/memory/sync/composio/providers/context_ext.rs",
