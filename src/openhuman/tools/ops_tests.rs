@@ -1802,13 +1802,6 @@ async fn artifact_list_through_registry_returns_envelope() {
 // ── Theme: Knowledge & memory ───────────────────────────────────────────────
 
 const KNOWLEDGE_TOOLS: &[&str] = &[
-    "people_list",
-    "people_resolve",
-    "people_score",
-    "people_get",
-    "people_add_alias",
-    "people_record_interaction",
-    "people_refresh_address_book",
     "list_workflows",
     "describe_workflow",
     "read_workflow_resource",
@@ -1817,22 +1810,6 @@ const KNOWLEDGE_TOOLS: &[&str] = &[
     "create_skill",
     "install_workflow_from_url",
     "uninstall_workflow",
-    "thread_list",
-    "thread_read",
-    "thread_create",
-    "thread_update_title",
-    "thread_update_labels",
-    "thread_message_list",
-    "thread_message_append",
-    "thread_message_update",
-    "thread_title_generate",
-    "thread_turn_state_get",
-    "thread_turn_state_list",
-    "thread_turn_state_clear",
-    "thread_task_board_read",
-    "thread_task_board_write",
-    "thread_delete",
-    "thread_purge_all",
     "learning_list_facets",
     "learning_get_facet",
     "learning_cache_stats",
@@ -1848,9 +1825,6 @@ const KNOWLEDGE_TOOLS: &[&str] = &[
 
 fn knowledge_default_off() -> Vec<&'static str> {
     let mut tools = vec![
-        "people_refresh_address_book",
-        "thread_delete",
-        "thread_purge_all",
         "learning_update_facet",
         "learning_pin_facet",
         "learning_unpin_facet",
@@ -1874,10 +1848,6 @@ fn knowledge_default_off() -> Vec<&'static str> {
 
 fn knowledge_always_on() -> Vec<&'static str> {
     let mut tools = vec![
-        "people_list",
-        "people_resolve",
-        "thread_list",
-        "thread_create",
         "learning_list_facets",
         "learning_cache_stats",
     ];
@@ -1896,29 +1866,6 @@ fn knowledge_tools_are_registered() {
 
     // Base knowledge tools that are always present
     let mut expected_tools = vec![
-        "people_list",
-        "people_resolve",
-        "people_score",
-        "people_get",
-        "people_add_alias",
-        "people_record_interaction",
-        "people_refresh_address_book",
-        "thread_list",
-        "thread_read",
-        "thread_create",
-        "thread_update_title",
-        "thread_update_labels",
-        "thread_message_list",
-        "thread_message_append",
-        "thread_message_update",
-        "thread_title_generate",
-        "thread_turn_state_get",
-        "thread_turn_state_list",
-        "thread_turn_state_clear",
-        "thread_task_board_read",
-        "thread_task_board_write",
-        "thread_delete",
-        "thread_purge_all",
         "learning_list_facets",
         "learning_get_facet",
         "learning_cache_stats",
@@ -2003,9 +1950,7 @@ fn knowledge_default_off_tools_retained_when_opted_in() {
     filter_tools_by_user_preference(
         &mut tools,
         &[
-            "people_refresh_address_book".to_string(),
             "workflow_manage".to_string(),
-            "thread_destructive".to_string(),
             "learning_manage".to_string(),
         ],
     );
@@ -2126,38 +2071,6 @@ async fn health_system_info_through_registry() {
 // ── Theme: Account & money ──────────────────────────────────────────────────
 
 const MONEY_TOOLS: &[&str] = &[
-    "referral_get_stats",
-    "referral_claim",
-    "billing_get_plan",
-    "billing_get_balance",
-    "billing_list_transactions",
-    "billing_get_auto_recharge",
-    "billing_list_cards",
-    "billing_list_coupons",
-    "billing_create_stripe_portal",
-    "billing_purchase_plan",
-    "billing_top_up_credits",
-    "billing_create_coinbase_charge",
-    "billing_create_setup_intent",
-    "billing_update_card",
-    "billing_delete_card",
-    "billing_redeem_coupon",
-    "billing_update_auto_recharge",
-    "team_list",
-    "team_get_usage",
-    "team_get",
-    "team_list_members",
-    "team_list_invites",
-    "team_create",
-    "team_update",
-    "team_delete",
-    "team_switch",
-    "team_join",
-    "team_leave",
-    "team_create_invite",
-    "team_revoke_invite",
-    "team_remove_member",
-    "team_change_member_role",
     "credential_list",
     "session_state",
     "session_get_user",
@@ -2166,35 +2079,12 @@ const MONEY_TOOLS: &[&str] = &[
 ];
 
 const MONEY_DEFAULT_OFF: &[&str] = &[
-    "billing_purchase_plan",
-    "billing_top_up_credits",
-    "billing_create_coinbase_charge",
-    "billing_create_setup_intent",
-    "billing_update_card",
-    "billing_delete_card",
-    "billing_redeem_coupon",
-    "billing_update_auto_recharge",
-    "team_create",
-    "team_update",
-    "team_delete",
-    "team_switch",
-    "team_join",
-    "team_leave",
-    "team_create_invite",
-    "team_revoke_invite",
-    "team_remove_member",
-    "team_change_member_role",
 ];
 
 const MONEY_ALWAYS_ON: &[&str] = &[
-    "billing_get_plan",
-    "billing_list_cards",
-    "team_list",
-    "team_get",
     "credential_list",
     "session_state",
     "oauth_list",
-    "referral_get_stats",
 ];
 
 #[test]
@@ -2676,13 +2566,6 @@ const MEMORY_TOOL_CAPABILITIES: &[(
 const MEMORY_TOOLS_NOT_DRIVER_BACKED: &[&str] = &[
     "update_memory_md",
     "memory_store_kinds",
-    "people_list",
-    "people_resolve",
-    "people_score",
-    "people_get",
-    "people_add_alias",
-    "people_record_interaction",
-    "people_refresh_address_book",
 ];
 
 /// Every `DomainGroup::Memory` tool must be a deliberate decision in
