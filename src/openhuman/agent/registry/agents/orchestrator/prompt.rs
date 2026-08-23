@@ -437,11 +437,14 @@ mod tests {
             ARCHETYPE.contains("Result-gating work runs synchronously"),
             "orchestrator prompt must carry the result-gating delegation rule"
         );
-        // It must steer such tasks to a synchronous/awaited primitive rather
-        // than fire-and-forget `spawn_async_subagent`.
+        // It must steer such tasks to a primitive that returns inside the
+        // turn rather than to a fire-and-forget spawn. The awaited primitives
+        // it used to name (`spawn_parallel_agents` / `wait_subagent`) were
+        // retired in #5701; the two that remain are a blocking `delegate_*`
+        // specialist and `spawn_async_subagent` with `blocking: true`.
         assert!(
-            ARCHETYPE.contains("spawn_parallel_agents") && ARCHETYPE.contains("wait_subagent"),
-            "the rule must name the synchronous/awaited alternatives"
+            ARCHETYPE.contains("`delegate_*`") && ARCHETYPE.contains("blocking: true"),
+            "the rule must name the alternatives that return within the turn"
         );
     }
 
