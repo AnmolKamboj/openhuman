@@ -20,8 +20,13 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use openhuman_core::openhuman::sandbox::cwd_jail::{
-    default_backend, spawn, spawn_with, Jail, JailRegistry, NoopBackend,
+    default_backend, spawn_with, Jail, JailRegistry, NoopBackend,
 };
+#[cfg(any(
+    all(target_os = "linux", feature = "sandbox-landlock"),
+    target_os = "macos"
+))]
+use openhuman_core::openhuman::sandbox::cwd_jail::spawn;
 
 fn unique_tempdir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!(
