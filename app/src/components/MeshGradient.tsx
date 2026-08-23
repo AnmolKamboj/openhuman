@@ -157,7 +157,7 @@ export default function MeshGradient() {
       removeMotionListener?.();
       document.removeEventListener('visibilitychange', onPlayStateChange);
       window.removeEventListener('focus', onPlayStateChange);
-      window.removeEventListener('blur-sm', onPlayStateChange);
+      window.removeEventListener('blur', onPlayStateChange);
       window.cancelAnimationFrame(raf);
       disconnectGradient();
     };

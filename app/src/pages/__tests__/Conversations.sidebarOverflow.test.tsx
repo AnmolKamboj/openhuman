@@ -263,7 +263,7 @@ describe('Conversations — sidebar composer footer overflow (#3785)', () => {
     expect(footer).not.toHaveClass('shrink-0');
   });
 
-  it('keeps the floating page-variant composer absolutely positioned (no regression)', async () => {
+  it('keeps the assistant-ui page composer in flow (no legacy floating footer)', async () => {
     const store = buildStore({ thread: emptyThreadState });
     const { default: Conversations } = await import('../../features/conversations/Conversations');
 
@@ -281,11 +281,11 @@ describe('Conversations — sidebar composer footer overflow (#3785)', () => {
       ));
     });
 
-    const footer = container.querySelector('[data-walkthrough="home-cta"]');
-    expect(footer).not.toBeNull();
-    // Page variant floats over the message fade; it must NOT adopt the sidebar's
-    // in-flow scroll cap.
-    expect(footer).toHaveClass('absolute');
-    expect(footer).not.toHaveClass('overflow-y-auto');
+    const composer = container.querySelector('[data-slot="aui_composer-shell"]');
+    expect(composer).not.toBeNull();
+    // The assistant-ui thread owns an in-flow composer. The old absolute
+    // home-cta footer must not reappear and cover the message viewport.
+    expect(composer?.closest('.aui-composer-root')).not.toHaveClass('absolute');
+    expect(container.querySelector('[data-walkthrough="home-cta"]')).toBeNull();
   });
 });

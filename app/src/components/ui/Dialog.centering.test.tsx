@@ -9,7 +9,7 @@
  * so the centering transform was dropped while the animation ran.
  *
  * Asserting the class name alone would only catch a literal revert. These tests
- * assert the RULE instead, against the real tailwind config: any entrance
+ * assert the RULE instead, against the real Tailwind v4 theme: any entrance
  * animation used by a transform-centered element must carry the centering in
  * every one of its own keyframes, and must land exactly where the utility
  * classes leave it so nothing moves when the animation hands the element back.
@@ -22,26 +22,26 @@ import { describe, expect, it } from 'vitest';
 import AlertDialogRoot, { AlertDialogContent } from './AlertDialog';
 import { DialogContent, DialogRoot } from './Dialog';
 
-/** The animation registrations and keyframes, read from the real config. */
+/** The animation registrations and keyframes, read from the real theme. */
 const tailwindSource = readFileSync(
-  join(__dirname, '..', '..', '..', 'tailwind.config.js'),
+  join(__dirname, '..', '..', 'index.css'),
   'utf8'
 );
 
-/** `'dialog-in': 'dialogIn 0.2s …'` → the keyframe name `dialogIn`. */
+/** `--animate-dialog-in: dialogIn 0.2s …` → the keyframe name `dialogIn`. */
 const keyframeNameFor = (animation: string): string => {
-  const match = tailwindSource.match(new RegExp(`'${animation}':\\s*'(\\w+)`));
+  const match = tailwindSource.match(new RegExp(`--animate-${animation}:\\s*(\\w+)`));
   if (!match) throw new Error(`no animation registered as '${animation}'`);
   return match[1];
 };
 
 /** Every `transform:` value inside the named keyframe block. */
 const transformsIn = (keyframe: string): string[] => {
-  const start = tailwindSource.indexOf(`        ${keyframe}: {`);
+  const start = tailwindSource.indexOf(`  @keyframes ${keyframe} {`);
   if (start === -1) throw new Error(`no keyframes named ${keyframe}`);
-  const end = tailwindSource.indexOf('\n        },', start);
+  const end = tailwindSource.indexOf('\n  }', start);
   const block = tailwindSource.slice(start, end);
-  return Array.from(block.matchAll(/transform:\s*'([^']+)'/g)).map(m => m[1]);
+  return Array.from(block.matchAll(/transform:\s*([^;]+);/g)).map(m => m[1].trim());
 };
 
 const centeringClassesOf = (el: HTMLElement) => ({

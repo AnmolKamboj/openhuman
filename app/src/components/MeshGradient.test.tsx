@@ -143,7 +143,7 @@ describe('<MeshGradient />', () => {
     // Window backgrounded (occluded/blurred) → the shader must stop rendering.
     hasFocus.mockReturnValue(false);
     act(() => {
-      window.dispatchEvent(new Event('blur-sm'));
+      window.dispatchEvent(new Event('blur'));
     });
     expect(gradientMock.pause).toHaveBeenCalledTimes(1);
     expect(gradientMock.conf.playing).toBe(false);
@@ -178,7 +178,7 @@ describe('<MeshGradient />', () => {
     // (previously this crashed on the next animation frame).
     hasFocus.mockReturnValue(false);
     act(() => {
-      window.dispatchEvent(new Event('blur-sm'));
+      window.dispatchEvent(new Event('blur'));
     });
     hasFocus.mockReturnValue(true);
     act(() => {

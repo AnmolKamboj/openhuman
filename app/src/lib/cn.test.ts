@@ -4,35 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 import { cn } from './cn';
 
-/**
- * `tailwind.config.js` is CommonJS in a `"type": "module"` package, and it
- * calls `require()` for its plugins — so neither a plain import nor
- * `createRequire` loads it under Vite. Evaluate it in a sandbox that stubs
- * `module`/`require` instead, which is the same "read the config as data"
- * approach `flows/canvas/__tests__/flowCanvasOutlines.test.ts` takes with
- * `index.css`.
- */
-function loadTailwindConfig(): { theme: { extend: Record<string, Record<string, unknown>> } } {
-  // Vitest runs with `app/` as cwd (see test/vitest.config.ts).
-  const configPath = resolve(process.cwd(), 'tailwind.config.js');
-  const source = readFileSync(configPath, 'utf8');
-  const sandboxedModule = { exports: {} as Record<string, unknown> };
-  const evaluate = new Function(
-    'module',
-    'exports',
-    'require',
-    `${source}\nreturn module.exports;`
-  ) as (
-    module: typeof sandboxedModule,
-    exports: Record<string, unknown>,
-    require: () => unknown
-  ) => { theme: { extend: Record<string, Record<string, unknown>> } };
+// Tailwind v4 keeps project tokens in CSS rather than a JS config. Read the
+// real theme source so this drift guard follows the same values the build sees.
+const themeSource = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
 
-  // Plugins are irrelevant here — only `theme.extend` is under test.
-  return evaluate(sandboxedModule, sandboxedModule.exports, () => ({}));
-}
-
-const tailwindConfig = loadTailwindConfig();
+const themeKeys = (prefix: string): string[] =>
+  Array.from(themeSource.matchAll(new RegExp(`--${prefix}-([\\w-]+):`, 'g')), match => match[1]);
 
 describe('cn', () => {
   it('flattens conditionals like clsx', () => {
@@ -77,18 +54,26 @@ describe('cn', () => {
 });
 
 /**
- * The drift guard. Every custom scale key in `tailwind.config.js` for the
+ * The drift guard. Every custom scale key in the Tailwind v4 `@theme` for the
  * groups tailwind-merge would otherwise misclassify must be registered in
  * `cn.ts`. Adding `rounded-6xl` to the config and not to `cn.ts` fails here
  * rather than silently producing a component whose radius never applies.
  */
-describe('cn stays in sync with tailwind.config.js', () => {
+describe('cn stays in sync with the Tailwind theme', () => {
   const STOCK = {
     fontSize: ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl', '7xl'],
     borderRadius: ['none', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', 'full', 'DEFAULT'],
     boxShadow: ['sm', 'md', 'lg', 'xl', '2xl', 'inner', 'none', 'DEFAULT'],
     backgroundImage: ['none'],
     backdropBlur: ['none', 'sm', 'md', 'lg', 'xl'],
+  } as const;
+
+  const PREFIX = {
+    fontSize: 'text',
+    borderRadius: 'radius',
+    boxShadow: 'shadow',
+    backgroundImage: 'background-image',
+    backdropBlur: 'backdrop-blur',
   } as const;
 
   // Keys the cn.ts config registers, per group.
@@ -114,7 +99,7 @@ describe('cn stays in sync with tailwind.config.js', () => {
 
   for (const group of Object.keys(REGISTERED) as (keyof typeof REGISTERED)[]) {
     it(`registers every non-stock ${group} key`, () => {
-      const configured = Object.keys(tailwindConfig.theme.extend[group] ?? {});
+      const configured = themeKeys(PREFIX[group]);
       const needsRegistering = configured.filter(
         key => !(STOCK[group] as readonly string[]).includes(key)
       );
