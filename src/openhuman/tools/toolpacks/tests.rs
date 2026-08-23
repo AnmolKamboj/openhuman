@@ -294,7 +294,6 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             "crypto",
             &[
                 "do_crypto",
-                "use_tinyplace",
                 "wallet_status",
                 "wallet_balances",
                 "wallet_network_defaults",

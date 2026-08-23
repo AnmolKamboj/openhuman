@@ -64,7 +64,6 @@ pub const PACKS: &[ToolPack] = &[
         summary: "Crypto wallet and market actions: balances, transfers, swaps, bridges, contract calls and x402 paid requests.",
         tools: &[
             "do_crypto",
-            "use_tinyplace",
             "wallet_status",
             "wallet_balances",
             "wallet_network_defaults",
