@@ -17,13 +17,34 @@ use anyhow::Result;
 /// say. Lead-with-the-answer and no-preamble survive in the per-agent voice
 /// sections, where they can be phrased as ordering rather than as a budget.
 /// Do not reintroduce a global length rule here.
-pub const GLOBAL_STYLE_SUFFIX: &str = "## Output style\n\n\
-    - Do **not** use em-dashes (`—`). Replace them with commas, colons, \
-    parentheses, or two short sentences. This applies to every output \
-    you produce: chat replies, summaries, tool args, and file contents.\n\
-    - **Do not repeat yourself.** Don't restate facts, context, or results \
-    already shown earlier in this conversation; reference them instead of \
-    pasting them again.\n";
+///
+/// The text itself now lives in `STYLE.md` (#5701) rather than in this
+/// constant, so it can be tuned on disk without a rebuild. This value is the
+/// bundled seed and the fallback when the workspace copy cannot be read; the
+/// authoritative content is whatever `sync_workspace_file` last wrote, plus
+/// any user edit on top of it.
+pub const GLOBAL_STYLE_SUFFIX: &str = include_str!("STYLE.md");
+
+/// The writing-style block appended to every agent's prompt.
+///
+/// Reads the workspace `STYLE.md`, seeding it from the bundled copy first so a
+/// fresh workspace still gets the rules. Falls back to the bundled text if the
+/// file cannot be read, because a prompt with no style contract at all is a
+/// worse failure than a stale one.
+///
+/// Synced here rather than only in [`IdentitySection`] because agents that set
+/// `omit_identity` skip that section entirely, and they need the style rules
+/// too.
+fn global_style_block(workspace_dir: &Path) -> String {
+    sync_workspace_file(workspace_dir, "STYLE.md");
+    std::fs::read_to_string(workspace_dir.join("STYLE.md")).unwrap_or_else(|error| {
+        tracing::warn!(
+            "[style] could not read workspace STYLE.md ({error}); \
+             falling back to the bundled copy"
+        );
+        GLOBAL_STYLE_SUFFIX.to_string()
+    })
+}
 
 #[derive(Default)]
 pub struct SystemPromptBuilder {
