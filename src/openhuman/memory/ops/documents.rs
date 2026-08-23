@@ -478,7 +478,7 @@ pub async fn memory_query_namespace(
     let include_references = request.include_references.unwrap_or(true);
     let requested_limit = request.resolved_limit() as usize;
     let result = async {
-        use tinymemory_api::provider::MemoryRetrieval;
+        use tinymemory_api::provider::MemoryProvider;
 
         let guard = active_memory_guard().await?;
         let retrieval_limit = query_limit_for_request(guard.as_ref(), &request).await?;
@@ -499,15 +499,17 @@ pub async fn memory_query_namespace(
         // (`recall_namespace_memories`), which is a different code path with no
         // bus twin — an empty query does not degrade to recency. See the gap
         // note in `memory::direct_engine_refs_tests`.
-        let hits = MemoryRetrieval::recall_namespace_scored(
-            guard.as_ref(),
-            &request.namespace,
-            &request.query,
-            retrieval_limit as usize,
-            None,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+        let hits = guard
+            .as_retrieval()
+            .ok_or_else(|| "memory driver does not support the retrieval family".to_string())?
+            .recall_namespace_scored(
+                &request.namespace,
+                &request.query,
+                retrieval_limit as usize,
+                None,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
         let mut context = NamespaceRetrievalContext {
             namespace: request.namespace.clone(),
             query: Some(request.query.clone()),

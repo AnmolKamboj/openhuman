@@ -543,16 +543,19 @@ pub(crate) async fn query_limit_for_request(
     guard: &crate::openhuman::memory::guard::MemoryGuard,
     request: &QueryNamespaceRequest,
 ) -> Result<u32, String> {
-    use tinymemory_api::provider::MemoryDocuments;
+    use tinymemory_api::provider::MemoryProvider;
 
     let requested = request.resolved_limit();
     if request.document_ids.is_none() {
         return Ok(requested);
     }
 
-    let raw = MemoryDocuments::list_documents(guard, Some(&request.namespace))
+    let raw = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?
+        .list_documents(Some(&request.namespace))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     let documents = parse_memory_document_summaries(raw)?;
     let total_documents = u32::try_from(documents.len()).unwrap_or(u32::MAX);
     Ok(requested.max(total_documents))
