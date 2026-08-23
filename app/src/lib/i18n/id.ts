@@ -4706,6 +4706,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Jajak pendapat pekerja memori',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Terkelola',
+  'settings.ai.managedSourceLabel': 'Dikelola oleh OpenHuman',
+  'settings.ai.managedSourceDetail': 'Pemilihan model otomatis',
   'settings.ai.routing.managedAlwaysOn': 'Selalu aktif',
   'settings.ai.routing.managedHint':
     'Terkelola selalu tersedia sebagai cadangan. Untuk menggunakan model Anda sendiri, pilih mode perutean di bawah.',

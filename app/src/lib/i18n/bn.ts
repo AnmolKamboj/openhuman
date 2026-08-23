@@ -4690,6 +4690,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'মেমরি কর্মী পোল',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'পরিচালিত',
+  'settings.ai.managedSourceLabel': 'OpenHuman দ্বারা পরিচালিত',
+  'settings.ai.managedSourceDetail': 'স্বয়ংক্রিয় মডেল নির্বাচন',
   'settings.ai.routing.managedAlwaysOn': 'সর্বদা চালু',
   'settings.ai.routing.managedHint':
     'পরিচালিত সবসময় একটি ফলব্যাক হিসাবে উপলব্ধ. আপনার নিজের মডেল ব্যবহার করতে, নীচে একটি রাউটিং মোড চয়ন করুন.',

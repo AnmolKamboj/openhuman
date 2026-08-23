@@ -4755,6 +4755,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Odpytywania procesu pamięci',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Zarządzane',
+  'settings.ai.managedSourceLabel': 'Zarządzane przez OpenHuman',
+  'settings.ai.managedSourceDetail': 'Automatyczny wybór modelu',
   'settings.ai.routing.managedAlwaysOn': 'Zawsze włączone',
   'settings.ai.routing.managedHint':
     'Opcja zarządzana jest zawsze dostępna jako opcja rezerwowa. Aby użyć własnego modelu, wybierz poniżej tryb routingu.',

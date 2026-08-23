@@ -5299,6 +5299,8 @@ const en: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Memory worker polls',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Managed',
+  'settings.ai.managedSourceLabel': 'Managed by OpenHuman',
+  'settings.ai.managedSourceDetail': 'Automatic model selection',
   'settings.ai.routing.managedAlwaysOn': 'Always on',
   'settings.ai.routing.managedHint':
     'Managed is always available as a fallback. To use your own model, choose a routing mode below.',

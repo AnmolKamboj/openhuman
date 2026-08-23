@@ -4638,6 +4638,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': '메모리 작업자 설문 조사',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': '관리됨',
+  'settings.ai.managedSourceLabel': 'OpenHuman이 관리',
+  'settings.ai.managedSourceDetail': '자동 모델 선택',
   'settings.ai.routing.managedAlwaysOn': '항상 켜짐',
   'settings.ai.routing.managedHint':
     '관리형은 항상 대체 수단으로 사용할 수 있습니다. 자신의 모델을 사용하려면 아래에서 라우팅 모드를 선택하세요.',

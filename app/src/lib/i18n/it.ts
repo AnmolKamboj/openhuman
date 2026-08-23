@@ -4761,6 +4761,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Sondaggi del Memory Worker',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Gestiti',
+  'settings.ai.managedSourceLabel': 'Gestito da OpenHuman',
+  'settings.ai.managedSourceDetail': 'Selezione automatica del modello',
   'settings.ai.routing.managedAlwaysOn': 'Sempre attivo',
   'settings.ai.routing.managedHint':
     'Gestito è sempre disponibile come fallback. Per utilizzare il tuo modello, scegli una modalità di routing di seguito.',

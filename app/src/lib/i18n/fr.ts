@@ -4796,6 +4796,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Sondages de mémoire',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Géré',
+  'settings.ai.managedSourceLabel': 'Géré par OpenHuman',
+  'settings.ai.managedSourceDetail': 'Sélection automatique du modèle',
   'settings.ai.routing.managedAlwaysOn': 'Toujours allumé',
   'settings.ai.routing.managedHint':
     'Géré est toujours disponible en solution de secours. Pour utiliser votre propre modèle, choisissez un mode de routage ci-dessous.',

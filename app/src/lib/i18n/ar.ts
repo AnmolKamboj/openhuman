@@ -4579,6 +4579,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'استطلاعات عاملي الذاكرة',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'المُدارة',
+  'settings.ai.managedSourceLabel': 'مُدار بواسطة OpenHuman',
+  'settings.ai.managedSourceDetail': 'اختيار تلقائي للنموذج',
   'settings.ai.routing.managedAlwaysOn': 'دائما على',
   'settings.ai.routing.managedHint':
     'المُدارة متاحة دائمًا كبديل. لاستخدام النموذج الخاص بك، اختر وضع التوجيه أدناه.',

@@ -4689,6 +4689,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'स्मृति कार्यकर्ता सर्वेक्षण',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'प्रबंधित',
+  'settings.ai.managedSourceLabel': 'OpenHuman द्वारा प्रबंधित',
+  'settings.ai.managedSourceDetail': 'स्वचालित मॉडल चयन',
   'settings.ai.routing.managedAlwaysOn': 'हमेशा बने रहें',
   'settings.ai.routing.managedHint':
     'प्रबंधित हमेशा फ़ॉलबैक के रूप में उपलब्ध होता है। अपने स्वयं के मॉडल का उपयोग करने के लिए, नीचे एक रूटिंग मोड चुनें।',

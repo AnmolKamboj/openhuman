@@ -4815,6 +4815,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Speicher-Worker-Umfragen',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Verwaltet',
+  'settings.ai.managedSourceLabel': 'Von OpenHuman verwaltet',
+  'settings.ai.managedSourceDetail': 'Automatische Modellauswahl',
   'settings.ai.routing.managedAlwaysOn': 'Immer aktiv',
   'settings.ai.routing.managedHint':
     'Verwaltet ist immer als Fallback verfügbar. Um dein eigenes Modell zu verwenden, wähle unten einen Routing-Modus.',

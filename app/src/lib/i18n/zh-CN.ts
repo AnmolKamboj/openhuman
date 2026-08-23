@@ -4435,6 +4435,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': '内存工作者民意调查',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': '托管',
+  'settings.ai.managedSourceLabel': '由 OpenHuman 管理',
+  'settings.ai.managedSourceDetail': '自动选择模型',
   'settings.ai.routing.managedAlwaysOn': '始终可用',
   'settings.ai.routing.managedHint':
     '托管模式始终可作为备用方案。要使用你自己的模型，请在下方选择路由模式。',

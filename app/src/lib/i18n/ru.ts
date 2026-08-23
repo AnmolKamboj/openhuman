@@ -4731,6 +4731,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Опросы работников памяти',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Управляемый',
+  'settings.ai.managedSourceLabel': 'Управляется OpenHuman',
+  'settings.ai.managedSourceDetail': 'Автоматический выбор модели',
   'settings.ai.routing.managedAlwaysOn': 'Всегда включен',
   'settings.ai.routing.managedHint':
     'Управляемый всегда доступен в качестве резервного варианта. Чтобы использовать собственную модель, выберите режим маршрутизации ниже.',

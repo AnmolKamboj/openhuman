@@ -4769,6 +4769,8 @@ const messages: TranslationMap = {
   'settings.ai.memoryWorkerPolls': 'Encuestas de trabajadores de la memoria',
   'settings.ai.defaultProviderName': 'OpenHuman',
   'settings.ai.routing.managed': 'Gestionado',
+  'settings.ai.managedSourceLabel': 'Gestionado por OpenHuman',
+  'settings.ai.managedSourceDetail': 'Selección automática de modelo',
   'settings.ai.routing.managedAlwaysOn': 'Siempre encendido',
   'settings.ai.routing.managedHint':
     'Gestionado siempre está disponible como alternativa. Para utilizar su propio modelo, elija un modo de enrutamiento a continuación.',
