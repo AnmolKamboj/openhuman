@@ -447,7 +447,7 @@ describe('Conversations — attachment feature', () => {
 
   it('shows the model selector in the assistant-ui composer', async () => {
     await renderWithSelectedThread();
-    expect(await screen.findByRole('button', { name: 'Select model' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Model' })).toBeInTheDocument();
   });
 
   it('rejects an image and shows the advisory when the model lacks vision', async () => {
