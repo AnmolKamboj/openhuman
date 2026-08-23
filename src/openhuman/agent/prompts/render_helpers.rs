@@ -526,6 +526,26 @@ pub fn sync_workspace_file(workspace_dir: &Path, filename: &str) {
         return;
     }
 
+    // A real workspace is always an absolute path (`~/.openhuman/users/<id>/
+    // workspace`, or a temp dir under test). A relative one means the caller
+    // never had a workspace to begin with — overwhelmingly `Path::new(".")`
+    // from the ~20 prompt-test fixtures — and joining onto it seeds SOUL.md,
+    // IDENTITY.md, ROLE.md, HEARTBEAT.md and MEMORY_GOALS.md plus their
+    // `.builtin-hash` siblings into the process's current directory. That is
+    // the repo root when the suite runs, which is how they briefly ended up
+    // committed (#5701).
+    //
+    // Refusing is safe because seeding into a relative path is never the
+    // intent: a caller with a genuine workspace always has an absolute one.
+    if !workspace_dir.is_absolute() {
+        tracing::debug!(
+            "[workspace-sync] refusing to seed {filename} into non-absolute workspace {} \
+             — no workspace configured",
+            workspace_dir.display()
+        );
+        return;
+    }
+
     let path = workspace_dir.join(filename);
     let hash_path = workspace_dir.join(format!(".{filename}.builtin-hash"));
 
