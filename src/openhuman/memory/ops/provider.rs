@@ -185,6 +185,12 @@ mod tests {
         assert_eq!(
             status.capabilities,
             vec![
+                // Widened from thirteen to seventeen with the v1.2.0 registry
+                // re-pin, which is where `chunks`, `people`, `profile` and
+                // `retrieval` gained bus members. `episodic` stays absent: the
+                // artifact serves it, but `ModuleMemoryProvider` has no
+                // `as_episodic`, so advertising it would over-claim.
+                "chunks",
                 "core",
                 "diff",
                 "documents",
@@ -193,8 +199,11 @@ mod tests {
                 "graph",
                 "ingest",
                 "maintenance",
+                "people",
                 "portability",
+                "profile",
                 "recall",
+                "retrieval",
                 "sources",
                 "tool_memory",
                 "tree"
