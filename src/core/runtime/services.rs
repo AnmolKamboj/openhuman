@@ -375,8 +375,8 @@ async fn run_legacy_migrations(config: &Config) {
     // Idempotent copy of any task boards left in the retired
     // `{workspace}/agent_task_boards/*.json` file-JSON tree into the crate
     // `graph.todos` store, which is now authoritative. Idempotent and returns
-    // fast on an empty/absent legacy dir (the `*.runs.json` ledger stays local).
-    // As above, each core boot must inspect its own workspace.
+    // fast on an empty/absent legacy dir. As above, each core boot must inspect
+    // its own workspace.
     match crate::openhuman::agent::tinyagents::todos::migrate_legacy_task_boards(
         &config.workspace_dir,
     )
@@ -392,6 +392,26 @@ async fn run_legacy_migrations(config: &Config) {
         }
         Ok(_) => {}
         Err(e) => log::warn!("[todos] legacy→crate task-board migration failed: {e}"),
+    }
+
+    // The `*.runs.json` claim/heartbeat ledgers that sat beside those boards
+    // move with them: run records now live in the crate `graph.todos.runs`
+    // store, so a board and its run log cannot drift apart across a restart.
+    // Left behind, an in-flight claim would be invisible to the reclaim sweep
+    // and its card would stay wedged at `in_progress` forever.
+    match crate::openhuman::threads::todos::runs::migrate_legacy_task_runs(&config.workspace_dir)
+        .await
+    {
+        Ok(report) if report.total > 0 => {
+            log::info!(
+                "[todos] legacy→crate run-ledger migration: total={} copied={} skipped={}",
+                report.total,
+                report.copied,
+                report.skipped
+            );
+        }
+        Ok(_) => {}
+        Err(e) => log::warn!("[todos] legacy→crate run-ledger migration failed: {e}"),
     }
 }
 
