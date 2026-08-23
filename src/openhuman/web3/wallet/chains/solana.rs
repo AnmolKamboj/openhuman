@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn unhardened_paths_are_rejected() {
-        // Path parsing now lives in `tinywallet`, so this exercises the rule
+        // Path parsing lives in the root `tinywallet` crate, so this exercises the
         // through the derivation entry point rather than a private helper.
         const MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon \
                                 abandon abandon abandon abandon abandon about";
