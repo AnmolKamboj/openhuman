@@ -10,8 +10,8 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { AssistantUiRuntimeProvider } from '../../../providers/AssistantUiRuntimeProvider';
 import { emptySessionTokenUsage } from '../../../store/chatRuntimeSlice';
 import { useAppSelector } from '../../../store/hooks';
-import AttachmentPreview from '../../chat/AttachmentPreview';
-import { Button } from '../../ui';
+import AttachmentPreview from '../../../components/chat/AttachmentPreview';
+import { Button } from '../../../components/ui';
 import { ChatToolFallback, ChatToolGroup } from './ChatToolParts';
 import { contextUsageFromTokenUsage, ContextWindowPill } from './composer/ContextWindowPill';
 import {
