@@ -760,7 +760,7 @@ pub(crate) fn evm_payment_payload(
 /// What *does* live in this process is the decrypted **mnemonic**, held in the
 /// returned `SecretMaterial` for as long as a caller holds it and sent across
 /// the bus on each confidential call. That is the exposure to reason about
-/// here; a derived private key is not one of them.
+/// here; a derived private key is not.
 ///
 /// Deriving the address rather than assuming one is what makes an x402 payment
 /// signed by exactly the account the wallet reports.
