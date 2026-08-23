@@ -588,10 +588,9 @@ describe('Conversations — attachment feature', () => {
     );
 
     await waitFor(() => {
-      const img = document.querySelector('img[src^="blob:conversation-attachment-"]');
+      const img = document.querySelector(`img[src="${dataUri}"]`);
       expect(img).not.toBeNull();
     });
-    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
   it('renders a document filename chip in the user bubble from attachmentKinds/Names', async () => {
@@ -750,10 +749,9 @@ describe('Conversations — attachment feature', () => {
 
     // The image marker's data URI still renders as an <img> (parsed out for display)...
     await waitFor(() => {
-      const img = document.querySelector('img[src^="blob:conversation-attachment-"]');
+      const img = document.querySelector(`img[src="${dataUri}"]`);
       expect(img).not.toBeNull();
     });
-    expect(URL.createObjectURL).toHaveBeenCalled();
 
     // ...but the raw marker syntax must never leak into the rendered bubble text.
     expect(document.body.textContent).not.toContain('[IMAGE:');
