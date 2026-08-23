@@ -139,18 +139,20 @@ use openhuman_core::openhuman::memory::{
 // stamps provenance from an explicit taint argument.
 use openhuman_core::openhuman::memory::api::provider::MemoryCore;
 use openhuman_core::openhuman::memory::api::types::MemoryTaint;
+// These request/record types are consumed directly by `openhuman_core::openhuman::memory::ops`
+// and `openhuman::threads::ops` handlers below, which take the host's own `rpc_models` types,
+// not the engine crate's same-named ones — so they must come from the host, not `tinymemory_core`.
+use openhuman_core::openhuman::memory::rpc_models::{
+    AppendConversationMessageRequest, ConversationMessageRecord, ConversationMessagesRequest,
+    CreateConversationThreadRequest, DeleteConversationThreadRequest, DeleteDocumentRequest,
+    EmptyRequest, GenerateConversationThreadTitleRequest, ListDocumentsRequest,
+    ListMemoryFilesRequest, MemoryInitRequest, ReadMemoryFileRequest,
+    UpdateConversationMessageRequest, UpdateConversationThreadLabelsRequest,
+    UpdateConversationThreadTitleRequest, UpsertConversationThreadRequest, WriteMemoryFileRequest,
+};
 use tinymemory_core::{
     remember::RememberSourceKind,
-    rpc_models::{
-        ApiEnvelope, ApiError, ApiMeta, AppendConversationMessageRequest,
-        ConversationMessageRecord, ConversationMessagesRequest, CreateConversationThreadRequest,
-        DeleteConversationThreadRequest, DeleteDocumentRequest, EmptyRequest,
-        GenerateConversationThreadTitleRequest, ListDocumentsRequest, ListMemoryFilesRequest,
-        MemoryInitRequest, PaginationMeta, QueryNamespaceRequest, ReadMemoryFileRequest,
-        RecallContextRequest, RecallMemoriesRequest, UpdateConversationMessageRequest,
-        UpdateConversationThreadLabelsRequest, UpdateConversationThreadTitleRequest,
-        UpsertConversationThreadRequest, WriteMemoryFileRequest,
-    },
+    rpc_models::{ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest, RecallContextRequest, RecallMemoriesRequest},
     traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
     util::redact::{redact, redact_endpoint},
 };
