@@ -200,46 +200,81 @@ Audit new Tauri plugins for `js_init_script` calls.
 
 ## Rust core (`src/`)
 
-### Extracted host-agnostic crates — `vendor/tinydocs`, `vendor/tinywallet`
+### Module wire contracts — one `*-bus` crate per loadable module
 
-Two vendored crates own logic that used to live in this repo. Both are git
-submodules consumed by `path` (not published to crates.io, so no
-`[patch.crates-io]` entry — same shape as `tinyhumans-sdk`). After cloning:
-`git submodule update --init vendor/tinydocs vendor/tinywallet`.
+A capability that runs in a loaded module is reached over the bus, and a host
+cannot import Rust items from a `cdylib`. So every module ships an ordinary
+crate carrying its **call vocabulary** — interface names, member names, request
+and response types, and the contract version — and this crate links that and
+nothing else from the module's repository. Each is a git submodule consumed by
+`path` (not published to crates.io, so no `[patch.crates-io]` entry — same shape
+as `tinyhumans-sdk`).
+
+| Contract crate | Gate | Reached from |
+| --- | --- | --- |
+| `tinydocs-bus` | `documents` | `modules/documents.rs`, `tools/impl/document/` (as `format`) |
+| `tinyvoice-bus` | `voice` | `modules/voice.rs` |
+| `tinyjuice-bus` | **none** — `inference::tokenjuice` is kernel | `inference/tokenjuice/types.rs`, `modules/tokenjuice_host.rs` |
+| `tinyruntime-bus` | none — `ShellTool` holds an `Option<Arc<NodeBootstrap>>` field | `modules/runtime.rs`, `runtime/**` |
+| `tinywallet-bus` | `web3` | `modules/wallet.rs`, `web3/**` |
+| `tinymcp-bus` | `mcp` | `mcp/**` |
+
+After cloning: `git submodule update --init --recursive vendor/`.
 
 **What this binary takes from each repository is its `-bus` contract crate, not
-its root crate.** A `-bus` crate is transport-free and holds the interface name,
-the object path, one constant per member, the payload types and the contract
-version — plus the pure rules a host genuinely runs itself. The root crate holds
-the implementation the TinyBus module carries, and this binary does not link it.
-`vendor/tinywallet/crates/tinywallet-bus` is the entry here; the same shape as
-`tinyvoice-bus`, `tinyjuice-bus`, `tinyruntime-bus` and `tinydocs-bus`.
+its root crate.** The root crate holds the implementation the TinyBus module
+carries, and this binary does not link it. `tinymcp` is the one exception, and a
+temporary one: its path dependency stays until `tinymcp-bus` grows the members
+the host reaches for (see the `Cargo.toml` comment and tinyhumansai/tinymcp#4).
+
+**Never re-declare a contract type here.** Each of these crates replaced a copy
+that had already drifted or was one edit away from it — `tools/impl/document/
+format/` was 1,873 lines differing from `crates/tinydocs-bus/src/` only in
+doc-link paths, `modules/voice.rs` redeclared four types with a comment
+explaining that it had to, and `inference/tokenjuice/types.rs` was 259 lines
+headed "shared with the separately compiled module" and shared by convention
+alone. A field added on one side of a copy is a decode failure on the other with
+nothing to catch it, and for the document specs it is worse than that: those
+specs are also what an LLM is shown as a JSON tool schema, so a limit that moves
+upstream becomes a tool description promising what the module does not enforce.
+
+**Call members by their constant, never by a string.** `methods::GENERATE_DOCX`,
+not `"GenerateDocx"`. A rename upstream is then a compile error here instead of
+a `MemberNotFound` at runtime.
+
+**`registry.rs` is the one place a name is still written out by hand.** It is a
+`const` table and cannot name a gated crate, so the `_tests.rs` beside each
+module client assert its `bus_name` / `object_path` against the contract's
+`BUS_NAME` / `OBJECT_PATH`. A mismatch is not a compile error — it is a
+`NameHasNoOwner` at first use, in the field, on whichever platform nobody tested.
+
+**Host policy stays host-side.** The contract says what a module may send; it
+does not decide what this host will act on. When a type becomes foreign, the
+policy attached to it becomes a free function rather than moving upstream —
+`modules/voice.rs`'s `clamped` (a volume that reaches an `osascript` command),
+`vad_config_from_server_config` (this host persists seconds, the module speaks
+milliseconds), and `hallucination_mode_wire`.
 
 The split follows one rule, and it is worth stating because it decides where
 the *next* extraction goes: **a crate owns what is the same for every host; the
-host owns what depends on its own runtime, config, or threat model.** Both
-crates are therefore synchronous, I/O-free, and runtime-free.
+host owns what depends on its own runtime, config, or threat model.** The
+contract crates are therefore synchronous, I/O-free, and runtime-free.
 
 | Crate | Owns | OpenHuman keeps |
 | --- | --- | --- |
-| `tinydocs` | the `.docx` spec types, their size limits, validation, and OOXML synthesis (`docx-rs` sits behind it) | the artifact pipeline, the `spawn_blocking` hop, and the generation deadline — `src/openhuman/tools/impl/document/` |
+| `tinydocs-bus` | the `.docx` / `.pptx` spec types, their size limits and validation | the artifact pipeline, the `spawn_blocking` hop, and the generation deadline — `src/openhuman/tools/impl/document/` |
 | `tinywallet-bus` | the TinyWallet wire contract and bus member names, the BTC / EVM / Solana / Tron address formats, the EIP-712 and ERC-20 encoders, and the Tron verification codec | RPC endpoint resolution, transaction assembly and broadcast, key custody — `src/openhuman/web3/` |
 
 Consequences worth knowing before touching either seam:
 
-- **`tinydocs::docx::generate` is synchronous on purpose.** A crate that
-  guessed at an executor or a deadline would be wrong for every host that
-  guessed differently, so `document/engine.rs` supplies exactly that policy and
-  nothing else. `DocumentError::GenerationTimeout` therefore has no `tinydocs`
-  equivalent and can only be produced host-side.
-- **`tinydocs::Error` is `#[non_exhaustive]`.** The `From` impl in
-  `document/types.rs` needs its catch-all arm; it degrades an unmapped variant
-  to `GenerationFailed` and logs, so a crate bump that adds a case worth
-  handling structurally shows up rather than being swallowed.
-- **The JSON tool schema did not change.** `GenerateDocumentInput` is
-  `tinydocs`' `DocumentSpec` re-exported under its historical name, with field
-  names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
-  that.
+- **A `-bus` crate may hold logic, not only types, and that is deliberate.**
+  Four wallet rules are the host's to run synchronously: validating an address
+  before a spec is sent (a rejected input rather than a failed call), hashing
+  EIP-712 typed data for the x402 payment path, encoding ERC-20 calldata, and
+  verifying the txid and contents of what a Tron node handed back. That last one
+  is not optional — Tron has the *node* build the transaction, so the check has
+  to happen wherever the decision to sign is made. `tinydocs-bus`' spec
+  validators set the same precedent.
 - **`tinywallet-bus` rejects an uppercase `0X` EVM prefix, matching the code it
   replaced, which rejected that prefix too.** The old path went through `ethers_core::types::Address`'s
   `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
@@ -249,31 +284,27 @@ Consequences worth knowing before touching either seam:
 - **Bitcoin has two rules, not one.** `btc::validate` is the recipient rule;
   `btc::validate_sender` additionally requires P2WPKH. Using the first where
   the second belongs accepts an address that only fails later, at signing time.
-- **`tinywallet-bus` holds logic, not only types, and that is deliberate.** Four
-  rules are the host's to run synchronously: validating an address before a spec
-  is sent (a rejected input rather than a failed call), hashing EIP-712 typed
-  data for the x402 payment path, encoding ERC-20 calldata, and verifying the
-  txid and contents of what a Tron node handed back. That last one is not
-  optional — Tron has the *node* build the transaction, so the check has to
-  happen wherever the decision to sign is made. Same precedent `tinydocs`'
-  spec validators set: a bus crate carrying host-side rules is established here,
-  not a novelty.
-- **Member names come from `tinywallet_bus::names::methods`, never a literal.**
-  `src/openhuman/modules/wallet.rs` calls by constant, and
-  `wallet_tests.rs`'s `contract` module pins `registry.rs`'s `bus_name` /
-  `object_path` against `BUS_NAME` / `OBJECT_PATH` and every member it sends
-  against `METHODS` + `CONFIDENTIAL_METHODS`. The registry is a compiled-in
-  `const` table that cannot name a gated crate, so a drifted string is a
-  `NameHasNoOwner` in the field rather than a compile error.
 - **The root `tinywallet` crate survives as a dev-dependency only.** Test
   fixtures derive a known account through its `key` gate. Cargo does not link
   dev-dependency features into the shipped binary, so this does not put
   `bitcoin`, `coins-bip39` or a native `secp256k1` build back into the product.
-- **Each crate's gates ride OpenHuman's existing ones**: the tinydocs entry is
-  exclusive to `documents`, `tinywallet-bus` to `web3`. Both are default-ON and
-  already forwarded to the desktop shell. Both are taken with
-  `default-features = false` — the wire contract, not the implementation, which
-  runs in the TinyBus module instead (see the module host section).
+- **Document generation is synchronous on purpose.** A crate that guessed at an
+  executor or a deadline would be wrong for every host that guessed
+  differently, so `document/engine.rs` supplies exactly that policy and nothing
+  else. `DocumentError::GenerationTimeout` therefore has no contract equivalent
+  and can only be produced host-side.
+- **`tinydocs_bus::Error` is `#[non_exhaustive]`.** The `From` impl in
+  `document/types.rs` needs its catch-all arm; it degrades an unmapped variant
+  to `GenerationFailed` and logs, so a crate bump that adds a case worth
+  handling structurally shows up rather than being swallowed.
+- **The JSON tool schema did not change.** `GenerateDocumentInput` is the
+  contract's `DocumentSpec` re-exported under its historical name, with field
+  names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
+  that.
+- **Each crate's gates ride OpenHuman's existing ones**: `tinydocs-bus` is
+  exclusive to `documents`, `tinywallet-bus` to `web3`. Both are default-OFF for
+  contributors and product-ON, and both are already forwarded to the desktop
+  shell.
 
 ### Backend API access — `src/api/` over `tinyhumans-sdk`
 
@@ -639,7 +670,7 @@ Two columns because there are two sets (see above): **Contrib** is `[features] d
 | `inference` | OFF | ON | the `cpal` audio-device stack: microphone capture for voice, plus `desktop::accessibility::permissions`' mic-permission probe. Implied by `voice`. Off ⇒ the probe reports `Unknown`. **The name is historical** — it used to gate the bundled whisper.cpp STT engine, which no longer exists (see the scope note below); do not rename it, it is forwarded by name from the shell manifest and asserted by `INFERENCE_COMPILED_IN` | `cpal` |
 | `web3` | OFF | ON | the `openhuman::web3` family (`web3`, `web3::wallet`, `web3::x402`) — crypto wallet (multi-chain sign/broadcast), swaps/bridges/dapp calls, x402 machine payments | `bitcoin`, `curve25519-dalek` |
 | `media` | ON | ON | `openhuman::media::generation` (the `media_generate_*` agent tools) + `openhuman::media::image` scaffold | none (surface-only) |
-| `documents` | OFF | ON | the `generate_document` / `generate_presentation` agent tools and PDF text extraction during multimodal ingest. **The synthesis is not in this build** — all three run in the `tinydocs` TinyBus module (see below), so this gate turns on the tools and the host policy around them: the artifact pipeline, the deadlines, image resolution under the security policy. `tinydocs` is consumed with `default-features = false`, for the wire contract only. Implies `modules`. Off ⇒ both tools absent from the tool list rather than degraded, and PDF ingest degrades a file to a reference instead of extracted text | **39 crates**, and they leave `Cargo.lock` entirely: `docx-rs`, `ppt-rs`, `pdf-extract` plus `lopdf`, `syntect`, `pulldown-cmark`, `xml-rs`, `quick-xml`, `zip 0.6`, `zstd`, `bzip2`, `encoding_rs`, `euclid`, `ttf-parser`, the CFF/Type1/CMap parsers, … Product profile 505 → 448 names |
+| `documents` | OFF | ON | the `generate_document` / `generate_presentation` agent tools and PDF text extraction during multimodal ingest. **The synthesis is not in this build** — all three run in the `tinydocs` TinyBus module (see below), so this gate turns on the tools and the host policy around them: the artifact pipeline, the deadlines, image resolution under the security policy. The dependency is `tinydocs-bus`, the wire contract crate, and nothing else from that repository. Implies `modules`. Off ⇒ both tools absent from the tool list rather than degraded, and PDF ingest degrades a file to a reference instead of extracted text | **39 crates**, and they leave `Cargo.lock` entirely: `docx-rs`, `ppt-rs`, `pdf-extract` plus `lopdf`, `syntect`, `pulldown-cmark`, `xml-rs`, `quick-xml`, `zip 0.6`, `zstd`, `bzip2`, `encoding_rs`, `euclid`, `ttf-parser`, the CFF/Type1/CMap parsers, … Product profile 505 → 448 names |
 | `modules` | ON | ON | `openhuman::modules` — the dynamic module host: the loader that admits a compiled `cdylib` through tinybus's ABI descriptor, manifest, dependency and SHA-256 gates, the compiled-in registry of modules this build trusts, and the `modules` RPC namespace. Implied by `documents`. Off ⇒ `modules.*` is unknown-method and nothing can load a native module | none in the product profile (`ureq`, `flate2`, `tar`, `zip 2`, `tempfile`, `toml` are already there) — **but see the kernel-floor note**: this feature exists so `tinybus/modules` is not enabled on the dependency itself, which would put a `dlopen` loader into the kernel profile where `tinybus` is always-on |
 | `skills` | ON | ON | `openhuman::skills` + `openhuman::skills::runtime` + `openhuman::skills::catalog` domains — SKILL.md discovery/parse/install, workflow execution + run logs, remote catalogs, the `skill_setup` / `skill_executor` builtin agents, and the 16 skill agent tools | none (see below) |
 | `flows` | ON | ON | `openhuman::flows` (saved automation graphs — create/run/schedule, the `workflow_builder` + `flow_discovery` agents), `openhuman::flows::tinyflows` (engine seam), `openhuman::flows::rhai` (`.ragsh` language-workflow tool) | `tinyflows`, `jaq-core`, `jaq-std`, `jaq-json`, `rhai` |

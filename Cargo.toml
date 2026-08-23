@@ -489,24 +489,67 @@ crossterm = { version = "0.29", optional = true }
 unicode-width = { version = "0.2", optional = true }
 # TinyDocs — the document wire contract, and nothing else.
 #
-# `default-features = false` is load-bearing: it takes the spec types, their
-# size limits, the validation rules and the PNG/JPEG header reader, and leaves
-# every writer behind. Synthesis happens in the `tinydocs` TinyBus module
+# `tinydocs-bus` is the whole dependency: the spec types, their size limits,
+# the validation rules, the PNG/JPEG header reader, the error vocabulary and
+# the member names. It is `serde` + `thiserror` and nothing else — no writer,
+# no `tinybus`, no runtime. Synthesis happens in the `tinydocs` TinyBus module
 # (`src/openhuman/modules/`), so this build carries the shape of a document
-# without carrying the code that produces one — which is why `docx-rs`,
+# without carrying the code that produces one, which is why `docx-rs`,
 # `ppt-rs` and `pdf-extract` are absent from the graph entirely rather than
 # merely gated.
 #
 # Sharing the contract rather than re-declaring it is the point. The specs are
 # what an LLM is shown as a JSON tool schema and what the module validates
 # against; two definitions of that would drift, and the drift would be a tool
-# description promising limits the module does not enforce.
+# description promising limits the module does not enforce. This crate carried
+# a verbatim copy of the contract for exactly that reason and paid exactly that
+# risk — `src/openhuman/tools/impl/document/format/` was 1,873 lines that
+# differed from `crates/tinydocs-bus/src/` only in doc-link paths.
 #
 # Vendored as a path dependency like `tinyhumans-sdk`: the crate is not
 # published to crates.io, so there is no `[patch.crates-io]` entry for it.
 # After cloning: `git submodule update --init vendor/tinydocs`.
 #
-# Optional: exclusive to the default-ON `documents` feature.
+# Optional: exclusive to the `documents` feature, which is **default-OFF,
+# product-ON** — `[features] default` is the contributor set and this is not in
+# it; `scripts/ci/product-features.txt` is what the shipped desktop app has, and
+# it is. The comment here said "default-ON", which was true before #4919 split
+# the two sets and has been wrong since.
+tinydocs-bus = { path = "vendor/tinydocs/crates/tinydocs-bus", optional = true }
+
+# TinyVoice — the voice wire contract, and nothing else.
+#
+# Same arrangement as `tinydocs-bus`: member names, the payload types the
+# module answers with, and the contract version, at a cost of `serde`. The
+# processing lives in the `tinyvoice` TinyBus module, so nothing here decodes
+# audio. `src/openhuman/modules/voice.rs` used to redeclare these types with a
+# comment saying it did so because this crate did not depend on TinyVoice;
+# it does now.
+#
+# After cloning: `git submodule update --init vendor/tinyvoice`.
+#
+# Optional: exclusive to the `voice` feature — default-OFF, product-ON, the
+# same split as `documents` above.
+tinyvoice-bus = { path = "vendor/tinyvoice/crates/tinyvoice-bus", optional = true }
+
+# TinyJuice — the compression wire contract, and nothing else.
+#
+# Same arrangement as `tinydocs-bus` and `tinyvoice-bus`: the payload types, the
+# request and response envelopes, the member names and the contract version, at
+# a cost of `serde`. The router, the compressors, the CCR cache and the rule
+# engine all live in the `tinyjuice` module and are not in this build.
+#
+# `src/openhuman/inference/tokenjuice/types.rs` was a 259-line hand-copy of
+# these types headed "Stable wire types shared with the separately compiled
+# TinyJuice module" — shared by convention and checked by nobody. It is a
+# re-export now.
+#
+# Not optional: `inference::tokenjuice` is always compiled (the compression
+# middleware sits in the agent turn path, which is kernel), so the contract has
+# no gate to hang off.
+#
+# After cloning: `git submodule update --init vendor/tinyjuice`.
+tinyjuice-bus = { path = "vendor/tinyjuice/crates/tinyjuice-bus" }
 
 # TinyHosts — the unified hosting API: one `Host` trait over a hosting provider,
 # and the `launch` flow that puts a Next.js application, its database, its
@@ -775,7 +818,7 @@ inference = ["dep:cpal"]
 # reference instead of extracted text
 # (`agent::multimodal::extract_pdf_text`). Slim / headless builds opt out via
 # `--no-default-features --features "<explicit list without documents>"`.
-documents = ["modules"]
+documents = ["modules", "dep:tinydocs-bus"]
 # Hosting: the `hosting_*` agent tools that put a workspace on a real hosting
 # provider — a site, a managed database wired into it, its environment, its
 # domains, its deployments and the traffic they served. Default-OFF,
@@ -830,6 +873,9 @@ voice = [
     # alone fails to resolve `openhuman::modules` — which the product build
     # hides, because `documents` turns `modules` on anyway.
     "modules",
+    # The member names and payload types the module answers with. Contract
+    # only — `serde` and nothing else.
+    "dep:tinyvoice-bus",
     "dep:lettre",
     "dep:arboard",
     "dep:enigo",
