@@ -13,6 +13,37 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   286/268/2  2026-08-23  tinymcp registry entry, NO CHANGE to this profile —
+#                      and the entry exists to correct the prediction in the
+#                      2026-08-22 line below, which is measurably wrong.
+#                      That line said step two of the MCP extraction would drop
+#                      the `tinymcp` path dependency "at which point the MCP
+#                      transport stack leaves the always-on graph entirely.
+#                      Lower it in that PR." It does not, and the ratchet is
+#                      therefore NOT lowered here.
+#                      Measured, not derived: `scripts/dep-sim.py --cut tinymcp`
+#                      projects 286/268/2 -> 285/267/2, i.e. -1 package / -1
+#                      name / 0 native. The package that leaves is `tinymcp`
+#                      itself and nothing beneath it, because its dependencies
+#                      are shared with kernel surface: in this profile
+#                      `rusqlite` has SIX parents (openhuman, tinyagents,
+#                      tinychannels, tinycortex, tinymcp, tinymemory-core) and
+#                      `reqwest` has TEN. Confirmed with `cargo tree
+#                      --no-default-features --features flows -e normal -i
+#                      rusqlite` / `-i reqwest`.
+#                      This is the same lesson as the TinyMemory port: a module
+#                      boundary buys a COMPILATION boundary, not a dependency
+#                      shed, whenever the module's dependencies are already
+#                      shared. Do not write "and its dependency tail leaves with
+#                      it" into a History entry again without running dep-sim
+#                      first — per-dependency intuition over-counts exactly the
+#                      way per-dependency arithmetic does.
+#                      What this PR does land: `TINYMCP` in
+#                      `src/openhuman/modules/registry.rs`, pinning the v0.3.1
+#                      release so the module can be downloaded and verified. The
+#                      path dependency stays until `tinymcp-bus` publishes the
+#                      members and types the host reaches for (see the Cargo.toml
+#                      comment); the -1 lands in that PR, not this one.
 #   286/268/2  2026-08-22  combined raise from two independent extractions
 #                      landing on the same day, each additive on the 283/265/2
 #                      base. (1) The MCP client moved out to `tinymcp` (+2
