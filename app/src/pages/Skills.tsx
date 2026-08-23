@@ -1327,6 +1327,8 @@ export default function Skills() {
                               rowKey={entry => entry.meta.slug}
                               ariaLabel={t('skills.integrationsSubtitle')}
                               loading={composioLoading && composioSortedEntries.length === 0}
+                              loadingTestId="composio-integrations-loading"
+                              loadingLabel={t('skills.loadingIntegrations')}
                               empty={
                                 <p className="px-1 py-4 text-center text-xs text-content-faint">
                                   {t('skills.noResults')}
