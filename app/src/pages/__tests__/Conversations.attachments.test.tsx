@@ -309,7 +309,7 @@ describe('Conversations — attachment feature', () => {
 
   it('renders the attachment button in the composer', async () => {
     await renderWithSelectedThread();
-    expect(screen.getByRole('button', { name: 'Add Attachment' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Attach file' })).toBeInTheDocument();
   });
 
   it('shows attachment chip after selecting a valid image file', async () => {
