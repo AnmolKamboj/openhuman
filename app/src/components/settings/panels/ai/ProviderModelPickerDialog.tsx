@@ -85,6 +85,7 @@ const sourceDetail = (source: CustomDialogSource, t: TFn) =>
  * flows, so the same dialog can serve global and per-workload routing.
  */
 export function ProviderModelPickerDialog({
+  allowManaged = true,
   cloudProviders,
   localModels,
   ollamaRunning,
@@ -93,13 +94,18 @@ export function ProviderModelPickerDialog({
   onClose,
   onSelect,
 }: ProviderModelPickerDialogProps) {
+  const { t } = useT();
   const sources = useMemo<CustomDialogSource[]>(
     () => [
+      // First, and before any configured provider: it is the default the app
+      // ships with, and the one a user needs to find again after trying their
+      // own key.
+      ...(allowManaged ? ([{ kind: 'managed' as const }] as const) : []),
       ...cloudProviders.map(provider => ({ kind: 'cloud' as const, providerSlug: provider.slug })),
       ...(ollamaRunning && localModels.length > 0 ? ([{ kind: 'local' as const }] as const) : []),
       ...(claudeCodeEnabled ? ([{ kind: 'claude-code' as const }] as const) : []),
     ],
-    [claudeCodeEnabled, cloudProviders, localModels.length, ollamaRunning]
+    [allowManaged, claudeCodeEnabled, cloudProviders, localModels.length, ollamaRunning]
   );
   const [query, setQuery] = useState('');
   const [source, setSource] = useState<CustomDialogSource | null>(
@@ -148,7 +154,9 @@ export function ProviderModelPickerDialog({
   }, [catalogRequest, localModels, source]);
 
   const filteredSources = sources.filter(candidate =>
-    sourceLabel(candidate, cloudProviders).toLocaleLowerCase().includes(query.toLocaleLowerCase())
+    sourceLabel(candidate, cloudProviders, t)
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase())
   );
   const selectSource = (nextSource: CustomDialogSource) => {
     setSource(nextSource);
@@ -177,9 +185,15 @@ export function ProviderModelPickerDialog({
             type="button"
             variant="primary"
             size="sm"
-            disabled={!source || !model.trim()}
+            // Managed carries no model id, so requiring one would leave the
+            // only always-available option permanently unselectable.
+            disabled={!source || (!isManaged(source) && !model.trim())}
             onClick={() => {
               if (!source) return;
+              if (isManaged(source)) {
+                onSelect({ source, model: '', contextWindow: null });
+                return;
+              }
               const selectedModel = catalog.find(candidate => candidate.id === model.trim());
               onSelect({
                 source,
@@ -219,15 +233,15 @@ export function ProviderModelPickerDialog({
                   className={`h-auto w-full justify-start gap-3 px-2.5 py-2 ${selected ? 'bg-surface-muted' : ''}`}>
                   <ProviderSwatch
                     slug={sourceSlug(candidate)}
-                    label={sourceLabel(candidate, cloudProviders)}
+                    label={sourceLabel(candidate, cloudProviders, t)}
                     tone={slugTone(sourceSlug(candidate))}
                   />
                   <span className="flex min-w-0 flex-col items-start gap-0.5">
                     <span className="truncate text-sm font-medium">
-                      {sourceLabel(candidate, cloudProviders)}
+                      {sourceLabel(candidate, cloudProviders, t)}
                     </span>
                     <span className="text-xs font-normal text-content-muted">
-                      {sourceDetail(candidate)}
+                      {sourceDetail(candidate, t)}
                     </span>
                   </span>
                 </Button>
@@ -236,7 +250,18 @@ export function ProviderModelPickerDialog({
           </div>
         </div>
         <div className="min-w-0 p-4">
-          {source?.kind === 'cloud' ? (
+          {isManaged(source) ? (
+            // No model field: managed picks per workload and keeps that choice
+            // current, so there is nothing here for the user to fill in.
+            <div data-testid="model-picker-managed-pane" className="space-y-2">
+              <p className="text-sm font-medium text-content">
+                {t('settings.ai.managedSourceLabel')}
+              </p>
+              <p className="text-xs leading-relaxed text-content-muted">
+                {t('settings.ai.routing.managedDesc')}
+              </p>
+            </div>
+          ) : source?.kind === 'cloud' ? (
             <ModelEntryField
               mode={modelEntryMode}
               model={model}
@@ -261,7 +286,7 @@ export function ProviderModelPickerDialog({
               />
             </>
           )}
-          {source?.kind !== 'cloud' ? (
+          {source && !isManaged(source) && source.kind !== 'cloud' ? (
             <div className="mt-3 max-h-56 space-y-1 overflow-y-auto">
               {source?.kind === 'claude-code' ? (
                 <p className="text-sm text-content-muted">
