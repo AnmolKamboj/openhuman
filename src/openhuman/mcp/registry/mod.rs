@@ -201,6 +201,24 @@ pub mod connections {
         }
     }
 
+    /// Drop a connection held in `config`'s workspace.
+    ///
+    /// The counterpart to [`disconnect`] for a caller that holds a `Config`,
+    /// for the same reason [`all_connected_tools_for_config`] exists: the
+    /// by-server-id form resolves through the process default, which stops
+    /// answering once a second workspace is open. A caller that connected
+    /// through [`connect`] already named a workspace and should close over the
+    /// same one.
+    pub async fn disconnect_for_config(config: &Config, server_id: &str) -> bool {
+        match host::for_config(config) {
+            Ok(service) => service.dynamic().connections().disconnect(server_id).await,
+            Err(error) => {
+                tracing::debug!(?error, "[mcp] no host for workspace; nothing to disconnect");
+                false
+            }
+        }
+    }
+
     /// The most recent failure message for a server.
     pub async fn last_error_for(server_id: &str) -> Option<String> {
         host::try_service()?
