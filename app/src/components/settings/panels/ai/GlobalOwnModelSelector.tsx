@@ -109,7 +109,11 @@ export const GlobalOwnModelSelector = ({
         ? ({ kind: 'local', model: model.trim() } as const)
         : source.kind === 'claude-code'
           ? ({ kind: 'claude-code', model: model.trim() } as const)
-          : ({ kind: 'cloud', providerSlug: source.providerSlug, model: model.trim() } as const);
+          : // Managed is not offered by this card (`allowManaged={false}`), so
+            // it can never be the source here; narrow rather than assume.
+            source.kind === 'cloud'
+            ? ({ kind: 'cloud', providerSlug: source.providerSlug, model: model.trim() } as const)
+            : null;
   const isSaved =
     selectedRef !== null &&
     saved !== null &&
@@ -140,7 +144,7 @@ export const GlobalOwnModelSelector = ({
         await onApply({ kind: 'local', model: nextModel.trim() }, vision);
       } else if (nextSource.kind === 'claude-code') {
         await onApply({ kind: 'claude-code', model: nextModel.trim() }, vision);
-      } else {
+      } else if (nextSource.kind === 'cloud') {
         await onApply(
           { kind: 'cloud', providerSlug: nextSource.providerSlug, model: nextModel.trim() },
           vision
