@@ -37,7 +37,7 @@ use openhuman_core::openhuman::tools::registry::{
     all_tool_registry_controller_schemas, all_tool_registry_registered_controllers,
     capability_provider_by_id, capability_provider_diagnostics, capability_provider_registry,
     denials, get_tool, is_capability_provider_trusted_enabled, list_capability_providers,
-    list_tools, normalize_capability_provider_id, registry_entries,
+    list_tools, normalize_capability_provider_id, registry_entries, registry_entries_for_config,
     CapabilityProviderRegistryError,
 };
 
@@ -654,7 +654,13 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
         .expect("connect test mcp server");
     assert_eq!(tools.first().map(|tool| tool.name.as_str()), Some("echo"));
 
-    let entries = registry_entries();
+    // Config-scoped, not ambient: this case connects through
+    // `host::for_config(&config)`, keyed by its own tempdir. `registry_entries()`
+    // resolves through the process default instead, which returns a lone host
+    // but `None` once another case in this binary has opened a second one — so
+    // the ambient form reports nothing connected here purely because of who
+    // else ran first.
+    let entries = registry_entries_for_config(&config);
     let client_entry = entries
         .iter()
         .find(|entry| entry.tool_id == format!("mcp-client::{}::echo", server.server_id))
