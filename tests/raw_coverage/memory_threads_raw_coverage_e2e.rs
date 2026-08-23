@@ -5,10 +5,10 @@
 //! hermetic while still exercising production code paths that are awkward to
 //! reach through full JSON-RPC flows.
 
-use axum::Router;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
+use axum::Router;
 use chrono::{TimeZone, Utc};
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -29,10 +29,15 @@ use openhuman_core::openhuman::memory::query::{
     MemoryQueryTool, MemoryTreeDrillDownTool, MemoryTreeFetchLeavesTool,
     MemoryTreeIngestDocumentTool, MemoryTreeQuerySourceTool, MemoryTreeSearchEntitiesTool,
 };
+use tinymemory_core::queue::types::ReembedBackfillPayload;
+use tinymemory_core::queue::{
+    self as memory_queue, AppendBufferPayload, AppendTarget, ExtractChunkPayload,
+    FlushStalePayload, JobKind, JobStatus, NewJob, NodeRef, SealPayload, DEFAULT_LOCK_DURATION_MS,
+};
 use openhuman_core::openhuman::memory::sources::readers::reader_for;
 use openhuman_core::openhuman::memory::sources::registry;
 use openhuman_core::openhuman::memory::sources::rpc as memory_sources_rpc;
-use openhuman_core::openhuman::memory::sources::status::{FreshnessLabel, source_status};
+use openhuman_core::openhuman::memory::sources::status::{source_status, FreshnessLabel};
 use openhuman_core::openhuman::memory::sources::sync::sync_source;
 use openhuman_core::openhuman::memory::sources::types::{
     ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
@@ -40,11 +45,22 @@ use openhuman_core::openhuman::memory::sources::types::{
 use openhuman_core::openhuman::memory::sources::{
     all_memory_sources_controller_schemas, all_memory_sources_registered_controllers,
 };
+use tinymemory_core::store::chunks::store::{upsert_chunks, with_connection};
+use tinymemory_core::store::chunks::types::{
+    approx_token_count, chunk_id, Chunk, DataSource, Metadata, SourceKind as ChunkSourceKind,
+    SourceRef,
+};
+use tinymemory_core::store::trees::types::{
+    SummaryNode, Tree, TreeKind, TreeStatus as StoredTreeStatus,
+};
+use tinymemory_core::store::{
+    MemoryClient, NamespaceDocumentInput, UnifiedMemory,
+};
 use openhuman_core::openhuman::memory::sync::composio;
 use openhuman_core::openhuman::memory::sync::composio::providers::profile::{
-    ConnectedIdentity, IdentityKind, canonicalize, delete_connected_identity_facets,
-    is_self_identity, is_self_identity_any_toolkit, load_connected_identities,
-    render_connected_identities_section,
+    canonicalize, delete_connected_identity_facets, is_self_identity, is_self_identity_any_toolkit,
+    load_connected_identities, render_connected_identities_section, ConnectedIdentity,
+    IdentityKind,
 };
 use openhuman_core::openhuman::memory::sync::composio::providers::profile_md::{
     block_end, block_start, merge_provider_into_profile_md, remove_provider_from_profile_md,
@@ -54,26 +70,26 @@ use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
     post_process as slack_post_process, schemas as slack_memory_schemas,
 };
 use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    DEFAULT_DAILY_REQUEST_LIMIT, DailyBudget, SyncState, extract_item_id,
+    extract_item_id, DailyBudget, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
 };
 use openhuman_core::openhuman::memory::sync::composio::providers::user_scopes;
 use openhuman_core::openhuman::memory::sync::composio::providers::{
-    ComposioProvider, CuratedTool, NormalizedTask, ProviderContext, ProviderUserProfile,
-    SyncOutcome as ComposioSyncOutcome, SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
     agent_ready_toolkits, all_providers as all_composio_providers, capability_matrix,
     catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated, get_provider,
     init_default_providers as init_default_composio_providers, is_action_visible_with_pref,
-    register_provider, toolkit_from_slug, toolkit_has_scope,
+    register_provider, toolkit_from_slug, toolkit_has_scope, ComposioProvider, CuratedTool,
+    NormalizedTask, ProviderContext, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome,
+    SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
 };
 use openhuman_core::openhuman::memory::sync::sync_status::{
     rpc as memory_sync_status_rpc, schemas as memory_sync_status_schemas,
 };
 use openhuman_core::openhuman::memory::tool_memory::prompt::{
-    TOOL_MEMORY_HEADING, ToolMemoryRulesSection, render_tool_memory_rules,
+    render_tool_memory_rules, ToolMemoryRulesSection, TOOL_MEMORY_HEADING,
 };
 use openhuman_core::openhuman::memory::tool_memory::{
-    TOOL_MEMORY_PROMPT_CAP, ToolMemoryPriority, ToolMemoryRule, ToolMemorySource,
-    tool_memory_namespace, tool_memory_store,
+    tool_memory_namespace, tool_memory_store, ToolMemoryPriority, ToolMemoryRule, ToolMemorySource,
+    TOOL_MEMORY_PROMPT_CAP,
 };
 use openhuman_core::openhuman::memory::tools::tool_memory::{
     MemoryToolsListTool, MemoryToolsPutTool,
@@ -88,47 +104,34 @@ use openhuman_core::openhuman::memory::tree::score::extract::{
 };
 use openhuman_core::openhuman::memory::tree::score::resolver::CanonicalEntity;
 use openhuman_core::openhuman::memory::tree::score::signals::{
-    ScoreSignals, SignalWeights, combine, combine_cheap_only, compute as compute_score_signals,
-    entity_density_score, interaction, metadata_weight, source_weight, token_count, unique_words,
+    combine, combine_cheap_only, compute as compute_score_signals, entity_density_score,
+    interaction, metadata_weight, source_weight, token_count, unique_words, ScoreSignals,
+    SignalWeights,
 };
 use openhuman_core::openhuman::memory::tree::score::store as score_store;
-use openhuman_core::openhuman::memory::tree::score::{ScoringConfig, resolver};
+use openhuman_core::openhuman::memory::tree::score::{resolver, ScoringConfig};
 use openhuman_core::openhuman::memory::tree::summarise::{
-    SummaryContext, SummaryInput, fallback_summary,
+    fallback_summary, SummaryContext, SummaryInput,
 };
 use openhuman_core::openhuman::memory::tree::tree::bucket_seal::LeafRef;
 use openhuman_core::openhuman::memory::tree::tree_runtime::store as tree_runtime_store;
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
-    NodeLevel, TreeNode, all_tree_summarizer_controller_schemas,
-    all_tree_summarizer_registered_controllers, derive_node_ids, derive_parent_id, estimate_tokens,
-    level_from_node_id, node_id_to_path,
+    all_tree_summarizer_controller_schemas, all_tree_summarizer_registered_controllers,
+    derive_node_ids, derive_parent_id, estimate_tokens, level_from_node_id, node_id_to_path,
+    NodeLevel, TreeNode,
 };
 use openhuman_core::openhuman::memory::tree::{retrieval, score::embed};
-use openhuman_core::openhuman::memory::{
-    MemoryIngestionConfig, MemoryIngestionRequest, all_memory_controller_schemas,
-    all_memory_registered_controllers,
-    preferences::{
-        USER_PREF_GENERAL_NAMESPACE, USER_PREF_SITUATIONAL_NAMESPACE, load_general_preferences,
-        recall_related_preferences, recall_situational_preferences,
-    },
-    read_rpc as memory_read_rpc,
-};
-use tinymemory_core::queue::types::ReembedBackfillPayload;
-use tinymemory_core::queue::{
-    self as memory_queue, AppendBufferPayload, AppendTarget, DEFAULT_LOCK_DURATION_MS,
-    ExtractChunkPayload, FlushStalePayload, JobKind, JobStatus, NewJob, NodeRef, SealPayload,
-};
-use tinymemory_core::store::chunks::store::{upsert_chunks, with_connection};
-use tinymemory_core::store::chunks::types::{
-    Chunk, DataSource, Metadata, SourceKind as ChunkSourceKind, SourceRef, approx_token_count,
-    chunk_id,
-};
-use tinymemory_core::store::trees::types::{
-    SummaryNode, Tree, TreeKind, TreeStatus as StoredTreeStatus,
-};
-use tinymemory_core::store::{MemoryClient, NamespaceDocumentInput, UnifiedMemory};
 use tinymemory_core::tree_policy::TreePolicy;
 use tinymemory_core::tree_source;
+use openhuman_core::openhuman::memory::{
+    all_memory_controller_schemas, all_memory_registered_controllers,
+    preferences::{
+        load_general_preferences, recall_related_preferences, recall_situational_preferences,
+        USER_PREF_GENERAL_NAMESPACE, USER_PREF_SITUATIONAL_NAMESPACE,
+    },
+    read_rpc as memory_read_rpc,
+    MemoryIngestionConfig, MemoryIngestionRequest,
+};
 // `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
 // crate with the rest of the memory implementation; the host re-exports some of
 // their contents flat but not the modules themselves.
@@ -147,8 +150,13 @@ use openhuman_core::openhuman::memory::rpc_models::{
     UpdateConversationMessageRequest, UpdateConversationThreadLabelsRequest,
     UpdateConversationThreadTitleRequest, UpsertConversationThreadRequest, WriteMemoryFileRequest,
 };
+use tinymemory_core::{
+    remember::RememberSourceKind,
+    rpc_models::{ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest, RecallContextRequest, RecallMemoriesRequest},
+    traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
+    util::redact::{redact, redact_endpoint},
+};
 use openhuman_core::openhuman::security::{AutonomyLevel, SecurityPolicy};
-use openhuman_core::openhuman::threads::ThreadsError;
 use openhuman_core::openhuman::threads::ops as thread_ops;
 use openhuman_core::openhuman::threads::title::{
     build_title_prompt, collapse_whitespace, is_auto_generated_thread_title,
@@ -159,30 +167,22 @@ use openhuman_core::openhuman::threads::turn_state::{
     SubagentActivity, SubagentToolCall, ToolTimelineEntry, ToolTimelineStatus, TurnLifecycle,
     TurnPhase, TurnState, TurnStateMirror, TurnStateStore,
 };
+use openhuman_core::openhuman::threads::ThreadsError;
 use openhuman_core::openhuman::threads::{
     all_threads_controller_schemas, all_threads_registered_controllers,
 };
 use openhuman_core::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory};
 use tinycortex::memory::ingest::canonicalize::chat::{
-    ChatBatch, ChatMessage, canonicalise as canonicalise_chat,
+    canonicalise as canonicalise_chat, ChatBatch, ChatMessage,
 };
 use tinycortex::memory::ingest::canonicalize::document::{
-    DocumentInput, canonicalise as canonicalise_document,
+    canonicalise as canonicalise_document, DocumentInput,
 };
 use tinycortex::memory::ingest::canonicalize::email::{
-    EmailMessage, EmailThread, canonicalise as canonicalise_email,
+    canonicalise as canonicalise_email, EmailMessage, EmailThread,
 };
 use tinycortex::memory::ingest::canonicalize::email_clean;
 use tinycortex::memory::sync::{SyncOutcome as PipelineSyncOutcome, SyncPipelineKind};
-use tinymemory_core::{
-    remember::RememberSourceKind,
-    rpc_models::{
-        ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest,
-        RecallContextRequest, RecallMemoriesRequest,
-    },
-    traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
-    util::redact::{redact, redact_endpoint},
-};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -512,20 +512,16 @@ Kitchen is north of Garden.
     assert!(result.relation_count >= 8);
     assert!(result.preference_count >= 1);
     assert!(result.decision_count >= 2);
-    assert!(
-        result
-            .entities
-            .iter()
-            .any(|entity| entity.name == "ALICE MORGAN")
-    );
-    assert!(
-        result
-            .relations
-            .iter()
-            .any(|relation| relation.subject.contains("OPENHUMAN")
-                && relation.predicate == "USES"
-                && relation.object.contains("TEXT-EMBEDDING"))
-    );
+    assert!(result
+        .entities
+        .iter()
+        .any(|entity| entity.name == "ALICE MORGAN"));
+    assert!(result
+        .relations
+        .iter()
+        .any(|relation| relation.subject.contains("OPENHUMAN")
+            && relation.predicate == "USES"
+            && relation.object.contains("TEXT-EMBEDDING")));
 
     let rows = memory
         .graph_query_namespace("memory-raw-ingestion", Some("ALICE MORGAN"), Some("OWNS"))
@@ -541,23 +537,19 @@ Kitchen is north of Garden.
         )
         .await
         .expect("query context");
-    assert!(
-        context
-            .hits
-            .iter()
-            .flat_map(|hit| hit.supporting_relations.iter())
-            .any(|relation| relation.predicate == "OWNS" || relation.predicate == "USES")
-    );
+    assert!(context
+        .hits
+        .iter()
+        .flat_map(|hit| hit.supporting_relations.iter())
+        .any(|relation| relation.predicate == "OWNS" || relation.predicate == "USES"));
 
     let recall = memory
         .recall_namespace_memories("memory-raw-ingestion", 5)
         .await
         .expect("recall memories");
-    assert!(
-        recall
-            .iter()
-            .any(|hit| hit.document_id.as_deref() == Some("doc-memory-raw-ingestion"))
-    );
+    assert!(recall
+        .iter()
+        .any(|hit| hit.document_id.as_deref() == Some("doc-memory-raw-ingestion")));
 
     let extract_again = memory
         .extract_graph(
@@ -646,13 +638,11 @@ async fn memory_source_readers_validate_and_use_local_inputs_only() {
 
     let mut twitter = source(SourceKind::TwitterQuery, "src_tw");
     twitter.query = Some("AI safety".into());
-    assert!(
-        reader_for(&SourceKind::TwitterQuery)
-            .list_items(&twitter, &config)
-            .await
-            .unwrap_err()
-            .contains("not yet configured")
-    );
+    assert!(reader_for(&SourceKind::TwitterQuery)
+        .list_items(&twitter, &config)
+        .await
+        .unwrap_err()
+        .contains("not yet configured"));
 
     let mut composio = source(SourceKind::Composio, "src_cmp");
     composio.toolkit = Some("gmail".into());
@@ -666,14 +656,12 @@ async fn memory_source_readers_validate_and_use_local_inputs_only() {
             .title,
         "gmail connection"
     );
-    assert!(
-        composio_reader
-            .read_item(&composio, "conn-1", &config)
-            .await
-            .expect("composio read")
-            .body
-            .contains("provider sync pipeline")
-    );
+    assert!(composio_reader
+        .read_item(&composio, "conn-1", &config)
+        .await
+        .expect("composio read")
+        .body
+        .contains("provider sync pipeline"));
 
     for (kind, expected) in [
         (SourceKind::Composio, "composio"),
@@ -685,52 +673,40 @@ async fn memory_source_readers_validate_and_use_local_inputs_only() {
     ] {
         assert_eq!(kind.as_str(), expected);
     }
-    assert!(
-        source(SourceKind::GithubRepo, "bad")
-            .validate()
-            .unwrap_err()
-            .contains("url")
-    );
-    assert!(
-        source(SourceKind::TwitterQuery, "bad")
-            .validate()
-            .unwrap_err()
-            .contains("query")
-    );
+    assert!(source(SourceKind::GithubRepo, "bad")
+        .validate()
+        .unwrap_err()
+        .contains("url"));
+    assert!(source(SourceKind::TwitterQuery, "bad")
+        .validate()
+        .unwrap_err()
+        .contains("query"));
 
     let mut github = source(SourceKind::GithubRepo, "src_github");
     github.url = Some("https://github.com/tinyhumansai/openhuman".into());
     let github_reader = reader_for(&SourceKind::GithubRepo);
     assert_eq!(github_reader.kind(), SourceKind::GithubRepo);
-    assert!(
-        github_reader
-            .read_item(&github, "unknown:123", &config)
-            .await
-            .unwrap_err()
-            .contains("invalid item id")
-    );
-    assert!(
-        github_reader
-            .read_item(&github, "issue:not-a-number", &config)
-            .await
-            .unwrap_err()
-            .contains("invalid issue number")
-    );
-    assert!(
-        github_reader
-            .read_item(&github, "pr:not-a-number", &config)
-            .await
-            .unwrap_err()
-            .contains("invalid PR number")
-    );
+    assert!(github_reader
+        .read_item(&github, "unknown:123", &config)
+        .await
+        .unwrap_err()
+        .contains("invalid item id"));
+    assert!(github_reader
+        .read_item(&github, "issue:not-a-number", &config)
+        .await
+        .unwrap_err()
+        .contains("invalid issue number"));
+    assert!(github_reader
+        .read_item(&github, "pr:not-a-number", &config)
+        .await
+        .unwrap_err()
+        .contains("invalid PR number"));
     github.url = Some("https://github.com/tinyhumansai/openhuman/tree/main".into());
-    assert!(
-        github_reader
-            .list_items(&github, &config)
-            .await
-            .unwrap_err()
-            .contains("expected https://github.com/<owner>/<repo>")
-    );
+    assert!(github_reader
+        .list_items(&github, &config)
+        .await
+        .unwrap_err()
+        .contains("expected https://github.com/<owner>/<repo>"));
 }
 
 #[tokio::test]
@@ -826,23 +802,19 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
         thread_schemas.len()
     );
     for function in expected_thread_functions {
-        assert!(
-            thread_schemas
-                .iter()
-                .any(|schema| schema.namespace == "threads" && schema.function == function)
-        );
+        assert!(thread_schemas
+            .iter()
+            .any(|schema| schema.namespace == "threads" && schema.function == function));
     }
 
     let thread_upsert = thread_controllers
         .iter()
         .find(|controller| controller.schema.function == "upsert")
         .expect("threads upsert controller");
-    assert!(
-        (thread_upsert.handler)(Map::new())
-            .await
-            .unwrap_err()
-            .contains("invalid params")
-    );
+    assert!((thread_upsert.handler)(Map::new())
+        .await
+        .unwrap_err()
+        .contains("invalid params"));
 
     let task_board_put = thread_controllers
         .iter()
@@ -890,12 +862,10 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
         .iter()
         .find(|schema| schema.function == "ingest")
         .expect("ingest schema");
-    assert!(
-        ingest_schema
-            .inputs
-            .iter()
-            .any(|field| field.name == "metadata" && !field.required)
-    );
+    assert!(ingest_schema
+        .inputs
+        .iter()
+        .any(|field| field.name == "metadata" && !field.required));
 
     let tree_status = tree_controllers
         .iter()
@@ -915,12 +885,10 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
     bad_ingest.insert("namespace".into(), json!("schema_handlers"));
     bad_ingest.insert("content".into(), json!("content"));
     bad_ingest.insert("timestamp".into(), json!(123));
-    assert!(
-        (tree_ingest.handler)(bad_ingest)
-            .await
-            .unwrap_err()
-            .contains("expected string")
-    );
+    assert!((tree_ingest.handler)(bad_ingest)
+        .await
+        .unwrap_err()
+        .contains("expected string"));
 
     let sync_schemas = memory_sync_status_schemas::all_controller_schemas();
     let sync_controllers = memory_sync_status_schemas::all_registered_controllers();
@@ -962,13 +930,11 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
     let status_json = (sync_controllers[0].handler)(Map::new())
         .await
         .expect("sync status controller");
-    assert!(
-        status_json["statuses"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|row| row["provider"] == "slack")
-    );
+    assert!(status_json["statuses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["provider"] == "slack"));
 
     let slack_schemas = slack_memory_schemas::all_slack_memory_controller_schemas();
     let slack_controllers = slack_memory_schemas::all_slack_memory_registered_controllers();
@@ -981,12 +947,10 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
         .expect("slack sync trigger controller");
     let mut bad_trigger = Map::new();
     bad_trigger.insert("connection_id".into(), json!(123));
-    assert!(
-        (trigger.handler)(bad_trigger)
-            .await
-            .unwrap_err()
-            .contains("invalid params")
-    );
+    assert!((trigger.handler)(bad_trigger)
+        .await
+        .unwrap_err()
+        .contains("invalid params"));
 }
 
 #[test]
@@ -1034,11 +998,9 @@ fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
         let schema = openhuman_core::openhuman::memory::schemas::schemas(function);
         assert_eq!(schema.namespace, "memory");
         assert_eq!(schema.function, function);
-        assert!(
-            memory_schemas
-                .iter()
-                .any(|candidate| candidate.function == function)
-        );
+        assert!(memory_schemas
+            .iter()
+            .any(|candidate| candidate.function == function));
     }
     assert_eq!(
         openhuman_core::openhuman::memory::schemas::schemas("missing").function,
@@ -1078,11 +1040,9 @@ fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
         let schema = openhuman_core::openhuman::memory::schema::schemas(function);
         assert_eq!(schema.namespace, "memory_tree");
         assert_eq!(schema.function, function);
-        assert!(
-            legacy_tree_schemas
-                .iter()
-                .any(|candidate| candidate.function == function)
-        );
+        assert!(legacy_tree_schemas
+            .iter()
+            .any(|candidate| candidate.function == function));
     }
     assert_eq!(
         openhuman_core::openhuman::memory::schema::schemas("missing").function,
@@ -1094,13 +1054,11 @@ fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
     assert_eq!(consolidated.name(), "memory_tree");
     assert_eq!(consolidated.category(), ToolCategory::System);
     assert_eq!(consolidated.permission_level(), PermissionLevel::ReadOnly);
-    assert!(
-        schema["properties"]["mode"]["enum"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|mode| mode == "walk")
-    );
+    assert!(schema["properties"]["mode"]["enum"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|mode| mode == "walk"));
 
     for tool in [
         &MemoryTreeSearchEntitiesTool as &dyn Tool,
@@ -1306,11 +1264,9 @@ fn memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases() {
     );
     assert!(toolkit_has_scope("gmail", ToolScope::Admin));
     assert!(catalog_for_toolkit("google_calendar").is_some());
-    assert!(
-        agent_ready_toolkits()
-            .windows(2)
-            .all(|pair| pair[0] <= pair[1])
-    );
+    assert!(agent_ready_toolkits()
+        .windows(2)
+        .all(|pair| pair[0] <= pair[1]));
 
     let matrix = capability_matrix();
     let gmail = matrix.iter().find(|cap| cap.toolkit == "gmail").unwrap();
@@ -1369,11 +1325,9 @@ fn slack_memory_schemas_and_post_processors_normalize_composio_shapes() {
     let schemas = slack_memory_schemas::all_slack_memory_controller_schemas();
     assert_eq!(schemas.len(), 2);
     assert_eq!(schemas[0].namespace, "slack_memory");
-    assert!(
-        schemas
-            .iter()
-            .any(|schema| schema.function == "sync_status" && schema.inputs.is_empty())
-    );
+    assert!(schemas
+        .iter()
+        .any(|schema| schema.function == "sync_status" && schema.inputs.is_empty()));
 
     let mut history = json!({
         "data": {
@@ -1448,18 +1402,14 @@ fn memory_tree_scoring_signal_helpers_cover_boundaries_and_serialization() {
     let regex_entities = openhuman_core::openhuman::memory::tree::score::extract::regex::extract(
         "Alice emailed bob@example.com from https://example.test and mentioned #coverage.",
     );
-    assert!(
-        regex_entities
-            .entities
-            .iter()
-            .any(|entity| entity.kind == EntityKind::Email && entity.text == "bob@example.com")
-    );
+    assert!(regex_entities
+        .entities
+        .iter()
+        .any(|entity| entity.kind == EntityKind::Email && entity.text == "bob@example.com"));
     let canonical = resolver::canonicalise(&regex_entities);
-    assert!(
-        canonical
-            .iter()
-            .any(|entity| entity.canonical_id == "email:bob@example.com")
-    );
+    assert!(canonical
+        .iter()
+        .any(|entity| entity.canonical_id == "email:bob@example.com"));
     assert_eq!(
         resolver::canonical_id_for(EntityKind::Url, "https://Example.test/path/"),
         "url:https://Example.test/path/"
@@ -1611,11 +1561,9 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
             .summary,
         "Workspace root summary"
     );
-    assert!(
-        tree_runtime_store::read_node(&config, namespace, "missing")
-            .unwrap()
-            .is_none()
-    );
+    assert!(tree_runtime_store::read_node(&config, namespace, "missing")
+        .unwrap()
+        .is_none());
     assert_eq!(
         tree_runtime_store::read_children(&config, namespace, "root")
             .unwrap()
@@ -1680,11 +1628,9 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
             .expect("buffer write second");
     let buffered = tree_runtime_store::buffer_read(&config, namespace).expect("buffer read");
     assert_eq!(buffered.len(), 2);
-    assert!(
-        buffered
-            .iter()
-            .any(|(_, body)| body == "first buffered body")
-    );
+    assert!(buffered
+        .iter()
+        .any(|(_, body)| body == "first buffered body"));
     tree_runtime_store::buffer_delete(
         &config,
         namespace,
@@ -1699,11 +1645,9 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
     assert!(second_buffer.exists());
     let drained = tree_runtime_store::buffer_drain(&config, namespace).expect("buffer drain");
     assert_eq!(drained.len(), 1);
-    assert!(
-        tree_runtime_store::buffer_read(&config, namespace)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(tree_runtime_store::buffer_read(&config, namespace)
+        .unwrap()
+        .is_empty());
 
     assert_eq!(NodeLevel::Hour.max_tokens(), 1_000);
     assert_eq!(NodeLevel::Month.parent_level(), Some(NodeLevel::Year));
@@ -1940,19 +1884,15 @@ async fn memory_read_rpc_score_index_and_summary_helpers_cover_dashboard_paths()
         .expect("score breakdown");
     assert!(breakdown.kept);
     assert!(!breakdown.llm_consulted);
-    assert!(
-        !breakdown
-            .signals
-            .iter()
-            .any(|signal| signal.name == "llm_importance" && signal.weight == 2.0)
-    );
-    assert!(
-        memory_read_rpc::chunk_score_rpc(&config, "missing".into())
-            .await
-            .expect("missing chunk score")
-            .value
-            .is_none()
-    );
+    assert!(!breakdown
+        .signals
+        .iter()
+        .any(|signal| signal.name == "llm_importance" && signal.weight == 2.0));
+    assert!(memory_read_rpc::chunk_score_rpc(&config, "missing".into())
+        .await
+        .expect("missing chunk score")
+        .value
+        .is_none());
 
     let missing_delete = memory_read_rpc::delete_chunk_rpc(&config, "missing".into())
         .await
@@ -2166,8 +2106,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
     // are host policy over a driver, not engine calls. `guarded_in_memory`
     // gives a real guard over a real store, so this still exercises the
     // decorator production uses rather than reaching past it.
-    let (_provider, memory) =
-        openhuman_core::openhuman::memory::guard::in_memory::guarded_in_memory();
+    let (_provider, memory) = openhuman_core::openhuman::memory::guard::in_memory::guarded_in_memory();
 
     memory
         .store(
@@ -2206,16 +2145,12 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
     let general = load_general_preferences(&memory, 10).await;
     assert_eq!(general, vec!["Prefer concise responses."]);
     assert!(load_general_preferences(&memory, 0).await.is_empty());
-    assert!(
-        recall_situational_preferences(&memory, "  ")
-            .await
-            .is_empty()
-    );
-    assert!(
-        recall_related_preferences(&memory, "  ", "tone", 3)
-            .await
-            .is_empty()
-    );
+    assert!(recall_situational_preferences(&memory, "  ")
+        .await
+        .is_empty());
+    assert!(recall_related_preferences(&memory, "  ", "tone", 3)
+        .await
+        .is_empty());
     assert!(
         recall_related_preferences(&memory, "Prefer concise responses.", "tone", 0)
             .await
@@ -2264,13 +2199,11 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
 
     let store_tool = MemoryStoreTool::new(security.clone());
     assert_eq!(store_tool.name(), "memory_store");
-    assert!(
-        store_tool.parameters_schema()["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|field| field == "content")
-    );
+    assert!(store_tool.parameters_schema()["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field == "content"));
     let stored = store_tool
         .execute(json!({
             "namespace": "coverage-tools",
@@ -2328,14 +2261,12 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
         .expect("recall tool");
     assert!(!recalled.is_error);
     assert!(recalled.output().contains("rust"));
-    assert!(
-        recall_tool
-            .execute(json!({ "namespace": "coverage-tools", "query": " " }))
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("query cannot be empty")
-    );
+    assert!(recall_tool
+        .execute(json!({ "namespace": "coverage-tools", "query": " " }))
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("query cannot be empty"));
 
     let forget_tool = MemoryForgetTool::new(security);
     assert_eq!(forget_tool.name(), "memory_forget");
@@ -2381,12 +2312,10 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
         user_scopes::load(&scoped_client, "gmail").await,
         UserScopePref::default()
     );
-    assert!(
-        user_scopes::save(&scoped_client, " ", pref)
-            .await
-            .unwrap_err()
-            .contains("toolkit must not be empty")
-    );
+    assert!(user_scopes::save(&scoped_client, " ", pref)
+        .await
+        .unwrap_err()
+        .contains("toolkit must not be empty"));
     assert_eq!(
         user_scopes::load_or_default("not-ready-toolkit").await,
         UserScopePref::default()
@@ -2444,16 +2373,12 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
         },
     };
     assert_eq!(extract.dedupe_key(), "extract:chunk-tool-memory");
-    assert!(
-        source_append
-            .dedupe_key()
-            .contains("append:source:slack:#raw:leaf:chunk-tool-memory")
-    );
-    assert!(
-        topic_append
-            .dedupe_key()
-            .contains("append:topic:topic:raw:summary:summary-tool-memory")
-    );
+    assert!(source_append
+        .dedupe_key()
+        .contains("append:source:slack:#raw:leaf:chunk-tool-memory"));
+    assert!(topic_append
+        .dedupe_key()
+        .contains("append:topic:topic:raw:summary:summary-tool-memory"));
     assert_eq!(
         SealPayload {
             tree_id: "tree-1".into(),
@@ -2482,11 +2407,9 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
     let first_id = memory_queue::enqueue(&config, &first_job)
         .expect("enqueue")
         .expect("inserted");
-    assert!(
-        memory_queue::enqueue(&config, &first_job)
-            .expect("dedupe enqueue")
-            .is_none()
-    );
+    assert!(memory_queue::enqueue(&config, &first_job)
+        .expect("dedupe enqueue")
+        .is_none());
     assert_eq!(memory_queue::count_total(&config).unwrap(), 1);
     assert_eq!(
         memory_queue::count_by_status(&config, JobStatus::Ready).unwrap(),
@@ -2552,32 +2475,28 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
     assert!(ToolMemoryPriority::High.is_eager());
     assert!(!ToolMemoryPriority::Normal.is_eager());
     assert_eq!(ToolMemorySource::default(), ToolMemorySource::Programmatic);
-    assert!(
-        store
-            .record(
-                " ",
-                "blank tool rejected",
-                ToolMemoryPriority::High,
-                ToolMemorySource::UserExplicit,
-                Vec::new(),
-            )
-            .await
-            .unwrap_err()
-            .contains("tool_name")
-    );
-    assert!(
-        store
-            .record(
-                "shell",
-                " ",
-                ToolMemoryPriority::High,
-                ToolMemorySource::UserExplicit,
-                Vec::new(),
-            )
-            .await
-            .unwrap_err()
-            .contains("rule body")
-    );
+    assert!(store
+        .record(
+            " ",
+            "blank tool rejected",
+            ToolMemoryPriority::High,
+            ToolMemorySource::UserExplicit,
+            Vec::new(),
+        )
+        .await
+        .unwrap_err()
+        .contains("tool_name"));
+    assert!(store
+        .record(
+            "shell",
+            " ",
+            ToolMemoryPriority::High,
+            ToolMemorySource::UserExplicit,
+            Vec::new(),
+        )
+        .await
+        .unwrap_err()
+        .contains("rule body"));
 
     let critical = store
         .record(
@@ -2639,11 +2558,9 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
         .rules_for_prompt(&[])
         .await
         .expect("prompt rules from namespaces");
-    assert!(
-        prompt_rules["shell"]
-            .iter()
-            .all(|rule| rule.priority.is_eager())
-    );
+    assert!(prompt_rules["shell"]
+        .iter()
+        .all(|rule| rule.priority.is_eager()));
     assert_eq!(TOOL_MEMORY_PROMPT_CAP, 30);
     let render_rules: Vec<ApiToolMemoryRule> = [normal.clone(), updated.clone(), high.clone()]
         .into_iter()
@@ -2658,55 +2575,43 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
     assert!(rendered.contains("### `shell`"));
     assert!(ToolMemoryRulesSection::empty().is_empty());
     assert!(!ToolMemoryRulesSection::new(vec![updated.clone()]).is_empty());
-    assert!(
-        store
-            .delete_rule("shell", &normal.id)
-            .await
-            .expect("delete normal")
-    );
-    assert!(
-        !store
-            .delete_rule("shell", &normal.id)
-            .await
-            .expect("delete missing")
-    );
-    assert!(
-        store
-            .get_rule("shell", &normal.id)
-            .await
-            .expect("missing normal")
-            .is_none()
-    );
+    assert!(store
+        .delete_rule("shell", &normal.id)
+        .await
+        .expect("delete normal"));
+    assert!(!store
+        .delete_rule("shell", &normal.id)
+        .await
+        .expect("delete missing"));
+    assert!(store
+        .get_rule("shell", &normal.id)
+        .await
+        .expect("missing normal")
+        .is_none());
 
     let put_tool = MemoryToolsPutTool;
     assert_eq!(put_tool.name(), "memory_tools_put");
     assert_eq!(put_tool.category(), ToolCategory::System);
-    assert!(
-        put_tool.parameters_schema()["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|field| field == "rule")
-    );
-    assert!(
-        put_tool
-            .execute(json!({ "tool_name": "shell" }))
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("invalid arguments for memory_tools_put")
-    );
+    assert!(put_tool.parameters_schema()["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field == "rule"));
+    assert!(put_tool
+        .execute(json!({ "tool_name": "shell" }))
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("invalid arguments for memory_tools_put"));
     let list_tool = MemoryToolsListTool;
     assert_eq!(list_tool.name(), "memory_tools_list");
     assert_eq!(list_tool.permission_level(), PermissionLevel::ReadOnly);
-    assert!(
-        list_tool
-            .execute(json!({}))
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("invalid arguments for memory_tools_list")
-    );
+    assert!(list_tool
+        .execute(json!({}))
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("invalid arguments for memory_tools_list"));
     assert_eq!(
         ToolMemoryRule::storage_key(&updated.id),
         format!("rule/{}", updated.id)
@@ -2727,12 +2632,10 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
     let mut disabled = source(SourceKind::Folder, "src_disabled");
     disabled.path = Some(tmp.path().to_string_lossy().to_string());
     disabled.enabled = false;
-    assert!(
-        sync_source(disabled, Arc::new(config.clone()))
-            .await
-            .unwrap_err()
-            .contains("disabled")
-    );
+    assert!(sync_source(disabled, Arc::new(config.clone()))
+        .await
+        .unwrap_err()
+        .contains("disabled"));
 
     let mut folder = source(SourceKind::Folder, "src_sync");
     folder.path = Some(tmp.path().to_string_lossy().to_string());
@@ -3037,11 +2940,9 @@ fn gmail_post_processor_and_provider_registry_cover_public_edges() {
     init_default_composio_providers();
     assert!(get_provider(" gmail ").is_some());
     assert!(get_provider("unknown_provider_slug").is_none());
-    assert!(
-        all_composio_providers()
-            .iter()
-            .any(|provider| provider.toolkit_slug() == "slack")
-    );
+    assert!(all_composio_providers()
+        .iter()
+        .any(|provider| provider.toolkit_slug() == "slack"));
     register_provider(Arc::new(RawCoverageProvider {
         fail_profile: false,
     }));
@@ -3116,7 +3017,8 @@ async fn memory_sync_provider_trait_defaults_and_connection_hook_are_determinist
     // unready client and see 0 instead of 1. Bind the global to this test's
     // workspace up front so the assertion is independent of execution order.
     ensure_memory_seams();
-    tinymemory_core::global::init(tmp.path().to_path_buf()).expect("init global memory client");
+    tinymemory_core::global::init(tmp.path().to_path_buf())
+        .expect("init global memory client");
     let ctx = ProviderContext {
         config: Arc::new(config_in(&tmp)),
         toolkit: "raw_coverage".into(),
@@ -3128,13 +3030,11 @@ async fn memory_sync_provider_trait_defaults_and_connection_hook_are_determinist
     let provider = RawCoverageProvider { fail_profile: true };
     assert_eq!(provider.sync_interval_secs(), Some(15 * 60));
     assert!(provider.curated_tools().is_none());
-    assert!(
-        provider
-            .fetch_tasks(&ctx, &TaskFetchFilter::default())
-            .await
-            .unwrap_err()
-            .contains("provider has no task-fetch surface")
-    );
+    assert!(provider
+        .fetch_tasks(&ctx, &TaskFetchFilter::default())
+        .await
+        .unwrap_err()
+        .contains("provider has no task-fetch surface"));
 
     let mut action_data = json!({ "ok": true });
     provider.post_process_action_result("RAW_ACTION", None, &mut action_data);
@@ -3188,12 +3088,10 @@ fn turn_state_mirror_persists_progress_edges_from_public_events() {
     let tmp = TempDir::new().expect("tempdir");
     let store = TurnStateStore::new(tmp.path().to_path_buf());
     let mut mirror = TurnStateMirror::new(store.clone(), "thread/mirror", "request-mirror");
-    assert!(
-        store
-            .get("thread/mirror")
-            .expect("initial snapshot")
-            .is_some()
-    );
+    assert!(store
+        .get("thread/mirror")
+        .expect("initial snapshot")
+        .is_some());
 
     assert!(mirror.observe(&AgentProgress::TurnStarted));
     assert!(mirror.observe(&AgentProgress::IterationStarted {
@@ -3330,12 +3228,10 @@ fn turn_state_mirror_persists_progress_edges_from_public_events() {
     assert_eq!(snapshot.streaming_text, "visible");
     assert_eq!(snapshot.thinking, "thinking ");
     assert_eq!(snapshot.task_board, Some(board));
-    assert!(
-        snapshot
-            .tool_timeline
-            .iter()
-            .any(|entry| entry.id == "call-1" && entry.status == ToolTimelineStatus::Error)
-    );
+    assert!(snapshot
+        .tool_timeline
+        .iter()
+        .any(|entry| entry.id == "call-1" && entry.status == ToolTimelineStatus::Error));
     assert!(snapshot.tool_timeline.iter().any(|entry| {
         entry.id == "subagent:task-1"
             && entry.status == ToolTimelineStatus::Error
@@ -3479,12 +3375,10 @@ fn memory_source_types_and_freshness_cover_validation_matrix() {
     let mut composio_source = source(SourceKind::Composio, "cmp");
     assert!(composio_source.validate().unwrap_err().contains("toolkit"));
     composio_source.toolkit = Some("gmail".into());
-    assert!(
-        composio_source
-            .validate()
-            .unwrap_err()
-            .contains("connection_id")
-    );
+    assert!(composio_source
+        .validate()
+        .unwrap_err()
+        .contains("connection_id"));
     composio_source.connection_id = Some("conn-1".into());
     assert!(composio_source.validate().is_ok());
 
@@ -3576,11 +3470,9 @@ fn turn_state_store_persists_lists_marks_and_clears_snapshots() {
             .as_deref(),
         Some("research")
     );
-    assert!(
-        turn_state::store::get(workspace.clone(), "missing")
-            .unwrap()
-            .is_none()
-    );
+    assert!(turn_state::store::get(workspace.clone(), "missing")
+        .unwrap()
+        .is_none());
 
     let mut listed = turn_state::store::list(workspace.clone()).expect("list states");
     listed.sort_by(|a, b| a.thread_id.cmp(&b.thread_id));
@@ -3759,12 +3651,10 @@ async fn threads_rpc_ops_cover_crud_title_fallback_and_turn_state_cleanup() {
         .data
         .expect("threads");
     assert!(all_threads.count >= 2);
-    assert!(
-        all_threads
-            .threads
-            .iter()
-            .any(|thread| thread.title == "Manual coverage title")
-    );
+    assert!(all_threads
+        .threads
+        .iter()
+        .any(|thread| thread.title == "Manual coverage title"));
 
     let mut turn = TurnState::started("thread/raw-crud", "request-raw", 3, "2026-05-29T12:02:00Z");
     turn.lifecycle = TurnLifecycle::Streaming;
@@ -3810,11 +3700,9 @@ async fn threads_rpc_ops_cover_crud_title_fallback_and_turn_state_cleanup() {
     .data
     .expect("delete response");
     assert!(deleted.deleted);
-    assert!(
-        turn_state::store::get(workspace_dir, "thread/raw-crud")
-            .unwrap()
-            .is_none()
-    );
+    assert!(turn_state::store::get(workspace_dir, "thread/raw-crud")
+        .unwrap()
+        .is_none());
 
     let purged = thread_ops::threads_purge(EmptyRequest {})
         .await
@@ -3923,12 +3811,10 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         .expect("add controller");
     let mut bad_params = Map::new();
     bad_params.insert("kind".into(), Value::String("folder".into()));
-    assert!(
-        (add_controller.handler)(bad_params)
-            .await
-            .unwrap_err()
-            .contains("missing field `label`")
-    );
+    assert!((add_controller.handler)(bad_params)
+        .await
+        .unwrap_err()
+        .contains("missing field `label`"));
 
     let invalid_folder = memory_sources_rpc::add_rpc(memory_sources_rpc::AddRequest {
         kind: SourceKind::Folder,
@@ -3983,32 +3869,30 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
     .value
     .source;
     assert_eq!(added.kind, SourceKind::Folder);
-    assert!(
-        memory_sources_rpc::add_rpc(memory_sources_rpc::AddRequest {
-            kind: SourceKind::Folder,
-            label: "Duplicate".into(),
-            enabled: true,
-            toolkit: None,
-            connection_id: None,
-            path: Some(tmp.path().to_string_lossy().to_string()),
-            glob: None,
-            url: None,
-            branch: None,
-            paths: Vec::new(),
-            query: None,
-            since_days: None,
-            max_items: None,
-            max_commits: None,
-            max_issues: None,
-            max_prs: None,
-            selector: None,
-            max_tokens_per_sync: None,
-            max_cost_per_sync_usd: None,
-            sync_depth_days: None,
-        })
-        .await
-        .is_ok()
-    );
+    assert!(memory_sources_rpc::add_rpc(memory_sources_rpc::AddRequest {
+        kind: SourceKind::Folder,
+        label: "Duplicate".into(),
+        enabled: true,
+        toolkit: None,
+        connection_id: None,
+        path: Some(tmp.path().to_string_lossy().to_string()),
+        glob: None,
+        url: None,
+        branch: None,
+        paths: Vec::new(),
+        query: None,
+        since_days: None,
+        max_items: None,
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
+        selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
+    })
+    .await
+    .is_ok());
 
     let enabled_folders = registry::list_enabled_by_kind(SourceKind::Folder)
         .await
@@ -4026,16 +3910,14 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         .label,
         "Folder source"
     );
-    assert!(
-        memory_sources_rpc::get_rpc(memory_sources_rpc::GetRequest {
-            id: "missing".into(),
-        })
-        .await
-        .expect("get missing")
-        .value
-        .source
-        .is_none()
-    );
+    assert!(memory_sources_rpc::get_rpc(memory_sources_rpc::GetRequest {
+        id: "missing".into(),
+    })
+    .await
+    .expect("get missing")
+    .value
+    .source
+    .is_none());
 
     let list_items = memory_sources_rpc::list_items_rpc(memory_sources_rpc::ListItemsRequest {
         source_id: added.id.clone(),
@@ -4280,13 +4162,11 @@ async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_b
     .await
     .expect("doc list")
     .value;
-    assert!(
-        direct_docs["documents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|doc| doc["documentId"] == "doc-ops-raw")
-    );
+    assert!(direct_docs["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|doc| doc["documentId"] == "doc-ops-raw"));
 
     let envelope_docs =
         openhuman_core::openhuman::memory::ops::memory_list_documents(ListDocumentsRequest {
@@ -4448,13 +4328,11 @@ async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_b
     .await
     .expect("tool rules json")
     .value;
-    assert!(
-        tool_rules_json
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|rule| rule["id"] == "ops-rule-1" && rule["priority"] == "high")
-    );
+    assert!(tool_rules_json
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|rule| rule["id"] == "ops-rule-1" && rule["priority"] == "high"));
     assert!(
         openhuman_core::openhuman::memory::ops::tool_rule_delete(
             openhuman_core::openhuman::memory::ops::ToolRuleRefParams {
@@ -4466,18 +4344,16 @@ async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_b
         .expect("tool rule delete")
         .value
     );
-    assert!(
-        openhuman_core::openhuman::memory::ops::tool_rule_get(
-            openhuman_core::openhuman::memory::ops::ToolRuleRefParams {
-                tool_name: "shell".into(),
-                id: "ops-rule-1".into(),
-            },
-        )
-        .await
-        .expect("tool rule missing")
-        .value
-        .is_none()
-    );
+    assert!(openhuman_core::openhuman::memory::ops::tool_rule_get(
+        openhuman_core::openhuman::memory::ops::ToolRuleRefParams {
+            tool_name: "shell".into(),
+            id: "ops-rule-1".into(),
+        },
+    )
+    .await
+    .expect("tool rule missing")
+    .value
+    .is_none());
 
     let delete_missing =
         openhuman_core::openhuman::memory::ops::memory_delete_document(DeleteDocumentRequest {
@@ -4529,14 +4405,12 @@ async fn memory_tree_retrieval_rpc_and_schema_wrappers_cover_empty_and_invalid_p
         openhuman_core::openhuman::memory::tree::retrieval::schemas::schemas("missing").function,
         "unknown"
     );
-    assert!(
-        schemas
-            .iter()
-            .find(|schema| schema.function == "fetch_leaves")
-            .unwrap()
-            .description
-            .contains("Batch-fetch")
-    );
+    assert!(schemas
+        .iter()
+        .find(|schema| schema.function == "fetch_leaves")
+        .unwrap()
+        .description
+        .contains("Batch-fetch"));
 
     let source = openhuman_core::openhuman::memory::tree::retrieval::rpc::query_source_rpc(
         &config,
@@ -4626,12 +4500,10 @@ async fn memory_tree_retrieval_rpc_and_schema_wrappers_cover_empty_and_invalid_p
         .expect("fetch controller");
     let mut bad_params = Map::new();
     bad_params.insert("chunk_ids".into(), json!("not-an-array"));
-    assert!(
-        (fetch_controller.handler)(bad_params)
-            .await
-            .unwrap_err()
-            .contains("invalid params")
-    );
+    assert!((fetch_controller.handler)(bad_params)
+        .await
+        .unwrap_err()
+        .contains("invalid params"));
 }
 
 #[tokio::test]
@@ -4813,18 +4685,14 @@ async fn memory_sources_types_registry_and_sync_state_cover_public_persistence_e
     assert_eq!(invalid.validate().unwrap_err(), "label is required");
     invalid.label = "Missing path".into();
     assert!(invalid.validate().unwrap_err().contains("path is required"));
-    assert!(
-        source(SourceKind::RssFeed, "rss_missing")
-            .validate()
-            .unwrap_err()
-            .contains("url is required")
-    );
-    assert!(
-        source(SourceKind::WebPage, "web_missing")
-            .validate()
-            .unwrap_err()
-            .contains("url is required")
-    );
+    assert!(source(SourceKind::RssFeed, "rss_missing")
+        .validate()
+        .unwrap_err()
+        .contains("url is required"));
+    assert!(source(SourceKind::WebPage, "web_missing")
+        .validate()
+        .unwrap_err()
+        .contains("url is required"));
 
     let mut entry = source(SourceKind::GithubRepo, "src_repo");
     entry.url = Some("https://github.com/tinyhumansai/openhuman".into());
@@ -4832,12 +4700,10 @@ async fn memory_sources_types_registry_and_sync_state_cover_public_persistence_e
         .await
         .expect("add repo source");
     assert_eq!(added.kind.as_str(), "github_repo");
-    assert!(
-        registry::add_source(entry)
-            .await
-            .unwrap_err()
-            .contains("already exists")
-    );
+    assert!(registry::add_source(entry)
+        .await
+        .unwrap_err()
+        .contains("already exists"));
 
     let patch: registry::MemorySourcePatch = serde_json::from_value(json!({
         "label": "Updated repo",
@@ -4875,7 +4741,8 @@ async fn memory_sources_types_registry_and_sync_state_cover_public_persistence_e
         MemoryClient::from_workspace_dir(tmp.path().join("memory-sync-state"))
             .expect("memory client"),
     );
-    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
+    let adapter =
+        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
     let fresh = SyncState::load(&adapter, "gmail", "conn-raw")
         .await
         .expect("fresh state");
@@ -4997,16 +4864,12 @@ fn welcome_migration_public_entrypoint_covers_empty_marker_and_transcript_paths(
     assert_eq!(result.transcripts_updated, 1);
     assert_eq!(result.transcript_files_renamed, 1);
     assert_eq!(result.markdown_files_renamed, 1);
-    assert!(
-        workspace
-            .join("session_raw/1715000000_orchestrator_thread-abc.jsonl")
-            .exists()
-    );
-    assert!(
-        workspace
-            .join("sessions/2026_05_01/1715000000_orchestrator_thread-abc.md")
-            .exists()
-    );
+    assert!(workspace
+        .join("session_raw/1715000000_orchestrator_thread-abc.jsonl")
+        .exists());
+    assert!(workspace
+        .join("sessions/2026_05_01/1715000000_orchestrator_thread-abc.md")
+        .exists());
 
     let second = openhuman_core::openhuman::threads::migrate_welcome_agent_artifacts(workspace)
         .expect("second migration");
