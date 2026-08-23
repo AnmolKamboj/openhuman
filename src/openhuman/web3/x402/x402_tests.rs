@@ -411,8 +411,11 @@ fn eip712_domain_separator_is_deterministic() {
 
 /// The BIP-39 vector mnemonic's EVM account: raw secret and its address.
 ///
-/// Derived through `tinywallet_bus::key`, which is what the production path uses,
-/// so the test signs as exactly the account the wallet would.
+/// Derived through the **root** `tinywallet` crate's `key` gate, taken here as a
+/// dev-dependency. Production does not derive in this process at all — it calls
+/// `modules::wallet::derive_account` — so this reproduces the same BIP-32 walk
+/// locally, which is what lets the test sign as exactly the account the wallet
+/// would without standing up a broker.
 fn test_signer() -> (Vec<u8>, String) {
     let test_mnemonic = "abandon abandon abandon abandon abandon abandon \
                          abandon abandon abandon abandon abandon about";

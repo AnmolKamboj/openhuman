@@ -742,12 +742,28 @@ pub(crate) fn evm_payment_payload(
     })
 }
 
-/// Derive the wallet's EVM signing key from the encrypted mnemonic.
+/// Resolve the EVM account an x402 payment will be signed as.
 ///
-/// Returns the raw secret and the checksummed address it controls. Derivation
-/// goes through `tinywallet_bus::key` — the same BIP-32 walk the wallet domain uses,
-/// so an x402 payment is signed by exactly the account the wallet reports — and
-/// the key stays in this process.
+/// Returns the config, the [`SecretMaterial`](tinywallet_bus::wire::SecretMaterial)
+/// the signing calls take, and the checksummed address that material controls.
+///
+/// # Where the key is, and where it is not
+///
+/// **No private key is derived in this process.** The address comes back from
+/// `modules::wallet::derive_account` — a confidential call into the loaded
+/// `tinywallet` module, which derives, answers with public data only, and wipes
+/// its copy of the phrase before returning. The signature is produced the same
+/// way, by `modules::wallet::sign_message`. This binary links no derivation
+/// stack at all: it takes `tinywallet-bus`, the wire contract, and `key` is one
+/// of the gates that deliberately stayed in the root crate.
+///
+/// What *does* live in this process is the decrypted **mnemonic**, held in the
+/// returned `SecretMaterial` for as long as a caller holds it and sent across
+/// the bus on each confidential call. That is the exposure to reason about
+/// here; a derived private key is not one of them.
+///
+/// Deriving the address rather than assuming one is what makes an x402 payment
+/// signed by exactly the account the wallet reports.
 async fn evm_signer() -> Result<
     (
         crate::openhuman::config::Config,

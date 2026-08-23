@@ -1,6 +1,6 @@
 //! OpenHuman's implementation of the [`tinywallet_bus::rpc::Transport`] seam.
 //!
-//! `tinywallet` performs no I/O and takes no URLs: it names a
+//! `tinywallet-bus` performs no I/O and takes no URLs: it names a
 //! [`NetworkId`](tinywallet_bus::rpc::NetworkId) and asks a host to reach it. This
 //! module is that host side — the adapter that lets `tinywallet_bus::rpc` and
 //! the chain modules run against OpenHuman's existing RPC layer.
@@ -16,7 +16,7 @@
 //!
 //! ## Error mapping is the part worth reviewing
 //!
-//! `tinywallet` splits transport failures into retryable
+//! `tinywallet-bus` splits transport failures into retryable
 //! ([`TransportError::Unreachable`]) and authoritative
 //! ([`TransportError::Rpc`]), and a host's failover depends on that
 //! distinction: retrying an authoritative "insufficient funds" gets the same
@@ -53,13 +53,13 @@ impl OpenHumanTransport {
     }
 }
 
-/// Map a `tinywallet` network onto OpenHuman's chain enum plus a base URL.
+/// Map a `tinywallet-bus` network onto OpenHuman's chain enum plus a base URL.
 #[allow(unreachable_patterns)]
 fn resolve(network: NetworkId) -> Result<String, TransportError> {
     match network.chain {
         tinywallet_bus::Chain::Evm => {
             // An EVM request names its EIP-155 chain id; resolving it here is
-            // what keeps `tinywallet` free of OpenHuman's network enum.
+            // what keeps `tinywallet-bus` free of OpenHuman's network enum.
             let chain_id = network.evm_chain_id.ok_or_else(|| TransportError::Rpc {
                 network,
                 message: "EVM requests require an EIP-155 chain id".to_string(),

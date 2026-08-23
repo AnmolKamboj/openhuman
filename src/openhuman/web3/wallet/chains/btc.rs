@@ -76,7 +76,7 @@ pub fn validate_btc_address(addr: &str) -> Result<String, String> {
 /// Sender-side validation — must be P2WPKH because we only know how to
 /// derive + sign for native segwit (`bc1q…`). Recipients can be any type.
 ///
-/// See [`validate_btc_address`] for why this delegates. `tinywallet` keeps the
+/// See [`validate_btc_address`] for why this delegates. `tinywallet-bus` keeps the
 /// two rules as separate functions for the same reason this module does: using
 /// the recipient rule for a sender accepts an address that only fails later,
 /// at signing time.
@@ -123,10 +123,15 @@ pub async fn broadcast_raw_hex(tx_hex: &str) -> Result<String, String> {
 
 /// Derive the P2WPKH signing key for `derivation_path` from a BIP-39 mnemonic.
 ///
-/// Delegates to the vendored [`tinywallet_bus`] crate, which owns BIP-32
-/// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
-/// the keyring by this crate and handed over as a `&str` that is not retained.
-/// Test-only: production derives inside the wallet module.
+/// Test-only, and deliberately on the **root** `tinywallet` crate rather than
+/// `tinywallet-bus`: `key` is one of the gates that did not move into the
+/// contract crate, because deriving is the module's job. The root crate is a
+/// dev-dependency here, so this derivation stack is not linked into the shipped
+/// binary. Production derives inside the wallet module, via
+/// `modules::wallet::derive_account`.
+///
+/// Custody stays here: the mnemonic is decrypted from the keyring by this crate
+/// and handed over as a `&str` that is not retained.
 #[cfg(test)]
 fn derive_btc_private_key(
     mnemonic: &str,
@@ -422,7 +427,7 @@ mod tests {
     #[test]
     fn validate_btc_address_rejects_testnet() {
         let err = validate_btc_address("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx").unwrap_err();
-        // `tinywallet` reports a wrong-network address as a distinct condition
+        // `tinywallet-bus` reports a wrong-network address as a distinct condition
         // from a malformed one, so the message names the required network.
         assert!(err.contains("not on mainnet"), "got: {err}");
     }

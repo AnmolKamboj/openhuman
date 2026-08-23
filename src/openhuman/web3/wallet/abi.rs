@@ -1,4 +1,4 @@
-//! ERC-20 calldata, delegated to `tinywallet`.
+//! ERC-20 calldata, delegated to `tinywallet-bus`.
 //!
 //! This used to hand-build an `ethers_core::abi::Function` to encode one call.
 //! That worked, and it cost the whole `ethers-core` ABI machinery — a type

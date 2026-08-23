@@ -143,11 +143,16 @@ fn tron_transaction_spec(
 
 /// Derive the Tron signing key and its base58check address.
 ///
-/// Delegates to the vendored [`tinywallet_bus`] crate, which owns BIP-32
-/// secp256k1 derivation and the Keccak-then-base58check address construction.
-/// The hand-rolled BIP-32 walk and path parser that used to live here moved
-/// there wholesale. Custody stays here.
-/// Test-only: production derives inside the wallet module.
+/// Test-only, and deliberately on the **root** `tinywallet` crate rather than
+/// `tinywallet-bus`: `key` is one of the gates that did not move into the
+/// contract crate. The root crate is a dev-dependency here, so this derivation
+/// stack is not linked into the shipped binary. Production derives inside the
+/// wallet module, via `modules::wallet::derive_account`.
+///
+/// The root crate owns BIP-32 secp256k1 derivation and the
+/// Keccak-then-base58check address construction; the hand-rolled BIP-32 walk
+/// and path parser that used to live here moved there wholesale. Custody stays
+/// here.
 #[cfg(test)]
 fn derive_tron_keypair(mnemonic: &str, derivation_path: &str) -> Result<(Vec<u8>, String), String> {
     let derived = tinywallet::key::derive(tinywallet::Chain::Tron, mnemonic, derivation_path)

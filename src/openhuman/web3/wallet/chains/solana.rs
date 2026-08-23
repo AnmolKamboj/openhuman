@@ -92,12 +92,17 @@ pub async fn native_balance(address: &str) -> Result<u128, String> {
 
 /// Derive the Solana signing key for `derivation_path` from a BIP-39 mnemonic.
 ///
-/// Delegates to the vendored [`tinywallet_bus`] crate, which owns SLIP-0010
-/// ed25519 derivation. The hand-rolled HMAC walk and path parser that used to
-/// live here moved there wholesale — nothing about "derive an ed25519 key at a
-/// hardened path" is OpenHuman-specific. Custody stays here: the mnemonic
-/// arrives already decrypted from the keyring and `tinywallet` never sees a
-/// stored secret.
+/// Test-only, and deliberately on the **root** `tinywallet` crate rather than
+/// `tinywallet-bus`: `key` is one of the gates that did not move into the
+/// contract crate. The root crate is a dev-dependency here, so this derivation
+/// stack is not linked into the shipped binary. Production derives inside the
+/// wallet module, via `modules::wallet::derive_account`.
+///
+/// The root crate owns SLIP-0010 ed25519 derivation; the hand-rolled HMAC walk
+/// and path parser that used to live here moved there wholesale — nothing about
+/// "derive an ed25519 key at a hardened path" is OpenHuman-specific. Custody
+/// stays here: the mnemonic arrives already decrypted from the keyring and
+/// `tinywallet` never sees a stored secret.
 ///
 /// One behavioural note: `tinywallet` reports a non-hardened Solana path as
 /// its own error variant rather than folding it into a generic parse failure,
