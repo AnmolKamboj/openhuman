@@ -161,7 +161,9 @@ describe('Skills page — Composio catalog fallback', () => {
       within(integrationsSection as HTMLElement).getByTestId('composio-integrations-loading')
     ).toBeInTheDocument();
     expect(
-      within(integrationsSection as HTMLElement).queryAllByTestId('composio-skeleton-tile').length
+      within(integrationsSection as HTMLElement).queryAllByTestId(
+        'composio-integrations-loading-row'
+      ).length
     ).toBeGreaterThan(0);
     // …and none of the hardcoded fallback toolkits are rendered yet.
     expect(
@@ -222,8 +224,10 @@ describe('Skills page — Composio catalog fallback', () => {
     renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
     openAppsTab();
 
-    expect(screen.getByText('Connections are showing stale status')).toBeInTheDocument();
-    expect(screen.getByText('Backend unavailable')).toBeInTheDocument();
+    // The page-level "stale status" alert moved into the shell's NoticeCenter
+    // (it is account state, not state about this screen), so it is asserted
+    // there — see `components/notices/__tests__/NoticeCenter.test.tsx`. What
+    // stays local, and is what this test is about, is the per-row degradation.
 
     const integrationsSection = screen.getByTestId('composio-integrations-card');
     const gmailTile = within(integrationsSection as HTMLElement).getByRole('button', {
