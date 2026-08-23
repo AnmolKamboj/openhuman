@@ -4431,7 +4431,7 @@ dependencies = [
  "tinymemory-tinycortex",
  "tinyplace",
  "tinyruntime-bus",
- "tinywallet",
+ "tinywallet-bus",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.29.0",
@@ -7433,8 +7433,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
-name = "tinywallet"
-version = "0.4.0"
+name = "tinywallet-bus"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "bech32",
