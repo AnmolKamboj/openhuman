@@ -127,7 +127,9 @@ pub mod connections {
 
     /// Empty, for the same reason as [`all_connected_tools`]. The workspace the
     /// caller names changes nothing when the registry is compiled out.
-    pub async fn all_connected_tools_for_config(_config: &Config) -> Vec<(String, String, McpTool)> {
+    pub async fn all_connected_tools_for_config(
+        _config: &Config,
+    ) -> Vec<(String, String, McpTool)> {
         Vec::new()
     }
 }
