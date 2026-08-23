@@ -1279,7 +1279,7 @@ export default function Skills() {
                               />
                             </div>
                           )}
-                          {!showLocalComposioApiKeyBanner && (
+                          {!showLocalComposioApiKeyBanner &&
                             // While the dynamic catalog is still being fetched and we
                             // have nothing real to show yet, render a loading skeleton
                             // instead of the hardcoded toolkit list. The hardcoded
