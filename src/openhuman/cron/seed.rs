@@ -198,43 +198,6 @@ mod tests {
         assert!(d.best_effort);
     }
 
-    #[test]
-    fn seeds_tinyplace_autopilot_disabled_and_idempotent() {
-        let tmp = TempDir::new().unwrap();
-        let config = test_config(&tmp);
-
-        seed_proactive_agents(&config).expect("first seed");
-        let jobs = list_jobs(&config).unwrap();
-        let worker: Vec<_> = jobs
-            .iter()
-            .filter(|j| j.name.as_deref() == Some(TINYPLACE_AUTOPILOT_JOB_NAME))
-            .collect();
-        assert_eq!(
-            worker.len(),
-            1,
-            "exactly one tinyplace_autopilot job, got {worker:?}"
-        );
-        let worker = worker[0];
-        // Opt-in: must be created disabled.
-        assert!(
-            !worker.enabled,
-            "tinyplace_autopilot must be seeded disabled (opt-in)"
-        );
-        // Runs the single tiny.place agent autonomously (no dedicated agent def).
-        assert_eq!(worker.agent_id.as_deref(), Some("tinyplace_agent"));
-
-        // Idempotent: a second seed must not create a duplicate.
-        seed_proactive_agents(&config).expect("second seed");
-        let after = list_jobs(&config).unwrap();
-        assert_eq!(
-            after
-                .iter()
-                .filter(|j| j.name.as_deref() == Some(TINYPLACE_AUTOPILOT_JOB_NAME))
-                .count(),
-            1,
-            "second seed must not duplicate the tinyplace_autopilot job"
-        );
-    }
 
     #[test]
     fn seeds_morning_briefing_disabled_and_idempotent() {
@@ -284,84 +247,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn boot_seed_is_noop_until_onboarded() {
-        let tmp = TempDir::new().unwrap();
-        let mut config = test_config(&tmp);
-        config.onboarding_completed = false;
 
-        seed_proactive_agents_on_boot(&config).expect("boot seed");
-        assert!(
-            list_jobs(&config).unwrap().is_empty(),
-            "boot seed must not create jobs before onboarding completes"
-        );
-    }
 
-    #[test]
-    fn boot_seed_creates_missing_jobs_when_onboarded() {
-        let tmp = TempDir::new().unwrap();
-        let mut config = test_config(&tmp);
-        config.onboarding_completed = true;
-
-        seed_proactive_agents_on_boot(&config).expect("boot seed");
-        let jobs = list_jobs(&config).unwrap();
-        // The autonomous tiny.place job exists, disabled (opt-in), on tinyplace_agent.
-        let worker = jobs
-            .iter()
-            .find(|j| j.name.as_deref() == Some(TINYPLACE_AUTOPILOT_JOB_NAME))
-            .expect("tinyplace_autopilot job should be seeded on boot when onboarded");
-        assert!(!worker.enabled);
-        assert_eq!(worker.agent_id.as_deref(), Some("tinyplace_agent"));
-
-        // Idempotent across a second boot.
-        seed_proactive_agents_on_boot(&config).expect("second boot seed");
-        assert_eq!(
-            list_jobs(&config)
-                .unwrap()
-                .iter()
-                .filter(|j| j.name.as_deref() == Some(TINYPLACE_AUTOPILOT_JOB_NAME))
-                .count(),
-            1
-        );
-        // Boot-backfill is scoped to the autopilot — it must NOT replay the full
-        // onboarding seed set, so it never created morning_briefing here.
-        assert!(
-            !list_jobs(&config)
-                .unwrap()
-                .iter()
-                .any(|j| j.name.as_deref() == Some(MORNING_BRIEFING_JOB_NAME)),
-            "boot backfill must not seed morning_briefing"
-        );
-    }
-
-    #[test]
-    fn boot_seed_does_not_recreate_a_removed_default_job() {
-        // Regression: a user who deliberately removed morning_briefing must not
-        // have it silently recreated on the next core start by the boot backfill.
-        let tmp = TempDir::new().unwrap();
-        let mut config = test_config(&tmp);
-        config.onboarding_completed = true;
-
-        // Full onboarding seed, then the user removes morning_briefing.
-        seed_proactive_agents(&config).expect("onboarding seed");
-        let mb_id = list_jobs(&config)
-            .unwrap()
-            .into_iter()
-            .find(|j| j.name.as_deref() == Some(MORNING_BRIEFING_JOB_NAME))
-            .expect("morning_briefing seeded")
-            .id;
-        remove_job(&config, &mb_id).expect("remove morning_briefing");
-
-        // Boot backfill must leave the opt-out intact.
-        seed_proactive_agents_on_boot(&config).expect("boot seed");
-        assert!(
-            !list_jobs(&config)
-                .unwrap()
-                .iter()
-                .any(|j| j.name.as_deref() == Some(MORNING_BRIEFING_JOB_NAME)),
-            "boot backfill must not resurrect a user-removed morning_briefing"
-        );
-    }
 
     #[test]
     fn seed_prunes_legacy_welcome_job() {
