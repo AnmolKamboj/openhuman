@@ -5,9 +5,9 @@ use serde_json::{json, Map, Value};
 use crate::core::all;
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::Config;
+use crate::openhuman::mcp::audit::McpWriteListQuery;
 use crate::openhuman::mcp::server::McpToolSpec;
 use crate::rpc::RpcOutcome;
-use tinymemory_core::store::chunks::store as chunk_store;
 
 use super::providers::capability_provider_diagnostics;
 use super::types::{
@@ -150,18 +150,35 @@ fn mcp_allowlists_from_config(config: &Config) -> McpAllowlistDiagnostics {
     }
 }
 
+/// How many recent writes the audit log is asked for.
+///
+/// The store has no count method, so the probe lists and counts. The value is
+/// therefore a floor: `recent_rows` saturates here rather than reporting a
+/// true total, which is enough for the question this health field answers —
+/// is the audit log receiving writes at all.
+const RECENT_WRITE_SAMPLE: u64 = tinymcp_bus::MAX_LIST_LIMIT;
+
+/// Whether the write-audit log is recording, and roughly how much.
+///
+/// Reads through `mcp::audit`, which is where the writer puts rows. It used to
+/// query the `mcp_writes` table inside the memory engine's chunk database
+/// directly; when the log moved to its own store, that query stayed behind and
+/// began counting a table nothing writes any more — so this reported zero
+/// writes in the last 24 hours on every install, indefinitely, while the log
+/// underneath it was healthy. A diagnostic that cannot fail loudly must at
+/// least read the same place the writer wrote.
 fn mcp_write_audit_health(config: &Config) -> McpWriteAuditHealth {
-    let result = chunk_store::with_connection(config, |conn| {
-        let since_ms = chrono::Utc::now()
-            .timestamp_millis()
-            .saturating_sub(24 * 60 * 60 * 1000);
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM mcp_writes WHERE timestamp_ms >= ?1",
-            rusqlite::params![since_ms],
-            |row| row.get::<_, i64>(0),
-        )?;
-        Ok(u64::try_from(count).unwrap_or(0))
-    });
+    let since_ms = chrono::Utc::now()
+        .timestamp_millis()
+        .saturating_sub(24 * 60 * 60 * 1000);
+    let query = McpWriteListQuery {
+        limit: Some(RECENT_WRITE_SAMPLE),
+        offset: None,
+        since_ms: u64::try_from(since_ms).ok(),
+        ..Default::default()
+    };
+    let result =
+        crate::openhuman::mcp::audit::list_writes(config, &query).map(|writes| writes.len() as u64);
 
     match result {
         Ok(count) => McpWriteAuditHealth {
