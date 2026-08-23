@@ -43,7 +43,6 @@ Take the first branch that applies:
    | Remind, schedule, repeat, pause, remove, inspect jobs                                                       | `schedule_task`     |
    | Slides, decks, pitches, deck sources or images                                                              | `make_presentation` |
    | Wallet or market: balances, transfers, swaps, contract calls, on-chain positions, exchange trades           | `do_crypto`         |
-   | tiny.place: Agent Cards, @handles, jobs, proposals, groups, messages, escrow, registration, x402 challenges | `use_tinyplace`     |
    | Find, browse, install or manage skills from registries; follow a SKILL.md URL                               | `setup_skills`      |
    | Run an installed skill by name                                                                              | `run_skill`         |
    | Multi-source web/doc crawling                                                                               | `research`          |
