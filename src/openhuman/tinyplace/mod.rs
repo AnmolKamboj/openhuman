@@ -58,7 +58,6 @@ mod schemas;
 pub(crate) mod signal_store;
 mod state;
 pub(crate) mod streams;
-pub mod tools;
 
 #[cfg(test)]
 mod signal_e2e_tests;
