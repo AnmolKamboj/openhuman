@@ -84,6 +84,12 @@ export interface DataTableProps<T> {
 
   /** Replaces the table body region entirely while true. */
   loading?: boolean;
+  /** How many skeleton rows to draw while `loading`. */
+  loadingRows?: number;
+  /** `data-testid` for the loading region (its rows get `${id}-row`). */
+  loadingTestId?: string;
+  /** Accessible label for the loading region. */
+  loadingLabel?: string;
   /** Rendered above the table when set. */
   error?: ReactNode;
   /** Rendered instead of the table when `rows` is empty and not loading. */
@@ -184,6 +190,9 @@ export default function DataTable<T>({
   toolbarStart,
   toolbarEnd,
   loading = false,
+  loadingRows = 6,
+  loadingTestId,
+  loadingLabel,
   error,
   empty,
   footer,
@@ -288,12 +297,33 @@ export default function DataTable<T>({
           showTable && 'rounded-xl border border-line bg-surface'
         )}>
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <span
-              role="status"
-              aria-label={t('common.loading')}
-              className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-primary-500"
-            />
+          // Skeleton ROWS, not a centred spinner: the columns are already known
+          // while the data is not, so keeping the grid means the table does not
+          // collapse and then jolt back to full width when the rows land.
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label={loadingLabel ?? t('common.loading')}
+            data-testid={loadingTestId}
+            className="rounded-xl border border-line bg-surface">
+            <Table containerClassName="w-full">
+              {head}
+              <TableBody>
+                {Array.from({ length: loadingRows }).map((_, rowIndex) => (
+                  <TableRow
+                    key={rowIndex}
+                    aria-hidden
+                    data-testid={loadingTestId ? `${loadingTestId}-row` : undefined}
+                    className="hover:bg-transparent">
+                    {columns.map(column => (
+                      <TableCell key={column.id} className={column.className}>
+                        <span className="block h-3.5 w-full animate-pulse rounded bg-surface-subtle" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         ) : rows.length === 0 ? (
           (empty ?? null)
