@@ -410,3 +410,62 @@ fn an_ascii_name_is_unaffected() {
         .expect("upsert");
     assert!(state.profiles.iter().any(|p| p.id == "research-buddy"));
 }
+
+/// `ops::upsert` looks the persisted profile up by re-deriving its id, and
+/// skips home materialization and SOUL.md sync when the lookup misses. The
+/// helper it uses has to produce exactly what the store wrote, including
+/// the digest fallback.
+#[test]
+fn normalise_profile_id_matches_what_the_store_persists() {
+    let dir = tempdir().expect("tempdir");
+    let store = AgentProfileStore::new(dir.path().to_path_buf());
+    let name = "\u{7814}\u{7a76}\u{30a2}\u{30b7}\u{30b9}\u{30bf}\u{30f3}\u{30c8}";
+
+    let state = store
+        .upsert(custom("", name, "orchestrator"))
+        .expect("upsert");
+    let persisted = state
+        .profiles
+        .iter()
+        .find(|p| p.name == name)
+        .expect("saved profile");
+
+    assert_eq!(normalise_profile_id("", name), persisted.id);
+    assert_eq!(
+        normalise_profile_id(" Custom Profile ", "ignored"),
+        "custom-profile"
+    );
+    assert_eq!(
+        normalise_profile_id("", " Custom Profile "),
+        "custom-profile"
+    );
+}
+
+/// Upsert replaces by id, so two names sharing one derived id silently
+/// overwrite each other. A 32-bit digest collides within ~65k names; these
+/// two are a measured collision at that width.
+#[test]
+fn the_derived_id_does_not_collide_for_known_32_bit_collisions() {
+    let a = "\u{7814}\u{7a76}\u{30d7}\u{30ed}\u{30d5}\u{30a3}\u{30fc}\u{30eb}110131";
+    let b = "\u{7814}\u{7a76}\u{30d7}\u{30ed}\u{30d5}\u{30a3}\u{30fc}\u{30eb}211703";
+    let id_a = profile_id_from_name_digest(a);
+    let id_b = profile_id_from_name_digest(b);
+    assert_ne!(id_a, id_b, "these two collide at a 4-byte digest");
+    for id in [&id_a, &id_b] {
+        assert!(id.len() <= 64, "id must fit the 64-char cap: {id}");
+        assert!(
+            super::super::home::validate_profile_id(id).is_ok(),
+            "derived id must be valid: {id}"
+        );
+    }
+}
+
+#[test]
+fn the_derived_id_is_stable_for_the_same_name() {
+    let name = "\u{7814}\u{7a76}";
+    assert_eq!(
+        profile_id_from_name_digest(name),
+        profile_id_from_name_digest("  \u{7814}\u{7a76}  "),
+    );
+    assert_eq!(profile_id_from_name_digest("   "), "");
+}
