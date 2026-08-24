@@ -186,8 +186,8 @@ fn parse_error_events_produce_a_log_line() {
         reason: "expected value at line 1 column 2".to_string(),
     };
     let msg = parse_error_log_line(&ev).expect("a ParseError must be reported");
-    assert!(msg.contains("{not json"), "{msg}");
     assert!(msg.contains("expected value at line 1 column 2"), "{msg}");
+    assert!(msg.contains("9 bytes"), "{msg}");
 }
 
 #[test]
@@ -198,36 +198,43 @@ fn other_events_produce_nothing() {
     assert!(parse_error_log_line(&ev).is_none());
 }
 
+/// An unparsable line can be a well-formed event of an unknown type, so it
+/// can hold the prompt, the reply, or a credential. None of it is quoted.
 #[test]
-fn a_long_line_is_previewed_not_dumped() {
+fn the_line_itself_is_never_quoted() {
+    let ev = ClaudeCodeEvent::ParseError {
+        line: r#"{"type":"secret_leak","api_key":"sk-ant-not-in-the-log"}"#.to_string(),
+        reason: "unknown event type `secret_leak`".to_string(),
+    };
+    let msg = parse_error_log_line(&ev).unwrap();
+    assert!(!msg.contains("sk-ant-not-in-the-log"), "{msg}");
+    assert!(!msg.contains("api_key"), "{msg}");
+}
+
+/// Size is reported instead of content, so a truncated stream still reads
+/// differently from a chatty one.
+#[test]
+fn the_size_of_the_line_is_reported() {
     let ev = ClaudeCodeEvent::ParseError {
         line: "x".repeat(5_000),
         reason: "trailing characters".to_string(),
     };
-    let msg = parse_error_log_line(&ev).unwrap();
-    assert!(msg.ends_with("..."), "a truncated line must say so: {msg}");
-    assert_eq!(msg.matches('x').count(), PARSE_ERROR_PREVIEW_CHARS);
+    assert!(parse_error_log_line(&ev).unwrap().contains("5000 bytes"));
 }
 
 #[test]
-fn a_short_line_is_not_marked_as_truncated() {
-    let ev = ClaudeCodeEvent::ParseError {
-        line: "oops".to_string(),
-        reason: "r".to_string(),
+fn the_shape_of_the_line_is_reported() {
+    let shape = |line: &str| {
+        parse_error_log_line(&ClaudeCodeEvent::ParseError {
+            line: line.to_string(),
+            reason: "r".to_string(),
+        })
+        .unwrap()
     };
-    assert!(!parse_error_log_line(&ev).unwrap().ends_with("..."));
-}
-
-/// The preview counts characters, so a multi-byte line is not split
-/// mid-character the way byte slicing would split it.
-#[test]
-fn a_multibyte_line_is_previewed_on_character_boundaries() {
-    let ev = ClaudeCodeEvent::ParseError {
-        line: "\u{65e5}".repeat(5_000),
-        reason: "r".to_string(),
-    };
-    let msg = parse_error_log_line(&ev).unwrap();
-    assert_eq!(msg.matches('\u{65e5}').count(), PARSE_ERROR_PREVIEW_CHARS);
+    assert!(shape(r#"  {"type":"x"}"#).contains("json object"));
+    assert!(shape("[1,2]").contains("json array"));
+    assert!(shape("panic: claude-code crashed").contains("non-json"));
+    assert!(shape("   ").contains("blank"));
 }
 
 use super::*;

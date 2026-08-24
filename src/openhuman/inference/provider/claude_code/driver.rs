@@ -18,27 +18,40 @@ use tokio::sync::mpsc;
 /// infinite loop, MCP deadlock) we kill the child and surface a timeout.
 const TURN_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Characters of an unparsable stream line kept in the log: enough to recognise
-/// the shape of the line, not so much that a whole model reply lands in the log.
-const PARSE_ERROR_PREVIEW_CHARS: usize = 200;
+/// Classify the shape of an unparsable stream line without quoting it.
+///
+/// This says whether Claude spoke JSON at all - the one thing that tells a
+/// crashed CLI apart from a protocol change - and nothing about what the line
+/// said.
+fn parse_error_line_shape(line: &str) -> &'static str {
+    match line.trim_start().chars().next() {
+        Some('{') => "json object",
+        Some('[') => "json array",
+        Some('"') => "json string",
+        Some(_) => "non-json",
+        None => "blank",
+    }
+}
 
 /// Render the log line for a `ParseError` event, or `None` for anything else.
 ///
 /// The parser keeps `ParseError` precisely so an unparsable line is reported
 /// instead of vanishing, but the event mapper turns it into no deltas - so the
 /// driver loop is the only place left that can say anything about it.
+///
+/// The line itself is never quoted. It is whatever Claude Code wrote to stdout
+/// - a malformed event, or a well-formed one of an unknown type - so it can
+/// carry the user's prompt, the model's reply, or a credential, and the desktop
+/// build routes `log` into rotating support logs and Sentry breadcrumbs. Shape,
+/// size, and the parser's own reason are enough to act on; content is not.
 fn parse_error_log_line(ev: &ClaudeCodeEvent) -> Option<String> {
     let ClaudeCodeEvent::ParseError { line, reason } = ev else {
         return None;
     };
-    let preview: String = line.chars().take(PARSE_ERROR_PREVIEW_CHARS).collect();
-    let ellipsis = if preview.chars().count() < line.chars().count() {
-        "..."
-    } else {
-        ""
-    };
     Some(format!(
-        "[claude-code][driver] dropping unparsable stream line ({reason}): {preview}{ellipsis}"
+        "[claude-code][driver] dropping unparsable stream line ({reason}): {} of {} bytes",
+        parse_error_line_shape(line),
+        line.len()
     ))
 }
 
