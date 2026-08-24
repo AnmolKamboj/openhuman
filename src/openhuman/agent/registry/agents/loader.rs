@@ -799,27 +799,39 @@ mod tests {
                     !tools.iter().any(|t| t == "spawn_worker_thread"),
                     "spawn_worker_thread is disabled (#1624) and must not be named"
                 );
-                // Async sub-agent control surface taught by prompt.md.
-                assert!(
-                    tools.iter().any(|t| t == "steer_subagent"),
-                    "orchestrator must have steer_subagent to steer async workers"
-                );
-                assert!(
-                    tools.iter().any(|t| t == "wait_subagent"),
-                    "orchestrator must have wait_subagent to collect async results"
-                );
-                assert!(
-                    tools.iter().any(|t| t == "spawn_async_subagent"),
-                    "orchestrator must have spawn_async_subagent for sparse background work"
-                );
-                assert!(
-                    tools.iter().any(|t| t == "wait"),
-                    "orchestrator must have wait for delayed callback ticks"
-                );
-                assert!(
-                    tools.iter().any(|t| t == "wait_loop"),
-                    "orchestrator must have wait_loop for deliberate polling loops"
-                );
+                // Sub-agent surface taught by prompt.md, deliberately three
+                // tools (#5701): spawn, enumerate, resume. A sub-agent is
+                // always async and its result is delivered back on an idle
+                // system turn, so there is nothing to collect and nothing to
+                // block on.
+                for required in [
+                    "spawn_async_subagent",
+                    "list_subagents",
+                    "continue_subagent",
+                ] {
+                    assert!(
+                        tools.iter().any(|t| t == required),
+                        "orchestrator must have sub-agent tool `{required}`"
+                    );
+                }
+                // The collection/fan-out/fleet surface these replaced. Each was
+                // either a second way to say "spawn again" or a way to stall
+                // the turn waiting for a result that arrives on its own.
+                // Re-adding one means re-teaching it in prompt.md; don't do it
+                // without that.
+                for retired in [
+                    "wait",
+                    "wait_loop",
+                    "wait_subagent",
+                    "spawn_parallel_agents",
+                    "steer_subagent",
+                    "close_subagent",
+                ] {
+                    assert!(
+                        !tools.iter().any(|t| t == retired),
+                        "retired sub-agent tool `{retired}` must not reappear (#5701)"
+                    );
+                }
                 assert!(
                     !tools.iter().any(|t| t == "spawn_subagent"),
                     "spawn_subagent must not appear — removed in #1141"
