@@ -94,31 +94,43 @@ pub enum UnavailableReason {
 impl UnavailableReason {
     /// The model-facing notice for this reason.
     ///
-    /// **Prefixed** to the tool result, never appended: the downstream
+    /// **Prefixed** to the tool result, never appended, and prefixed by the
+    /// caller *after* its truncation stages have run. Both halves matter. The
     /// per-tool char cap keeps the head (`content.chars().take(cap)`), so an
-    /// appended notice is the first thing truncation removes.
+    /// appended notice is the first thing truncation removes — but a notice
+    /// prefixed *before* that cap is no safer, because a tool declaring a
+    /// `max_result_size_chars` below this string's length truncates the notice
+    /// itself. Applying it last is the only placement that survives both.
     ///
-    /// Every variant ends by saying a retry is pointless. Without that, the
-    /// model's reasonable response to a truncated dump is to call the same
-    /// tool again — the silent re-dispatch loop that reads to a user as a
-    /// hang.
+    /// Every variant ends by telling the model not to re-run the tool *for a
+    /// summary*. Without that, the model's reasonable response to a truncated
+    /// dump is to call the same tool again — the silent re-dispatch loop that
+    /// reads to a user as a hang.
+    ///
+    /// Note what this deliberately does **not** say: that a re-run returns the
+    /// same bytes. It usually will not. `Failed` leaves the breaker open for
+    /// further attempts, so a second summarization can genuinely succeed, and
+    /// an API-backed tool is time-varying regardless. Asserting result identity
+    /// would be false in the direction that suppresses a legitimate retry the
+    /// model had good reason to make. The claim is scoped to the only thing
+    /// this code actually knows: re-running will not conjure a summary.
     #[must_use]
     pub fn notice(self) -> &'static str {
         match self {
             Self::PayloadTooLarge => concat!(
                 "[openhuman: summarization unavailable — this output exceeds the summarizer's ",
                 "size cap, so the raw output follows and may be truncated. ",
-                "Re-running this tool will return the same result.]"
+                "Re-running it will not produce a summary.]"
             ),
             Self::Disabled => concat!(
                 "[openhuman: summarization unavailable — it is switched off for this session ",
                 "after repeated failures, so the raw output follows. ",
-                "Re-running this tool will return the same result.]"
+                "Re-running it will not produce a summary.]"
             ),
             Self::Failed => concat!(
                 "[openhuman: summarization unavailable — the summarizer did not return a usable ",
                 "summary, so the raw output follows. ",
-                "Re-running this tool will return the same result.]"
+                "Re-running it will not produce a summary.]"
             ),
         }
     }
@@ -688,7 +700,7 @@ mod tests {
         ] {
             let notice = reason.notice();
             assert!(
-                notice.contains("Re-running this tool will return the same result."),
+                notice.contains("Re-running it will not produce a summary."),
                 "{reason:?} must tell the model not to retry: {notice}"
             );
             assert!(
