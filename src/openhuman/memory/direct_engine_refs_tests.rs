@@ -419,11 +419,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/config/ops/model.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
-    ),
-    (
         "src/openhuman/desktop/app_state/ops.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -447,11 +442,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/hosted/orchestration/effect_executor.rs",
         Verdict::NeedsWiderSeam,
         "engine-internal ingest pipeline entry (ingest_pipeline::ingest_document_with_scope); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
-    ),
-    (
-        "src/openhuman/inference/embeddings/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, queue::requeue_failed_after_provider_change) has no capability family",
     ),
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
@@ -569,11 +559,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
-        "src/openhuman/memory/sync_events_bridge.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, sync_events) has no capability family",
-    ),
-    (
         "src/openhuman/memory/tools/flavour.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
@@ -601,7 +586,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, ingest_pipeline) has no capability family",
+        "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",

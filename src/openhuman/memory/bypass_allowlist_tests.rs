@@ -318,14 +318,14 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "resolved only to reach profile_store()",
     ),
     (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types_test_support.rs",
-        "MemoryClient::from_workspace_dir(",
-        "engine-side test fixture; upstream moved this out of types.rs when it externalised inline tests",
-    ),
-    (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
         "global::client_if_ready(",
         "same provider trait shape",
+    ),
+    (
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types_test_support.rs",
+        "MemoryClient::from_workspace_dir(",
+        "#[cfg(test)] module, split out of the inline test blocks three earlier entries covered",
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/user_scopes.rs",

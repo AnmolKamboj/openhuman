@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
+const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,12 +56,16 @@ const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
 ///
-/// Read at tag `v1.2.0`, which is where four of the five families that v1.0.1
+/// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
+/// within existing families (`retry_failed`, the diagnostics trio,
+/// `backfill_in_progress`), not families — verified with
+/// `git diff v1.2.0..v1.3.0 -- crates/tinymemory-api/src/capabilities.rs`
+/// returning empty. v1.2.0 is where four of the five families that v1.0.1
 /// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
 /// members there, so the under-claim that made them unreachable is over.
 ///
 /// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
-/// artifact gap.** The v1.2.0 module does declare the episodic methods
+/// artifact gap.** The pinned module does declare the episodic methods
 /// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
 /// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
 /// trait default and returns `None`. Advertising a family this host cannot
@@ -147,7 +151,7 @@ use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::provider::types::{
     DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
-    MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
+    MaintenanceReport, QueueFailure, QueueStats, SnapshotRef, SourceItem, SourceScope, StoreStats,
 };
 use tinymemory_api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
@@ -968,6 +972,21 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
     async fn doctor(&self) -> Result<MaintenanceReport, MemoryError> {
         module_call!(self, "doctor", "Doctor", ())
+    }
+    async fn retry_failed(&self) -> Result<MaintenanceReport, MemoryError> {
+        module_call!(self, "retry_failed", "RetryFailed", ())
+    }
+    async fn store_stats(&self) -> Result<StoreStats, MemoryError> {
+        module_call!(self, "store_stats", "StoreStats", ())
+    }
+    async fn queue_stats(&self, kind: Option<&str>) -> Result<QueueStats, MemoryError> {
+        module_call!(self, "queue_stats", "QueueStats", (kind,))
+    }
+    async fn latest_queue_failure(&self) -> Result<Option<QueueFailure>, MemoryError> {
+        module_call!(self, "latest_queue_failure", "LatestQueueFailure", ())
+    }
+    async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
+        module_call!(self, "backfill_in_progress", "BackfillInProgress", ())
     }
 }
 

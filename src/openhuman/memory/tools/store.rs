@@ -153,6 +153,7 @@ mod tests {
     // could be bound without translating). Naming the contract here rather
     // than the engine keeps that true at the import as well as the type, and
     // is one fewer reference holding the crate in the build (#5560).
+    use crate::openhuman::memory::api::types::MemoryEntry;
     use tinymemory_api::types::MemoryCategory as EngineMemoryCategory;
 
     fn test_security() -> Arc<SecurityPolicy> {
@@ -166,6 +167,26 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mem = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
         (tmp, Arc::new(mem))
+    }
+
+    /// Read a memory back through the seam the tool wrote it through.
+    ///
+    /// [`test_mem`] hands out an in-process [`UnifiedMemory`] over a fresh
+    /// tempdir, and the tool holds no handle at all — it resolves the *bound*
+    /// driver per call. Under a real module that driver is the process-global
+    /// test workspace, a different store entirely, so asking `test_mem`'s
+    /// handle can never see the write. It is not a flake, and it does not
+    /// depend on the engine version: the two stores were never the same one.
+    ///
+    /// The guard is the tool's own door, so a read through it proves the write
+    /// landed where a caller would look for it.
+    async fn stored(namespace: &str, key: &str) -> Option<MemoryEntry> {
+        active_memory_guard()
+            .await
+            .expect("a bound memory guard")
+            .get(namespace, key)
+            .await
+            .expect("read back through the guard")
     }
 
     #[test]
@@ -189,7 +210,7 @@ mod tests {
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_core() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
@@ -198,8 +219,11 @@ the tool resolves the bound driver rather than being handed a memory handle"]
         assert!(!result.is_error);
         assert!(result.output().contains("lang"));
 
-        let entry = mem.get("global", "lang").await.unwrap();
-        assert!(entry.is_some());
+        let entry = stored("global", "lang").await;
+        assert!(
+            entry.is_some(),
+            "the write is visible through the tool's own seam"
+        );
         assert_eq!(entry.unwrap().content, "Prefers Rust");
     }
 
@@ -222,7 +246,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_with_custom_category() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(
@@ -232,7 +256,9 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .unwrap();
         assert!(!result.is_error);
 
-        let entry = mem.get("global", "proj_note").await.unwrap().unwrap();
+        let entry = stored("global", "proj_note")
+            .await
+            .expect("the stored memory is readable through the guard");
         assert_eq!(entry.content, "Uses async runtime");
         assert_eq!(
             entry.category,
@@ -248,12 +274,12 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_strips_custom_prefix_from_wire_category() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({
                 "namespace": "global",
-                "key": "proj_note",
+                "key": "wire_prefixed_note",
                 "content": "Uses async runtime",
                 "category": "custom:project"
             }))
@@ -261,7 +287,9 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .unwrap();
         assert!(!result.is_error);
 
-        let entry = mem.get("global", "proj_note").await.unwrap().unwrap();
+        let entry = stored("global", "wire_prefixed_note")
+            .await
+            .expect("the stored memory is readable through the guard");
         assert_eq!(
             entry.category,
             EngineMemoryCategory::Custom("project".into()),
@@ -273,7 +301,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_rejects_secret_like_content() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({
@@ -285,7 +313,10 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("looks like a secret"));
-        assert!(mem.get("global", "api").await.unwrap().is_none());
+        // Through the guard, not `test_mem()`: an absence assertion against a
+        // store the tool never writes to holds whether or not the refusal
+        // worked, which makes it worse than no assertion at all.
+        assert!(stored("global", "api").await.is_none());
     }
 
     #[tokio::test]
@@ -312,37 +343,39 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_in_readonly_mode() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let readonly = Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::ReadOnly,
             ..SecurityPolicy::default()
         });
         let tool = MemoryStoreTool::new(readonly);
         let result = tool
-            .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
+            .execute(
+                json!({"namespace": "global", "key": "readonly_lang", "content": "Prefers Rust"}),
+            )
             .await
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("read-only mode"));
-        assert!(mem.get("global", "lang").await.unwrap().is_none());
+        assert!(stored("global", "readonly_lang").await.is_none());
     }
 
     #[tokio::test]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_when_rate_limited() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let limited = Arc::new(SecurityPolicy {
             max_actions_per_hour: 0,
             ..SecurityPolicy::default()
         });
         let tool = MemoryStoreTool::new(limited);
         let result = tool
-            .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
+            .execute(json!({"namespace": "global", "key": "ratelimited_lang", "content": "Prefers Rust"}))
             .await
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("Rate limit exceeded"));
-        assert!(mem.get("global", "lang").await.unwrap().is_none());
+        assert!(stored("global", "ratelimited_lang").await.is_none());
     }
 }
