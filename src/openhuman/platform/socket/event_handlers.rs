@@ -526,18 +526,35 @@ fn base64_encode(input: &str) -> String {
 /// reconnect attempt in the loop. So a result queued while the socket is down is
 /// not dropped — it is flushed onto the *next* connection, which has a different
 /// sid and whose roster the backend has already cleared. Nobody is waiting for
-/// it there.
+/// it there, and the frame can only confuse whoever is.
 ///
-/// Dropping it is not enough on its own. `orch:tool_call` is at-least-once with
-/// server-side redelivery, guarded by a `call_id` claimed on *entry* and
-/// released only when the effect fails
-/// ([`is_duplicate_call`](crate::openhuman::hosted::orchestration::effect_executor::is_duplicate_call)).
-/// A call that succeeded but whose result never reached the wire would stay
-/// latched forever, so the redelivery would be answered with the synthetic
-/// `{"accepted": true, "status": "running", "duplicate": true}` frame instead of
-/// the real result and the brain would wait on a `tool_completion` that can
-/// never arrive. Suppressing the emit therefore has to release the claim too, so
-/// the redelivery genuinely re-runs the work.
+/// # Why the `call_id` claim is deliberately left alone
+///
+/// The effect has already *happened* by the time this is reached — the claim is
+/// taken on entry and the work runs to completion before the result comes back.
+/// Releasing it so the backend's redelivery re-runs the call would re-execute a
+/// side effect that already succeeded: `handle_send_dm` sends over Signal with
+/// no `call_id` reaching that transport, so a peer would receive the message
+/// twice, and a local-execution `orch:tool_call` would spawn a second
+/// background agent. Both paths keep a successful id latched on purpose.
+///
+/// The cost of leaving it latched is that the redelivery is answered with the
+/// synthetic `{"accepted": true, "status": "running", "duplicate": true}` frame
+/// rather than the real result, so the brain's turn does not complete. That is
+/// unchanged from before this guard existed, and it is the lesser harm: a
+/// stalled turn is recoverable, a duplicate message to a human is not. Closing
+/// it properly needs the result cached for replay on the next connection, or a
+/// server-side deadline on the tool call — neither of which belongs here. The
+/// `warn!` below names the stranded `call_id` so the stall is diagnosable
+/// instead of silent.
+///
+/// # The check and the send are one step
+///
+/// Both happen inside `medulla::workflows::with_live_connection`, which holds
+/// the generation lock across them. Checked separately, the socket loop could
+/// end the generation and drain the channel in the gap, and the send would then
+/// sit in an empty channel waiting for the next connection — the very thing
+/// this exists to prevent.
 ///
 /// Returns whether the result was emitted.
 pub(super) fn emit_result_if_connected(
@@ -547,17 +564,19 @@ pub(super) fn emit_result_if_connected(
     call_id: &str,
     data: serde_json::Value,
 ) -> bool {
-    if connection.is_cancelled() {
-        // Release before logging: a redelivery may already be in flight.
-        crate::openhuman::hosted::orchestration::effect_executor::release_call(call_id);
-        log::debug!(
-            "[socket] {event} undeliverable (socket closed before the result was ready); \
-             released claim call_id={call_id}"
+    let delivered = super::medulla::workflows::with_live_connection(connection, || {
+        emit_via_channel(tx, event, data);
+    })
+    .is_some();
+
+    if !delivered {
+        log::warn!(
+            "[socket] {event} undeliverable (the socket closed before the result was ready); \
+             dropped rather than sent on the next connection. The effect ran, so its claim \
+             stays latched and the turn will not complete: call_id={call_id}"
         );
-        return false;
     }
-    emit_via_channel(tx, event, data);
-    true
+    delivered
 }
 
 /// Send a Socket.IO event through the emit channel.
@@ -657,12 +676,15 @@ mod tests {
     }
 
     #[test]
-    fn a_result_for_a_dead_connection_is_dropped_and_its_claim_released() {
+    fn a_result_for_a_dead_connection_is_dropped_without_disturbing_its_claim() {
         // The defect this guards: the emit channel outlives the socket, so an
-        // ungated emit lands on the *next* connection, where nothing is
-        // waiting — and the call_id stays latched, so the backend's redelivery
-        // is answered with the synthetic `duplicate` frame instead of the real
-        // result and the brain waits forever.
+        // ungated emit lands on the *next* connection — a different sid, whose
+        // roster the backend has already cleared.
+        //
+        // The claim must survive. The effect already ran by the time the result
+        // exists, so releasing it would make the backend's redelivery re-execute
+        // a side effect that succeeded — a second Signal message to a peer, or a
+        // second background agent. See `emit_result_if_connected`.
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
         let connection = CancellationToken::new();
         let call_id = unique_call_id("dead");
@@ -686,11 +708,9 @@ mod tests {
             rx.try_recv().is_err(),
             "nothing should be queued for the next connection"
         );
-        // Releasing is the half that keeps the brain unstuck: the redelivery
-        // has to genuinely re-run, not hit the latch.
         assert!(
-            !is_duplicate_call(&call_id),
-            "a suppressed result must release its claim so redelivery re-runs"
+            is_duplicate_call(&call_id),
+            "an undeliverable result must not un-claim work that already ran"
         );
         release_call(&call_id);
     }
