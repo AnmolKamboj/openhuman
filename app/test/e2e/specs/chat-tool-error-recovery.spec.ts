@@ -155,9 +155,14 @@ describe('Chat tool-error recovery', () => {
           'button[aria-label="Send message"]'
         ) as HTMLButtonElement | null;
         const ta = document.querySelector(
-          'textarea[placeholder="Send a message..."]'
-        ) as HTMLTextAreaElement | null;
-        return (btn !== null && !btn.disabled) || (ta !== null && !ta.disabled);
+          'textarea[placeholder="Send a message..."], [contenteditable="true"][role="textbox"][aria-label="Message input"]'
+        ) as HTMLTextAreaElement | HTMLElement | null;
+        return (
+          (btn !== null && !btn.disabled) ||
+          (ta !== null &&
+            !(ta as HTMLTextAreaElement).disabled &&
+            ta.getAttribute('aria-disabled') !== 'true')
+        );
       });
       if (composerEnabled) {
         console.log(`${LOG_PREFIX} T3.2: composer re-enabled`);

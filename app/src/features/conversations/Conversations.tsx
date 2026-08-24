@@ -2525,6 +2525,7 @@ const Conversations = ({
         // share one mascot (mascotSlice), so this is a change of venue for the
         // same conversation partner, not a second one.
         onOpenHumanMode={() => navigate('/human')}
+        onSwitchToMicCloud={() => setComposerOverride('mic-cloud')}
         onModelChange={(value, contextWindow) => {
           setComposerModelOverride(value);
           setComposerModelContextWindow(contextWindow ?? null);
