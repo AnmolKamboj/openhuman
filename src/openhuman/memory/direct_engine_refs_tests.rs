@@ -559,11 +559,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
-        "src/openhuman/memory/sync_events_bridge.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::ensure_reembed_backfill, sync_events) has no capability family",
-    ),
-    (
         "src/openhuman/memory/tools/flavour.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
