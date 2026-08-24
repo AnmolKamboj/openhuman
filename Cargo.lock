@@ -6648,6 +6648,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "log",
+ "rusqlite",
  "serde",
  "serde_json",
  "tracing",
@@ -6661,7 +6662,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "log",
- "rusqlite",
  "serde",
  "serde_json",
  "tinycortex",
