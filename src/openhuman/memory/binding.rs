@@ -493,6 +493,13 @@ pub(crate) struct FixedDiagnostics {
     store: crate::openhuman::memory::api::provider::types::StoreStats,
     queue: crate::openhuman::memory::api::provider::types::QueueStats,
     failure: Option<crate::openhuman::memory::api::provider::types::QueueFailure>,
+    /// What this driver says about a backfill running in its process.
+    ///
+    /// Separate from [`Self::queue`] on purpose, mirroring the contract: the
+    /// flag is not derivable from the counts, and a test that needs the gap
+    /// between them — nothing ready, nothing running, backfill unfinished —
+    /// has to set the two independently.
+    backfill: bool,
 }
 
 #[cfg(test)]
@@ -520,6 +527,7 @@ mod fixed_diagnostics_impl {
                 store,
                 queue,
                 failure: None,
+                backfill: false,
                 retry_calls: std::sync::atomic::AtomicUsize::new(0),
                 retry_requeues: 0,
                 reembed_calls: std::sync::atomic::AtomicUsize::new(0),
@@ -529,6 +537,12 @@ mod fixed_diagnostics_impl {
         /// Report `requeued` jobs from [`MemoryMaintenance::retry_failed`].
         pub(crate) fn requeueing(mut self, requeued: u64) -> Self {
             self.retry_requeues = requeued;
+            self
+        }
+
+        /// Report a backfill running in this driver's process.
+        pub(crate) fn backfilling(mut self) -> Self {
+            self.backfill = true;
             self
         }
 
@@ -657,6 +671,10 @@ mod fixed_diagnostics_impl {
 
         async fn latest_queue_failure(&self) -> Result<Option<QueueFailure>, MemoryError> {
             Ok(self.failure.clone())
+        }
+
+        async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
+            Ok(self.backfill)
         }
     }
 

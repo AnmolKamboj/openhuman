@@ -981,6 +981,9 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     async fn latest_queue_failure(&self) -> Result<Option<QueueFailure>, MemoryError> {
         module_call!(self, "latest_queue_failure", "LatestQueueFailure", ())
     }
+    async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
+        module_call!(self, "backfill_in_progress", "BackfillInProgress", ())
+    }
 }
 
 #[cfg(test)]

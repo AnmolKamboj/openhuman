@@ -591,7 +591,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::store::requeue_failed, queue::backfill_in_progress, ingest_pipeline) has no capability family",
+        "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
     ),
     (
         "src/openhuman/platform/doctor/core.rs",

@@ -311,6 +311,31 @@ async fn queue_stats(
         .map_err(|e| format!("queue_stats: {e}"))
 }
 
+/// Whether the driver has a re-embed backfill chain running.
+///
+/// Scoped to the driver's process, not to this store — the contract member says
+/// so in its own signature, which is why it is a member rather than a field on
+/// [`queue_stats`]. A driver serving several stores answers the same for all of
+/// them.
+///
+/// A driver without Maintenance reports `false` rather than erroring, matching
+/// its siblings: "this driver runs no backfill" is true of it, not a fault the
+/// caller can act on.
+async fn backfill_in_progress(config: &Config) -> Result<bool, String> {
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        log::debug!(
+            "[memory-tree][rpc] backfill_in_progress: driver '{}' does not serve Maintenance; reporting false",
+            binding.driver_id()
+        );
+        return Ok(false);
+    };
+    maintenance
+        .backfill_in_progress()
+        .await
+        .map_err(|e| format!("backfill_in_progress: {e}"))
+}
+
 /// Response from the `memory_backfill_status` RPC (#1574 §4b). The frontend
 /// polls this while the re-embed modal is open to surface progress and to
 /// dismiss the modal once the new embedding space is fully covered.
@@ -346,13 +371,21 @@ pub async fn backfill_status_rpc(
     // Ready + running, not `total - done`: a failed backfill job is finished
     // with, and counting it as pending leaves the modal open forever.
     let pending_jobs: u64 = queue.ready + queue.running;
-    // Still the engine's process-global. It covers the instant between one
-    // backfill link settling and the next being enqueued, which the counts
-    // cannot see — but it is scoped to the process, not to this store, and a
-    // second memory subtree running its own backfill would answer `true` here.
-    // Putting it on `QueueStats` would have made a per-store API promise that
-    // scoping; it stays a visibly global call until the engine can scope it.
-    let in_progress = tinymemory_core::queue::backfill_in_progress() || pending_jobs > 0;
+    // Asked of the driver, not of the host-linked engine's process-global. That
+    // static covers the instant between one backfill link settling and the next
+    // being enqueued, which the counts cannot see — but re-embedding runs in the
+    // module now, and a `cdylib` has its own statics, so the host-side copy reads
+    // `false` forever and the modal closes while work is still being prepared.
+    //
+    // The member is process-wide rather than store-scoped, and says so in its
+    // signature; that is why it is not a `QueueStats` field, where a per-store
+    // snapshot would have implied a scoping it does not have. A read failure
+    // degrades to the counts rather than failing the polled RPC.
+    let driver_backfilling = backfill_in_progress(config).await.unwrap_or_else(|e| {
+        log::warn!("[memory::rpc] backfill_status: backfill_in_progress read failed: {e}");
+        false
+    });
+    let in_progress = driver_backfilling || pending_jobs > 0;
     Ok(RpcOutcome::single_log(
         BackfillStatusResponse {
             in_progress,
@@ -1428,8 +1461,9 @@ mod tests {
     /// queued for the backfill kind, and a non-zero count forces
     /// `in_progress` so the modal stays open.
     ///
-    /// `in_progress` for the empty case is intentionally not asserted — the
-    /// underlying flag is a process-global shared across parallel tests.
+    /// The empty case now asserts `in_progress` too. It could not before: the
+    /// flag was a process-global that parallel tests shared. It comes from the
+    /// bound driver now, so it is this test's to set.
     ///
     /// Ready + running, and deliberately not `total - done`: a backfill job
     /// that failed is finished with, and counting it as pending would leave
@@ -1462,6 +1496,47 @@ mod tests {
             "ready + running is what is still to do; done and failed are not"
         );
         assert!(s1.in_progress, "pending>0 forces in_progress=true");
+    }
+
+    /// The backfill flag is the driver's answer, not the host's engine static.
+    ///
+    /// This is the gap the counts cannot express: a backfill chain re-enqueues
+    /// itself, so between one link settling and the next being written there is
+    /// an instant with nothing ready, nothing running, and the work unfinished.
+    /// A poll that trusted the counts alone closes the re-embed modal there.
+    ///
+    /// It has to come from the driver rather than
+    /// `tinymemory_core::queue::backfill_in_progress()`, because re-embedding
+    /// runs in the module and a `cdylib` has its own statics — the host-linked
+    /// copy reads `false` forever on that path, which is worse than coarse.
+    #[tokio::test]
+    async fn backfill_status_reports_the_drivers_flag_when_the_counts_are_empty() {
+        use crate::openhuman::memory::api::provider::types::QueueStats;
+
+        let (_tmp, cfg) = test_config();
+
+        let driver = std::sync::Arc::new(
+            crate::openhuman::memory::binding::FixedDiagnostics::new(
+                Default::default(),
+                QueueStats::default(),
+            )
+            .backfilling(),
+        );
+        crate::openhuman::memory::binding::install_for_test(
+            &cfg.workspace_dir,
+            &cfg.subsystems.memory,
+            driver as std::sync::Arc<dyn crate::openhuman::memory::api::provider::MemoryProvider>,
+        );
+
+        let status = backfill_status_rpc(&cfg).await.unwrap().value;
+        assert_eq!(
+            status.pending_jobs, 0,
+            "precondition: the counts say the queue is empty"
+        );
+        assert!(
+            status.in_progress,
+            "and the driver still says a backfill is running, which is the whole point"
+        );
     }
 
     // ── pipeline_status / set_enabled (#1856 Part 1) ─────────────────────
