@@ -335,3 +335,78 @@ fn default_profile_has_master_and_memory_suffix() {
     assert_eq!(default.memory_dir_suffix.as_deref(), Some(""));
     assert!(default.include_agent_conversations);
 }
+
+/// A name written entirely outside ASCII slugifies to nothing, and the
+/// upsert used to fail with "profile id must not be empty" - an error about
+/// a field the user never filled in.
+#[test]
+fn a_profile_named_only_in_non_ascii_can_be_saved() {
+    let dir = tempdir().expect("tempdir");
+    let store = AgentProfileStore::new(dir.path().to_path_buf());
+    let name = "\u{7814}\u{7a76}\u{30a2}\u{30b7}\u{30b9}\u{30bf}\u{30f3}\u{30c8}";
+
+    let state = store
+        .upsert(custom("", name, "orchestrator"))
+        .expect("a profile named in Japanese must be saveable");
+
+    let saved = state
+        .profiles
+        .iter()
+        .find(|p| p.name == name)
+        .expect("the profile is in the list");
+    assert!(
+        super::super::home::validate_profile_id(&saved.id).is_ok(),
+        "derived id must be a valid one: {}",
+        saved.id
+    );
+}
+
+/// The id comes from a digest of the name, so re-saving the same profile
+/// edits it instead of adding a second copy.
+#[test]
+fn re_saving_a_non_ascii_profile_updates_it() {
+    let dir = tempdir().expect("tempdir");
+    let store = AgentProfileStore::new(dir.path().to_path_buf());
+    let name = "\u{7814}\u{7a76}\u{30a2}\u{30b7}\u{30b9}\u{30bf}\u{30f3}\u{30c8}";
+
+    store
+        .upsert(custom("", name, "orchestrator"))
+        .expect("first");
+    let state = store.upsert(custom("", name, "planner")).expect("second");
+
+    let matching: Vec<_> = state.profiles.iter().filter(|p| p.name == name).collect();
+    assert_eq!(
+        matching.len(),
+        1,
+        "re-saving must not duplicate the profile"
+    );
+    assert_eq!(matching[0].agent_id, "planner", "the edit must be applied");
+}
+
+/// Two different non-ASCII names must not collapse onto one profile.
+#[test]
+fn two_non_ascii_profiles_keep_separate_ids() {
+    let dir = tempdir().expect("tempdir");
+    let store = AgentProfileStore::new(dir.path().to_path_buf());
+
+    store
+        .upsert(custom("", "\u{7814}\u{7a76}", "orchestrator"))
+        .expect("first");
+    let state = store
+        .upsert(custom("", "\u{5206}\u{6790}", "orchestrator"))
+        .expect("second");
+
+    assert!(state.profiles.iter().any(|p| p.name == "\u{7814}\u{7a76}"));
+    assert!(state.profiles.iter().any(|p| p.name == "\u{5206}\u{6790}"));
+}
+
+/// An ASCII name still gets the readable slug it always had.
+#[test]
+fn an_ascii_name_is_unaffected() {
+    let dir = tempdir().expect("tempdir");
+    let store = AgentProfileStore::new(dir.path().to_path_buf());
+    let state = store
+        .upsert(custom("", "Research Buddy", "orchestrator"))
+        .expect("upsert");
+    assert!(state.profiles.iter().any(|p| p.id == "research-buddy"));
+}

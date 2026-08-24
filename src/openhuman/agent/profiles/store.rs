@@ -548,6 +548,9 @@ fn normalise_profile(mut profile: AgentProfile) -> AgentProfile {
     if profile.id.is_empty() {
         profile.id = slugify_profile_id(&profile.name);
     }
+    if profile.id.is_empty() {
+        profile.id = profile_id_from_name_digest(&profile.name);
+    }
     profile.name = profile.name.trim().to_string();
     if profile.name.is_empty() {
         profile.name = profile.id.clone();
@@ -618,6 +621,33 @@ fn next_available_suffix(existing: &std::collections::HashSet<String>) -> String
 /// the store has slugified it.
 pub(crate) fn normalise_profile_id(input: &str) -> String {
     slugify_profile_id(input)
+}
+
+/// Profile id for a name that slugifies to nothing.
+///
+/// `slugify_profile_id` keeps only ASCII alphanumerics, so a name written
+/// entirely outside that range - Japanese, Chinese, Greek, Cyrillic, Arabic -
+/// reduces to the empty string and `validate_profile_id` rejects the upsert
+/// with "profile id must not be empty". The user supplied a name; the error
+/// blames an id they never typed.
+///
+/// Derive one from the name instead. A digest keeps it deterministic, so
+/// saving the same profile twice updates it rather than creating a second one,
+/// and two different names do not land on the same id.
+fn profile_id_from_name_digest(name: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let digest = Sha256::digest(trimmed.as_bytes());
+    let short: String = digest
+        .iter()
+        .take(4)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("profile-{short}")
 }
 
 fn slugify_profile_id(input: &str) -> String {
