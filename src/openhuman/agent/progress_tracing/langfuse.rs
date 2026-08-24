@@ -85,20 +85,68 @@ fn langfuse_metadata(span: &TraceSpan) -> Value {
     Value::Object(map)
 }
 
+/// The domain the deployed backends live under. A host outside it cannot be
+/// one of ours, so it cannot be staging however it is spelled.
+const DEPLOYMENT_DOMAIN: &str = "tinyhumans.ai";
+
 /// Derive the Langfuse `environment` for a backend base URL. Chosen signal:
 /// the resolved backend host is the single existing config-driven fact that
 /// distinguishes deployments (there is no NODE_ENV-style flag in the core
-/// config) — `staging` in the host → staging, loopback/local → development,
-/// anything else → production.
+/// config) — loopback/local → development, a staging host under
+/// [`DEPLOYMENT_DOMAIN`] → staging, anything else → production.
+///
+/// # Why the host is parsed rather than substring-matched
+///
+/// This used to test `base.contains("staging")` and
+/// `base.contains("localhost" | "127.0.0.1" | "0.0.0.0")` against the whole
+/// URL, which was tolerable while the answer only labelled a payload. It is
+/// not tolerable now that [`skip_push`] decides whether to push at all, so
+/// both directions of the sloppiness became load-bearing:
+///
+/// - **Too broad on staging.** `https://staging-attacker.invalid` contains
+///   `staging`, so it classified as staging and passed the push gate — a host
+///   nothing in this tree owns, reached with a live session token. Anchoring
+///   to [`DEPLOYMENT_DOMAIN`] is what makes the classifier fail *closed*: a
+///   host that is not ours is production, and production does not push.
+/// - **Too narrow on local.** An IPv6 loopback backend (`http://[::1]:7788`)
+///   or a private LAN address matched none of the three literals and
+///   classified as production, so a working development setup would have
+///   silently stopped exporting the moment the gate landed.
+///
+/// Host classification is delegated to [`crate::api::config::host_is_local`],
+/// which already parses the URL and handles IPv4 loopback/unspecified/private,
+/// IPv6 loopback/unspecified, and `localhost` / `*.localhost`. Keeping one
+/// definition matters more than the few lines it saves: two local-host
+/// predicates that disagree is how a gate lets through exactly the case the
+/// other one blocks.
+///
+/// An unparseable URL is production — the fail-closed default. `ingestion_url`
+/// can return a non-URL placeholder when no backend host resolves, and the
+/// caller checks `starts_with("http")` separately; classifying that as
+/// anything pushable would defeat the gate.
 pub(crate) fn environment_for_base(base: &str) -> &'static str {
-    let lower = base.to_ascii_lowercase();
-    if lower.contains("staging") {
+    let Ok(parsed) = url::Url::parse(base) else {
+        return "production";
+    };
+    if crate::api::config::host_is_local(&parsed) {
+        return "development";
+    }
+    let Some(url::Host::Domain(host)) = parsed.host() else {
+        // A public IP literal is not a deployment of ours.
+        return "production";
+    };
+    let host = host.to_ascii_lowercase();
+    let under_deployment_domain =
+        host == DEPLOYMENT_DOMAIN || host.ends_with(&format!(".{DEPLOYMENT_DOMAIN}"));
+    // The label test is on the leftmost label only, so `staging-api…` and
+    // `staging…` match while `api-staging-mirror…` does not sneak in on a
+    // substring.
+    let leftmost_is_staging = host
+        .split('.')
+        .next()
+        .is_some_and(|label| label == "staging" || label.starts_with("staging-"));
+    if under_deployment_domain && leftmost_is_staging {
         "staging"
-    } else if lower.contains("localhost")
-        || lower.contains("127.0.0.1")
-        || lower.contains("0.0.0.0")
-    {
-        "development"
     } else {
         "production"
     }
@@ -1378,6 +1426,70 @@ mod tests {
             environment_for_base("https://api.tinyhumans.ai"),
             "production"
         );
+    }
+
+    /// A hostname that merely *contains* `staging` is not ours. The classifier
+    /// gates whether a live session token leaves the process, so anything it
+    /// cannot positively recognise has to land on `production` — which does
+    /// not push.
+    #[test]
+    fn a_lookalike_staging_host_is_production_not_staging() {
+        for base in [
+            // The substring match this replaced classified all of these as
+            // staging, and `push_allowed` would then have let them through.
+            "https://staging-attacker.invalid",
+            "https://staging.evil.example",
+            "http://staging-api.tinyhumans.ai.evil.example",
+            // Right domain, wrong label position.
+            "https://api-staging-mirror.tinyhumans.ai",
+            // A public IP literal is never a deployment of ours.
+            "https://93.184.216.34",
+        ] {
+            let environment = environment_for_base(base);
+            assert_eq!(
+                environment, "production",
+                "{base} must classify as production, got {environment}"
+            );
+            assert!(!push_allowed(environment), "{base} must not be pushable");
+        }
+    }
+
+    /// The local buckets the substring form missed. An IPv6 loopback backend
+    /// is an ordinary local setup, and before the parse it classified as
+    /// production — so turning the push gate on would have silently stopped
+    /// exports that had been working.
+    #[test]
+    fn local_backends_are_development_including_ipv6_and_private_ranges() {
+        for base in [
+            "http://[::1]:7788",
+            "http://[0:0:0:0:0:0:0:1]:7788",
+            "http://[::]:7788",
+            "http://192.168.1.20:5000",
+            "http://10.0.0.5:5000",
+            "http://api.localhost:5000",
+            "http://0.0.0.0:5000",
+        ] {
+            let environment = environment_for_base(base);
+            assert_eq!(
+                environment, "development",
+                "{base} must classify as development, got {environment}"
+            );
+            assert!(push_allowed(environment), "{base} must stay pushable");
+        }
+    }
+
+    /// An unparseable base is the fail-closed default rather than a panic or a
+    /// pushable bucket. `ingestion_url` returns a non-URL placeholder when no
+    /// backend host resolves.
+    #[test]
+    fn an_unparseable_base_is_production() {
+        for base in ["", "not a url", "/api/v1/ingestion"] {
+            assert_eq!(
+                environment_for_base(base),
+                "production",
+                "{base:?} must fail closed"
+            );
+        }
     }
 
     #[test]
