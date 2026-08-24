@@ -372,26 +372,16 @@ impl AgentMemory for OpenHumanAgentMemory {
             // absent means "exclude nothing" — the agent gets handed back what
             // it just said. Resolving it here keeps the behaviour identical on
             // both paths.
+            //
+            // It does not fight `session_id` above. The engine filters only
+            // document-kind hits by this field, while `session_id` and
+            // `cross_session` scope the episodic and event tiers — so scoping
+            // to a session and excluding it is not a contradiction, and a
+            // thread hint still narrows *to* that session.
             exclude_session_id: current_thread_id_ref.as_deref(),
             // Widening past the requested session is a wiring decision, never a
             // runtime hint.
             cross_session: self.cross_session,
-            // The turn's own auto-saved request must not come back as its own
-            // best hit. The harness writes the user's message as a
-            // `[conversation]` document tagged with this thread id, so a recall
-            // issued *during* that turn retrieves it unless this is set.
-            //
-            // It does not fight `session_id` above: the engine filters only
-            // document-kind hits by this field, while `session_id` /
-            // `cross_session` scope the episodic and event tiers. Different
-            // tiers, so scoping to a session and excluding it is not a
-            // contradiction.
-            //
-            // Explicit rather than left to the engine's ambient task-local: a
-            // `cdylib` has its own statics, so that fallback reads `None` on
-            // the far side of the module boundary — which is the path this
-            // call takes.
-            exclude_session_id: session,
         };
 
         let entries = crate::openhuman::agent::tinyagents::retriever::recall_through_facade(

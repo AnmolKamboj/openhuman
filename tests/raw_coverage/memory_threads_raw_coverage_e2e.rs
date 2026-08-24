@@ -2097,9 +2097,6 @@ fn memory_retrieval_embedding_and_rpc_model_helpers_round_trip() {
         // field was added.
         exclude_session_id: None,
         cross_session: true,
-        // Shape assertion, not behaviour: this exercises the field surface, so
-        // the exclusion is the "exclude nothing" value.
-        exclude_session_id: None,
     };
     assert!(opts.cross_session);
     assert_eq!(opts.category.unwrap().to_string(), "conversation");
