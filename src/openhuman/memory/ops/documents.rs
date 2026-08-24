@@ -855,30 +855,6 @@ mod tests {
         assert!(query_data.llm_context_message.is_some());
         assert!(query_data.context.is_some());
 
-        // `memory_recall_memories` rides `RecallNamespaceRecent`, which no
-        // release before v1.4.0 serves. Against an older pinned artifact the
-        // driver answers UnknownMethod — the release gate this PR documents,
-        // not a defect this test can see past. The guard self-removes: the
-        // re-pin that moves this constant past 1.3.0 turns the recall
-        // assertions back on, so the tripwire survives exactly as long as the
-        // gate does.
-        let pinned = crate::openhuman::modules::memory::ARTIFACT_CAPABILITIES_PIN;
-        if pinned
-            .split('.')
-            .zip("1.4.0".split('.'))
-            .find_map(|(a, b)| {
-                let (a, b) = (a.parse::<u32>().ok()?, b.parse::<u32>().ok()?);
-                (a != b).then_some(a < b)
-            })
-            .unwrap_or(false)
-        {
-            eprintln!(
-                "skipping the recall assertions: pinned artifact v{pinned} predates \
-                 RecallNamespaceRecent (v1.4.0)"
-            );
-            return;
-        }
-
         let recalled = memory_recall_memories(RecallMemoriesRequest {
             namespace: namespace.clone(),
             min_retention: None,

@@ -668,6 +668,9 @@ impl MemoryIngest for ModuleMemoryProvider {
     async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
         module_call!(self, "ingest_chat", "IngestChat", (messages,))
     }
+    async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
+        module_call!(self, "ingest_email", "IngestEmail", (messages,))
+    }
 }
 
 #[async_trait]

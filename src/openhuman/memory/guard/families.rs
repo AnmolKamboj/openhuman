@@ -255,6 +255,26 @@ impl MemoryIngest for GuardedIngest {
         );
         self.family()?.ingest_chat(messages).await
     }
+
+    async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
+        // Admitted exactly like chat: a thread is one conversation with no
+        // namespace of its own, and every message is taint-stamped and
+        // redacted before it reaches the driver.
+        self.policy.admit_write(
+            Capability::Ingest,
+            "ingest.ingest_email",
+            NO_NAMESPACE,
+            true,
+        )?;
+        let messages: Vec<IngestItem> = messages.into_iter().map(|m| self.admit(m)).collect();
+        trace_allowed(
+            &self.policy,
+            "ingest.ingest_email",
+            NO_NAMESPACE,
+            messages.iter().map(|m| m.content.chars().count()).sum(),
+        );
+        self.family()?.ingest_email(messages).await
+    }
 }
 
 // ── Documents ────────────────────────────────────────────────────────────────
