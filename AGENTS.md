@@ -440,6 +440,46 @@ orchestration surface still has a pinned **subconscious chat window**
 `threadFilter`'s `MEETINGS_LABELS` still routes historical meeting-labelled
 threads so existing user data does not leak into the General bucket.
 
+**Removed agent-tool families.** A second, narrower removal: six families left
+the *agent tool surface* while their RPC controllers stayed registered, because
+the dashboard still calls them. The distinction matters — "the tool is gone" is
+not "the domain is gone", and only one of these took its domain with it:
+
+| Removed family | Tools gone | Domain / RPC |
+| --- | --- | --- |
+| `apify_*` | `apify_run_actor`, `apify_get_run_status`, `apify_get_run_results` + the `[integrations].apify` toggle | Deleted. **`openhuman.tools_apify_linkedin_scrape` stays** — onboarding's ContextGatheringStep calls it, and `agent::learning::linkedin_enrichment` reaches the backend route directly, not through the deleted tools. |
+| `people_*` | all 7 | `memory/tools/people.rs` deleted; the `people` RPC surface and `memory/people/` (address book, the `contacts` gate) stay. |
+| `thread_*` | all 17, plus `transcript_search` | `threads/tools.rs` deleted; the `threads` domain stays — it is `DomainGroup::Threads` kernel surface and backs the whole chat UI. `todo_*` and `goal_*` are untouched. |
+| `billing_*`, `team_*`, `referral_*` | all 34 | `hosted/{billing,team,referral}/tools.rs` deleted; every controller stays (32 `team` and 5 `billing` frontend call sites). |
+| `tinyplace_*` | the whole curated agent surface (`tinyplace/agent_tools`, `tinyplace/tools.rs`) | The **domain stays.** See the note below. |
+
+Two agents went with them: **`account_admin_agent`** (its belt was billing +
+team + referral) and **`tinyplace_agent`**. `account_admin_agent`'s read-only
+half — `session_state`, `session_get_user`, `credential_list`,
+`oauth_connect_url`, `oauth_list` — moved to `settings_agent`: that is account
+*state*, which is settings territory, and has nothing to do with the money
+movement that went away. The `tinyplace_autopilot` cron seed went too, and with
+it `cron::seed::seed_proactive_agents_on_boot`, whose only job was backfilling
+that one job.
+
+**`openhuman::tinyplace/` was NOT deleted, and this is a deliberate stop, not an
+oversight.** It is ~17.8k lines with ~180 references across ~30 files outside
+itself, and the two heaviest consumers are surfaces that must survive:
+`hosted/orchestration` (the tiny.place orchestration surface the note above
+says not to clean up) and `web3::wallet`, whose `tinyplace_solana_rpc_endpoints`
+/ `tinyplace_signer_seed` are documented API. Deleting the domain means deleting
+or rewriting `hosted/orchestration` first. What is gone is the agent's route to
+it; `DomainGroup::Relay` still exists and still serves its controllers, it just
+owns no agent tool any more — which is why `Relay` is now in `TOOL_LESS` in
+`tools/ops_tests.rs`.
+
+**Known regression, accepted:** removing `thread_list` from the orchestrator
+reopens #4744 — "list my recent conversation threads" has no direct route and
+the model will fall back to `retrieve_memory`, which walks the memory *tree*,
+the wrong index. `tests/orchestrator_thread_list_wiring.rs`, which existed to
+pin that fix, was deleted with the tool. If threads need a chat route again, the
+cheap fix is a single read-only `thread_list` rather than restoring the family.
+
 **Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime::node`/`runtime::python`, which are clients for the `tinyruntime` module).
 
 ### Tool calling lives in tinyagents — `src/openhuman/agent/dispatcher.rs` is a seam
@@ -546,12 +586,28 @@ Layering: `embed::Core::agent()` is the typed turn surface for a host that alrea
 
 Example: `examples/run_turn.rs`. End-to-end test: `tests/harness_embed.rs`.
 
-### Runtime composition — `ServiceSet` + `DomainSet` on `CoreBuilder`
+### Runtime composition — `ServiceSet` + `DomainSet` + `ToolGroups` on `CoreBuilder`
 
-Two independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
+Three independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
 
 - **`ServiceSet`** selects which *background services / transports* run (`rpc_http`, `socketio`, `cron`, `channels`, `heartbeat`, …). Presets: `desktop()` / `headless_api()` / `none()`.
 - **`DomainSet`** selects which *domain families* exist at runtime, one flag per `DomainGroup` (`src/core/all.rs`). Presets: `full()` (default — byte-identical to before #4796), `harness()` (agent + memory + threads + config + security only), `none()`. Every controller is tagged with its `DomainGroup` at the single registration site in `src/core/all.rs`; the live surface (controllers/`/schema`/dispatch, agent tools, stores, subscribers) is filtered by the ambient `CoreContext::domains()`. A gated domain's controllers become unknown-method, its agent tools absent, its stores/subscribers uninitialized. `examples/embed_headless.rs` uses `DomainSet::harness()`; `examples/embed_kernel.rs` uses `DomainSet::kernel()` — the floor (threads + config + security, with `agent`/`memory` OFF) that a host opts subsystems back into by field assignment. Per-gate Cargo `[features]` (children #4797–#4804) narrow the compile-time surface further; `DomainSet` is the runtime axis they compose with.
+
+- **`ToolGroups`** selects how each *tool group* reaches the model, one mode per compiled-in pack in `tools/toolpacks/registry.rs` (`src/openhuman/tools/toolpacks/groups.rs`). Presets: `packed()` (default — every group withheld, byte-identical to before the type existed), `advertised()`, `none()`, plus `.with(id, mode)`. Also on `Harness::builder()`.
+
+**The third axis exists because the pack table answers a compression question, and a library embedder is asking a capability question.** Packs were built for one host's problem — an orchestrator whose fixed per-turn cost is dominated by tool schemas — and membership is compiled in for a good reason: a pack that config or RPC could edit would let a caller move a dangerous tool out of the reviewed surface. But `openhuman_core` is also consumed as a library, and there the group id is the natural unit of *what this product has at all*. A host embedding the harness to summarise documents has no use for the crypto belt at any disclosure level; a host doing its own routing may want every schema on the wire because it does not pay the orchestrator's budget. Neither is expressible by membership, which only ever says "advertised or withheld".
+
+So `GroupMode` has three states, not two:
+
+| `GroupMode` | Schemas on the wire | Registered and callable |
+| --- | --- | --- |
+| `Advertised` | yes | yes |
+| `Withheld` | no (reached via `load_skill` / `use_skill`) | yes |
+| `Off` | no | **no** |
+
+`Off` is the state that could not be said before, and it is the one an embedder reaches for most — absence beats a registered tool that fails, the same reasoning the `flows` compile gate already documents. Enforcement is two-sited and mirrors the existing filters: `Off` drops the tool in `all_tools_with_runtime`'s post-filter block (a third `retain`, right after the `DomainSet` and memory-capability ones), and `Withheld` is what `strip_packed_from_visible` acts on. **The three narrow, they never widen** — `Advertised` cannot conjure a tool that a Cargo gate compiled out or that the ambient `DomainSet` dropped.
+
+**Packs now carry an `owners` list, and a pack is skipped entirely for its owner.** This is new with the raw-tool packs and was not needed before: the original packs held only synthesised `delegate_*` tools, which exist on the orchestrator alone. A pack over raw tools is different — `settings_agent` exists precisely to run `config_*` / `health_*` / `service_*`, so withholding the `system` pack from it would put a `load_skill` round trip in front of the first call of every one of its turns and hide nothing that was idle. Its whole belt *is* the pack. `strip_packed_from_visible` therefore takes the agent id.
 
 **`DomainGroup` tracks family directories 1:1.** After the domain reorg (#5328) each variant names a `src/openhuman/` family, so the runtime axis stopped sweeping half the surface into the `Platform` catch-all. Groups: the harness families (`Agent`, `Memory`, `Threads`, `Config`, `Security`), the compile-gate families (`Flows`, `Skills`, `Mcp`, `Channels`, `Web3`, `Voice`, `Media`, `Medulla`), the families carved out of `Platform` (`Inference`, `Integrations`, `Automation` = cron, `Runtimes` = runtime + sandbox, `Desktop`, `Hosted`, `Relay` = tinyplace, `Modules` = the native module host), and `Platform` itself — now only the kernel surfaces with no family of their own (`platform/`, `tools/`, `http_host/`, `test_support/`).
 
