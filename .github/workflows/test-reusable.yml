@@ -167,6 +167,12 @@ jobs:
           memory_dir="$module_root/tinymemory"
           rm -rf "$module_root"
           mkdir -p "$memory_dir"
+          # Match the host's TinyBus module transport rather than using the
+          # older nested checkout pinned inside TinyMemory.
+          sed -i \
+            -e 's#../../vendor/tinybus/crates/tinybus#../../../tinybus/crates/tinybus#g' \
+            -e 's#../../vendor/tinybus/crates/tinybus-module#../../../tinybus/crates/tinybus-module#g' \
+            vendor/tinymemory/crates/tinymemory-module/Cargo.toml
           cargo build --release \
             --manifest-path vendor/tinymemory/crates/tinymemory-module/Cargo.toml
           cp vendor/tinymemory/crates/tinymemory-module/target/release/libtinymemory_module.so \

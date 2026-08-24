@@ -132,6 +132,13 @@ jobs:
           juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$module_root"
           mkdir -p "$memory_dir" "$juice_dir"
+          # Build against this checkout's TinyBus implementation. TinyMemory's
+          # nested checkout can lag the host's module transport changes, which
+          # lets the cdylib load but makes its first request time out.
+          sed -i \
+            -e 's#../../vendor/tinybus/crates/tinybus#../../../tinybus/crates/tinybus#g' \
+            -e 's#../../vendor/tinybus/crates/tinybus-module#../../../tinybus/crates/tinybus-module#g' \
+            vendor/tinymemory/crates/tinymemory-module/Cargo.toml
           curl --fail --location --silent --show-error \
             "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
             --output "$juice_archive"
