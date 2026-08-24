@@ -66,6 +66,44 @@ pub use tinyagents::harness::embeddings::{
     DEFAULT_OLLAMA_DIMENSIONS, DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL,
 };
 
+/// The **intended** embedding selection — `(provider, model, dimensions)`.
+///
+/// # Why this is the host's and not the engine's
+///
+/// Which embedder the operator meant is selection policy over the host's own
+/// config — the same class of decision as the preference lanes and the event
+/// heuristics before it. The engine kept an identical helper for its internal
+/// pipelines; this host used to reach through the crate for it, which was an
+/// engine link taken on for a ten-line precedence rule (#5560). Ported
+/// verbatim: a configured local model wins over the `[memory]` section, and a
+/// blank local value falls back to the Ollama default rather than shipping
+/// whitespace to a daemon that will 404 it.
+///
+/// Note: this is the *intended* setting. It does not check whether the Ollama
+/// daemon is actually running.
+pub fn effective_embedding_settings(
+    memory: &crate::openhuman::config::schema::MemoryConfig,
+    local_embedding_model: Option<&str>,
+) -> (String, String, usize) {
+    if let Some(raw) = local_embedding_model {
+        // Trim once and reuse — the emptiness check and the final model
+        // string must agree, otherwise a value like "  bge-m3  " would pass
+        // through to Ollama with surrounding whitespace and 404.
+        let trimmed = raw.trim();
+        let model = if trimmed.is_empty() {
+            DEFAULT_OLLAMA_MODEL.to_string()
+        } else {
+            trimmed.to_string()
+        };
+        return ("ollama".to_string(), model, DEFAULT_OLLAMA_DIMENSIONS);
+    }
+    (
+        memory.embedding_provider.clone(),
+        memory.embedding_model.clone(),
+        memory.embedding_dimensions,
+    )
+}
+
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;

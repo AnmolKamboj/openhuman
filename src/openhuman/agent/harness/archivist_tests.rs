@@ -1,8 +1,15 @@
 use super::*;
 use crate::openhuman::agent::hooks::{ToolCallRecord, TurnContext};
+use crate::openhuman::memory::api::provider::{MemoryEpisodic as _, MemoryProvider};
 use std::sync::OnceLock;
 use tinymemory_core::chat::ChatPrompt;
-use tinymemory_core::store::{events as ev, fts5, segments as seg};
+// Assertion reads go straight at the engine's tables through the same client
+// the provider wraps. Production writes through the provider; the *proof* that
+// a row landed may still read the store directly — this is a `_tests.rs` file,
+// by-path exempt from the direct-refs ratchet, and a raw read cannot be
+// satisfied by anything but the row actually existing.
+use tinymemory_core::store::{events as ev, fts5, segments as seg, MemoryClient};
+use tinymemory_tinycortex::engine::{EngineRuntimeConfig, TinycortexProvider};
 
 static TREE_INGEST_TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -43,19 +50,58 @@ where
     .await
 }
 
-fn setup_conn() -> Arc<Mutex<Connection>> {
-    let conn = Connection::open_in_memory().unwrap();
-    conn.execute_batch(fts5::EPISODIC_INIT_SQL).unwrap();
-    conn.execute_batch(seg::SEGMENTS_INIT_SQL).unwrap();
-    conn.execute_batch(ev::EVENTS_INIT_SQL).unwrap();
-    conn.execute_batch(profile::PROFILE_INIT_SQL).unwrap();
-    Arc::new(Mutex::new(conn))
+/// A real TinyCortex provider over a fresh workspace, plus the engine client
+/// for raw assertion reads and the tempdir keeping both alive.
+///
+/// The archivist writes through `Arc<dyn MemoryProvider>` now, so the fixture
+/// is the same shape production binds — the in-process driver here, the
+/// loaded module there — rather than a bare connection the hook can no longer
+/// accept.
+fn setup_provider() -> (TempDir, Arc<MemoryClient>, Arc<dyn MemoryProvider>) {
+    let tmp = TempDir::new().unwrap();
+    let workspace = tmp.path().join("ws");
+    let (client, provider) = provider_over(&workspace);
+    (tmp, client, provider)
+}
+
+/// The same driver over a caller-owned workspace.
+///
+/// The tree-ingest tests need the provider and their `Config` to share ONE
+/// workspace — the hook ingests through the provider while the assertions
+/// count chunks through the config, and two tempdirs would make every count
+/// read a store nothing wrote to.
+fn provider_over(workspace: &std::path::Path) -> (Arc<MemoryClient>, Arc<dyn MemoryProvider>) {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let workspace = workspace.to_path_buf();
+    std::fs::create_dir_all(&workspace).unwrap();
+    let client = Arc::new(MemoryClient::from_workspace_dir(workspace.clone()).unwrap());
+    let config = EngineRuntimeConfig {
+        workspace_dir: workspace.clone(),
+        config_path: workspace.join("config.toml"),
+        memory: Default::default(),
+        memory_tree: Default::default(),
+        scheduler_gate: Default::default(),
+        local_ai: Default::default(),
+        embeddings_provider: None,
+        memory_provider: None,
+        default_model: None,
+        default_temperature: 0.2,
+        output_language: None,
+        memory_sources: serde_json::Value::Null,
+    };
+    let provider: Arc<dyn MemoryProvider> = Arc::new(TinycortexProvider::new(
+        "tinycortex".into(),
+        config,
+        Arc::clone(&client),
+    ));
+    (client, provider)
 }
 
 #[tokio::test]
 async fn archivist_indexes_turn() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let ctx = TurnContext {
         user_message: "What is Rust?".into(),
@@ -78,8 +124,9 @@ async fn archivist_indexes_turn() {
 
 #[tokio::test]
 async fn archivist_creates_segment_on_first_turn() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let ctx = TurnContext {
         user_message: "Hello world".into(),
@@ -101,8 +148,9 @@ async fn archivist_creates_segment_on_first_turn() {
 
 #[tokio::test]
 async fn archivist_detects_topic_change_boundary() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     hook.on_turn_complete(&TurnContext {
         user_message: "Tell me about Rust".into(),
@@ -153,8 +201,9 @@ async fn archivist_detects_topic_change_boundary() {
 
 #[tokio::test]
 async fn archivist_extracts_failure_lesson() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let ctx = TurnContext {
         user_message: "Run tests".into(),
@@ -205,8 +254,9 @@ fn extract_profile_key_works() {
 
 #[tokio::test]
 async fn archivist_accumulates_turns_in_segment() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let session = "accum-session";
 
@@ -238,8 +288,9 @@ async fn archivist_accumulates_turns_in_segment() {
 
 #[tokio::test]
 async fn archivist_extracts_preference_event_on_boundary() {
-    let conn = setup_conn();
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let session = "pref-boundary-session";
 
@@ -306,12 +357,13 @@ async fn archivist_extracts_preference_event_on_boundary() {
 /// regardless of the learning inference stack toggle.
 #[tokio::test]
 async fn phase0_episodic_rows_and_segment_without_learning_enabled() {
-    let conn = setup_conn();
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
     // Simulate what builder.rs does when learning.enabled=false but
     // episodic_capture_enabled=true: construct the hook directly with
     // the SQLite conn, enabled=true. No config attached (no LLM recap
     // or tree ingest — those are gated by learning.enabled / chat_to_tree_enabled).
-    let hook = ArchivistHook::new(conn.clone(), true);
+    let hook = ArchivistHook::new(provider.clone(), true);
 
     let session = "phase0-test-session";
 
@@ -414,8 +466,8 @@ impl crate::openhuman::memory::tree::score::embed::Embedder for StubEmbedder {
 
 /// Build an ArchivistHook with stub provider + embedder injected directly.
 /// Uses the test-only `new_with_stubs` constructor to bypass `with_config`.
-fn hook_with_stubs(conn: Arc<Mutex<Connection>>) -> ArchivistHook {
-    ArchivistHook::new_with_stubs(conn, Arc::new(StubChatProvider), Arc::new(StubEmbedder))
+fn hook_with_stubs(provider: Arc<dyn MemoryProvider>) -> ArchivistHook {
+    ArchivistHook::new_with_stubs(provider, Arc::new(StubChatProvider), Arc::new(StubEmbedder))
 }
 
 /// When a segment closes, the LLM chat provider recap is used (verified by
@@ -423,8 +475,9 @@ fn hook_with_stubs(conn: Arc<Mutex<Connection>>) -> ArchivistHook {
 /// `segment_embeddings`.
 #[tokio::test]
 async fn phase1_llm_recap_and_embedding_on_segment_close() {
-    let conn = setup_conn();
-    let hook = hook_with_stubs(conn.clone());
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs(provider.clone());
 
     let session = "phase1-recap-test";
 
@@ -518,8 +571,9 @@ async fn phase1_llm_recap_and_embedding_on_segment_close() {
 /// trigger recap + embedding even without a boundary-triggering turn.
 #[tokio::test]
 async fn phase1_flush_open_segment_finalizes_trailing_segment() {
-    let conn = setup_conn();
-    let hook = hook_with_stubs(conn.clone());
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs(provider.clone());
 
     let session = "phase1-flush-test";
 
@@ -618,9 +672,12 @@ fn test_config_with_tree() -> (TempDir, Config) {
 
 /// Build a hook that has both stub providers AND a real-enough Config wired in,
 /// so the Phase 2 tree ingest path is exercised hermetically.
-fn hook_with_stubs_and_tree_config(conn: Arc<Mutex<Connection>>, cfg: Config) -> ArchivistHook {
+fn hook_with_stubs_and_tree_config(
+    provider: Arc<dyn MemoryProvider>,
+    cfg: Config,
+) -> ArchivistHook {
     ArchivistHook::new_with_stubs_and_config(
-        conn,
+        provider,
         Arc::new(StubChatProvider),
         Arc::new(StubEmbedder),
         cfg,
@@ -635,9 +692,10 @@ async fn phase2_no_per_turn_tree_write() {
 }
 
 async fn phase2_no_per_turn_tree_write_inner() {
-    let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
-    let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
+    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-no-per-turn";
 
@@ -678,9 +736,10 @@ async fn phase2_exactly_one_tree_ingest_per_segment_close() {
 }
 
 async fn phase2_exactly_one_tree_ingest_per_segment_close_inner() {
-    let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
-    let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
+    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-one-ingest";
 
@@ -770,9 +829,10 @@ async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant() {
 }
 
 async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant_inner() {
-    let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
-    let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
+    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-provenance";
 
@@ -859,9 +919,10 @@ async fn phase2_ingested_content_is_raw_prose_not_recap() {
 }
 
 async fn phase2_ingested_content_is_raw_prose_not_recap_inner() {
-    let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
-    let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
+    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-raw-prose";
 
@@ -927,9 +988,10 @@ async fn phase2_flush_also_triggers_tree_ingest() {
 }
 
 async fn phase2_flush_also_triggers_tree_ingest_inner() {
-    let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
-    let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
+    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-flush-tree";
 
@@ -994,9 +1056,9 @@ impl crate::openhuman::memory::tree::score::embed::Embedder for PanicOnEmbedEmbe
     }
 }
 
-fn hook_with_panic_embedder(conn: Arc<Mutex<Connection>>) -> ArchivistHook {
+fn hook_with_panic_embedder(provider: Arc<dyn MemoryProvider>) -> ArchivistHook {
     ArchivistHook::new_with_stubs(
-        conn,
+        provider,
         Arc::new(StubChatProvider),
         Arc::new(PanicOnEmbedEmbedder),
     )
@@ -1007,8 +1069,9 @@ fn hook_with_panic_embedder(conn: Arc<Mutex<Connection>>) -> ArchivistHook {
 /// remains intact (this helper does not touch segment status).
 #[tokio::test]
 async fn embed_segment_recap_skips_empty_summary() {
-    let conn = setup_conn();
-    let hook = hook_with_panic_embedder(conn.clone());
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = hook_with_panic_embedder(provider.clone());
 
     let segment_id = "seg-empty-recap";
     seg::segment_create(
@@ -1026,7 +1089,7 @@ async fn embed_segment_recap_skips_empty_summary() {
 
     // PanicOnEmbedEmbedder would panic if Embedder::embed were invoked;
     // reaching this point proves the guard short-circuited.
-    hook.embed_segment_recap(&conn, segment_id, "", 3.0).await;
+    hook.embed_segment_recap(segment_id, "", 3.0).await;
 
     let row = seg::segment_embedding_get(&conn, segment_id, "panic-embedder-v1").unwrap();
     assert!(
@@ -1040,8 +1103,9 @@ async fn embed_segment_recap_skips_empty_summary() {
 /// rejects empty inputs (#13021).
 #[tokio::test]
 async fn embed_segment_recap_skips_whitespace_summary() {
-    let conn = setup_conn();
-    let hook = hook_with_panic_embedder(conn.clone());
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = hook_with_panic_embedder(provider.clone());
 
     let segment_id = "seg-ws-recap";
     seg::segment_create(
@@ -1057,8 +1121,7 @@ async fn embed_segment_recap_skips_whitespace_summary() {
     .unwrap();
     seg::segment_close(&conn, segment_id, 2.0).unwrap();
 
-    hook.embed_segment_recap(&conn, segment_id, "   \n\t  ", 3.0)
-        .await;
+    hook.embed_segment_recap(segment_id, "   \n\t  ", 3.0).await;
 
     let row = seg::segment_embedding_get(&conn, segment_id, "panic-embedder-v1").unwrap();
     assert!(
@@ -1072,8 +1135,9 @@ async fn embed_segment_recap_skips_whitespace_summary() {
 /// guard erroneously skipped every recap.
 #[tokio::test]
 async fn embed_segment_recap_writes_row_for_non_empty_summary() {
-    let conn = setup_conn();
-    let hook = hook_with_stubs(conn.clone());
+    let (_tmp, client, provider) = setup_provider();
+    let conn = client.profile_conn();
+    let hook = hook_with_stubs(provider.clone());
 
     let segment_id = "seg-ok-recap";
     seg::segment_create(
@@ -1089,7 +1153,7 @@ async fn embed_segment_recap_writes_row_for_non_empty_summary() {
     .unwrap();
     seg::segment_close(&conn, segment_id, 2.0).unwrap();
 
-    hook.embed_segment_recap(&conn, segment_id, "real recap text", 3.0)
+    hook.embed_segment_recap(segment_id, "real recap text", 3.0)
         .await;
 
     let row = seg::segment_embedding_get(&conn, segment_id, "stub-embedder-v1").unwrap();

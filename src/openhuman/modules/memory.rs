@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -64,15 +64,12 @@ const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
 /// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
 /// members there, so the under-claim that made them unreachable is over.
 ///
-/// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
-/// artifact gap.** The pinned module does declare the episodic methods
-/// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
-/// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
-/// trait default and returns `None`. Advertising a family this host cannot
-/// reach is the same over-claim in a different coat: callers would be told the
-/// capability exists and then get "family unsupported" from the accessor.
-/// Add `Episodic` here in the same change that implements `as_episodic`, not
-/// before.
+/// **`Episodic` is here in the same change that implements `as_episodic`**, as
+/// the previous version of this comment required. The pinned module declares
+/// the episodic methods (`InsertTurn`, `SessionTurns`, `OpenSegment`, …) and
+/// [`ModuleMemoryProvider`] now forwards all of them, so the advertisement is
+/// honest in both directions — the archivist writes its turns and segments
+/// through this family.
 ///
 /// **Widen this only together with the `version` bump in
 /// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
@@ -98,6 +95,7 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Chunks,
     Capability::Retrieval,
     Capability::Profile,
+    Capability::Episodic,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -155,12 +153,13 @@ use tinymemory_api::provider::types::{
     SourceItem, SourceScope, StoreStats,
 };
 use tinymemory_api::provider::{
-    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
-    MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
-    MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
-    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
-    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, ConversationSegment,
+    CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType, FastRetrieveQuery,
+    MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic,
+    MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability,
+    MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval, MemorySourceSink,
+    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
+    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
     SourceRetrievalQuery, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
@@ -523,6 +522,9 @@ impl MemoryProvider for ModuleMemoryProvider {
     }
     fn as_profile(&self) -> Option<&dyn MemoryProfile> {
         artifact_serves(Capability::Profile).then_some(self as &dyn MemoryProfile)
+    }
+    fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        artifact_serves(Capability::Episodic).then_some(self as &dyn MemoryEpisodic)
     }
 }
 
@@ -994,6 +996,99 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
     async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
         module_call!(self, "reset_derived_index", "ResetDerivedIndex", ())
+    }
+}
+
+#[async_trait]
+impl MemoryEpisodic for ModuleMemoryProvider {
+    async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
+        module_call!(self, "insert_turn", "InsertTurn", (turn,))
+    }
+    async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
+        module_call!(self, "session_turns", "SessionTurns", (session_id,))
+    }
+    async fn open_segment(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ConversationSegment>, MemoryError> {
+        module_call!(self, "open_segment", "OpenSegment", (session_id,))
+    }
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "trait signature; see the contract's rationale"
+    )]
+    async fn create_segment(
+        &self,
+        segment_id: &str,
+        session_id: &str,
+        namespace: &str,
+        start_episodic_id: i64,
+        start_seq: Option<u32>,
+        start_timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "create_segment",
+            "CreateSegment",
+            (
+                segment_id,
+                session_id,
+                namespace,
+                start_episodic_id,
+                start_seq,
+                start_timestamp,
+                now
+            )
+        )
+    }
+    async fn append_turn(
+        &self,
+        segment_id: &str,
+        episodic_id: i64,
+        seq: Option<u32>,
+        timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "append_turn",
+            "AppendTurn",
+            (segment_id, episodic_id, seq, timestamp, now)
+        )
+    }
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        module_call!(self, "insert_event", "InsertEvent", (event,))
+    }
+    async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {
+        module_call!(self, "close_segment", "CloseSegment", (segment_id, now))
+    }
+    async fn set_segment_summary(
+        &self,
+        segment_id: &str,
+        summary: &str,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "set_segment_summary",
+            "SetSegmentSummary",
+            (segment_id, summary, now)
+        )
+    }
+    async fn upsert_segment_embedding(
+        &self,
+        segment_id: &str,
+        model_signature: &str,
+        embedding: &[f32],
+        created_at: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "upsert_segment_embedding",
+            "UpsertSegmentEmbedding",
+            (segment_id, model_signature, embedding, created_at)
+        )
     }
 }
 

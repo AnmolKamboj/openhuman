@@ -57,8 +57,9 @@ use crate::openhuman::memory::api::provider::types::{
     SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
-    MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest,
-    MemoryMaintenance, MemoryProvider, MemorySourceSink, MemoryToolMemory, MemoryTree,
+    EpisodicEvent, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
+    MemoryIngest, MemoryMaintenance, MemoryProvider, MemorySourceSink, MemoryToolMemory,
+    MemoryTree,
 };
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
@@ -1155,12 +1156,17 @@ impl MemoryEpisodic for GuardedEpisodic {
         self.family()?.open_segment(session_id).await
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "trait signature; see the contract's rationale"
+    )]
     async fn create_segment(
         &self,
         segment_id: &str,
         session_id: &str,
         namespace: &str,
         start_episodic_id: i64,
+        start_seq: Option<u32>,
         start_timestamp: f64,
         now: f64,
     ) -> Result<(), MemoryError> {
@@ -1178,6 +1184,7 @@ impl MemoryEpisodic for GuardedEpisodic {
                 session_id,
                 namespace,
                 start_episodic_id,
+                start_seq,
                 start_timestamp,
                 now,
             )
@@ -1188,6 +1195,7 @@ impl MemoryEpisodic for GuardedEpisodic {
         &self,
         segment_id: &str,
         episodic_id: i64,
+        seq: Option<u32>,
         timestamp: f64,
         now: f64,
     ) -> Result<(), MemoryError> {
@@ -1198,8 +1206,20 @@ impl MemoryEpisodic for GuardedEpisodic {
             false,
         )?;
         self.family()?
-            .append_turn(segment_id, episodic_id, timestamp, now)
+            .append_turn(segment_id, episodic_id, seq, timestamp, now)
             .await
+    }
+
+    /// Admitted like its sibling writes; the event's namespace is the
+    /// admission subject, since it is the one the record is scoped to.
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.insert_event",
+            &event.namespace,
+            false,
+        )?;
+        self.family()?.insert_event(event).await
     }
 
     async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {

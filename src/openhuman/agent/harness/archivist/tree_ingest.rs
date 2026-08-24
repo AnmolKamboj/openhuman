@@ -4,11 +4,12 @@
 use super::helpers::strip_tool_calls_from_response;
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::chunks::{DataSource, SourceRef};
+use crate::openhuman::memory::api::provider::types::IngestItem;
+use crate::openhuman::memory::api::provider::{ConversationSegment, EpisodicTurn};
+use crate::openhuman::memory::api::types::MemoryTaint;
 #[cfg(test)]
 use std::sync::Arc;
-use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
-use tinymemory_core::ingest_pipeline;
-use tinymemory_core::store::fts5;
 
 impl ArchivistHook {
     /// Pipe a closed segment's raw prose turns into the memory tree as
@@ -35,9 +36,9 @@ impl ArchivistHook {
     pub(super) async fn pipe_segment_to_tree(
         &self,
         config: &Config,
-        segment: &tinymemory_core::store::segments::ConversationSegment,
+        segment: &ConversationSegment,
         session_id: &str,
-        entries: &[&fts5::EpisodicEntry],
+        entries: &[&EpisodicTurn],
     ) {
         use chrono::{TimeZone, Utc};
 
@@ -57,7 +58,7 @@ impl ArchivistHook {
         // Build one ChatMessage per episodic entry (user + assistant; skip
         // empties). Tool-call JSON is stripped from assistant content so only
         // prose flows into the tree.
-        let messages: Vec<ChatMessage> = entries
+        let messages = entries
             .iter()
             .filter_map(|e| {
                 let raw_text = if e.role == "assistant" {
@@ -86,14 +87,30 @@ impl ArchivistHook {
                     .single()
                     .unwrap_or_else(Utc::now);
 
-                Some(ChatMessage {
-                    author: e.role.clone(),
-                    timestamp: ts,
-                    text,
-                    source_ref: Some(provenance.clone()),
+                // One IngestItem per prose turn. The widened attribution trio
+                // exists for exactly this batch shape: `owner` is the session
+                // the memory belongs to, `author` is the speaking role, the
+                // label is human-readable while `source_id` stays the constant
+                // dedupe key, and `platform: "agent"` preserves the string
+                // every previously-stored chunk carries.
+                Some(IngestItem {
+                    namespace: None,
+                    source: DataSource::Conversation,
+                    source_id: "conversations:agent".to_string(),
+                    owner: session_id.to_string(),
+                    source_ref: Some(SourceRef::new(provenance.clone())),
+                    content: text,
+                    mime: Some("text/plain".into()),
+                    timestamp: Some(ts),
+                    tags: vec!["agent_chat".to_string()],
+                    taint: MemoryTaint::Internal,
+                    path_scope: None,
+                    author: Some(e.role.clone()),
+                    channel_label: Some(session_id.to_string()),
+                    platform: Some("agent".into()),
                 })
             })
-            .collect();
+            .collect::<Vec<IngestItem>>();
 
         if messages.is_empty() {
             tracing::debug!(
@@ -102,38 +119,35 @@ impl ArchivistHook {
             return;
         }
 
-        let batch = ChatBatch {
-            platform: "agent".into(),
-            // channel_label carries session_id for human-readable context.
-            channel_label: session_id.to_string(),
-            messages,
-        };
-
-        // `source_id` is intentionally a CONSTANT — all agent sessions share
-        // one tree source so cross-session summarisation sees the full history.
         let source_id = "conversations:agent";
-        // `owner` scopes the memory to the session; `tags` enable filtering.
-        let owner = session_id;
-        let tags = vec!["agent_chat".to_string()];
-
         tracing::debug!(
             "[archivist] tree ingest start: source_id={source_id} session={session_id} \
              segment={segment_id} ep_span={start_ep}-{end_ep} provenance={provenance}"
         );
 
+        let Some(ingest) = self.provider.as_deref().and_then(|p| p.as_ingest()) else {
+            tracing::debug!(
+                "[archivist] tree ingest skipped: driver serves no Ingest family \
+                 segment={segment_id}"
+            );
+            return;
+        };
+        // `config` gates this path (chat_to_tree_enabled) and sizes nothing
+        // here any more — the driver owns chunking and extraction.
+        let _ = config;
+
         #[cfg(test)]
         let ingest_result = if let Some(provider) = self.chat_provider.as_ref() {
             tinymemory_core::chat::test_override::with_provider(
                 Arc::clone(provider),
-                ingest_pipeline::ingest_chat(config, source_id, owner, tags, batch),
+                ingest.ingest_chat(messages),
             )
             .await
         } else {
-            ingest_pipeline::ingest_chat(config, source_id, owner, tags, batch).await
+            ingest.ingest_chat(messages).await
         };
         #[cfg(not(test))]
-        let ingest_result =
-            ingest_pipeline::ingest_chat(config, source_id, owner, tags, batch).await;
+        let ingest_result = ingest.ingest_chat(messages).await;
 
         match ingest_result {
             Ok(result) => {
@@ -141,7 +155,7 @@ impl ArchivistHook {
                     "[archivist] tree ingest ok: source_id={source_id} \
                      session={session_id} segment={segment_id} \
                      chunks_written={} provenance={provenance}",
-                    result.chunks_written
+                    result.written
                 );
             }
             Err(e) => {

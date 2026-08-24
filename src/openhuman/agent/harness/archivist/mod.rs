@@ -17,6 +17,7 @@
 //!    end so the last segment always gets a recap + embedding + tree ingest.
 
 pub mod boundary;
+mod events_heuristic;
 mod helpers;
 mod hook_impl;
 mod lifecycle;

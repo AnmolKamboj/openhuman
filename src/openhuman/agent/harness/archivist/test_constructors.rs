@@ -4,9 +4,8 @@
 use super::boundary::BoundaryConfig;
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::tree::score::embed::Embedder;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use std::sync::Arc;
 use tinymemory_core::chat::ChatProvider;
 
@@ -18,12 +17,12 @@ impl ArchivistHook {
     /// a real LLM or Ollama daemon. Exposed as `pub(crate)` so Phase 3
     /// STM recall integration tests can drive the full archivist path.
     pub(crate) fn new_with_stubs(
-        conn: Arc<Mutex<Connection>>,
+        provider: Arc<dyn MemoryProvider>,
         chat_provider: Arc<dyn ChatProvider>,
         embedder: Arc<dyn Embedder>,
     ) -> Self {
         Self {
-            conn: Some(conn),
+            provider: Some(provider),
             enabled: true,
             boundary_config: BoundaryConfig::default(),
             config: Some(Config::default()),
@@ -39,13 +38,13 @@ impl ArchivistHook {
     /// `config.learning.chat_to_tree_enabled` must be set to `true` by the caller
     /// for the tree ingest to fire; the hook does NOT force it on.
     pub(crate) fn new_with_stubs_and_config(
-        conn: Arc<Mutex<Connection>>,
+        provider: Arc<dyn MemoryProvider>,
         chat_provider: Arc<dyn ChatProvider>,
         embedder: Arc<dyn Embedder>,
         config: Config,
     ) -> Self {
         Self {
-            conn: Some(conn),
+            provider: Some(provider),
             enabled: true,
             boundary_config: BoundaryConfig::default(),
             config: Some(config),

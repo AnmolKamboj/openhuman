@@ -1,21 +1,22 @@
-//! Core type definition for the Archivist hook.
+//! `ArchivistHook` struct definition.
 
 use super::boundary::BoundaryConfig;
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::tree::score::embed::Embedder;
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use std::sync::Arc;
 use tinymemory_core::chat::ChatProvider;
 
-/// Background Archivist that indexes turns into FTS5 episodic memory
-/// and manages conversation segmentation.
-///
-/// Produces an LLM recap + embedding for each closed segment and flushes
-/// the trailing open segment at session end.
+/// Post-turn hook that indexes conversation turns and manages segments.
 pub struct ArchivistHook {
-    /// SQLite connection shared with UnifiedMemory.
-    pub(super) conn: Option<Arc<Mutex<Connection>>>,
+    /// The bound memory driver this archivist writes through.
+    ///
+    /// This used to be the raw SQLite connection shared with `UnifiedMemory`,
+    /// which is precisely the handle no remote or module driver can supply —
+    /// the `:290` blocker the #5378 correction documented. Every episodic and
+    /// profile write now goes through the provider's capability families, so
+    /// the archivist works against whatever driver the workspace bound.
+    pub(super) provider: Option<Arc<dyn MemoryProvider>>,
     /// Whether the archivist is enabled.
     pub(super) enabled: bool,
     /// Boundary detection configuration.

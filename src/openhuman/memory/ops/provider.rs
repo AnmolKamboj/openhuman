@@ -190,16 +190,18 @@ mod tests {
         assert_eq!(
             status.capabilities,
             vec![
-                // Widened from thirteen to seventeen with the v1.2.0 registry
-                // re-pin, which is where `chunks`, `people`, `profile` and
-                // `retrieval` gained bus members. `episodic` stays absent: the
-                // artifact serves it, but `ModuleMemoryProvider` has no
-                // `as_episodic`, so advertising it would over-claim.
+                // Widened to the full eighteen with the Episodic accessor
+                // landing — the archivist writes its turns and segments
+                // through that family, so hiding it here would be the
+                // under-claim. The list stays spelled out: a NEW contract
+                // family must still widen this deliberately, with its
+                // accessor and its release.
                 "chunks",
                 "core",
                 "diff",
                 "documents",
                 "entities",
+                "episodic",
                 "goals",
                 "graph",
                 "ingest",

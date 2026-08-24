@@ -22,12 +22,12 @@ use crate::openhuman::memory::api::provider::types::{
 };
 use crate::openhuman::memory::api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
-    MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance,
-    MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
-    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
-    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
-    SourceRetrievalQuery, UserState,
+    EpisodicEvent, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff,
+    MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest,
+    MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider,
+    MemoryRecall, MemoryRetrieval, MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle,
+    PersonInteraction, PersonRecord, PersonScore, ProfileFacet, RankedPerson, ResolvedPerson,
+    RetrievalHit, RetrievalResponse, SourceRetrievalQuery, UserState,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
@@ -771,6 +771,7 @@ impl MemoryEpisodic for RecordingProvider {
         _session_id: &str,
         _namespace: &str,
         _start_episodic_id: i64,
+        _start_seq: Option<u32>,
         _start_timestamp: f64,
         _now: f64,
     ) -> Result<(), MemoryError> {
@@ -782,6 +783,7 @@ impl MemoryEpisodic for RecordingProvider {
         &self,
         _segment_id: &str,
         _episodic_id: i64,
+        _seq: Option<u32>,
         _timestamp: f64,
         _now: f64,
     ) -> Result<(), MemoryError> {
@@ -791,6 +793,11 @@ impl MemoryEpisodic for RecordingProvider {
 
     async fn close_segment(&self, _segment_id: &str, _now: f64) -> Result<(), MemoryError> {
         self.record(Call::plain("episodic.close_segment"));
+        Ok(())
+    }
+
+    async fn insert_event(&self, _event: &EpisodicEvent) -> Result<(), MemoryError> {
+        self.record(Call::plain("episodic.insert_event"));
         Ok(())
     }
 

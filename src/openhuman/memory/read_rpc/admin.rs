@@ -125,6 +125,9 @@ pub(crate) fn clear_composio_sync_state(db_path: &std::path::Path) -> Result<u64
 
 // ── reset_tree ───────────────────────────────────────────────────────────
 
+/// Drop everything derived from stored content and schedule its re-derivation
+/// via the bound driver — deletion and rebuild must be one operation, so it
+/// belongs to the driver that owns the derived tables.
 pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeResponse>, String> {
     // The derived-index reset — the table deletes, the chunk requeue and the
     // re-extraction enqueue — is the driver's now (`Maintenance::
@@ -132,6 +135,11 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
     // genuinely the host's: the rendered wiki summaries below are files this
     // host wrote under its own content root, and the driver has no business
     // knowing they exist.
+    //
+    // No host-side worker wake follows the call: the member's contract makes
+    // the wake part of the operation itself — a reset that requeued without
+    // waking would look identical to one that did nothing until the next
+    // scheduled window, and the caller has no way to ask for the wake alone.
     let binding = crate::openhuman::memory::binding::for_config(config)?;
     let Some(maintenance) = binding.provider().as_maintenance() else {
         return Err(format!(
@@ -270,6 +278,9 @@ pub async fn flush_source_tree_rpc(
 
 // ── flush_now ─────────────────────────────────────────────────────────────
 
+/// Flush buffered work old enough to be written out, via the bound driver —
+/// flush deduplication is keyed engine-side, so only the driver can promise
+/// one enqueue per window.
 pub async fn flush_now_rpc(config: &Config) -> Result<RpcOutcome<FlushNowResponse>, String> {
     // Asked of the driver (`Maintenance::flush_pending`): the buffer walk, the
     // window-keyed dedupe and the enqueue were engine mechanics the host was

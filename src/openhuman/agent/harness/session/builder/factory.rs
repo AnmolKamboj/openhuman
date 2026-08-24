@@ -241,7 +241,19 @@ impl Agent {
             &config.workspace_dir,
             &memory_subdir,
         )?;
-        let archivist_connection = session_memory.sqlite_connection;
+        // The archivist takes the bound driver for this session's memory
+        // subtree — the same subtree `session_memory` opened — rather than the
+        // raw SQLite handle the factory used to strip off the engine result.
+        // That handle was the #5378 `:290` blocker: a concrete connection no
+        // module or remote driver can supply. The engine's connection is now
+        // exclusively the engine's.
+        let archivist_provider = crate::openhuman::memory::binding::for_subtree(
+            &config.workspace_dir,
+            &memory_subdir,
+            &config.subsystems.memory,
+        )
+        .map(|binding| binding.provider().clone())
+        .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
         let memory: Arc<dyn Memory> = Arc::from(session_memory.memory);
         // Dedicated profiles still recall unstamped experiences written by
         // pre-profile versions from the shared memory DB. Retain the global
@@ -717,7 +729,7 @@ impl Agent {
         > = if config.learning.episodic_capture_enabled {
             let hook = Arc::new(
                 crate::openhuman::agent::harness::archivist::ArchivistHook::new(
-                    archivist_connection,
+                    archivist_provider,
                     true,
                 )
                 .with_config(config.clone()),

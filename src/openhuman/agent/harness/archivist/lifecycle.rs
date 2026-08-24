@@ -2,28 +2,26 @@
 //! `ArchivistHook`.
 
 use super::boundary::{BoundaryConfig, BoundaryDecision};
+use super::events_heuristic::{extract_events_heuristic, ExtractedEventKind};
 use super::helpers::{extract_profile_key, uuid_v4};
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::{
+    ConversationSegment, EpisodicEvent, EpisodicTurn, FacetType, MemoryEpisodic, MemoryProvider,
+};
 use crate::openhuman::memory::tree::score::embed::{build_embedder_from_config, Embedder};
-use parking_lot::Mutex;
-use rusqlite::Connection;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tinymemory_core::chat::ChatProvider;
-use tinymemory_core::store::events::{self, EventRecord, EventType};
-use tinymemory_core::store::fts5::EpisodicEntry;
-use tinymemory_core::store::profile::{self, FacetType};
-use tinymemory_core::store::segments::{self, ConversationSegment};
 
 impl ArchivistHook {
-    /// Create an Archivist hook with a shared SQLite connection.
+    /// Create an Archivist hook over the workspace's bound memory driver.
     ///
     /// LLM recap and embedding are disabled by default; call
     /// [`Self::with_config`] on the production path to wire them in.
-    pub fn new(conn: Arc<Mutex<Connection>>, enabled: bool) -> Self {
+    pub fn new(provider: Arc<dyn MemoryProvider>, enabled: bool) -> Self {
         Self {
-            conn: Some(conn),
+            provider: Some(provider),
             enabled,
             boundary_config: BoundaryConfig::default(),
             config: None,
@@ -78,10 +76,10 @@ impl ArchivistHook {
         self
     }
 
-    /// Create a disabled/no-op Archivist (when FTS5 is not available).
+    /// Create a disabled/no-op Archivist.
     pub fn disabled() -> Self {
         Self {
-            conn: None,
+            provider: None,
             enabled: false,
             boundary_config: BoundaryConfig::default(),
             config: None,
@@ -102,12 +100,12 @@ impl ArchivistHook {
         if !self.enabled {
             return;
         }
-        let Some(conn) = &self.conn else {
+        let Some(episodic) = self.episodic() else {
             return;
         };
         let now = Self::now_timestamp();
         tracing::debug!("[archivist] flush_open_segment: checking session={session_id}");
-        let open_segment = match segments::open_segment_for_session(conn, session_id) {
+        let open_segment = match episodic.open_segment(session_id).await {
             Ok(seg) => seg,
             Err(e) => {
                 tracing::warn!("[archivist] flush: failed to query open segment: {e}");
@@ -123,12 +121,20 @@ impl ArchivistHook {
             segment.segment_id,
             segment.turn_count
         );
-        if let Err(e) = segments::segment_close(conn, &segment.segment_id, now) {
+        if let Err(e) = episodic.close_segment(&segment.segment_id, now).await {
             tracing::warn!("[archivist] flush: failed to close segment: {e}");
             return;
         }
-        self.on_segment_closed(conn, &segment, session_id, now)
-            .await;
+        self.on_segment_closed(&segment, session_id, now).await;
+    }
+
+    /// The bound driver's episodic family, when both are present.
+    ///
+    /// `None` when the archivist is disabled, has no provider, or the driver
+    /// does not serve `Episodic` — every caller treats that as "nothing to
+    /// write", matching the old `conn: None` behaviour.
+    pub(super) fn episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        self.provider.as_deref().and_then(|p| p.as_episodic())
     }
 
     pub(super) fn now_timestamp() -> f64 {
@@ -144,19 +150,19 @@ impl ArchivistHook {
     /// `on_segment_closed` asynchronously after this function returns.
     /// Event extraction and recap run outside this function because they
     /// are async and may re-acquire the connection lock.
-    pub(super) fn manage_segment_sync(
+    pub(super) async fn manage_segment(
         &self,
-        conn: &Arc<Mutex<Connection>>,
         session_id: &str,
         timestamp: f64,
         user_message: &str,
         current_episodic_id: i64,
         current_seq: Option<u32>,
     ) -> Option<ConversationSegment> {
+        let episodic = self.episodic()?;
         let now = Self::now_timestamp();
 
         // Check for an open segment for this session.
-        let open_segment = match segments::open_segment_for_session(conn, session_id) {
+        let open_segment = match episodic.open_segment(session_id).await {
             Ok(seg) => seg,
             Err(e) => {
                 tracing::warn!("[archivist] failed to query open segment: {e}");
@@ -191,14 +197,16 @@ impl ArchivistHook {
                             segment.segment_id,
                             segment.turn_count
                         );
-                        if let Err(e) = segments::segment_append_turn(
-                            conn,
-                            &segment.segment_id,
-                            current_episodic_id,
-                            current_seq,
-                            timestamp,
-                            now,
-                        ) {
+                        if let Err(e) = episodic
+                            .append_turn(
+                                &segment.segment_id,
+                                current_episodic_id,
+                                current_seq,
+                                timestamp,
+                                now,
+                            )
+                            .await
+                        {
                             tracing::warn!("[archivist] failed to append turn to segment: {e}");
                         }
                         None
@@ -210,7 +218,7 @@ impl ArchivistHook {
                         );
 
                         // Close the current segment.
-                        if let Err(e) = segments::segment_close(conn, &segment.segment_id, now) {
+                        if let Err(e) = episodic.close_segment(&segment.segment_id, now).await {
                             tracing::warn!("[archivist] failed to close segment: {e}");
                             return None;
                         }
@@ -218,16 +226,18 @@ impl ArchivistHook {
                         // Create a new segment for the new topic.
                         // The new segment starts at the current turn's episodic ID.
                         let new_id = format!("seg-{}", uuid_v4());
-                        if let Err(e) = segments::segment_create(
-                            conn,
-                            &new_id,
-                            session_id,
-                            "global",
-                            current_episodic_id,
-                            current_seq,
-                            timestamp,
-                            now,
-                        ) {
+                        if let Err(e) = episodic
+                            .create_segment(
+                                &new_id,
+                                session_id,
+                                "global",
+                                current_episodic_id,
+                                current_seq,
+                                timestamp,
+                                now,
+                            )
+                            .await
+                        {
                             tracing::warn!("[archivist] failed to create new segment: {e}");
                         }
 
@@ -243,16 +253,18 @@ impl ArchivistHook {
                 tracing::debug!(
                     "[archivist] creating first segment={segment_id} for session={session_id}"
                 );
-                if let Err(e) = segments::segment_create(
-                    conn,
-                    &segment_id,
-                    session_id,
-                    "global",
-                    current_episodic_id,
-                    current_seq,
-                    timestamp,
-                    now,
-                ) {
+                if let Err(e) = episodic
+                    .create_segment(
+                        &segment_id,
+                        session_id,
+                        "global",
+                        current_episodic_id,
+                        current_seq,
+                        timestamp,
+                        now,
+                    )
+                    .await
+                {
                     tracing::warn!("[archivist] failed to create initial segment: {e}");
                 }
                 None
@@ -270,23 +282,22 @@ impl ArchivistHook {
     /// never returns `Err`; all failures are logged and ignored.
     pub(super) async fn on_segment_closed(
         &self,
-        conn: &Arc<Mutex<Connection>>,
         segment: &ConversationSegment,
         session_id: &str,
         now: f64,
     ) {
         // Gather the conversation text for this segment. Prefer the
         // md-backed memory_archivist read when config is available; fall
-        // back to FTS5 in test paths or when config isn't wired.
-        let entries = self.read_session_entries(conn, session_id);
+        // back to the driver's episodic family otherwise.
+        let entries = self.read_session_entries(session_id).await;
 
         // Filter entries by their stable per-session sequence or episodic row
         // id. The md store rounds timestamps to milliseconds, which can move a
         // fast turn just before its segment's higher-precision start time.
-        let segment_entries: Vec<&EpisodicEntry> = entries
+        let segment_entries: Vec<&EpisodicTurn> = entries
             .iter()
             .filter(|record| record.is_in_segment(segment))
-            .map(|record| &record.entry)
+            .map(|record| &record.turn)
             .collect();
 
         if segment_entries.is_empty() {
@@ -311,7 +322,15 @@ impl ArchivistHook {
             .await;
 
         // Persist the recap.
-        if let Err(e) = segments::segment_set_summary(conn, &segment.segment_id, &summary, now) {
+        let set_summary = match self.episodic() {
+            Some(episodic) => {
+                episodic
+                    .set_segment_summary(&segment.segment_id, &summary, now)
+                    .await
+            }
+            None => return,
+        };
+        if let Err(e) = set_summary {
             tracing::warn!("[archivist] failed to set segment summary: {e}");
         } else {
             tracing::debug!(
@@ -322,26 +341,26 @@ impl ArchivistHook {
         }
 
         // ── Finalize-time embedding ───────────────────────────────────────
-        self.embed_segment_recap(conn, &segment.segment_id, &summary, now)
+        self.embed_segment_recap(&segment.segment_id, &summary, now)
             .await;
 
         // ── Heuristic event extraction ────────────────────────────────────
         if !segment_text.is_empty() {
-            let extracted = events::extract_events_heuristic(&segment_text);
+            let extracted = extract_events_heuristic(&segment_text);
             tracing::debug!(
                 "[archivist] extracted {} events from segment {}",
                 extracted.len(),
                 segment.segment_id
             );
 
-            for (event_type, content) in &extracted {
+            for (event_kind, content) in &extracted {
                 let event_id = format!("evt-{}", uuid_v4());
-                let event = EventRecord {
+                let event = EpisodicEvent {
                     event_id,
                     segment_id: segment.segment_id.clone(),
                     session_id: session_id.to_string(),
                     namespace: segment.namespace.clone(),
-                    event_type: event_type.clone(),
+                    kind: event_kind.contract(),
                     content: content.clone(),
                     subject: None,
                     timestamp_ref: None,
@@ -350,45 +369,50 @@ impl ArchivistHook {
                     source_turn_ids: None,
                     created_at: now,
                 };
-                if let Err(e) = events::event_insert(conn, &event) {
-                    tracing::warn!("[archivist] failed to insert event: {e}");
+                if let Some(episodic) = self.episodic() {
+                    if let Err(e) = episodic.insert_event(&event).await {
+                        tracing::warn!("[archivist] failed to insert event: {e}");
+                    }
                 }
 
                 // Update user profile from preference and fact events.
-                match event_type {
-                    EventType::Preference => {
-                        let key = extract_profile_key(content, "preference");
-                        let facet_id = format!("prf-{}", uuid_v4());
-                        if let Err(e) = profile::profile_upsert(
-                            conn,
-                            &facet_id,
-                            &FacetType::Preference,
-                            &key,
-                            content,
-                            0.6,
-                            Some(&segment.segment_id),
-                            now,
-                        ) {
+                // Preference and fact events double as profile observations.
+                // `upsert_provider_facet` is the confidence-aware door for a
+                // provider-sourced claim; merging is the driver's, so a
+                // lower-confidence re-observation cannot overwrite a stronger
+                // one.
+                let profile_write = match event_kind {
+                    ExtractedEventKind::Preference => Some((
+                        extract_profile_key(content, "preference"),
+                        FacetType::Preference,
+                    )),
+                    ExtractedEventKind::Fact => {
+                        Some((extract_profile_key(content, "fact"), FacetType::Context))
+                    }
+                    _ => None,
+                };
+                if let Some((key, facet_type)) = profile_write {
+                    let facet_id = format!("prf-{}", uuid_v4());
+                    let upsert =
+                        self.provider
+                            .as_deref()
+                            .and_then(|p| p.as_profile())
+                            .map(|profile| {
+                                profile.upsert_provider_facet(
+                                    &facet_id,
+                                    facet_type,
+                                    &key,
+                                    content,
+                                    0.6,
+                                    Some(&segment.segment_id),
+                                    now,
+                                )
+                            });
+                    if let Some(fut) = upsert {
+                        if let Err(e) = fut.await {
                             tracing::warn!("[archivist] failed to upsert profile facet: {e}");
                         }
                     }
-                    EventType::Fact => {
-                        let key = extract_profile_key(content, "fact");
-                        let facet_id = format!("prf-{}", uuid_v4());
-                        if let Err(e) = profile::profile_upsert(
-                            conn,
-                            &facet_id,
-                            &FacetType::Context,
-                            &key,
-                            content,
-                            0.6,
-                            Some(&segment.segment_id),
-                            now,
-                        ) {
-                            tracing::warn!("[archivist] failed to upsert profile fact: {e}");
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -448,13 +472,7 @@ impl ArchivistHook {
     /// zero entries) and an empty embed input is guaranteed to 400 from
     /// the upstream embedding API (#13021). The segment is sealed without
     /// an embedding row; subsequent recap edits can re-embed.
-    pub(super) async fn embed_segment_recap(
-        &self,
-        conn: &Arc<Mutex<Connection>>,
-        segment_id: &str,
-        summary: &str,
-        now: f64,
-    ) {
+    pub(super) async fn embed_segment_recap(&self, segment_id: &str, summary: &str, now: f64) {
         if summary.trim().is_empty() {
             tracing::warn!(
                 "[archivist] skipping embedding: recap is empty/whitespace segment={segment_id}"
@@ -471,13 +489,13 @@ impl ArchivistHook {
         tracing::debug!("[archivist] embedding recap segment={segment_id} model={model_signature}");
         match embedder.embed(summary).await {
             Ok(vec) => {
-                match segments::segment_embedding_upsert(
-                    conn,
-                    segment_id,
-                    &model_signature,
-                    &vec,
-                    now,
-                ) {
+                let Some(episodic) = self.episodic() else {
+                    return;
+                };
+                match episodic
+                    .upsert_segment_embedding(segment_id, &model_signature, &vec, now)
+                    .await
+                {
                     Ok(()) => {
                         tracing::debug!(
                             "[archivist] embedding stored segment={segment_id} model={model_signature} dim={}",

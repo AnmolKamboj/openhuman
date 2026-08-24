@@ -67,27 +67,37 @@ fn the_advertised_capabilities_match_the_pinned_artifact() {
         Capabilities::all().contains_all(capabilities),
         "the artifact advertises a family the contract does not declare",
     );
-    // Stated on the pinned branch, not on `capabilities`, so the documented
-    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override cannot turn
-    // this red. Every assertion above holds under both configurations; this one
-    // is about the pin itself.
-    assert_ne!(
+    // The pinned list now equals the whole contract, and that is the honest
+    // statement rather than the #5598 over-claim: the over-claim was
+    // advertising a family the HOST could not reach (no accessor), and the
+    // Episodic accessor landing closed the last such gap. What still guards
+    // drift is `the_capability_list_matches_the_pinned_release` — a re-pin
+    // cannot move the version without this list being re-read at the new tag.
+    assert_eq!(
         super::capabilities_for(false),
         Capabilities::all(),
-        "advertising the whole contract is the #5598 over-claim",
+        "every family has a host accessor and a bus member in the pinned artifact; \
+         an absence here is an under-claim hiding a reachable family",
     );
 }
 
 #[test]
 fn the_full_capability_override_restores_the_whole_contract() {
-    // The escape hatch for a locally-built module, which does serve the whole
+    // The escape hatch for a locally-built module, which serves the whole
     // contract. Asserted through `capabilities_for` rather than by setting
     // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES` — mutating a
     // process-global env var would race every other test in this binary.
+    //
+    // With the pinned list now covering the full contract, the override is a
+    // no-op by construction — asserted as equality rather than difference, so
+    // this starts failing (and the override earns its keep again) the moment a
+    // future contract family lands that no release serves yet.
     assert_eq!(super::capabilities_for(true), Capabilities::all());
-    assert_ne!(
+    assert_eq!(
         super::capabilities_for(true),
-        super::capabilities_for(false)
+        super::capabilities_for(false),
+        "the pinned artifact serves every contract family, so the override has \
+         nothing to widen",
     );
 }
 
@@ -275,21 +285,21 @@ fn the_advertised_set_does_not_over_claim_the_artifact() {
         );
     }
 
-    // `Episodic` is the one that must still be absent, and for a different
-    // reason than before: the artifact DOES serve it, but `ModuleMemoryProvider`
-    // has no `as_episodic`, so it inherits the trait default and returns `None`.
-    // Advertising a family this host cannot reach is the #5598 over-claim in a
-    // different coat. Flip this to the loop above in the same change that
-    // implements the accessor.
+    // `Episodic` joins the loop's spirit in the same change that implemented
+    // `as_episodic`, exactly as the previous version of this comment required:
+    // the artifact has served the members since v1.2.0, and the archivist now
+    // writes through them, so hiding the family would be the under-claim.
     assert!(
-        !advertised.contains(Capability::Episodic),
-        "Episodic is advertised but ModuleMemoryProvider has no `as_episodic`, so the accessor \
-         returns None — implement it before widening ARTIFACT_CAPABILITIES",
+        advertised.contains(Capability::Episodic),
+        "Episodic has a host accessor and bus members in the pinned {} artifact — \
+         hiding it strands the archivist's writes",
+        super::ARTIFACT_CAPABILITIES_PIN,
     );
 
-    assert_ne!(
-        advertised,
-        Capabilities::all(),
-        "advertising the whole contract is the bug this test exists to prevent",
-    );
+    // With every family reachable, full advertisement IS the honest set. The
+    // anti-over-claim tripwire this used to be lives on in the accessor rule
+    // itself: `capabilities_for` can only name families `ModuleMemoryProvider`
+    // implements, and the pin-drift test re-opens the question on every
+    // registry bump.
+    assert_eq!(advertised, Capabilities::all());
 }

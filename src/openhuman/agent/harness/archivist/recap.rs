@@ -1,19 +1,17 @@
 //! Summarization and rolling recap logic for `ArchivistHook`.
 
 use super::types::ArchivistHook;
+use crate::openhuman::memory::api::provider::{ConversationSegment, EpisodicTurn};
 use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
-use parking_lot::Mutex;
-use rusqlite::Connection;
+#[cfg(test)]
 use std::sync::Arc;
-use tinymemory_core::store::fts5::{self, EpisodicEntry};
-use tinymemory_core::store::segments::ConversationSegment;
 use tinymemory_core::store::trees::types::TreeKind;
 
 /// An episodic entry paired with the stable identity exposed by its backing
 /// store. The md archivist uses a per-session sequence while the legacy FTS5
 /// store uses a row id.
 pub(super) struct SessionEntry {
-    pub(super) entry: EpisodicEntry,
+    pub(super) turn: EpisodicTurn,
     sequence: Option<u32>,
 }
 
@@ -29,16 +27,16 @@ impl SessionEntry {
             return sequence >= start && sequence <= end;
         }
 
-        if let Some(id) = self.entry.id {
+        if let Some(id) = self.turn.id {
             let start = segment.start_episodic_id;
             let end = segment.end_episodic_id.unwrap_or(start).saturating_add(1);
             return id >= start && id <= end;
         }
 
-        self.entry.timestamp >= segment.start_timestamp
+        self.turn.timestamp >= segment.start_timestamp
             && segment
                 .end_timestamp
-                .map(|end| self.entry.timestamp <= end)
+                .map(|end| self.turn.timestamp <= end)
                 .unwrap_or(true)
     }
 
@@ -48,11 +46,11 @@ impl SessionEntry {
             return sequence >= start;
         }
 
-        if let Some(id) = self.entry.id {
+        if let Some(id) = self.turn.id {
             return id >= segment.start_episodic_id;
         }
 
-        self.entry.timestamp >= segment.start_timestamp
+        self.turn.timestamp >= segment.start_timestamp
     }
 }
 
@@ -65,11 +63,7 @@ impl ArchivistHook {
     /// segment selection. Timestamps are only a fallback for legacy records:
     /// the md store records epoch milliseconds and therefore cannot preserve
     /// the sub-millisecond timestamps used when a segment is opened.
-    pub(super) fn read_session_entries(
-        &self,
-        conn: &Arc<Mutex<Connection>>,
-        session_id: &str,
-    ) -> Vec<SessionEntry> {
+    pub(super) async fn read_session_entries(&self, session_id: &str) -> Vec<SessionEntry> {
         if let Some(cfg) = self.config.as_ref() {
             let engine_config =
                 tinymemory_core::tinycortex::memory_config_from(cfg, cfg.workspace_dir.clone());
@@ -80,17 +74,20 @@ impl ArchivistHook {
                         .into_iter()
                         .map(|t| SessionEntry {
                             sequence: Some(t.seq),
-                            entry: EpisodicEntry {
+                            turn: EpisodicTurn {
                                 id: None,
                                 session_id: t.session_id,
-                                // ArchivedTurn stores epoch-ms; EpisodicEntry
-                                // takes epoch-seconds as f64.
+                                // ArchivedTurn stores epoch-ms; the contract
+                                // turn takes epoch-seconds as f64.
                                 timestamp: (t.timestamp_ms as f64) / 1000.0,
                                 role: t.role,
                                 content: t.content,
                                 lesson: t.lesson,
                                 tool_calls_json: t.tool_calls_json,
-                                cost_microdollars: t.cost_microdollars,
+                                // The engine column is unsigned; the wire is a
+                                // plain signed number.
+                                cost_microdollars: i64::try_from(t.cost_microdollars)
+                                    .unwrap_or(i64::MAX),
                             },
                         })
                         .collect();
@@ -102,11 +99,16 @@ impl ArchivistHook {
                 }
             }
         }
-        fts5::episodic_session_entries(conn, session_id)
+        let Some(episodic) = self.episodic() else {
+            return Vec::new();
+        };
+        episodic
+            .session_turns(session_id)
+            .await
             .unwrap_or_default()
             .into_iter()
-            .map(|entry| SessionEntry {
-                entry,
+            .map(|turn| SessionEntry {
+                turn,
                 sequence: None,
             })
             .collect()
@@ -137,7 +139,7 @@ impl ArchivistHook {
     /// own strategy — the stub must never become live compaction text.
     pub(super) async fn summarize_entries(
         &self,
-        entries: &[&EpisodicEntry],
+        entries: &[&EpisodicTurn],
         segment_id: &str,
         turn_count: i32,
     ) -> (String, bool) {
@@ -279,37 +281,36 @@ impl ArchivistHook {
             );
             return None;
         }
-        let conn = self.conn.as_ref()?;
+        let episodic = self.episodic()?;
 
         // Find the currently-open segment for this session.
-        let open_segment =
-            match tinymemory_core::store::segments::open_segment_for_session(conn, session_id) {
-                Ok(Some(seg)) => seg,
-                Ok(None) => {
-                    tracing::debug!(
-                        "[archivist] rolling_segment_recap: no open segment for \
+        let open_segment = match episodic.open_segment(session_id).await {
+            Ok(Some(seg)) => seg,
+            Ok(None) => {
+                tracing::debug!(
+                    "[archivist] rolling_segment_recap: no open segment for \
                      session={session_id} — returning None"
-                    );
-                    return None;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "[archivist] rolling_segment_recap: failed to query open segment \
+                );
+                return None;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[archivist] rolling_segment_recap: failed to query open segment \
                      session={session_id}: {e} — returning None"
-                    );
-                    return None;
-                }
-            };
+                );
+                return None;
+            }
+        };
 
         // Gather the episodic entries for this session so far.
-        let all_entries = self.read_session_entries(conn, session_id);
+        let all_entries = self.read_session_entries(session_id).await;
 
         // Keep only entries belonging to the open segment. Prefer stable
         // sequence/row identity because the md store rounds timestamps to ms.
-        let segment_entries: Vec<&EpisodicEntry> = all_entries
+        let segment_entries: Vec<&EpisodicTurn> = all_entries
             .iter()
             .filter(|record| record.is_at_or_after_segment_start(&open_segment))
-            .map(|record| &record.entry)
+            .map(|record| &record.turn)
             .collect();
 
         if segment_entries.is_empty() {
@@ -368,7 +369,6 @@ impl ArchivistHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tinymemory_core::store::segments::SegmentStatus;
 
     fn segment() -> ConversationSegment {
         ConversationSegment {
@@ -382,10 +382,7 @@ mod tests {
             turn_count: 3,
             summary: None,
             embedding: None,
-            topic_keywords: None,
-            status: SegmentStatus::Closed,
-            created_at: 100.0,
-            updated_at: 100.0,
+            open: false,
             start_seq: Some(10),
             end_seq: Some(14),
         }
@@ -394,7 +391,7 @@ mod tests {
     fn entry(sequence: Option<u32>, id: Option<i64>, timestamp: f64) -> SessionEntry {
         SessionEntry {
             sequence,
-            entry: EpisodicEntry {
+            turn: EpisodicTurn {
                 id,
                 session_id: "session".into(),
                 timestamp,
