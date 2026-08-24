@@ -763,6 +763,10 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
     if (status === 'gone') {
       console.log(`${logPrefix} Onboarding dismissed after ${step} step(s)`);
       await waitForPostOnboardingHome(logPrefix);
+      // Completing routed onboarding starts the app-wide Joyride tour
+      // asynchronously. Dismiss it before a caller navigates, otherwise the
+      // tour's own route transitions can race a spec and take it back to Chat.
+      await dismissWalkthroughIfVisible(8_000);
       return;
     }
     if (status === 'gone-but-onboarding-hash') {
