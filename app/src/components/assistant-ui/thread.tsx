@@ -472,6 +472,7 @@ const ComposerAction: FC<{
               variant="default"
               size="icon"
               className="aui-composer-send size-7 rounded-full"
+              data-testid="send-message-button"
               aria-label="Send message"
               onClick={() => {
                 onComposerAttachmentSend?.();
@@ -488,6 +489,7 @@ const ComposerAction: FC<{
                 variant="default"
                 size="icon"
                 className="aui-composer-send size-7 rounded-full"
+                data-testid="send-message-button"
                 aria-label="Send message">
                 <ArrowUpIcon className="aui-composer-send-icon size-4" />
               </TooltipIconButton>
@@ -501,6 +503,7 @@ const ComposerAction: FC<{
               variant="default"
               size="icon"
               className="aui-composer-cancel size-7 rounded-full"
+              data-testid="stop-generation-button"
               aria-label="Stop generating">
               <SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
             </Button>
