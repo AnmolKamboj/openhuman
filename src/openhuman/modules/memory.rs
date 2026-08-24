@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
+const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,12 +56,16 @@ const ARTIFACT_CAPABILITIES_PIN: &str = "1.2.0";
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
 ///
-/// Read at tag `v1.2.0`, which is where four of the five families that v1.0.1
+/// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
+/// within existing families (`retry_failed`, the diagnostics trio,
+/// `backfill_in_progress`), not families — verified with
+/// `git diff v1.2.0..v1.3.0 -- crates/tinymemory-api/src/capabilities.rs`
+/// returning empty. v1.2.0 is where four of the five families that v1.0.1
 /// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
 /// members there, so the under-claim that made them unreachable is over.
 ///
 /// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
-/// artifact gap.** The v1.2.0 module does declare the episodic methods
+/// artifact gap.** The pinned module does declare the episodic methods
 /// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
 /// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
 /// trait default and returns `None`. Advertising a family this host cannot
