@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::api::models::socket::ConnectionStatus;
 use crate::core::bus::BUS;
@@ -92,13 +93,24 @@ pub(super) fn handle_sio_event(
         // over the same socket. Device Signal keys never leave the machine.
         "orch:effect:send_dm" => {
             let tx = emit_tx.clone();
+            // Snapshotted before the spawn so the task is bound to the
+            // connection that asked for the work, not to whichever one happens
+            // to be live when it finishes.
+            let connection = super::medulla::workflows::connection_generation();
             tokio::spawn(async move {
                 if let Some((call_id, ack)) =
                     crate::openhuman::hosted::orchestration::effect_executor::handle_send_dm(&data)
                         .await
                 {
-                    log::debug!("[socket] orch:effect:send_dm acked call_id={call_id}");
-                    emit_via_channel(&tx, "orch:effect:result", ack);
+                    if emit_result_if_connected(
+                        &tx,
+                        &connection,
+                        "orch:effect:result",
+                        &call_id,
+                        ack,
+                    ) {
+                        log::debug!("[socket] orch:effect:send_dm acked call_id={call_id}");
+                    }
                 }
             });
         }
@@ -106,15 +118,28 @@ pub(super) fn handle_sio_event(
         // return the result so the reasoning loop can continue.
         "orch:tool_call" => {
             let tx = emit_tx.clone();
+            let connection = super::medulla::workflows::connection_generation();
             tokio::spawn(async move {
+                // Deliberately NOT a `select!` against the token, unlike the
+                // registration reads in `medulla::workflows`. Dropping this
+                // future mid-flight would abandon a side-effecting tool with
+                // its `call_id` still latched and no result — the exact failure
+                // this guard exists to prevent. Let it finish; gate the emit.
                 if let Some((call_id, result)) =
                     crate::openhuman::hosted::orchestration::effect_executor::handle_tool_call(
                         &data,
                     )
                     .await
                 {
-                    log::debug!("[socket] orch:tool_call result call_id={call_id}");
-                    emit_via_channel(&tx, "orch:tool_result", result);
+                    if emit_result_if_connected(
+                        &tx,
+                        &connection,
+                        "orch:tool_result",
+                        &call_id,
+                        result,
+                    ) {
+                        log::debug!("[socket] orch:tool_call result call_id={call_id}");
+                    }
                 }
             });
         }
@@ -124,13 +149,21 @@ pub(super) fn handle_sio_event(
         // rides back over the same socket (shared `orch:effect:result` channel).
         "orch:effect:evict" => {
             let tx = emit_tx.clone();
+            let connection = super::medulla::workflows::connection_generation();
             tokio::spawn(async move {
                 if let Some((call_id, ack)) =
                     crate::openhuman::hosted::orchestration::effect_executor::handle_evict(&data)
                         .await
                 {
-                    log::debug!("[socket] orch:effect:evict acked call_id={call_id}");
-                    emit_via_channel(&tx, "orch:effect:result", ack);
+                    if emit_result_if_connected(
+                        &tx,
+                        &connection,
+                        "orch:effect:result",
+                        &call_id,
+                        ack,
+                    ) {
+                        log::debug!("[socket] orch:effect:evict acked call_id={call_id}");
+                    }
                 }
             });
         }
@@ -485,6 +518,48 @@ fn base64_encode(input: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(input.as_bytes())
 }
 
+/// Emit a hosted-brain result, but only if the connection that asked for it is
+/// still the live one.
+///
+/// The emit channel outlives the socket: `emit_tx`/`emit_rx` is created once per
+/// [`connect`](super::manager::SocketManager::connect) and re-used by every
+/// reconnect attempt in the loop. So a result queued while the socket is down is
+/// not dropped — it is flushed onto the *next* connection, which has a different
+/// sid and whose roster the backend has already cleared. Nobody is waiting for
+/// it there.
+///
+/// Dropping it is not enough on its own. `orch:tool_call` is at-least-once with
+/// server-side redelivery, guarded by a `call_id` claimed on *entry* and
+/// released only when the effect fails
+/// ([`is_duplicate_call`](crate::openhuman::hosted::orchestration::effect_executor::is_duplicate_call)).
+/// A call that succeeded but whose result never reached the wire would stay
+/// latched forever, so the redelivery would be answered with the synthetic
+/// `{"accepted": true, "status": "running", "duplicate": true}` frame instead of
+/// the real result and the brain would wait on a `tool_completion` that can
+/// never arrive. Suppressing the emit therefore has to release the claim too, so
+/// the redelivery genuinely re-runs the work.
+///
+/// Returns whether the result was emitted.
+pub(super) fn emit_result_if_connected(
+    tx: &mpsc::UnboundedSender<String>,
+    connection: &CancellationToken,
+    event: &str,
+    call_id: &str,
+    data: serde_json::Value,
+) -> bool {
+    if connection.is_cancelled() {
+        // Release before logging: a redelivery may already be in flight.
+        crate::openhuman::hosted::orchestration::effect_executor::release_call(call_id);
+        log::debug!(
+            "[socket] {event} undeliverable (socket closed before the result was ready); \
+             released claim call_id={call_id}"
+        );
+        return false;
+    }
+    emit_via_channel(tx, event, data);
+    true
+}
+
 /// Send a Socket.IO event through the emit channel.
 ///
 /// Format: `42["eventName", data]`
@@ -530,6 +605,94 @@ mod tests {
             socket_id: RwLock::new(None),
             error: RwLock::new(None),
         })
+    }
+
+    // ── emit_result_if_connected ────────────────────────────────────
+
+    use crate::openhuman::hosted::orchestration::effect_executor::{
+        is_duplicate_call, release_call,
+    };
+
+    /// A `call_id` unique to this test process, so the tests do not collide
+    /// through the process-global `SEEN_CALL_IDS` set.
+    fn unique_call_id(tag: &str) -> String {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        format!(
+            "emit-guard-{tag}-{}",
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+
+    #[test]
+    fn a_result_is_emitted_while_its_connection_is_still_live() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let connection = CancellationToken::new();
+        let call_id = unique_call_id("live");
+
+        // Claim it the way the effect executor does on entry.
+        assert!(
+            !is_duplicate_call(&call_id),
+            "first claim is not a duplicate"
+        );
+
+        let emitted = emit_result_if_connected(
+            &tx,
+            &connection,
+            "orch:tool_result",
+            &call_id,
+            json!({"ok": true}),
+        );
+
+        assert!(emitted, "a live connection should take the result");
+        let msg = rx.try_recv().expect("the result should be on the wire");
+        assert!(msg.starts_with("42[\"orch:tool_result\""), "got: {msg}");
+        // The claim must survive: the result reached the socket, so a
+        // redelivery should be re-acked idempotently rather than re-run.
+        assert!(
+            is_duplicate_call(&call_id),
+            "a delivered result must leave its call_id latched"
+        );
+        release_call(&call_id);
+    }
+
+    #[test]
+    fn a_result_for_a_dead_connection_is_dropped_and_its_claim_released() {
+        // The defect this guards: the emit channel outlives the socket, so an
+        // ungated emit lands on the *next* connection, where nothing is
+        // waiting — and the call_id stays latched, so the backend's redelivery
+        // is answered with the synthetic `duplicate` frame instead of the real
+        // result and the brain waits forever.
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let connection = CancellationToken::new();
+        let call_id = unique_call_id("dead");
+
+        assert!(
+            !is_duplicate_call(&call_id),
+            "first claim is not a duplicate"
+        );
+        connection.cancel();
+
+        let emitted = emit_result_if_connected(
+            &tx,
+            &connection,
+            "orch:tool_result",
+            &call_id,
+            json!({"ok": true}),
+        );
+
+        assert!(!emitted, "a dead connection must not take the result");
+        assert!(
+            rx.try_recv().is_err(),
+            "nothing should be queued for the next connection"
+        );
+        // Releasing is the half that keeps the brain unstuck: the redelivery
+        // has to genuinely re-run, not hit the latch.
+        assert!(
+            !is_duplicate_call(&call_id),
+            "a suppressed result must release its claim so redelivery re-runs"
+        );
+        release_call(&call_id);
     }
 
     // ── base64_encode ───────────────────────────────────────────────

@@ -159,7 +159,12 @@ pub(super) fn bridge_generation() -> BridgeGeneration {
     }
 }
 
-pub(super) fn connection_generation() -> CancellationToken {
+/// A snapshot of the token for the currently-authenticated socket lifetime.
+///
+/// Visible to the whole `socket` module, not just `medulla`: `event_handlers`
+/// spawns hosted-brain work that must not emit its result onto a *later*
+/// connection, and it is a sibling of this module rather than a child.
+pub(in crate::openhuman::platform::socket) fn connection_generation() -> CancellationToken {
     connection_generation_state().read().snapshot()
 }
 
