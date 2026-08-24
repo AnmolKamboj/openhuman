@@ -102,13 +102,14 @@ impl UnavailableReason {
     /// `max_result_size_chars` below this string's length truncates the notice
     /// itself. Applying it last is the only placement that survives both.
     ///
-    /// Every variant ends with the same instruction — do not re-run the tool
-    /// to get a summary, because the full output is already here. Without it,
-    /// the model's reasonable response to a truncated dump is to call the same
-    /// tool again: the silent re-dispatch loop that reads to a user as a hang.
+    /// Every variant ends with the same instruction: *do not re-run the tool
+    /// for a summary*. Without it, the model's reasonable response to a
+    /// truncated dump is to call the same tool again — the silent re-dispatch
+    /// loop that reads to a user as a hang.
     ///
-    /// That sentence is an **instruction with a reason**, and deliberately not
-    /// a prediction. Two predictions were tried and both were false:
+    /// It is a bare **instruction**, with no justifying clause, and that is
+    /// deliberate. Three attempts to justify it were all false, each in a
+    /// different direction:
     ///
     /// - *"Re-running this tool will return the same result."* Untrue for any
     ///   API-backed tool, which is time-varying, and it suppresses a retry the
@@ -117,28 +118,33 @@ impl UnavailableReason {
     ///   specifically: that variant is recorded before the breaker opens, so a
     ///   later attempt can genuinely succeed. Saying otherwise contradicts the
     ///   breaker's own behaviour two paragraphs up.
+    /// - *"…the full output is already here."* Untrue whenever a cap fired.
+    ///   This notice is applied *after* the per-tool and byte-budget stages
+    ///   precisely so it survives them, which means the payload beneath it may
+    ///   be truncated — and [`Self::PayloadTooLarge`] says "may be truncated"
+    ///   in the same breath, so that pairing contradicted itself outright.
     ///
-    /// What is true for all three, and is what the notice now says, is that the
-    /// raw output is already in front of the model — so a re-run buys nothing
-    /// it does not already have. The reason clause carries the variant-specific
-    /// fact; the instruction carries the anti-loop property.
+    /// The variant-specific reason already sits in the first half of each
+    /// notice, and it is a fact about the summarizer rather than a prediction
+    /// about the tool. The instruction needs no second reason, and every
+    /// candidate for one has turned out to be a claim this code cannot make.
     #[must_use]
     pub fn notice(self) -> &'static str {
         match self {
             Self::PayloadTooLarge => concat!(
                 "[openhuman: summarization unavailable — this output exceeds the summarizer's ",
                 "size cap, so the raw output follows and may be truncated. ",
-                "Do not re-run the tool for a summary; the full output is already here.]"
+                "Do not re-run the tool for a summary.]"
             ),
             Self::Disabled => concat!(
                 "[openhuman: summarization unavailable — it is switched off for this session ",
                 "after repeated failures, so the raw output follows. ",
-                "Do not re-run the tool for a summary; the full output is already here.]"
+                "Do not re-run the tool for a summary.]"
             ),
             Self::Failed => concat!(
                 "[openhuman: summarization unavailable — the summarizer did not return a usable ",
                 "summary for this result, so the raw output follows. ",
-                "Do not re-run the tool for a summary; the full output is already here.]"
+                "Do not re-run the tool for a summary.]"
             ),
         }
     }
