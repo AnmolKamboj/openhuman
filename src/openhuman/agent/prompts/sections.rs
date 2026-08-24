@@ -234,11 +234,7 @@ impl PromptSection for IdentitySection {
         // not-agent-writable protection.
         let is_orchestrator = !ctx.visible_tool_names.is_empty();
         let all_files: &[&str] = &["SOUL.md", "IDENTITY.md", "ROLE.md"];
-        let skip_in_prompt: &[&str] = if is_orchestrator {
-            &[]
-        } else {
-            &["ROLE.md"]
-        };
+        let skip_in_prompt: &[&str] = if is_orchestrator { &[] } else { &["ROLE.md"] };
         for file in all_files {
             // Always sync to disk so builtin updates ship.
             sync_workspace_file(ctx.workspace_dir, file);
@@ -257,7 +253,6 @@ impl PromptSection for IdentitySection {
             }
             inject_workspace_file(&mut prompt, ctx.workspace_dir, file);
         }
-
 
         // PROFILE.md / MEMORY.md injection lives in the dedicated
         // `UserFilesSection` (below) so agents that strip the identity
