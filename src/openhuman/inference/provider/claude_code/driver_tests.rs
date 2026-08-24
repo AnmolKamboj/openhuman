@@ -178,3 +178,56 @@ fn full_access_reads_persisted_toggle_when_env_unset() {
     }
     let _ = std::fs::remove_dir_all(&ws);
 }
+
+#[test]
+fn parse_error_events_produce_a_log_line() {
+    let ev = ClaudeCodeEvent::ParseError {
+        line: "{not json".to_string(),
+        reason: "expected value at line 1 column 2".to_string(),
+    };
+    let msg = parse_error_log_line(&ev).expect("a ParseError must be reported");
+    assert!(msg.contains("{not json"), "{msg}");
+    assert!(msg.contains("expected value at line 1 column 2"), "{msg}");
+}
+
+#[test]
+fn other_events_produce_nothing() {
+    let ev = ClaudeCodeEvent::Error {
+        message: "boom".to_string(),
+    };
+    assert!(parse_error_log_line(&ev).is_none());
+}
+
+#[test]
+fn a_long_line_is_previewed_not_dumped() {
+    let ev = ClaudeCodeEvent::ParseError {
+        line: "x".repeat(5_000),
+        reason: "trailing characters".to_string(),
+    };
+    let msg = parse_error_log_line(&ev).unwrap();
+    assert!(msg.ends_with("..."), "a truncated line must say so: {msg}");
+    assert_eq!(msg.matches('x').count(), PARSE_ERROR_PREVIEW_CHARS);
+}
+
+#[test]
+fn a_short_line_is_not_marked_as_truncated() {
+    let ev = ClaudeCodeEvent::ParseError {
+        line: "oops".to_string(),
+        reason: "r".to_string(),
+    };
+    assert!(!parse_error_log_line(&ev).unwrap().ends_with("..."));
+}
+
+/// The preview counts characters, so a multi-byte line is not split
+/// mid-character the way byte slicing would split it.
+#[test]
+fn a_multibyte_line_is_previewed_on_character_boundaries() {
+    let ev = ClaudeCodeEvent::ParseError {
+        line: "\u{65e5}".repeat(5_000),
+        reason: "r".to_string(),
+    };
+    let msg = parse_error_log_line(&ev).unwrap();
+    assert_eq!(msg.matches('\u{65e5}').count(), PARSE_ERROR_PREVIEW_CHARS);
+}
+
+use super::*;
