@@ -61,7 +61,7 @@ test.describe('Navigation Smoothness', () => {
     await page.goto('/#/home');
     await waitForAppReady(page);
     await expect(page.locator('[data-walkthrough="home-card"]')).toBeVisible();
-    await expect(page.getByTestId('send-message-button')).toBeVisible();
+    await expect(page.getByTestId('chat-message-input')).toBeVisible();
     await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/chat/);
   });
 });
