@@ -2,8 +2,10 @@
 //!
 //! Public JSON-RPC surface:
 //! - `openhuman.memory_tree_ingest` — one unified ingest. Caller supplies
-//!   `source_kind` + generic JSON `payload` (adapter-specific). Internally
-//!   dispatches to chat / email / document canonicalisers.
+//!   `source_kind` + generic JSON `payload` (adapter-specific). Chat and
+//!   document are canonicalised into contract items and handed to the bound
+//!   driver's `Ingest` family; mail still canonicalises in process, for the
+//!   reasons on [`ingest_rpc`].
 //! - `openhuman.memory_tree_list_chunks` — listing with filters.
 //! - `openhuman.memory_tree_get_chunk` — single chunk fetch.
 
@@ -16,11 +18,10 @@ use crate::rpc::RpcOutcome;
 use tinycortex::memory::ingest::canonicalize::{
     chat::ChatBatch, document::DocumentInput, email::EmailThread,
 };
-use tinymemory_api::chunks::{Chunk, SourceKind};
-use tinymemory_core::ingest_pipeline::{
-    ingest_chat as do_ingest_chat, ingest_document as do_ingest_document,
-    ingest_email as do_ingest_email, IngestResult,
-};
+use tinymemory_api::chunks::{Chunk, DataSource, SourceKind, SourceRef};
+use tinymemory_api::provider::types::{IngestItem, IngestOutcome};
+use tinymemory_api::types::MemoryTaint;
+use tinymemory_core::ingest_pipeline::{ingest_email as do_ingest_email, IngestResult};
 
 /// Unified ingest request. The `payload` shape is adapter-specific and is
 /// validated inside the dispatch based on `source_kind`.
@@ -42,6 +43,47 @@ pub struct IngestRequest {
     /// - `email`    → [`EmailThread`]
     /// - `document` → [`DocumentInput`]
     pub payload: Value,
+}
+
+/// Response body of the `memory_tree_ingest` RPC.
+///
+/// Declared here rather than returned as the engine's own summary type,
+/// because this is a wire shape the frontend reads: a body owned by a foreign
+/// crate is one an upstream field rename can reshape without anything in this
+/// repository failing to compile. Every key and JSON type is what that summary
+/// serialised and must stay that way —
+/// `the_response_body_serialises_exactly_as_the_engine_summary` is the pin, and
+/// it is what the chat and document arms' move onto the driver contract had to
+/// keep true. Those two build this body from an `IngestOutcome` now, mail still
+/// from the pipeline's summary, and both spell the same six keys.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IngestResponse {
+    /// Logical source id the ingest was scoped to — the one the caller
+    /// supplied, echoed back so a batched caller can pair a reply with its
+    /// request.
+    pub source_id: String,
+    /// Units persisted by this call.
+    pub chunks_written: usize,
+    /// Units produced and not admitted. Dropped units only: a call refused
+    /// outright is [`Self::already_ingested`], not a drop of everything.
+    pub chunks_dropped: usize,
+    /// Ids of the units this call produced. A caller fetches a chunk back by
+    /// these, so a write that names none is unusable even when the count is
+    /// right.
+    pub chunk_ids: Vec<String>,
+    /// Follow-up extraction jobs this call scheduled. Read next to
+    /// [`Self::chunks_written`] it answers whether the material just handed
+    /// over will be picked up at all — rows can land with nothing scheduled to
+    /// derive from them, and the write count alone reports that as success.
+    pub extract_jobs_enqueued: usize,
+    /// True when the call was a no-op because `(source_kind, source_id)` had
+    /// been ingested before.
+    ///
+    /// Distinct from a zero-write result, and the distinction is the point:
+    /// only a refusal is a reason to go and clear the source gate. The gate is
+    /// keyed on the logical source rather than on the content, so re-sending
+    /// *changed* material under a claimed `source_id` also writes nothing.
+    pub already_ingested: bool,
 }
 
 /// Build the validation error returned when an ingest payload does not match
@@ -85,11 +127,226 @@ pub fn is_invalid_ingest_payload_message(message: &str) -> bool {
         .any(|k| rest.starts_with(&format!("{} payload: ", k.as_str())))
 }
 
+/// Which `Ingest` member a canonicalised request lands on.
+///
+/// One type rather than two resolve sites, so the family lookup and its
+/// refusal wording exist once: the arms differ only in which member they call.
+enum DriverIngest {
+    Chat(Vec<IngestItem>),
+    Document(IngestItem),
+}
+
+/// Hand canonicalised items to the bound driver's `Ingest` family.
+///
+/// A missing family is **refused**, not degraded. The read handlers below
+/// answer empty for one because "this driver stores no chunks" is a true
+/// answer to what they were asked; this is a write, and the only empty answer
+/// available to it — zero written, zero dropped — is byte-identical to a
+/// successful ingest of nothing, so the content would go on the floor while
+/// the caller was told it landed.
+///
+/// Resolved on `provider()`, the same seam [`store_stats`] and [`queue_stats`]
+/// use, and deliberately not on `binding.guard()`: the guard's `Ingest`
+/// decorator re-stamps `taint`, and `ExternalSync` — what it stamps whenever a
+/// source scope is active — is exactly what the driver's own
+/// `validate_ingest_item` refuses for the chunk tier, so routing this path
+/// through the guard would fail every ingest issued during a sync.
+async fn ingest_through_driver(
+    config: &Config,
+    call: DriverIngest,
+) -> Result<IngestOutcome, String> {
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(ingest) = binding.provider().as_ingest() else {
+        return Err(format!(
+            "ingest: driver '{}' does not serve Ingest",
+            binding.driver_id()
+        ));
+    };
+    match call {
+        DriverIngest::Chat(messages) => ingest.ingest_chat(messages).await,
+        DriverIngest::Document(item) => ingest.ingest_document(item).await,
+    }
+    .map_err(|e| format!("ingest: {e}"))
+}
+
+/// The [`DataSource`] a chat payload's `platform` string names.
+///
+/// The verbatim string still crosses as `IngestItem::platform`, which is what
+/// the driver rebuilds `ChatBatch::platform` from, so this enum only has to
+/// agree with the arm it came from. An unrecognised platform is `Conversation`
+/// — the generic chat member — rather than a rejection: this RPC has always
+/// taken any platform string, and a new integration must not start failing at
+/// the seam because its name is not in an enum here.
+fn chat_data_source(platform: &str) -> DataSource {
+    match DataSource::parse(platform) {
+        Ok(source) if source.kind() == SourceKind::Chat => source,
+        _ => DataSource::Conversation,
+    }
+}
+
+/// As [`chat_data_source`], for a document payload's `provider`.
+///
+/// `Upload` is the fallback because it is the member that means "handed to the
+/// memory layer directly, with no upstream to re-read it from", which is what
+/// a document arriving over this RPC is.
+fn document_data_source(provider: &str) -> DataSource {
+    match DataSource::parse(provider) {
+        Ok(source) if source.kind() == SourceKind::Document => source,
+        _ => DataSource::Upload,
+    }
+}
+
+/// Canonicalise a chat batch into the contract's items.
+///
+/// The attribution trio is what keeps the stored rows identical to the ones
+/// the in-process pipeline wrote. The driver rebuilds a `ChatBatch` from the
+/// **first** item's `platform` and `channel_label` and from each item's
+/// `author`, falling back to values that are not this payload's (the
+/// `DataSource` name and the `source_id`), so all three are set on every item
+/// rather than only where they differ.
+///
+/// Messages whose text trims to empty are dropped before the call.
+/// `validate_ingest_item` answers `Invalid` for empty content and the driver
+/// checks every item before ingesting any, so one attachment-only message
+/// would fail the whole batch where the in-process pipeline wrote the rest of
+/// it. What the filter costs is that message's bare `## <ts> — <author>`
+/// header, which carried no content. Same filter, for the same reason, as
+/// `agent::harness::archivist::tree_ingest`.
+fn chat_items(source_id: &str, owner: &str, tags: &[String], batch: ChatBatch) -> Vec<IngestItem> {
+    let ChatBatch {
+        platform,
+        channel_label,
+        messages,
+    } = batch;
+    let source = chat_data_source(&platform);
+    messages
+        .into_iter()
+        .filter(|message| !message.text.trim().is_empty())
+        .map(|message| IngestItem {
+            namespace: None,
+            source,
+            source_id: source_id.to_string(),
+            owner: owner.to_string(),
+            source_ref: message.source_ref.map(SourceRef::new),
+            content: message.text,
+            // The payload carries no MIME. `None` is the honest answer — the
+            // driver validates what it is told, and naming a type here would
+            // be asserting one the caller never claimed.
+            mime: None,
+            timestamp: Some(message.timestamp),
+            tags: tags.to_vec(),
+            taint: MemoryTaint::Internal,
+            path_scope: None,
+            author: Some(message.author),
+            channel_label: Some(channel_label.clone()),
+            platform: Some(platform.clone()),
+        })
+        .collect()
+}
+
+/// Canonicalise a document payload into the contract's single item.
+///
+/// `title` does not cross, and the contract's `ingest_document` hard-codes an
+/// empty one on the way back in. Nothing is lost by that: the document
+/// canonicaliser writes the body alone into the stored markdown and carries
+/// the title nowhere else — it reads it only to decide whether the payload was
+/// wholly empty, which [`ingest_rpc`] now answers before the call.
+fn document_item(source_id: &str, owner: &str, tags: &[String], doc: DocumentInput) -> IngestItem {
+    IngestItem {
+        namespace: None,
+        source: document_data_source(&doc.provider),
+        source_id: source_id.to_string(),
+        owner: owner.to_string(),
+        source_ref: doc.source_ref.map(SourceRef::new),
+        content: doc.body,
+        mime: None,
+        timestamp: Some(doc.modified_at),
+        tags: tags.to_vec(),
+        taint: MemoryTaint::Internal,
+        // This handler called `ingest_document_with_scope(.., None)`, so the
+        // scope stays unset rather than falling back to `source_id`.
+        path_scope: None,
+        author: None,
+        channel_label: None,
+        platform: None,
+    }
+}
+
+/// Map the driver's outcome onto the wire body.
+///
+/// `source_id` comes from the request, not from the outcome echoing it back:
+/// the caller supplied it, and reading it off the producer is what would let a
+/// reply be paired with the wrong request if a producer ever normalised it.
+///
+/// `written` / `skipped` are the contract's names for the two counts this wire
+/// calls `chunks_written` / `chunks_dropped`, and they carry the same two
+/// facts: `skipped` counts dropped units only, a refused call being
+/// `already_ingested` instead, which is what `chunks_dropped` has always meant
+/// here.
+fn response_from_outcome(source_id: String, outcome: IngestOutcome) -> IngestResponse {
+    IngestResponse {
+        source_id,
+        chunks_written: outcome.written as usize,
+        chunks_dropped: outcome.skipped as usize,
+        chunk_ids: outcome.ids,
+        extract_jobs_enqueued: outcome.extract_jobs_enqueued as usize,
+        already_ingested: outcome.already_ingested,
+    }
+}
+
+/// Map the in-process pipeline's summary onto the same wire body.
+///
+/// Kept beside [`response_from_outcome`] rather than folded into it: the two
+/// carry the same six facts under different field names, and the mail arm is
+/// the only caller left on this one.
+fn response_from_engine(source_id: String, result: IngestResult) -> IngestResponse {
+    IngestResponse {
+        source_id,
+        chunks_written: result.chunks_written,
+        chunks_dropped: result.chunks_dropped,
+        chunk_ids: result.chunk_ids,
+        extract_jobs_enqueued: result.extract_jobs_enqueued,
+        already_ingested: result.already_ingested,
+    }
+}
+
 /// Unified ingest RPC handler. Dispatches on `source_kind`.
+///
+/// Chat and document go to the bound driver's `Ingest` family. At the v1.3.0
+/// module pin they could not: the contract's `IngestOutcome` carried neither
+/// `already_ingested` nor `extract_jobs_enqueued` (both would have decoded to
+/// their serde defaults, reporting every duplicate submission as a plain empty
+/// write, forever) and its `skipped` counted duplicate-refusals rather than
+/// dropped units, so `chunks_dropped` would have carried a different fact
+/// under the same name. v1.4.0 closes all three, which is why the swap is a
+/// swap and not a wire change —
+/// `the_response_body_serialises_exactly_as_the_engine_summary` still holds.
+///
+/// **Mail stays on the in-process pipeline**, for two reasons that the pin
+/// does not touch:
+///
+/// 1. `IngestItem` carries no recipient list, no per-message subject and no
+///    `List-Unsubscribe`, and the driver's mail mapping fills those with
+///    `Vec::new()` / the thread subject / `None`. A thread routed through
+///    `ingest_email` therefore loses those header lines from the canonical
+///    markdown — content that is chunked, embedded and searched, and, for the
+///    unsubscribe link, read back out of retrieved mail to populate the
+///    `gmail_unsubscribe` tool's required argument. Nothing on this side can
+///    preserve them: the loss happens inside the driver's mapping, below any
+///    field this handler can set.
+/// 2. `ModuleMemoryProvider` — the driver every shipped build binds — does not
+///    forward `IngestEmail`. The module declares the method and the contract
+///    has served it since v1.4.0, but the host-side forwarder in
+///    `modules::memory` implements only `ingest_document` and `ingest_chat`,
+///    so the trait's default body would answer `Unsupported` and every mail
+///    ingest would fail at run time.
+///
+/// Both have to be answered before the mail arm can move: (1) by widening
+/// `IngestItem` upstream, (2) by a forwarder in `modules::memory`.
 pub async fn ingest_rpc(
     config: &Config,
     req: IngestRequest,
-) -> Result<RpcOutcome<IngestResult>, String> {
+) -> Result<RpcOutcome<IngestResponse>, String> {
     let IngestRequest {
         source_kind,
         source_id,
@@ -104,23 +361,29 @@ pub async fn ingest_rpc(
         source_id
     );
 
-    // Phase 2: ingest functions are async. Their scoring stage awaits the
-    // extractor (cheap for regex, not-cheap for future GLiNER/LLM impls)
-    // and the DB work is isolated on `spawn_blocking` inside `persist`.
-    let result = match source_kind {
+    let response = match source_kind {
         SourceKind::Chat => {
             let batch: ChatBatch = serde_json::from_value(payload).map_err(|e| {
                 let msg = invalid_payload_message(SourceKind::Chat, &e);
                 log::warn!("[memory::rpc] invalid payload for chat");
                 msg
             })?;
-            do_ingest_chat(config, &source_id, &owner, tags, batch)
-                .await
-                .map_err(|e| {
-                    let msg = format!("ingest: {e}");
-                    log::warn!("[memory::rpc] chat ingestion failed");
-                    msg
-                })?
+            let messages = chat_items(&source_id, &owner, &tags, batch);
+            if messages.is_empty() {
+                // Answered here rather than handed over. The in-process
+                // pipeline returned an empty summary for a batch it could not
+                // canonicalise, and "the driver returns zeros for zero items"
+                // is a behaviour of the one driver we ship, not something the
+                // contract promises of the next one.
+                response_from_outcome(source_id.clone(), IngestOutcome::default())
+            } else {
+                let outcome = ingest_through_driver(config, DriverIngest::Chat(messages))
+                    .await
+                    .inspect_err(|_| {
+                        log::warn!("[memory::rpc] chat ingestion failed");
+                    })?;
+                response_from_outcome(source_id.clone(), outcome)
+            }
         }
         SourceKind::Email => {
             let thread: EmailThread = serde_json::from_value(payload).map_err(|e| {
@@ -128,13 +391,14 @@ pub async fn ingest_rpc(
                 log::warn!("[memory::rpc] invalid payload for email");
                 msg
             })?;
-            do_ingest_email(config, &source_id, &owner, tags, thread)
+            let result = do_ingest_email(config, &source_id, &owner, tags, thread)
                 .await
                 .map_err(|e| {
                     let msg = format!("ingest: {e}");
                     log::warn!("[memory::rpc] email ingestion failed");
                     msg
-                })?
+                })?;
+            response_from_engine(source_id.clone(), result)
         }
         SourceKind::Document => {
             let doc: DocumentInput = serde_json::from_value(payload).map_err(|e| {
@@ -142,18 +406,31 @@ pub async fn ingest_rpc(
                 log::warn!("[memory::rpc] invalid payload for document");
                 msg
             })?;
-            do_ingest_document(config, &source_id, &owner, tags, doc)
-                .await
-                .map_err(|e| {
-                    let msg = format!("ingest: {e}");
-                    log::warn!("[memory::rpc] document ingestion failed");
-                    msg
-                })?
+            let item = document_item(&source_id, &owner, &tags, doc);
+            if item.content.trim().is_empty() {
+                // The chat arm's filter, on this arm's single item. Empty
+                // content is `Invalid` at the driver, so a body-less document
+                // would arrive as a failed call; the in-process pipeline
+                // instead canonicalised it to a lone whitespace chunk. Neither
+                // is worth keeping — "nothing to ingest" is. What it gives up
+                // is that a body-less payload under an already-claimed
+                // `source_id` used to answer `already_ingested`, and there is
+                // nothing behind that gate to go and clear when the body was
+                // empty.
+                response_from_outcome(source_id.clone(), IngestOutcome::default())
+            } else {
+                let outcome = ingest_through_driver(config, DriverIngest::Document(item))
+                    .await
+                    .inspect_err(|_| {
+                        log::warn!("[memory::rpc] document ingestion failed");
+                    })?;
+                response_from_outcome(source_id.clone(), outcome)
+            }
         }
     };
 
     Ok(RpcOutcome::single_log(
-        result,
+        response,
         format!(
             "memory_tree: ingest kind={} source_id={source_id}",
             source_kind.as_str()
@@ -1270,6 +1547,43 @@ mod tests {
         }
     }
 
+    /// The ingest response is this crate's declaration of a wire the frontend
+    /// reads, so nothing upstream keeps its keys honest any more.
+    ///
+    /// Asserted against the engine summary it was lifted from rather than
+    /// against a hand-written key list, because that is the shape callers are
+    /// already parsing: a key renamed, dropped, or retyped on either side fails
+    /// here instead of silently reaching a reader. It stayed the right assertion
+    /// across the move onto the driver contract — the chat and document arms
+    /// build the body from an `IngestOutcome` now, and this is what says the
+    /// wire did not move with them.
+    #[test]
+    fn the_response_body_serialises_exactly_as_the_engine_summary() {
+        let engine = IngestResult {
+            source_id: "doc-launch".into(),
+            chunks_written: 3,
+            chunks_dropped: 1,
+            chunk_ids: vec!["chunk-a".into(), "chunk-b".into(), "chunk-c".into()],
+            extract_jobs_enqueued: 2,
+            already_ingested: true,
+        };
+        let ours = IngestResponse {
+            source_id: engine.source_id.clone(),
+            chunks_written: engine.chunks_written,
+            chunks_dropped: engine.chunks_dropped,
+            chunk_ids: engine.chunk_ids.clone(),
+            extract_jobs_enqueued: engine.extract_jobs_enqueued,
+            already_ingested: engine.already_ingested,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&engine).unwrap(),
+            serde_json::to_value(&ours).unwrap(),
+            "the ingest response must serialise key-for-key as the summary it \
+             replaced — the frontend reads these names"
+        );
+    }
+
     fn sample_document(title: &str, body: &str) -> DocumentInput {
         DocumentInput {
             provider: "notion".into(),
@@ -1282,20 +1596,15 @@ mod tests {
 
     /// Ingest reports what it wrote.
     ///
-    /// This used to read the chunks back through `list_chunks_rpc` /
-    /// `get_chunk_rpc` and assert the round trip. It cannot any more, and the
-    /// reason is the seam rather than the assertion: ingest is still the
-    /// in-process pipeline writing under `cfg.workspace_dir`, while the two
-    /// read handlers now ask the bound driver — which a unit test binds to the
-    /// shared test workspace, not to this tempdir. Asserting across the two
-    /// would be asserting that the two stores happen to coincide, which is
-    /// true in the product and deliberately not true here.
-    ///
-    /// The read side's own contract is pinned by
-    /// [`list_and_get_report_empty_when_the_driver_has_no_chunk_tier`].
+    /// Bound to the in-process TinyCortex driver rather than left to resolve on
+    /// its own: the handler asks the driver for the `Ingest` family now, and
+    /// what a bare test workspace binds is the null driver, which serves none.
+    /// This is the engine the loadable module wraps, so the counts asserted
+    /// below are the ones production gets over the bus.
     #[tokio::test]
     async fn ingest_document_reports_the_chunks_it_wrote() {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let outcome = ingest_rpc(
             &cfg,
             IngestRequest {
@@ -1351,9 +1660,14 @@ mod tests {
         assert!(listed.logs[0].contains("n=0"), "log: {}", listed.logs[0]);
     }
 
+    /// The source gate is the driver's, and it survives the move onto the
+    /// contract: `IngestOutcome::already_ingested` is the field the v1.3.0 pin
+    /// did not have, and reporting a refused call as a plain empty write is
+    /// exactly what this test would have started passing over.
     #[tokio::test]
     async fn ingest_document_is_idempotent_for_duplicate_source_id() {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let req = IngestRequest {
             source_kind: SourceKind::Document,
             source_id: "doc-dup".into(),
@@ -1368,9 +1682,8 @@ mod tests {
         assert!(!first.already_ingested);
         // `already_ingested` with a zero write count is the whole claim:
         // documents are append-only, so a repeat submission must be recognised
-        // rather than duplicated. Re-listing the store to confirm the count
-        // would now query the driver instead of the pipeline that wrote —
-        // see `ingest_document_reports_the_chunks_it_wrote`.
+        // rather than duplicated — and told apart from a write that produced
+        // nothing, which is the same two numbers with a different cause.
         assert_eq!(second.chunks_written, 0);
         assert!(second.already_ingested);
         assert_eq!(second.source_id, first.source_id);
@@ -1381,6 +1694,7 @@ mod tests {
     #[tokio::test]
     async fn ingest_chat_accepts_rfc3339_timestamps() {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let outcome = ingest_rpc(
             &cfg,
             IngestRequest {
@@ -1413,6 +1727,11 @@ mod tests {
 
     /// Regression #3568 / CORE-2K: email payloads with RFC-3339 timestamps must
     /// be accepted.
+    ///
+    /// No driver is bound: the mail arm is the one still on the in-process
+    /// pipeline, for the two reasons on [`ingest_rpc`]. When it moves, this
+    /// test needs `install_tinycortex_for_test` like its siblings — and the
+    /// header lines it does not assert are what has to be checked first.
     #[tokio::test]
     async fn ingest_email_accepts_rfc3339_timestamps() {
         let (_tmp, cfg) = test_config();
@@ -1441,6 +1760,92 @@ mod tests {
         .await
         .unwrap();
         assert!(!outcome.value.chunk_ids.is_empty());
+    }
+
+    /// One empty message must not fail the batch around it.
+    ///
+    /// `validate_ingest_item` answers `Invalid` for content that trims to
+    /// empty, and the driver validates every item before ingesting any — so an
+    /// attachment-only message, which reaches this handler as a message with no
+    /// text, would turn a batch that has real content in it into a failed call.
+    /// The in-process pipeline wrote the rest of the batch and rendered that
+    /// message as a bare header; the filter keeps the first half of that and
+    /// gives up only the header.
+    #[tokio::test]
+    async fn an_empty_chat_message_does_not_fail_the_batch_around_it() {
+        let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
+        let outcome = ingest_rpc(
+            &cfg,
+            IngestRequest {
+                source_kind: SourceKind::Chat,
+                source_id: "slack:#attachment-only".into(),
+                owner: "alice".into(),
+                tags: vec![],
+                payload: json!({
+                    "platform": "slack",
+                    "channel_label": "#eng",
+                    "messages": [
+                        {
+                            "author": "alice",
+                            "timestamp": "2026-05-17T19:30:00Z",
+                            "text": "   "
+                        },
+                        {
+                            "author": "bob",
+                            "timestamp": "2026-05-17T19:31:00Z",
+                            "text": "here is the plan"
+                        }
+                    ]
+                }),
+            },
+        )
+        .await
+        .expect("an empty message is dropped, not a batch failure");
+        assert!(
+            !outcome.value.chunk_ids.is_empty(),
+            "the surviving message must still be written"
+        );
+    }
+
+    /// An ingest is a write, so a driver without the family is refused rather
+    /// than answered with zeros.
+    ///
+    /// The counts have no way to say "nothing was handed over": zero written
+    /// and zero dropped is what a successful ingest of nothing looks like too,
+    /// so degrading here would report content dropped on the floor as a
+    /// success. `FixedDiagnostics` advertises `Capabilities::all()` while
+    /// serving no `Ingest` accessor, which also pins that the refusal keys off
+    /// the accessor and not off the advertised set.
+    #[tokio::test]
+    async fn ingest_refuses_a_driver_that_does_not_serve_the_ingest_family() {
+        let (_tmp, cfg) = test_config();
+        bind_diagnostics(&cfg, Default::default(), Default::default());
+
+        let err = ingest_rpc(
+            &cfg,
+            IngestRequest {
+                source_kind: SourceKind::Chat,
+                source_id: "slack:#no-ingest".into(),
+                owner: "alice".into(),
+                tags: vec![],
+                payload: json!({
+                    "platform": "slack",
+                    "channel_label": "#eng",
+                    "messages": [{ "author": "alice", "text": "anything at all" }],
+                }),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.contains("does not serve Ingest"),
+            "the refusal must name the missing family: {err}"
+        );
+        assert!(
+            err.contains("fixed-diagnostics"),
+            "the refusal must name the driver that refused: {err}"
+        );
     }
 
     #[tokio::test]

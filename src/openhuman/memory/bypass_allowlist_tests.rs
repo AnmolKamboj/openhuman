@@ -212,6 +212,11 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
+        "src/openhuman/memory/tree/retrieval/rpc.rs",
+        "NullMemoryProvider::new(",
+        "inline #[cfg(test)] module only; it builds the no-retrieval driver these handlers must degrade against, which is the opposite of a bypass — the test exists to prove the family is asked for and its absence handled",
+    ),
+    (
         "src/openhuman/agent/learning/startup.rs",
         "binding::for_workspace(",
         "boot-time facet cache: resolves a *guard* for a known workspace, exactly as \
