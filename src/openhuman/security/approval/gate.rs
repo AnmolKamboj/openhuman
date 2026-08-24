@@ -2474,6 +2474,85 @@ mod tests {
         }
     }
 
+    /// openhuman#5634: the six triage dispatch sites scoped no origin, so every
+    /// proactive escalation reached this gate as `Unknown` and was refused —
+    /// `intercept_with_unknown_origin_denies` below is that behaviour.
+    ///
+    /// A remote trigger now carries
+    /// `TrustedAutomation { Workflow { require_approval: true } }`, which parks
+    /// and persists the `pending_approvals` row instead. This asserts the park
+    /// and the row, not a successful escalation: with no surface able to decide
+    /// a background park these still TTL-deny (openhuman#5746). The gain is the
+    /// audit trail, not restored function.
+    #[tokio::test]
+    async fn a_remote_triage_escalation_parks_with_an_audit_row_rather_than_an_unknown_denial() {
+        use crate::openhuman::agent::triage::{remote_trigger_origin, TriggerEnvelope};
+
+        let (gate, _dir) = test_gate();
+        let envelope = TriggerEnvelope::from_composio(
+            "gmail",
+            "new_message",
+            "ti_meta",
+            "ti_bCCTKZlajKi4",
+            serde_json::json!({ "subject": "hello" }),
+        );
+
+        // `Box::pin` + a short timeout drives the future into the park without
+        // waiting out the TTL; nothing decides it, so it must still be pending.
+        let mut fut = Box::pin(turn_origin::with_origin(
+            remote_trigger_origin(&envelope),
+            gate.intercept(
+                "triage.escalate",
+                "escalate to orchestrator",
+                serde_json::json!({}),
+            ),
+        ));
+        let parked = tokio::time::timeout(Duration::from_millis(300), &mut fut).await;
+        assert!(
+            parked.is_err(),
+            "a remote escalation must park for a decision, not resolve immediately \
+             (an immediate Deny here is the `Unknown` regression this pins)"
+        );
+
+        let pending = gate.list_pending().unwrap();
+        assert_eq!(
+            pending.len(),
+            1,
+            "the park must persist exactly one pending_approvals row, got {pending:?}"
+        );
+        assert_eq!(pending[0].tool_name, "triage.escalate");
+    }
+
+    /// The counterpart: a locally initiated triage dispatch keeps the authority
+    /// its caller already had, so it is allowed without a prompt and writes no
+    /// row. Pinned alongside the remote case because the security decision on
+    /// openhuman#5634 is that these two are *different*, and a later
+    /// simplification to one blanket label would have to break one of them.
+    #[tokio::test]
+    async fn a_local_triage_escalation_is_allowed_without_a_prompt() {
+        use crate::openhuman::agent::triage::local_trigger_origin;
+
+        let (gate, _dir) = test_gate();
+        let outcome = turn_origin::with_origin(
+            local_trigger_origin(),
+            gate.intercept(
+                "triage.escalate",
+                "escalate to orchestrator",
+                serde_json::json!({}),
+            ),
+        )
+        .await;
+
+        assert!(
+            matches!(outcome, GateOutcome::Allow),
+            "a locally initiated escalation must not be gated, got {outcome:?}"
+        );
+        assert!(
+            gate.list_pending().unwrap().is_empty(),
+            "a trust-root origin persists no pending row"
+        );
+    }
+
     #[tokio::test]
     async fn intercept_with_unknown_origin_denies() {
         // Unlabelled call site (no origin scope) maps to `Unknown` and is
