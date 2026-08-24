@@ -386,7 +386,15 @@ impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
                         "[composio][triage] run_triage failed (label={}): {e:#}",
                         envelope.display_label
                     );
-                    tinymemory_core::observability::report_error_or_expected(
+                    // The classifier named here is the host's own. The
+                    // engine crate exposes a `report_error_or_expected` of its
+                    // own, but that is a global slot for *extracted* code to
+                    // report through, and the reporter installed into it
+                    // (`memory::host_impls::OpenHumanErrorReporter`) forwards
+                    // verbatim to this function. This subscriber is host code,
+                    // so the detour buys nothing and only costs an engine
+                    // dependency the seam is trying to shed (#5560).
+                    crate::core::observability::report_error_or_expected(
                         detail.as_str(),
                         "composio",
                         "trigger_triage",

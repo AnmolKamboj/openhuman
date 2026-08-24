@@ -78,11 +78,11 @@ pub fn capability_unavailable_message(
 /// embedded engine directly, and the bound driver is not that engine.
 pub fn legacy_client_unavailable_message(driver_id: &str, invocation: &str) -> String {
     format!(
-        "{LEGACY_CLIENT_UNAVAILABLE_PREFIX}`{driver_id}` is not the embedded TinyCortex \
-         driver, so `{invocation}` is unavailable: it operates on the local embedded \
-         store directly, and this configuration bound a different driver. Run \
-         `openhuman subsystems` to see the bound driver, or change \
-         `[subsystems.memory] driver` in your config.",
+        "{LEGACY_CLIENT_UNAVAILABLE_PREFIX}`{driver_id}` does not keep memory in the \
+         local store, so `{invocation}` is unavailable: it reads that store \
+         directly, and this configuration bound a driver that answers from \
+         somewhere else. Run `openhuman subsystems` to see the bound driver, or \
+         change `[subsystems.memory] driver` in your config.",
     )
 }
 
@@ -203,7 +203,18 @@ pub fn ensure_capability_blocking(required: Option<Capability>, invocation: &str
 /// caller means "no legacy gate applies", and an unresolvable binding has
 /// already been defaulted-OPEN upstream by the caller skipping this entirely.
 pub fn legacy_client_verdict(driver_id: &str, class: DriverClass, invocation: &str) -> Result<()> {
-    if class == DriverClass::Embedded {
+    // `Module` passes for the same reason `Embedded` does, and omitting it was
+    // refusing every `openhuman memory` subcommand in the field: `binding::admit`
+    // stopped admitting `Embedded` at all (the built-in driver binds as
+    // `Module`), so a gate that only accepted `Embedded` accepted nothing.
+    //
+    // The gate's premise is about WHERE the memory lives, not how the driver is
+    // linked. A module is a `cdylib` over the in-process bus with no egress and
+    // no process boundary — the local store is still the store these
+    // subcommands operate on. `External` and `Null` stay refused, and for the
+    // reason the message gives: the local store is not the source of truth
+    // there, so reading it directly would answer from the wrong place.
+    if matches!(class, DriverClass::Embedded | DriverClass::Module) {
         return Ok(());
     }
     log::warn!(

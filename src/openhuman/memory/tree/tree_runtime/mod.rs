@@ -7,6 +7,20 @@
 
 pub use tinymemory_core::tree::tree_runtime::*;
 
+// The summary-tree node model is **contract** vocabulary, not engine
+// vocabulary: it is defined in `tinymemory-bus` and the engine crate re-exports
+// the same items, so these names and the ones the glob above would supply are
+// one set of types, not two. Naming the contract explicitly (an explicit `use`
+// shadows a glob, and here it shadows it with itself) records which half of
+// this shim survives the engine leaving the build — and means the call sites on
+// `memory::tree::tree_runtime::estimate_tokens` and friends need no edit when
+// it does.
+pub use crate::openhuman::memory::api::tree as types;
+pub use crate::openhuman::memory::api::tree::{
+    derive_node_ids, derive_parent_id, estimate_tokens, level_from_node_id, node_id_to_path,
+    IngestRequest, NodeLevel, QueryResult, TreeNode, TreeStatus,
+};
+
 pub mod ops;
 pub mod schemas;
 

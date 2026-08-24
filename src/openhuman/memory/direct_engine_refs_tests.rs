@@ -295,11 +295,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "the re-embed queue (queue::start) has no capability family",
     ),
     (
-        "src/lib.rs",
-        Verdict::HostSide,
-        "crate-root re-export of the engine's store module under its historical path",
-    ),
-    (
         "src/openhuman/agent/experience/ops.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::init, global::client_if_ready, store::UnifiedMemory::new_with_memory_dir); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -365,11 +360,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/agent/tools/remember_preference.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/channels/controllers/ops/connect.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
@@ -405,11 +395,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/hosted/orchestration/effect_executor.rs",
-        Verdict::NeedsWiderSeam,
-        "engine-internal ingest pipeline entry (ingest_pipeline::ingest_document_with_scope); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
-    ),
-    (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind, tinycortex::HostSyncAdapter); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
@@ -443,11 +428,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/ops/helpers.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::client, global::client_if_ready, global::init, store::GraphRelationRecord); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/sync.rs",
@@ -523,21 +503,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/tools/flavour.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/tools/forget.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/tools/recall.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/tools/store.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/tree/retrieval/rpc.rs",

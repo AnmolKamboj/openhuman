@@ -235,7 +235,11 @@ pub(crate) fn format_llm_context_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tinymemory_core::store::RetrievalScoreBreakdown;
+    // The score breakdown a `NamespaceMemoryHit` carries is contract
+    // vocabulary — `tinymemory-core` only re-exports it — so the fixture names
+    // it where it is defined. Same item either way; the engine path was a
+    // compile-time link this host is shedding (#5560).
+    use crate::openhuman::memory::api::types::RetrievalScoreBreakdown;
 
     fn sample_hit(kind: MemoryItemKind) -> NamespaceMemoryHit {
         NamespaceMemoryHit {

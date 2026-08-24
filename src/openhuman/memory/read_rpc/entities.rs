@@ -10,6 +10,16 @@ use super::types::{DeleteChunkResponse, EntityRef, ScoreBreakdown, ScoreSignal, 
 
 // ── entity index lookups ────────────────────────────────────────────────
 
+// These three read `mem_tree_entity_index` directly, and the contract's entity
+// family does not cover them. `MemoryEntities::entities` looks like a fit for
+// `top_entities` and is not: it is namespace-scoped where this is store-wide,
+// ranks by hotness where this ranks by mention count, and the `EntityRef::name`
+// on its `EntityHit` is a canonical name, not the `MAX(surface)` sample this
+// handler's own `EntityRef` carries.
+// `entity_index_for` (the entities of one chunk) and `chunks_for_entity` (the
+// chunk ids of one entity) have no member at all — `entity_edges` answers
+// entity-to-entity, never entity-to-chunk.
+
 pub async fn entity_index_for_rpc(
     config: &Config,
     chunk_id: String,

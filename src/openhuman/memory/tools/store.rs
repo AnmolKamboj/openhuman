@@ -141,42 +141,23 @@ impl Tool for MemoryStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::inference::embeddings::NoopEmbedding;
     use crate::openhuman::security::{AutonomyLevel, SecurityPolicy};
-    use tempfile::TempDir;
-    use tinymemory_core::store::UnifiedMemory;
 
-    // The read-back below goes through the engine handle directly, but the
-    // category it hands back is the CONTRACT's type: `tinymemory-core` merely
-    // re-exports `tinymemory_api::traits::MemoryCategory` (issue #18 §A1 moved
-    // the memory value types onto the contract precisely so a second engine
-    // could be bound without translating). Naming the contract here rather
-    // than the engine keeps that true at the import as well as the type, and
-    // is one fewer reference holding the crate in the build (#5560).
     use crate::openhuman::memory::api::types::MemoryEntry;
-    use tinymemory_api::types::MemoryCategory as EngineMemoryCategory;
 
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy::default())
     }
 
-    fn test_mem() -> (
-        TempDir,
-        std::sync::Arc<dyn crate::openhuman::memory::Memory>,
-    ) {
-        let tmp = TempDir::new().unwrap();
-        let mem = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
-        (tmp, Arc::new(mem))
-    }
-
     /// Read a memory back through the seam the tool wrote it through.
     ///
-    /// [`test_mem`] hands out an in-process [`UnifiedMemory`] over a fresh
-    /// tempdir, and the tool holds no handle at all — it resolves the *bound*
-    /// driver per call. Under a real module that driver is the process-global
-    /// test workspace, a different store entirely, so asking `test_mem`'s
-    /// handle can never see the write. It is not a flake, and it does not
-    /// depend on the engine version: the two stores were never the same one.
+    /// The tool holds no handle at all — it resolves the *bound* driver per
+    /// call — so a fixture store built here could never see the write: under a
+    /// real module the bound driver is the process-global test workspace, a
+    /// different store entirely. That is why no fixture handle exists in this
+    /// module, and why an absence assertion must not be made against one; it
+    /// would hold whether or not the refusal under test worked, which is worse
+    /// than no assertion at all.
     ///
     /// The guard is the tool's own door, so a read through it proves the write
     /// landed where a caller would look for it.
@@ -191,7 +172,6 @@ mod tests {
 
     #[test]
     fn name_and_schema() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         assert_eq!(tool.name(), "memory_store");
         let schema = tool.parameters_schema();
@@ -210,7 +190,6 @@ mod tests {
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_core() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
@@ -231,7 +210,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_with_category() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(
@@ -246,7 +224,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_with_custom_category() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(
@@ -260,10 +237,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .await
             .expect("the stored memory is readable through the guard");
         assert_eq!(entry.content, "Uses async runtime");
-        assert_eq!(
-            entry.category,
-            EngineMemoryCategory::Custom("project".into())
-        );
+        assert_eq!(entry.category, MemoryCategory::Custom("project".into()));
     }
 
     /// Regression: a `custom:<name>` wire value (the form `memory_recall` and
@@ -274,7 +248,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_strips_custom_prefix_from_wire_category() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({
@@ -292,7 +265,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .expect("the stored memory is readable through the guard");
         assert_eq!(
             entry.category,
-            EngineMemoryCategory::Custom("project".into()),
+            MemoryCategory::Custom("project".into()),
             "the `custom:` wire prefix must be stripped, not double-stored"
         );
     }
@@ -301,7 +274,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_rejects_secret_like_content() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({
@@ -313,7 +285,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("looks like a secret"));
-        // Through the guard, not `test_mem()`: an absence assertion against a
+        // Through the guard — see `stored`: an absence assertion against a
         // store the tool never writes to holds whether or not the refusal
         // worked, which makes it worse than no assertion at all.
         assert!(stored("global", "api").await.is_none());
@@ -323,7 +295,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_missing_key() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool.execute(json!({"content": "no key"})).await;
         assert!(result.is_err());
@@ -333,7 +304,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_missing_content() {
-        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool.execute(json!({"key": "no_content"})).await;
         assert!(result.is_err());
@@ -343,7 +313,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_in_readonly_mode() {
-        let (_tmp, _mem) = test_mem();
         let readonly = Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::ReadOnly,
             ..SecurityPolicy::default()
@@ -364,7 +333,6 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_when_rate_limited() {
-        let (_tmp, _mem) = test_mem();
         let limited = Arc::new(SecurityPolicy {
             max_actions_per_hour: 0,
             ..SecurityPolicy::default()

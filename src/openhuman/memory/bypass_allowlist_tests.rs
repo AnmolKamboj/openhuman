@@ -272,11 +272,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "same definition site",
     ),
     (
-        "src/openhuman/memory/ops/learn.rs",
-        "global::client(",
-        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
         "src/openhuman/memory/ops/provider.rs",
         ".memory_binding(",
         "reports driver status; it is about the binding, not about reading memory",

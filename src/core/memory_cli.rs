@@ -783,24 +783,50 @@ mod tests {
             let msg = err.to_string();
             assert!(msg.contains("null"), "{msg}");
             assert!(
-                msg.contains("embedded"),
-                "refusal must explain that the legacy client is the embedded engine: {msg}"
+                msg.contains("local store"),
+                "refusal must explain that these subcommands read the local store: {msg}"
             );
         }
     }
 
-    /// The embedded driver is the only class that may serve legacy subcommands.
+    /// Both local-store classes may serve the legacy subcommands.
+    ///
+    /// `Module` matters more than `Embedded` now: `binding::admit` refuses
+    /// `Embedded` outright, so the built-in driver binds as `Module` and a gate
+    /// that accepted only `Embedded` refused every subcommand in the field.
     #[test]
-    fn embedded_driver_serves_every_legacy_subcommand() {
+    fn local_store_drivers_serve_every_legacy_subcommand() {
+        for (driver, class) in [
+            ("tinycortex", DriverClass::Embedded),
+            ("tinymemory", DriverClass::Module),
+        ] {
+            for sub in LEGACY_ENGINE_SUBCOMMANDS {
+                assert!(
+                    crate::core::cli_capability::legacy_client_verdict(
+                        driver,
+                        class,
+                        &format!("openhuman memory {sub}"),
+                    )
+                    .is_ok(),
+                    "`openhuman memory {sub}` must stay available under {driver} ({class:?})"
+                );
+            }
+        }
+    }
+
+    /// A driver that answers from somewhere else must still be refused —
+    /// reading the local store there would answer from the wrong place.
+    #[test]
+    fn external_driver_still_rejects_every_legacy_subcommand() {
         for sub in LEGACY_ENGINE_SUBCOMMANDS {
             assert!(
                 crate::core::cli_capability::legacy_client_verdict(
-                    "tinycortex",
-                    DriverClass::Embedded,
+                    "supermemory",
+                    DriverClass::External,
                     &format!("openhuman memory {sub}"),
                 )
-                .is_ok(),
-                "`openhuman memory {sub}` must stay available under the embedded driver"
+                .is_err(),
+                "`openhuman memory {sub}` must stay refused under a remote driver"
             );
         }
     }

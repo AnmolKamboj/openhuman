@@ -46,6 +46,8 @@ pub mod schemas;
 /// The host-side per-turn memory-source allowlist. See the module docs for why
 /// this is OpenHuman's and not the engine's.
 pub mod source_scope;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod tools;
 
 // Domains that are *mostly* extracted but keep their JSON-RPC surface here.
@@ -146,5 +148,11 @@ pub use crate::openhuman::memory::api::types::{
 // Types that external tests and consumers historically imported from
 // `memory::*`. The definitions moved to sibling crates during the memory
 // refactor; these aliases keep the public surface stable.
+//
+// `MemoryClient` and `UnifiedMemory` are gone from this list: both were engine
+// handles re-exported for consumers that no longer exist (grep found none in
+// `src/`, `tests/` or the shell), and an unused alias is a compile-time link to
+// the engine bought for nobody (#5560). A caller that genuinely needs the
+// in-process handle names the crate deliberately rather than reaching it
+// through the memory module's public surface.
 pub use crate::openhuman::memory::api::types::NamespaceDocumentInput;
-pub use tinymemory_core::store::{MemoryClient, UnifiedMemory};

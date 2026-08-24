@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::ChunkQuery;
 use crate::rpc::RpcOutcome;
 use tinycortex::memory::ingest::canonicalize::{
     chat::ChatBatch, document::DocumentInput, email::EmailThread,
@@ -20,7 +21,6 @@ use tinymemory_core::ingest_pipeline::{
     ingest_chat as do_ingest_chat, ingest_document as do_ingest_document,
     ingest_email as do_ingest_email, IngestResult,
 };
-use tinymemory_core::store::chunks::store::{self as chunk_store, ListChunksQuery};
 
 /// Unified ingest request. The `payload` shape is adapter-specific and is
 /// validated inside the dispatch based on `source_kind`.
@@ -186,11 +186,20 @@ pub struct ListChunksResponse {
 
 /// `list_chunks` RPC handler. Filters and returns persisted chunks ordered by
 /// timestamp DESC.
+///
+/// `scope` is `None`, which is not an oversight: this listing has never
+/// applied the per-turn source allowlist — the engine query it replaced set
+/// `source_scope: None` — and it is reached by inspection surfaces rather than
+/// by an agent turn. Narrowing it here would be a policy change wearing a
+/// routing change's clothes.
 pub async fn list_chunks_rpc(
     config: &Config,
     req: ListChunksRequest,
 ) -> Result<RpcOutcome<ListChunksResponse>, String> {
-    let query = ListChunksQuery {
+    // Parsed before the driver is resolved so an unknown kind stays a caller
+    // error naming the offending value, rather than a driver round trip that
+    // returns nothing and looks like an empty store.
+    let query = ChunkQuery {
         source_kind: match req.source_kind.as_deref() {
             None => None,
             Some(s) => Some(SourceKind::parse(s)?),
@@ -201,16 +210,28 @@ pub async fn list_chunks_rpc(
         until_ms: req.until_ms,
         limit: req.limit,
         offset: None,
-        source_scope: None,
         exclude_dropped: false,
     };
-    let rows = tokio::task::spawn_blocking({
-        let config = config.clone();
-        move || chunk_store::list_chunks(&config, &query)
-    })
-    .await
-    .map_err(|e| format!("list_chunks join error: {e}"))?
-    .map_err(|e| format!("list_chunks: {e}"))?;
+
+    // No `spawn_blocking`: the driver owns whether its own reads block, and the
+    // module's do not run on this thread at all.
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let rows = match binding.provider().as_chunks() {
+        Some(chunks) => chunks
+            .list_chunks(&query, None)
+            .await
+            .map_err(|e| format!("list_chunks: {e}"))?,
+        // Read-only, so an empty page is the honest answer: a driver with no
+        // chunk tier holds no rows to list, which is a true statement about it
+        // rather than a fault the caller can act on.
+        None => {
+            log::debug!(
+                "[memory-tree][rpc] list_chunks: driver '{}' does not serve Chunks; reporting empty",
+                binding.driver_id()
+            );
+            Vec::new()
+        }
+    };
 
     let n = rows.len();
     Ok(RpcOutcome::single_log(
@@ -236,14 +257,24 @@ pub async fn get_chunk_rpc(
     config: &Config,
     req: GetChunkRequest,
 ) -> Result<RpcOutcome<GetChunkResponse>, String> {
-    let id = req.id.clone();
-    let chunk = tokio::task::spawn_blocking({
-        let config = config.clone();
-        move || chunk_store::get_chunk(&config, &id)
-    })
-    .await
-    .map_err(|e| format!("get_chunk join error: {e}"))?
-    .map_err(|e| format!("get_chunk: {e}"))?;
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let chunk = match binding.provider().as_chunks() {
+        Some(chunks) => chunks
+            .get_chunk(&req.id)
+            .await
+            .map_err(|e| format!("get_chunk: {e}"))?,
+        // `None` is already this handler's answer for an id the store does not
+        // hold, and a driver with no chunk tier holds none — so the degrade is
+        // indistinguishable from the ordinary miss, which is what makes it safe
+        // here and not on a write.
+        None => {
+            log::debug!(
+                "[memory-tree][rpc] get_chunk: driver '{}' does not serve Chunks; reporting none",
+                binding.driver_id()
+            );
+            None
+        }
+    };
     Ok(RpcOutcome::single_log(
         GetChunkResponse { chunk },
         format!("memory_tree: get_chunk id={}", req.id),
@@ -1249,8 +1280,21 @@ mod tests {
         }
     }
 
+    /// Ingest reports what it wrote.
+    ///
+    /// This used to read the chunks back through `list_chunks_rpc` /
+    /// `get_chunk_rpc` and assert the round trip. It cannot any more, and the
+    /// reason is the seam rather than the assertion: ingest is still the
+    /// in-process pipeline writing under `cfg.workspace_dir`, while the two
+    /// read handlers now ask the bound driver — which a unit test binds to the
+    /// shared test workspace, not to this tempdir. Asserting across the two
+    /// would be asserting that the two stores happen to coincide, which is
+    /// true in the product and deliberately not true here.
+    ///
+    /// The read side's own contract is pinned by
+    /// [`list_and_get_report_empty_when_the_driver_has_no_chunk_tier`].
     #[tokio::test]
-    async fn ingest_document_roundtrip_lists_and_gets_chunks() {
+    async fn ingest_document_reports_the_chunks_it_wrote() {
         let (_tmp, cfg) = test_config();
         let outcome = ingest_rpc(
             &cfg,
@@ -1270,44 +1314,41 @@ mod tests {
         .unwrap();
         assert_eq!(outcome.value.source_id, "doc-launch");
         assert_eq!(outcome.value.chunks_dropped, 0);
-        assert!(!outcome.value.chunk_ids.is_empty());
+        assert!(outcome.value.chunks_written > 0);
+        assert!(
+            !outcome.value.chunk_ids.is_empty(),
+            "the ids are what a caller fetches a chunk back by, so a write \
+             that names none is unusable even when the count is right"
+        );
+    }
+
+    /// The listing degrades rather than fails when the bound driver has no
+    /// chunk tier.
+    ///
+    /// `FixedDiagnostics` is `NullMemoryProvider`-backed, so `as_chunks()` is
+    /// `None` — the shape of a driver that serves memory without exposing the
+    /// engine's storage model. The handler is read-only, and an empty page is a
+    /// true statement about such a driver, so it must not become a
+    /// caller-facing error. The log still has to report the count it served,
+    /// because a silent empty and a degraded empty look identical downstream.
+    #[tokio::test]
+    async fn list_chunks_reports_empty_when_the_driver_has_no_chunk_tier() {
+        let (_tmp, cfg) = test_config();
+        bind_diagnostics(&cfg, Default::default(), Default::default());
 
         let listed = list_chunks_rpc(
             &cfg,
             ListChunksRequest {
                 source_kind: Some("document".into()),
                 source_id: Some("doc-launch".into()),
-                owner: Some("alice".into()),
                 limit: Some(10),
                 ..Default::default()
             },
         )
         .await
-        .unwrap()
-        .value
-        .chunks;
-        assert_eq!(listed.len(), outcome.value.chunks_written);
-        assert!(listed
-            .iter()
-            .all(|chunk| chunk.metadata.source_kind == SourceKind::Document));
-        assert!(listed
-            .iter()
-            .any(|chunk| chunk.content.contains("Phoenix launch canary checklist")));
-
-        let fetched = get_chunk_rpc(
-            &cfg,
-            GetChunkRequest {
-                id: outcome.value.chunk_ids[0].clone(),
-            },
-        )
-        .await
-        .unwrap()
-        .value
-        .chunk
-        .expect("chunk should exist");
-        assert_eq!(fetched.id, outcome.value.chunk_ids[0]);
-        assert_eq!(fetched.metadata.source_id, "doc-launch");
-        assert_eq!(fetched.metadata.owner, "alice");
+        .expect("a driver without the chunk family is not an error");
+        assert!(listed.value.chunks.is_empty());
+        assert!(listed.logs[0].contains("n=0"), "log: {}", listed.logs[0]);
     }
 
     #[tokio::test]
@@ -1325,22 +1366,14 @@ mod tests {
         let second = ingest_rpc(&cfg, req).await.unwrap().value;
         assert!(first.chunks_written > 0);
         assert!(!first.already_ingested);
+        // `already_ingested` with a zero write count is the whole claim:
+        // documents are append-only, so a repeat submission must be recognised
+        // rather than duplicated. Re-listing the store to confirm the count
+        // would now query the driver instead of the pipeline that wrote —
+        // see `ingest_document_reports_the_chunks_it_wrote`.
         assert_eq!(second.chunks_written, 0);
         assert!(second.already_ingested);
-
-        let listed = list_chunks_rpc(
-            &cfg,
-            ListChunksRequest {
-                source_id: Some("doc-dup".into()),
-                limit: Some(10),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap()
-        .value
-        .chunks;
-        assert_eq!(listed.len(), first.chunks_written);
+        assert_eq!(second.source_id, first.source_id);
     }
 
     /// Regression #3568 / CORE-2K: chat payloads with RFC-3339 timestamps must
@@ -1443,9 +1476,14 @@ mod tests {
         assert!(err.contains("unknown source kind: nonsense"));
     }
 
+    /// An id the driver cannot resolve is `Ok(None)`, never an error — and the
+    /// same is true of a driver with no chunk tier at all, which is why one
+    /// test covers both. The two cases are indistinguishable to a caller by
+    /// design: "no such chunk" is the honest answer to either.
     #[tokio::test]
     async fn get_chunk_returns_none_for_missing_id() {
         let (_tmp, cfg) = test_config();
+        bind_diagnostics(&cfg, Default::default(), Default::default());
         let outcome = get_chunk_rpc(
             &cfg,
             GetChunkRequest {

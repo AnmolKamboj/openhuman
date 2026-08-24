@@ -32,6 +32,15 @@ pub async fn list_chunks_rpc(
     ))
 }
 
+/// The list query stays in SQL because `MemoryChunks::list_chunks` cannot
+/// express it.
+///
+/// Three of this filter's inputs have no `ChunkQuery` counterpart: the
+/// `mem_tree_entity_index` join behind `entity_ids`, the *sets* behind
+/// `source_kinds` / `source_ids` (the contract narrows to one of each), and the
+/// `content LIKE` scan behind `query`. The response also carries `total`, a
+/// count over the unpaged result — no member answers it, and deriving it
+/// host-side would mean a second, unbounded list on every page.
 pub(super) fn list_chunks_blocking(
     config: &Config,
     filter: &ChunkFilter,
@@ -331,6 +340,15 @@ pub async fn recall_rpc(
                 .collect::<Vec<_>>()
         })
         .collect();
+    // Hydrated row by row here rather than through `MemoryChunks::chunk_detail`
+    // — which `read_chunk_row` below does use — because the two shapes line up
+    // field for field save one. `has_embedding` on this path is the legacy
+    // `mem_tree_chunks.embedding` column; `chunk_detail` asks the sidecar
+    // `mem_tree_chunk_embeddings` table whether a vector exists under the
+    // *active* model signature. Nothing has written the inline column since the
+    // sidecar migration, so swapping the call flips the flag to true on every
+    // embedded chunk — a visible change to what the Memory tab renders, not a
+    // routing swap.
     if !leaves.is_empty() {
         let collected = tokio::task::spawn_blocking(move || -> Result<Vec<(ChunkRow, f32)>> {
             with_connection(&cfg, |conn| {

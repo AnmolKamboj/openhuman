@@ -4,6 +4,32 @@
 //! Shapes mirror the internal API — in particular, `QueryResponse` and
 //! `Vec<RetrievalHit>` / `Vec<EntityMatch>` all serialise directly without
 //! an extra envelope.
+//!
+//! # Why these five still call the engine when `MemoryRetrieval` exists
+//!
+//! The contract family covers every one of them member for member
+//! (`retrieve_source`, `cover_window`, `retrieve_children`, `retrieve_leaves`,
+//! `search_entities`), the pinned artifact serves them, and
+//! `memory::query::backend` — the agent-tool path over the *same* primitives —
+//! already goes through it. What stops these handlers following is the
+//! response body, not the seam.
+//!
+//! `QueryResponse` here is the engine's, and its `RetrievalHit` carries a
+//! `tree_kind` field that the contract's `RetrievalHit` does not have. It is
+//! serialised unconditionally, so routing through the family would silently
+//! drop a field from four public methods' output. `EntityMatch` is the
+//! opposite case and is safe: its `kind` is a `#[serde(rename_all =
+//! "snake_case")]` enum against the contract's open `String`, so the two encode
+//! identically — the whole delta is `tree_kind`.
+//!
+//! Migrating therefore means renegotiating the wire shape (or teaching the
+//! contract the field), which is a decision about the RPC surface rather than a
+//! routing change, and belongs in its own change.
+//!
+//! The `*_scoped` variants are deliberate and must stay: the ambient twins read
+//! the **engine's** task-local, which this host no longer sets, and an absent
+//! scope means unrestricted — a per-profile source gate failing open. See
+//! `memory::source_scope`.
 
 use serde::{Deserialize, Serialize};
 

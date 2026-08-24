@@ -6,6 +6,12 @@ use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 use tinymemory_core::store::chunks::store::with_connection;
 
+// `MemoryGraph` in the contract is the key/value and relation tier, a different
+// graph from the one exported here: the summary tree and its leaf chunks, laid
+// out for the Memory tab. No family walks a whole store's summaries, and none
+// exposes the entity-mention edges `contacts` mode draws, so both collectors
+// below read the engine's tables.
+
 // ── wire types ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
