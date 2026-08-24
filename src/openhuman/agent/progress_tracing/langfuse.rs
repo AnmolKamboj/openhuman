@@ -104,6 +104,63 @@ pub(crate) fn environment_for_base(base: &str) -> &'static str {
     }
 }
 
+/// The environments this client may push to Langfuse from.
+///
+/// An allowlist, not `!= "production"`, and it mirrors the backend's rule
+/// (`backend:src/config/langfuseEnvironment.ts`) deliberately: the two gates
+/// have to agree, and two negations drift more easily than two lists. Stating
+/// the permitted set also makes the fail-closed property structural — if
+/// [`environment_for_base`] ever grows a fourth bucket, that bucket does not
+/// push until someone adds it here on purpose.
+///
+/// `test` appears in the backend's list but not here because there is no such
+/// bucket on this side: [`environment_for_base`] maps loopback hosts to
+/// `development`, and that is what the Rust suite resolves to.
+const LANGFUSE_PUSH_ENVIRONMENTS: &[&str] = &["staging", "development"];
+
+/// Whether a push is permitted for a resolved environment.
+fn push_allowed(environment: &str) -> bool {
+    LANGFUSE_PUSH_ENVIRONMENTS.contains(&environment)
+}
+
+/// Emitted at most once per process by [`skip_push`].
+static SKIP_LOGGED: std::sync::Once = std::sync::Once::new();
+
+/// Whether this push should be dropped before any work, logging the reason
+/// once per process.
+///
+/// # Why skip at all, when the backend already refuses
+///
+/// Defence in depth, and latency. The backend answers `403 FEATURE_DISABLED`
+/// outside staging (backend#1291), so nothing reaches Langfuse either way —
+/// but a client that still asks pays a full authenticated round-trip on every
+/// agent turn to be told no, and [`PUSH_TIMEOUT`] bounds that at ten seconds
+/// when the host is slow. #5602 is that stall. The cheapest request is the one
+/// not made.
+///
+/// # Why once per process, and at info
+///
+/// This is on the path of every completed run. A warning per turn would move
+/// the noise rather than remove it, and a skip in production is the configured
+/// outcome, not a fault — so it is `info`, said once, and then silence. The
+/// caller receives `Ok(())`: skipping is a successful no-op, and returning
+/// `Err` would make the caller log the same line on every turn, which is the
+/// thing being avoided.
+fn skip_push(environment: &str) -> bool {
+    if push_allowed(environment) {
+        return false;
+    }
+    SKIP_LOGGED.call_once(|| {
+        tracing::info!(
+            target: LOG_TARGET,
+            "[agent-tracing] Langfuse push disabled for environment {environment:?} \
+             (enabled in: {}) — traces stay local for the rest of this process",
+            LANGFUSE_PUSH_ENVIRONMENTS.join(", ")
+        );
+    });
+    true
+}
+
 /// Convert finished spans into a Langfuse `/api/public/ingestion` batch payload:
 /// a single `trace-create` for the shared trace id followed by one
 /// `span-create` observation per span. Field names are Langfuse's camelCase
@@ -539,13 +596,18 @@ pub(crate) async fn push_observations(
         return Ok(());
     }
     let url = ingestion_url(config);
+    // Same gate, same reasons as `push_spans` — both entry points are on the
+    // per-turn path, so both skip before doing any work.
+    let environment = environment_for_base(&url);
+    if skip_push(environment) {
+        return Ok(());
+    }
     if !url.starts_with("http") {
         return Err(format!(
             "could not resolve Langfuse ingestion URL from backend host (got {url:?})"
         ));
     }
     let token = require_live_session_token(config)?;
-    let environment = environment_for_base(&url);
     // Stamp the run lineage from the run's own observations so a spawned
     // sub-agent's trace links back to its parent turn (#4657).
     let trace_ctx = trace_ctx_with_run_lineage(trace_ctx, observations);
@@ -600,6 +662,14 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
         return Ok(());
     }
     let url = ingestion_url(config);
+    // Ahead of the URL check, the session lookup and the request: a skipped
+    // environment must cost nothing per turn. An unresolvable URL lands in
+    // `environment_for_base`'s catch-all, which is `production` — so a garbage
+    // host skips rather than erroring, which is the right way round.
+    let environment = environment_for_base(&url);
+    if skip_push(environment) {
+        return Ok(());
+    }
     if !url.starts_with("http") {
         return Err(format!(
             "could not resolve Langfuse ingestion URL from backend host (got {url:?})"
@@ -607,7 +677,6 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
     }
     let token = require_live_session_token(config)?;
     let include_content = config.observability.agent_tracing.capture_content;
-    let environment = environment_for_base(&url);
     let batch = spans_to_langfuse_batch(spans, include_content, environment);
     let span_count = spans.len();
 
@@ -749,6 +818,116 @@ mod tests {
             ts_ms: 1_000 + offset,
             event,
         }
+    }
+
+    // ── production push gate (#5602) ──────────────────────────────
+    //
+    // The client already knew which environment it was in — `environment_for_base`
+    // has returned "production" for a prod host since it was written — and pushed
+    // anyway, paying an authenticated round-trip per agent turn bounded by the
+    // 10s `PUSH_TIMEOUT`. These pin that it now skips instead.
+
+    #[test]
+    fn push_is_allowed_only_in_staging_and_development() {
+        assert!(push_allowed("staging"));
+        assert!(push_allowed("development"));
+        assert!(!push_allowed("production"));
+    }
+
+    #[test]
+    fn an_unrecognised_environment_fails_closed() {
+        // The allowlist, not a `!= "production"` negation, is what makes this
+        // true: a bucket nobody has thought of yet does not push.
+        for unknown in ["preview", "prod", "PRODUCTION", "", "qa"] {
+            assert!(
+                !push_allowed(unknown),
+                "{unknown:?} must not push — the allowlist is the fail-closed guard"
+            );
+        }
+    }
+
+    #[test]
+    fn every_environment_for_base_bucket_is_classified_deliberately() {
+        // Ties the two functions together: if `environment_for_base` grows a
+        // bucket, this fails until someone decides which side it belongs on.
+        assert!(push_allowed(environment_for_base(
+            "https://staging-api.tinyhumans.ai"
+        )));
+        assert!(push_allowed(environment_for_base("http://localhost:7788")));
+        assert!(!push_allowed(environment_for_base(
+            "https://api.tinyhumans.ai"
+        )));
+    }
+
+    #[tokio::test]
+    async fn push_spans_skips_production_without_a_session_or_a_request() {
+        // No live session is seeded here, so reaching `require_live_session_token`
+        // would return `Err`. `Ok(())` therefore proves the gate returned before
+        // it — i.e. before any credential work, and before any network call.
+        let mut config = Config::default();
+        config.api_url = Some("https://api.tinyhumans.ai/api/v1".to_string());
+        assert_eq!(environment_for_base(&ingestion_url(&config)), "production");
+
+        let spans = vec![span(
+            "trace:req-1",
+            "span-1",
+            None,
+            "agent.turn",
+            SpanKind::Turn,
+            SpanStatus::Ok,
+            1_000,
+            Some(2_000),
+        )];
+
+        assert_eq!(
+            push_spans(&config, &spans).await,
+            Ok(()),
+            "a production push must be a silent no-op, not an error the caller \
+             logs on every turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn push_observations_skips_production_too() {
+        let mut config = Config::default();
+        config.api_url = Some("https://api.tinyhumans.ai/api/v1".to_string());
+        let ctx = TraceContext::new("trace:req-1", Some("user-1".to_string()));
+        let observations = vec![obs(
+            1,
+            AgentEvent::ModelCompleted {
+                call_id: CallId::new("model-1"),
+                started_at_ms: Some(1_000),
+                usage: Some(Usage::new(10, 3)),
+                input: None,
+                output: None,
+            },
+        )];
+
+        assert_eq!(
+            push_observations(&config, &ctx, &observations, None).await,
+            Ok(())
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unresolvable_host_skips_rather_than_erroring() {
+        // `ingestion_url` on a base it cannot parse lands in the catch-all
+        // bucket, which is production — so the gate swallows it first. Better
+        // than the previous `Err`, which the caller logged every turn.
+        let mut config = Config::default();
+        config.api_url = Some("not a url".to_string());
+
+        let spans = vec![span(
+            "trace:req-1",
+            "span-1",
+            None,
+            "agent.turn",
+            SpanKind::Turn,
+            SpanStatus::Ok,
+            1_000,
+            Some(2_000),
+        )];
+        assert_eq!(push_spans(&config, &spans).await, Ok(()));
     }
 
     #[test]
