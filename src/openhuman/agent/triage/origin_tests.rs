@@ -128,6 +128,45 @@ fn every_dispatch_site_scopes_an_origin() {
                      approval gate as `Unknown` and is denied (openhuman#5634). Scope \
                      `remote_trigger_origin` or `local_trigger_origin` by provenance."
                 );
+
+                // Every dispatch in the file must be inside a scope. Text
+                // cannot prove *which* scope wraps *which* call, but an
+                // unscoped call added beside a scoped one changes this ratio,
+                // which is the shape the previous version of this test missed.
+                let dispatches = text.matches("apply_decision(").count();
+                let scopes = text.matches("with_origin(").count();
+                assert_eq!(
+                    dispatches, scopes,
+                    "{rel} has {dispatches} triage dispatch(es) but {scopes} origin scope(s); \
+                     every `apply_decision` call needs its own `with_origin` (openhuman#5634)"
+                );
+
+                // The provenance assertion — the reason two labels exist. A
+                // remote payload scoped with the local trust root is the exact
+                // defect this module prevents, and it is indistinguishable from
+                // a correct file if the test only asks whether *some* origin
+                // was scoped.
+                if let Some((_, kind)) = KNOWN_SITES.iter().find(|(path, _)| *path == rel) {
+                    let (want, reject) = match *kind {
+                        "remote" => ("remote_trigger_origin", "local_trigger_origin"),
+                        "local" => ("local_trigger_origin", "remote_trigger_origin"),
+                        other => panic!("KNOWN_SITES has unknown provenance {other:?} for {rel}"),
+                    };
+                    assert!(
+                        text.contains(want),
+                        "{rel} is recorded as `{kind}` provenance but does not scope `{want}`"
+                    );
+                    assert!(
+                        !text.contains(reject),
+                        "{rel} is recorded as `{kind}` provenance but scopes `{reject}`. \
+                         A remote, attacker-influenceable payload must never take the local \
+                         trust root: that grants authority the caller never had, which is the \
+                         defect openhuman#5634 exists to prevent. If the provenance genuinely \
+                         changed, change the KNOWN_SITES entry deliberately — do not widen \
+                         this assertion."
+                    );
+                }
+
                 found.push(rel);
             }
         }
