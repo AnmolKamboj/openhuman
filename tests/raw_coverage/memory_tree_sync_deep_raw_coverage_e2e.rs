@@ -18,17 +18,6 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::{Config, SchedulerGateMode};
-use tinymemory_core::chat::{ChatPrompt, ChatProvider};
-use tinymemory_core::queue as jobs;
-use tinymemory_core::queue::types::ReembedBackfillPayload;
-use tinymemory_core::queue::{ExtractChunkPayload, NewJob};
-use tinymemory_core::store::chunks::store::{
-    set_chunk_embedding, upsert_chunks, with_connection,
-};
-use tinymemory_core::store::chunks::types::{
-    chunk_id, Chunk, Metadata, SourceKind, SourceRef,
-};
-use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind};
 use openhuman_core::openhuman::memory::tree::score::embed::EMBEDDING_DIM;
 use openhuman_core::openhuman::memory::tree::score::extract::{
     EntityExtractor, EntityKind, ExtractedEntities, LlmEntityExtractor, LlmExtractorConfig,
@@ -36,12 +25,16 @@ use openhuman_core::openhuman::memory::tree::score::extract::{
 use openhuman_core::openhuman::memory::tree::score::resolver::{canonicalise, CanonicalEntity};
 use openhuman_core::openhuman::memory::tree::score::store::{index_entity, lookup_entity};
 use openhuman_core::openhuman::memory::tree::tree::rpc::{
-    backfill_status_rpc, get_chunk_rpc, ingest_rpc, list_chunks_rpc, pipeline_status_rpc,
-    set_enabled_rpc, GetChunkRequest, IngestRequest, ListChunksRequest, SetEnabledRequest,
+    get_chunk_rpc, ingest_rpc, list_chunks_rpc, set_enabled_rpc, GetChunkRequest, IngestRequest,
+    ListChunksRequest, SetEnabledRequest,
 };
 use openhuman_core::openhuman::memory::tree::tree::set_summary_embedding;
 use openhuman_core::openhuman::memory::tree::tree::store as tree_store;
 use openhuman_core::openhuman::memory::tree::tree::TreeStatus;
+use tinymemory_core::chat::{ChatPrompt, ChatProvider};
+use tinymemory_core::store::chunks::store::{set_chunk_embedding, upsert_chunks, with_connection};
+use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
+use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -446,104 +439,49 @@ async fn llm_extractor_recovers_spans_topics_strict_filters_and_retry_paths() {
     assert!(empty_after_bad_json.entities.is_empty());
 }
 
+/// The chunk-reading RPCs, the enable switch, and the ingest error surface.
+///
+/// **Status and backfill are deliberately not here any more.** They read
+/// through the memory contract now, and an integration test cannot answer
+/// that: `binding::install_diagnostics_for_test` is a `pub(crate)` test seam
+/// this crate cannot reach, and with no driver bound, resolving one either
+/// refuses — no module policy is published in a test process — or, where an
+/// artifact is on the path, reads the module's own store rather than the rows
+/// staged here. Writing rows and calling the handler proves nothing either way.
+///
+/// The coverage moved rather than being dropped, and is better placed:
+///
+/// - the precedence rule — `paused` > `error` > `degraded` > `syncing` >
+///   `running` > `idle` — in
+///   `rpc::tests::derive_pipeline_status_precedence_matches_spec`, against the
+///   pure function rather than a store coaxed into each state;
+/// - the handlers reading the driver's numbers, in
+///   `pipeline_status_renders_the_drivers_chunk_aggregates`,
+///   `pipeline_status_reflects_paused_when_scheduler_off` and
+///   `backfill_status_reports_the_drivers_pending_count`, each with a
+///   diagnostics driver bound;
+/// - and what a real store *is* — that an ingest raises the chunk count, that
+///   a deferred job stays ready without becoming eligible — in the driver's own
+///   conformance suite, where a real store exists.
 #[tokio::test]
-async fn memory_tree_rpc_status_set_enabled_backfill_and_ingest_errors() {
+async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvVarGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
     let _triage = EnvVarGuard::set_str("OPENHUMAN_TRIGGER_TRIAGE_DISABLED", "1");
     let mut cfg = test_config(&tmp);
 
-    let idle = pipeline_status_rpc(&cfg).await.expect("idle status").value;
-    assert_eq!(idle.status, "idle");
-    assert_eq!(idle.wiki_size_bytes, 0);
-
-    let wiki_dir = cfg.memory_tree_content_root().join("wiki").join("nested");
-    std::fs::create_dir_all(&wiki_dir).expect("wiki dir");
-    std::fs::write(wiki_dir.join("page.md"), "wiki bytes").expect("wiki file");
     let chunk = sample_chunk(
         &cfg,
         "chat:#status",
         1,
-        "A chunk makes the pipeline status running.",
+        "A chunk the chunk-reading RPCs below can find.",
         1_700_000_000_000,
     );
-    let running = pipeline_status_rpc(&cfg)
-        .await
-        .expect("running status")
-        .value;
-    assert_eq!(running.status, "running");
-    assert!(running.wiki_size_bytes >= "wiki bytes".len() as u64);
-    assert_eq!(running.total_chunks, 1);
 
-    jobs::enqueue(
-        &cfg,
-        &NewJob::extract_chunk(&ExtractChunkPayload {
-            chunk_id: "round18-running".into(),
-        })
-        .expect("build running job"),
-    )
-    .expect("enqueue running job");
-    jobs::claim_next(&cfg, 60_000).expect("claim running job");
-    let syncing = pipeline_status_rpc(&cfg)
-        .await
-        .expect("syncing status")
-        .value;
-    assert_eq!(syncing.status, "syncing");
-    assert!(syncing.is_syncing);
-
-    jobs::enqueue(
-        &cfg,
-        &NewJob::extract_chunk(&ExtractChunkPayload {
-            chunk_id: "round18-failed".into(),
-        })
-        .expect("build failed job"),
-    )
-    .expect("enqueue failed job");
-    // #3365: an untyped/transient failed job (no `failure_class`) self-heals via
-    // requeue, so it surfaces as `degraded` ("retrying"), not a hard `error`.
-    with_connection(&cfg, |conn| {
-        conn.execute(
-            "UPDATE mem_tree_jobs
-                SET status = 'failed'
-              WHERE kind = 'extract_chunk'
-                AND payload_json LIKE '%round18-failed%'",
-            [],
-        )?;
-        Ok(())
-    })
-    .expect("mark failed (untyped)");
-    let degraded = pipeline_status_rpc(&cfg)
-        .await
-        .expect("degraded status")
-        .value;
-    assert_eq!(degraded.status, "degraded");
-    assert!(degraded.reason.unwrap().contains("retrying"));
-
-    // #3365: an UNRECOVERABLE failed job (budget / auth / dim-mismatch) stays
-    // parked and is user-actionable, so it escalates to `error`.
-    with_connection(&cfg, |conn| {
-        conn.execute(
-            "UPDATE mem_tree_jobs
-                SET failure_class = 'unrecoverable'
-              WHERE kind = 'extract_chunk'
-                AND payload_json LIKE '%round18-failed%'",
-            [],
-        )?;
-        Ok(())
-    })
-    .expect("mark unrecoverable");
-    let errored = pipeline_status_rpc(&cfg).await.expect("error status").value;
-    assert_eq!(errored.status, "error");
-    assert!(errored.reason.unwrap().contains("unrecoverable"));
-
+    // The gate is host state rather than the driver's: `set_enabled` reports
+    // whether it changed anything, and which mode it landed in.
     cfg.scheduler_gate.mode = SchedulerGateMode::Off;
-    let paused = pipeline_status_rpc(&cfg)
-        .await
-        .expect("paused status")
-        .value;
-    assert_eq!(paused.status, "paused");
-    assert!(paused.is_paused);
     let no_op = set_enabled_rpc(&mut cfg, SetEnabledRequest { enabled: false })
         .await
         .expect("set disabled no-op")
@@ -555,21 +493,6 @@ async fn memory_tree_rpc_status_set_enabled_backfill_and_ingest_errors() {
         .value;
     assert!(changed.changed);
     assert_eq!(changed.mode, "auto");
-
-    jobs::enqueue(
-        &cfg,
-        &NewJob::reembed_backfill(&ReembedBackfillPayload {
-            signature: "round18-signature".into(),
-        })
-        .expect("build reembed job"),
-    )
-    .expect("enqueue reembed");
-    let backfill = backfill_status_rpc(&cfg)
-        .await
-        .expect("backfill status")
-        .value;
-    assert!(backfill.in_progress);
-    assert!(backfill.pending_jobs >= 1);
 
     let listed = list_chunks_rpc(
         &cfg,
