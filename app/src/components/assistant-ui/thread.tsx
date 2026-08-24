@@ -341,7 +341,9 @@ const Composer: FC<{
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+      <ComposerPrimitive.Root
+        className="aui-composer-root relative flex w-full flex-col"
+        data-walkthrough="chat-agent-panel">
         {ComposerHeader ? <ComposerHeader /> : null}
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
