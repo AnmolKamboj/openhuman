@@ -1,13 +1,13 @@
 use crate::openhuman::agent::experience::types::{
     stable_experience_id_for_profile, AgentExperience, ExperienceHit,
 };
+use crate::openhuman::memory::safety::sanitize_text;
 use crate::openhuman::memory::{Memory, MemoryCategory};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-use tinymemory_core::store::safety::sanitize_text;
 
 pub const AGENT_EXPERIENCE_NAMESPACE: &str = "agent_experience";
 
@@ -322,7 +322,7 @@ fn storage_key(id: &str) -> String {
 /// millisecond timestamp can no longer be misread as a credit card and corrupt
 /// the JSON — #5209), which makes that store-time scrub a no-op over the
 /// payload. To preserve the security invariant we must therefore run the SAME
-/// full scrubber ([`memory_store::safety::sanitize_text`] — private-key blocks,
+/// full scrubber ([`sanitize_text`] — private-key blocks,
 /// Bearer/`sk-`/Stripe/npm/OAuth secrets, and the full national-ID / phone /
 /// credit-card PII set) over the sensitive free-text fields ourselves, here,
 /// before serialization. A secret placed in any of these is then redacted in

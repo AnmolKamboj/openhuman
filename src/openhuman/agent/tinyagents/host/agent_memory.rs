@@ -15,7 +15,7 @@
 //!   rather than calling `Memory::recall` directly, so this adapter inherits
 //!   OpenHuman's ranking engine verbatim, the `path_scope` dedupe rule, and the
 //!   `AgentEvent::MemoryLoaded` emission instead of forking a second recall path.
-//! - [`tinymemory_core::store::safety`] — `sanitize_text`, the
+//! - [`crate::openhuman::memory::safety`] — `sanitize_text`, the
 //!   conservative secret + PII scrubber, applied on the way out of recall and on
 //!   the way in to `remember`.
 //! - [`crate::openhuman::memory::agent::memory_loader::MemoryCitation`] — the
@@ -89,9 +89,9 @@ use tinyagents::harness::host::{AgentMemory, MemoryId, MemoryItem, NewMemory, Re
 use tinyagents::harness::ids::ThreadId;
 
 use crate::openhuman::memory::agent::memory_loader::MemoryCitation;
+use crate::openhuman::memory::safety::sanitize_text;
 use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, MemoryTaint, RecallOpts};
 use crate::openhuman::util::truncate_with_ellipsis;
-use tinymemory_core::store::safety::sanitize_text;
 
 /// Namespace agent-produced memories are written to and recalled from when the
 /// wiring site does not choose one.

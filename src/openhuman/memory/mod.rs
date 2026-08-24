@@ -38,6 +38,10 @@ pub mod sync_events_bridge;
 // impl end to end, and the engine crate cannot name that trait.
 pub mod query;
 pub mod read_rpc;
+/// The host-side secret / PII scrubbers applied to anything this host persists
+/// or hands on. See the module docs for why this is OpenHuman's and not the
+/// engine's.
+pub mod safety;
 pub mod schemas;
 /// The host-side per-turn memory-source allowlist. See the module docs for why
 /// this is OpenHuman's and not the engine's.

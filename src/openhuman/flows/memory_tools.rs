@@ -497,7 +497,7 @@ impl Tool for FlowMemoryRememberTool {
             return Ok(ToolResult::error("key cannot be empty".to_string()));
         }
 
-        if tinymemory_core::store::safety::has_likely_secret(content) {
+        if crate::openhuman::memory::safety::has_likely_secret(content) {
             log::warn!(
                 "[flows:memory:safety] flow_memory_remember rejected secret-like content flow_id_chars={} key_chars={} content_chars={}",
                 flow_id.chars().count(),
@@ -550,9 +550,15 @@ mod tests {
     use tempfile::TempDir;
     use tinymemory_core::store::UnifiedMemory;
 
-    // These tests seed through the engine handle directly, so the seed calls
-    // take the *engine's* category/taint types, not the contract's.
-    use tinymemory_core::{MemoryCategory as EngineCategory, MemoryTaint as EngineTaint};
+    // Seeding still goes through the engine handle (`UnifiedMemory` above),
+    // but the value types are the CONTRACT's: `tinymemory_core` re-exports
+    // `tinymemory_api::types::{MemoryCategory, MemoryTaint}` verbatim
+    // (tinymemory#18 §A1 moved them onto the contract so a second engine could
+    // be bound without translating). Naming them at the contract keeps the
+    // alias honest and is one fewer reason this file holds the crate (#5560).
+    use crate::openhuman::memory::api::types::{
+        MemoryCategory as EngineCategory, MemoryTaint as EngineTaint,
+    };
 
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy::default())

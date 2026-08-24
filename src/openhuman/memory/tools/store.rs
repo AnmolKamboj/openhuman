@@ -1,13 +1,13 @@
 use crate::openhuman::memory::api::provider::MemoryCore;
 use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
+use crate::openhuman::memory::safety;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
-use tinymemory_core::store::safety;
 
 /// Let the agent store memories — its own brain writes
 pub struct MemoryStoreTool {

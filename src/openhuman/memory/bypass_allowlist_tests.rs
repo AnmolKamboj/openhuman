@@ -148,6 +148,11 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "binding::for_workspace(",
         "reads driver_id + advertised capabilities only (what memory.provider_status already reports); no CoreContext exists on a CLI invocation, so there is no guard to route through",
     ),
+    (
+        "src/core/memory_cli.rs",
+        "binding::for_workspace(",
+        "the contract-routed subcommands (docs/graph/namespaces/clear) need the binding itself: driver_id() is what names the driver in a missing-family refusal, and no CoreContext exists on a CLI invocation — the same reason cli_capability.rs is listed above",
+    ),
     // subsystems_cli.rs no longer binds directly: it delegates to
     // memory_subsystem_status, whose binding resolution lives in
     // memory/ops/provider.rs (allowlisted above).

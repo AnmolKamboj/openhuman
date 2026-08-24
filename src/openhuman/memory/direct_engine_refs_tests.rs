@@ -131,18 +131,19 @@
 //!   behind the bus is the only shape that keeps a supermemory/mem0/cognee
 //!   driver implementable** — a contract with `with_connection` in it is a
 //!   SQLite contract wearing a trait.
-//! - **Host policy reached through the engine crate** (~14 files) —
-//!   `store::safety::{sanitize_text, sanitize_json, has_likely_secret}`,
-//!   `util::redact::redact`, `source_scope::*`. This looked like the cheapest
-//!   item on the list and mostly is not, which is worth stating so the next
-//!   person does not re-derive it: `store::safety` is a **shim over
-//!   `crate::engine::backend::store::safety`**, so those scrubbers live in
-//!   tinycortex and relocating them is engine work rather than a contract
-//!   move. `source_scope` is a `tokio::task_local`, so hosting it in
-//!   `tinymemory-api` means adding tokio to a crate whose whole point is that
-//!   a caller can depend on it and compile almost nothing. Only
-//!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
-//!   `sha2` in the contract crate.
+//! - **Host policy reached through the engine crate** — **drained.** The
+//!   scrubbers (`store::safety::{sanitize_text, sanitize_json,
+//!   has_likely_secret}`), `util::redact::redact` and `source_scope::*` all
+//!   live host-side now, in `memory::safety`, `util::redact` and
+//!   `memory::source_scope`. The route each took is the shape to reuse, and it
+//!   is **not** "move it to `tinymemory-api`": a scrubber costs `regex` +
+//!   `serde_json` and `util::redact` costs `sha2` in a crate whose whole point
+//!   is that a caller can depend on it and compile almost nothing, and
+//!   `source_scope` is a `tokio::task_local`, which would put tokio there too.
+//!   None of the three is contract vocabulary — nothing crosses the bus as a
+//!   `SanitizationReport` or a log hash — so each is simply the host's, with
+//!   the engine keeping its own copy for its own writes. Independent copies are
+//!   the design: neither side reads the other's output.
 //! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
 //!   ensure_reembed_backfill, requeue_failed_after_provider_change,
 //!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
@@ -306,7 +307,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/experience/store.rs",
         Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/agent/harness/archivist/hook_impl.rs",
@@ -344,11 +345,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "the engine-side chat provider seam (chat::ChatProvider); MemoryIngest has no provider-override door",
     ),
     (
-        "src/openhuman/agent/harness/artifact_offload/policy.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
         "src/openhuman/agent/harness/session/builder/factory.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -357,11 +353,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/agent/harness/subagent_runner/ops/runner.rs",
         Verdict::NeedsWiderSeam,
         "names engine-owned types (store::trees::types::TreeKind); relocating them to tinymemory-api is the ask, not a bus method",
-    ),
-    (
-        "src/openhuman/agent/harness/tool_result_artifacts/mod.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/agent/learning/linkedin_enrichment.rs",
@@ -374,19 +365,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/agent/tinyagents/host/agent_memory.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::factories::create_memory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/agent/tools/remember_preference.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/tools/save_preference.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/channels/controllers/ops/connect.rs",
@@ -416,17 +397,12 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/flows/memory_tools.rs",
         Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::has_likely_secret); driver construction belongs to memory::binding and the seam has no door onto the live client",
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/flows/ops.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::has_likely_secret); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/hosted/orchestration/effect_executor.rs",
@@ -452,11 +428,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/integrations/composio/schemas.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::client_if_ready); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/guard/policy.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::current_source_scope, store::safety::sanitize_json/sanitize_text); belongs in tinymemory-api, not a bus method",
     ),
     (
         "src/openhuman/memory/ops/documents.rs",
@@ -566,7 +537,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/tools/store.rs",
         Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety); driver construction belongs to memory::binding and the seam has no door onto the live client",
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/tree/retrieval/rpc.rs",
@@ -582,11 +553,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/platform/doctor/core.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::chunks::store::with_connection, store::factories::effective_embedding_settings); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/security/approval/store.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
     ),
     (
         "src/openhuman/security/credentials/ops.rs",
