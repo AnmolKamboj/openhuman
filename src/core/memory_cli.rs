@@ -15,8 +15,8 @@ use anyhow::Result;
 use std::io::Read;
 use std::path::PathBuf;
 
+use crate::openhuman::memory::api::types::NamespaceDocumentInput;
 use tinymemory_core::ingestion::{MemoryIngestionConfig, MemoryIngestionRequest};
-use tinymemory_core::store::NamespaceDocumentInput;
 
 /// Entry point for `openhuman memory <subcommand>`.
 pub fn run_memory_command(args: &[String]) -> Result<()> {

@@ -138,5 +138,5 @@ pub use tinymemory_core::traits::{
 // Types that external tests and consumers historically imported from
 // `memory::*`. The definitions moved to sibling crates during the memory
 // refactor; these aliases keep the public surface stable.
-pub use tinymemory_core::store::types::NamespaceDocumentInput;
+pub use crate::openhuman::memory::api::types::NamespaceDocumentInput;
 pub use tinymemory_core::store::{MemoryClient, UnifiedMemory};

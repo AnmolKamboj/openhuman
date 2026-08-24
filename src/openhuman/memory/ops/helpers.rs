@@ -13,8 +13,15 @@ use crate::openhuman::memory::{
     MemoryDocumentSummary, MemoryRetrievalChunk, MemoryRetrievalContext, MemoryRetrievalEntity,
     MemoryRetrievalRelation, QueryNamespaceRequest,
 };
-use tinymemory_core::store::GraphRelationRecord;
-use tinymemory_core::store::{MemoryClientRef, MemoryItemKind, NamespaceMemoryHit};
+// Contract vocabulary named at the contract, engine handle named at the
+// engine: the three value types resolve to the same items either way
+// (tinycortex-api re-exports tinymemory-api), but a `tinymemory_core::` path
+// is a compile-time link this host is shedding (#5560), so only the handle —
+// which has no contract twin yet — still names the crate.
+use crate::openhuman::memory::api::types::{
+    GraphRelationRecord, MemoryItemKind, NamespaceMemoryHit,
+};
+use tinymemory_core::store::MemoryClientRef;
 
 // ---------------------------------------------------------------------------
 // Formatting helpers

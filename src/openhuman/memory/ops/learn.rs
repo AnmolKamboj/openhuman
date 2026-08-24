@@ -168,7 +168,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use tinymemory_core::store::NamespaceDocumentInput;
+    use crate::openhuman::memory::api::types::NamespaceDocumentInput;
 
     fn ensure_memory_client() {
         crate::openhuman::memory::ops::ensure_shared_memory_client();
