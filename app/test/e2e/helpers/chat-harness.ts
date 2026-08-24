@@ -95,10 +95,18 @@ export async function typeIntoComposer(text: string): Promise<void> {
     // Focus via JS — avoids the coordinate-based click that gets intercepted
     // by AppUpdatePrompt. Select any partial value before deleting it.
     const focused = await browser.execute((sel: string) => {
-      const el = document.querySelector(sel) as HTMLTextAreaElement | null;
+      const el = document.querySelector(sel) as HTMLTextAreaElement | HTMLElement | null;
       if (!el) return false;
       el.focus();
-      el.select();
+      if (el instanceof HTMLTextAreaElement) {
+        el.select();
+      } else {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
       return true;
     }, COMPOSER_SELECTOR);
     if (!focused) continue;
