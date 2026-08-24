@@ -3643,8 +3643,8 @@ mod tests {
         assert!(
             result
                 .content
-                .contains("Re-running it will not produce a summary."),
-            "the do-not-re-run sentence is the whole point of the notice and must survive"
+                .contains("Do not re-run the tool for a summary"),
+            "the do-not-re-run instruction is the whole point of the notice and must survive"
         );
         // The payload itself is still capped — deferring the notice must not
         // smuggle the tool past its own declared limit.

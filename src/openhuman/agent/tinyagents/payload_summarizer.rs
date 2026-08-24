@@ -102,35 +102,43 @@ impl UnavailableReason {
     /// `max_result_size_chars` below this string's length truncates the notice
     /// itself. Applying it last is the only placement that survives both.
     ///
-    /// Every variant ends by telling the model not to re-run the tool *for a
-    /// summary*. Without that, the model's reasonable response to a truncated
-    /// dump is to call the same tool again — the silent re-dispatch loop that
-    /// reads to a user as a hang.
+    /// Every variant ends with the same instruction — do not re-run the tool
+    /// to get a summary, because the full output is already here. Without it,
+    /// the model's reasonable response to a truncated dump is to call the same
+    /// tool again: the silent re-dispatch loop that reads to a user as a hang.
     ///
-    /// Note what this deliberately does **not** say: that a re-run returns the
-    /// same bytes. It usually will not. `Failed` leaves the breaker open for
-    /// further attempts, so a second summarization can genuinely succeed, and
-    /// an API-backed tool is time-varying regardless. Asserting result identity
-    /// would be false in the direction that suppresses a legitimate retry the
-    /// model had good reason to make. The claim is scoped to the only thing
-    /// this code actually knows: re-running will not conjure a summary.
+    /// That sentence is an **instruction with a reason**, and deliberately not
+    /// a prediction. Two predictions were tried and both were false:
+    ///
+    /// - *"Re-running this tool will return the same result."* Untrue for any
+    ///   API-backed tool, which is time-varying, and it suppresses a retry the
+    ///   model may have had good reason to make.
+    /// - *"Re-running it will not produce a summary."* Untrue for [`Self::Failed`]
+    ///   specifically: that variant is recorded before the breaker opens, so a
+    ///   later attempt can genuinely succeed. Saying otherwise contradicts the
+    ///   breaker's own behaviour two paragraphs up.
+    ///
+    /// What is true for all three, and is what the notice now says, is that the
+    /// raw output is already in front of the model — so a re-run buys nothing
+    /// it does not already have. The reason clause carries the variant-specific
+    /// fact; the instruction carries the anti-loop property.
     #[must_use]
     pub fn notice(self) -> &'static str {
         match self {
             Self::PayloadTooLarge => concat!(
                 "[openhuman: summarization unavailable — this output exceeds the summarizer's ",
                 "size cap, so the raw output follows and may be truncated. ",
-                "Re-running it will not produce a summary.]"
+                "Do not re-run the tool for a summary; the full output is already here.]"
             ),
             Self::Disabled => concat!(
                 "[openhuman: summarization unavailable — it is switched off for this session ",
                 "after repeated failures, so the raw output follows. ",
-                "Re-running it will not produce a summary.]"
+                "Do not re-run the tool for a summary; the full output is already here.]"
             ),
             Self::Failed => concat!(
                 "[openhuman: summarization unavailable — the summarizer did not return a usable ",
-                "summary, so the raw output follows. ",
-                "Re-running it will not produce a summary.]"
+                "summary for this result, so the raw output follows. ",
+                "Do not re-run the tool for a summary; the full output is already here.]"
             ),
         }
     }
@@ -689,10 +697,18 @@ mod tests {
     }
 
     #[test]
-    fn every_unavailable_notice_tells_the_model_a_retry_is_pointless() {
+    fn every_unavailable_notice_says_not_to_re_run_without_predicting_the_future() {
         // The whole point of the notice. A model handed a truncated dump with
         // no explanation does the reasonable thing and calls the same tool
         // again, which is the re-dispatch loop a user perceives as a hang.
+        //
+        // The second half of the name is the part that took two rounds to get
+        // right. The instruction has to hold for every variant *without*
+        // asserting what a re-run would do, because `Failed` is recorded before
+        // the breaker opens and a later attempt can genuinely succeed — so a
+        // notice claiming otherwise contradicts the breaker. Both previously
+        // shipped phrasings are asserted absent below so neither comes back as
+        // a tightening.
         for reason in [
             UnavailableReason::PayloadTooLarge,
             UnavailableReason::Disabled,
@@ -700,9 +716,16 @@ mod tests {
         ] {
             let notice = reason.notice();
             assert!(
-                notice.contains("Re-running it will not produce a summary."),
+                notice.contains("Do not re-run the tool for a summary"),
                 "{reason:?} must tell the model not to retry: {notice}"
             );
+            for prediction in ["will return the same result", "will not produce a summary"] {
+                assert!(
+                    !notice.contains(prediction),
+                    "{reason:?} must not predict what a re-run would do ({prediction:?}): \
+                     {notice}"
+                );
+            }
             assert!(
                 notice.starts_with("[openhuman: summarization unavailable"),
                 "{reason:?} must be greppable and self-identifying: {notice}"
