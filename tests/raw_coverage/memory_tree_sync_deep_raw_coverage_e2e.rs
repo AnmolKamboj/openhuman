@@ -494,6 +494,49 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     assert!(changed.changed);
     assert_eq!(changed.mode, "auto");
 
+    // One decoy per filter the request sets, so the assertion below fails if any
+    // single one is ignored. With only the matching chunk in the store, a
+    // handler that dropped every filter would still return exactly one row and
+    // the test would pass.
+    let wrong_source = sample_chunk(
+        &cfg,
+        "chat:#other",
+        1,
+        "right kind, right owner, wrong source id",
+        1_700_000_001_000,
+    );
+    let wrong_time = sample_chunk(
+        &cfg,
+        "chat:#status",
+        2,
+        "right source, outside the window",
+        1_900_000_000_000,
+    );
+    let wrong_owner = {
+        let ts = Utc.timestamp_millis_opt(1_700_000_002_000).unwrap();
+        let text = "right source and window, wrong owner";
+        let chunk = Chunk {
+            id: chunk_id(SourceKind::Chat, "chat:#status", 3, text),
+            content: text.to_string(),
+            metadata: Metadata {
+                source_kind: SourceKind::Chat,
+                source_id: "chat:#status".into(),
+                owner: "someone-else".into(),
+                timestamp: ts,
+                time_range: (ts, ts),
+                tags: vec!["round18".into()],
+                source_ref: None,
+                path_scope: None,
+            },
+            token_count: 32,
+            seq_in_source: 3,
+            created_at: ts,
+            partial_message: false,
+        };
+        upsert_chunks(&cfg, std::slice::from_ref(&chunk)).expect("upsert decoy");
+        chunk
+    };
+
     let listed = list_chunks_rpc(
         &cfg,
         ListChunksRequest {
@@ -509,7 +552,15 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     .expect("list chunks")
     .value
     .chunks;
-    assert_eq!(listed.len(), 1);
+    let listed_ids: Vec<&str> = listed.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(
+        listed_ids,
+        vec![chunk.id.as_str()],
+        "every filter must discriminate: {} (source id), {} (window), {} (owner) are all in the store",
+        wrong_source.id,
+        wrong_time.id,
+        wrong_owner.id
+    );
     let fetched = get_chunk_rpc(
         &cfg,
         GetChunkRequest {
