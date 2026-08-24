@@ -71,7 +71,17 @@ async function scrollMetrics(): Promise<{
   found: boolean;
 }> {
   return (await browser.execute(() => {
-    const el = document.querySelector('[data-testid="chat-messages-scroll"]') as HTMLElement | null;
+    const messageColumn = document.querySelector(
+      '[data-testid="chat-messages-scroll"]'
+    ) as HTMLElement | null;
+    // Wry can place the overflow owner on a layout ancestor (or the document)
+    // rather than directly on Conversation. Measure the element that is
+    // actually scrollable, while preferring Conversation when it owns scroll.
+    const candidates: HTMLElement[] = [];
+    for (let el = messageColumn; el; el = el.parentElement) candidates.push(el);
+    if (document.scrollingElement instanceof HTMLElement)
+      candidates.push(document.scrollingElement);
+    const el = candidates.find(node => node.scrollHeight > node.clientHeight) ?? messageColumn;
     if (!el) return { scrollTop: 0, scrollHeight: 0, clientHeight: 0, found: false };
     return {
       scrollTop: el.scrollTop,
@@ -84,7 +94,14 @@ async function scrollMetrics(): Promise<{
 
 async function scrollMessageColumn(top: number): Promise<void> {
   await browser.execute((y: number) => {
-    const el = document.querySelector('[data-testid="chat-messages-scroll"]') as HTMLElement | null;
+    const messageColumn = document.querySelector(
+      '[data-testid="chat-messages-scroll"]'
+    ) as HTMLElement | null;
+    const candidates: HTMLElement[] = [];
+    for (let node = messageColumn; node; node = node.parentElement) candidates.push(node);
+    if (document.scrollingElement instanceof HTMLElement)
+      candidates.push(document.scrollingElement);
+    const el = candidates.find(node => node.scrollHeight > node.clientHeight) ?? messageColumn;
     if (el) el.scrollTo({ top: y, behavior: 'auto' });
   }, top);
 }
