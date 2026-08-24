@@ -39,11 +39,12 @@ fn parse_error_line_shape(line: &str) -> &'static str {
 /// instead of vanishing, but the event mapper turns it into no deltas - so the
 /// driver loop is the only place left that can say anything about it.
 ///
-/// The line itself is never quoted. It is whatever Claude Code wrote to stdout
-/// - a malformed event, or a well-formed one of an unknown type - so it can
-/// carry the user's prompt, the model's reply, or a credential, and the desktop
-/// build routes `log` into rotating support logs and Sentry breadcrumbs. Shape,
-/// size, and the parser's own reason are enough to act on; content is not.
+/// The line itself is never quoted. It is whatever Claude Code wrote to
+/// stdout (a malformed event, or a well-formed one of an unknown type), so it
+/// can carry the user's prompt, the model's reply, or a credential, and the
+/// desktop build routes `log` into rotating support logs and Sentry
+/// breadcrumbs. Shape, size, and the parser's own reason are enough to act on;
+/// content is not.
 fn parse_error_log_line(ev: &ClaudeCodeEvent) -> Option<String> {
     let ClaudeCodeEvent::ParseError { line, reason } = ev else {
         return None;
