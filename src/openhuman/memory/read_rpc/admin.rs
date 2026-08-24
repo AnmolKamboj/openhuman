@@ -126,70 +126,28 @@ pub(crate) fn clear_composio_sync_state(db_path: &std::path::Path) -> Result<u64
 // ── reset_tree ───────────────────────────────────────────────────────────
 
 pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeResponse>, String> {
-    use tinymemory_core::queue::store as jobs_store;
-    use tinymemory_core::queue::types::{ExtractChunkPayload, NewJob};
-
-    let cfg = config.clone();
-    let (tree_rows_deleted, chunks_requeued, jobs_enqueued) =
-        tokio::task::spawn_blocking(move || -> Result<(u64, u64, u64)> {
-            const TREE_TABLES: &[&str] = &[
-                "mem_tree_summaries",
-                "mem_tree_buffers",
-                "mem_tree_jobs",
-                "mem_tree_entity_index",
-                "mem_tree_trees",
-            ];
-            let tree_rows_deleted: u64 = with_connection(&cfg, |conn| {
-                let tx = conn.unchecked_transaction()?;
-                let mut total: u64 = 0;
-                for table in TREE_TABLES {
-                    let n = tx
-                        .execute(&format!("DELETE FROM {table}"), [])
-                        .with_context(|| format!("delete from {table}"))?;
-                    total += n as u64;
-                }
-                tx.commit()?;
-                Ok(total)
-            })?;
-
-            let (chunks_requeued, jobs_enqueued) =
-                with_connection(&cfg, |conn| -> anyhow::Result<(u64, u64)> {
-                    let tx = conn.unchecked_transaction()?;
-                    let chunks_requeued = tx.execute(
-                        "UPDATE mem_tree_chunks SET lifecycle_status = 'pending_extraction'",
-                        [],
-                    )? as u64;
-                    let chunk_ids: Vec<String> = {
-                        let mut stmt = tx.prepare("SELECT id FROM mem_tree_chunks")?;
-                        let rows = stmt
-                            .query_map([], |r| r.get::<_, String>(0))?
-                            .collect::<rusqlite::Result<Vec<_>>>()
-                            .context("collect chunk ids")?;
-                        rows
-                    };
-                    let mut jobs_enqueued: u64 = 0;
-                    for id in &chunk_ids {
-                        let payload = ExtractChunkPayload {
-                            chunk_id: id.clone(),
-                        };
-                        let job = NewJob::extract_chunk(&payload)
-                            .context("build extract_chunk NewJob")?;
-                        if jobs_store::enqueue_tx(&tx, &job)
-                            .context("enqueue extract_chunk")?
-                            .is_some()
-                        {
-                            jobs_enqueued += 1;
-                        }
-                    }
-                    tx.commit()?;
-                    Ok((chunks_requeued, jobs_enqueued))
-                })?;
-
-            Ok((tree_rows_deleted, chunks_requeued, jobs_enqueued))
-        })
+    // The derived-index reset — the table deletes, the chunk requeue and the
+    // re-extraction enqueue — is the driver's now (`Maintenance::
+    // reset_derived_index`), where the tables live. What stays here is what is
+    // genuinely the host's: the rendered wiki summaries below are files this
+    // host wrote under its own content root, and the driver has no business
+    // knowing they exist.
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        return Err(format!(
+            "reset_tree: driver '{}' does not serve Maintenance",
+            binding.driver_id()
+        ));
+    };
+    let outcome = maintenance
+        .reset_derived_index()
         .await
-        .map_err(|e| format!("reset_tree join error: {e}"))?
-        .map_err(|e| format!("reset_tree: {e:#}"))?;
+        .map_err(|e| format!("reset_tree: {e}"))?;
+    let (tree_rows_deleted, chunks_requeued, jobs_enqueued) = (
+        outcome.rows_deleted,
+        outcome.chunks_requeued,
+        outcome.jobs_enqueued,
+    );
 
     let summaries_dir = config
         .memory_tree_content_root()
@@ -222,8 +180,6 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
             }
         }
     }
-
-    tinymemory_core::queue::wake_workers();
 
     let resp = ResetTreeResponse {
         tree_rows_deleted,
@@ -315,35 +271,26 @@ pub async fn flush_source_tree_rpc(
 // ── flush_now ─────────────────────────────────────────────────────────────
 
 pub async fn flush_now_rpc(config: &Config) -> Result<RpcOutcome<FlushNowResponse>, String> {
-    use crate::openhuman::memory::tree::tree::store as tree_store;
-    use tinymemory_core::queue::store as jobs_store;
-    use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
-
-    let cfg = config.clone();
-    let resp = tokio::task::spawn_blocking(move || -> Result<FlushNowResponse> {
-        let stale = tree_store::list_stale_buffers(&cfg, chrono::Utc::now())
-            .context("list stale buffers")?;
-        let stale_buffers = stale.len() as u32;
-
-        let payload = FlushStalePayload {
-            max_age_secs: Some(0),
-        };
-        let now = chrono::Utc::now();
-        let date_iso = now.format("%Y-%m-%d").to_string();
-        let hour_block = chrono::Timelike::hour(&now) / 3;
-        let job = NewJob::flush_stale(&payload, &date_iso, hour_block)
-            .context("build flush_stale NewJob")?;
-        let enqueued = jobs_store::enqueue(&cfg, &job)
-            .context("enqueue flush_stale job")?
-            .is_some();
-        Ok(FlushNowResponse {
-            enqueued,
-            stale_buffers,
-        })
-    })
-    .await
-    .map_err(|e| format!("flush_now join error: {e}"))?
-    .map_err(|e| format!("flush_now: {e:#}"))?;
+    // Asked of the driver (`Maintenance::flush_pending`): the buffer walk, the
+    // window-keyed dedupe and the enqueue were engine mechanics the host was
+    // re-implementing. No `spawn_blocking` — the driver owns whether its own
+    // reads block. The wire shape is unchanged: `enqueued: false` still means
+    // "already scheduled this window" when `stale_buffers` is non-zero.
+    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let Some(maintenance) = binding.provider().as_maintenance() else {
+        return Err(format!(
+            "flush_now: driver '{}' does not serve Maintenance",
+            binding.driver_id()
+        ));
+    };
+    let outcome = maintenance
+        .flush_pending()
+        .await
+        .map_err(|e| format!("flush_now: {e}"))?;
+    let resp = FlushNowResponse {
+        enqueued: outcome.enqueued,
+        stale_buffers: u32::try_from(outcome.stale_buffers).unwrap_or(u32::MAX),
+    };
 
     let log = format!(
         "memory_tree::read: flush_now enqueued={} stale_buffers={}",

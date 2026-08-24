@@ -378,7 +378,15 @@ impl AgentMemory for OpenHumanAgentMemory {
             // `cross_session` scope the episodic and event tiers — so scoping
             // to a session and excluding it is not a contradiction, and a
             // thread hint still narrows *to* that session.
-            exclude_session_id: current_thread_id_ref.as_deref(),
+            //
+            // Ambient first, the request's thread as fallback — not either
+            // alone. Inside a turn the task-local names the thread whose
+            // trigger was auto-saved, and when both are set they agree. But a
+            // recall reaching this adapter *outside* a turn (an RPC-driven
+            // recall carrying a thread hint) has no ambient value, and its
+            // hint names exactly the thread whose saved trigger would echo
+            // back. Dropping the fallback reintroduces the echo on that path.
+            exclude_session_id: current_thread_id_ref.as_deref().or(session),
             // Widening past the requested session is a wiring decision, never a
             // runtime hint.
             cross_session: self.cross_session,

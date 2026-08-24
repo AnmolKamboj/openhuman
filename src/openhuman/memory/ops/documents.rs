@@ -20,10 +20,9 @@ use tinymemory_core::store::NamespaceRetrievalContext;
 use super::envelope::{envelope, error_envelope, memory_counts};
 use super::guard::active_memory_guard;
 use super::helpers::{
-    active_memory_client, build_retrieval_context, current_workspace_dir,
-    filter_hits_by_document_ids, format_llm_context_message, maybe_retrieval_context,
-    memory_kind_label, parse_memory_document_summaries, query_limit_for_request,
-    RawDeleteDocumentResult,
+    build_retrieval_context, current_workspace_dir, filter_hits_by_document_ids,
+    format_llm_context_message, maybe_retrieval_context, memory_kind_label,
+    parse_memory_document_summaries, query_limit_for_request, RawDeleteDocumentResult,
 };
 use super::helpers::{default_category, default_priority, default_source_type};
 
@@ -555,23 +554,32 @@ pub async fn memory_recall_context(
     request: RecallContextRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<RecallContextResponse>>, String> {
     let include_references = request.include_references.unwrap_or(true);
+    // The recency path, through the contract. `recall_namespace_recent` exists
+    // for exactly this pair of handlers — `recall_namespace_scored("")` is NOT
+    // a substitute, it ranks against nothing (see the member's doc). The
+    // engine wrapper this used to call (`recall_namespace_context_data`) only
+    // added a rendered `context_text` this handler never read; it builds its
+    // own from the hits.
     let result = async {
-        let client = active_memory_client().await?;
-        client
-            .recall_namespace_context_data(&request.namespace, request.resolved_limit())
+        let guard = active_memory_guard().await?;
+        guard
+            .as_retrieval()
+            .ok_or_else(|| "memory driver does not support the retrieval family".to_string())?
+            .recall_namespace_recent(&request.namespace, request.resolved_limit() as usize)
             .await
+            .map_err(|e| format!("memory.recall_context: {e}"))
     }
     .await;
 
     match result {
-        Ok(context) => {
-            let retrieval_context = build_retrieval_context(&context.hits);
+        Ok(hits) => {
+            let retrieval_context = build_retrieval_context(&hits);
             let counts = memory_counts([
                 ("num_entities", retrieval_context.entities.len()),
                 ("num_relations", retrieval_context.relations.len()),
                 ("num_chunks", retrieval_context.chunks.len()),
             ]);
-            let llm_context_message = format_llm_context_message(None, &context.hits);
+            let llm_context_message = format_llm_context_message(None, &hits);
             Ok(envelope(
                 RecallContextResponse {
                     context: maybe_retrieval_context(include_references, retrieval_context),
@@ -590,10 +598,13 @@ pub async fn memory_recall_memories(
     request: RecallMemoriesRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<RecallMemoriesResponse>>, String> {
     let result = async {
-        let client = active_memory_client().await?;
-        client
-            .recall_namespace_memories(&request.namespace, request.resolved_limit())
+        let guard = active_memory_guard().await?;
+        guard
+            .as_retrieval()
+            .ok_or_else(|| "memory driver does not support the retrieval family".to_string())?
+            .recall_namespace_recent(&request.namespace, request.resolved_limit() as usize)
             .await
+            .map_err(|e| format!("memory.recall_memories: {e}"))
     }
     .await;
 

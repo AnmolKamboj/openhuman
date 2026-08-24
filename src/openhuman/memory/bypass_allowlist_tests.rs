@@ -252,11 +252,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     // ── Handlers with no typed contract twin (see the allowlist doc, §D) ──
     (
-        "src/openhuman/memory/ops/documents.rs",
-        "active_memory_client(",
-        "namespace/doc/context handlers answer untyped Value shapes with no contract twin",
-    ),
-    (
         "src/openhuman/memory/ops/guard.rs",
         "binding::for_workspace(",
         "the guarded resolver; this is where the binding becomes a guard",

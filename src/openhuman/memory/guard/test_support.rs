@@ -1012,6 +1012,15 @@ impl MemoryRetrieval for RecordingProvider {
         Ok(vec![])
     }
 
+    async fn recall_namespace_recent(
+        &self,
+        _namespace: &str,
+        _limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        self.record(Call::plain("retrieval.recall_namespace_recent"));
+        Ok(vec![])
+    }
+
     async fn search_entities(
         &self,
         _query: &str,

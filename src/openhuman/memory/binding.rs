@@ -500,6 +500,10 @@ pub(crate) struct FixedDiagnostics {
     /// between them — nothing ready, nothing running, backfill unfinished —
     /// has to set the two independently.
     backfill: bool,
+    /// What [`MemoryMaintenance::flush_pending`] answers, when a test sets it.
+    flush: crate::openhuman::memory::api::provider::types::FlushOutcome,
+    /// What [`MemoryMaintenance::reset_derived_index`] answers, likewise.
+    reset: crate::openhuman::memory::api::provider::types::ResetOutcome,
 }
 
 #[cfg(test)]
@@ -528,6 +532,8 @@ mod fixed_diagnostics_impl {
                 queue,
                 failure: None,
                 backfill: false,
+                flush: Default::default(),
+                reset: Default::default(),
                 retry_calls: std::sync::atomic::AtomicUsize::new(0),
                 retry_requeues: 0,
                 reembed_calls: std::sync::atomic::AtomicUsize::new(0),
@@ -543,6 +549,24 @@ mod fixed_diagnostics_impl {
         /// Report a backfill running in this driver's process.
         pub(crate) fn backfilling(mut self) -> Self {
             self.backfill = true;
+            self
+        }
+
+        /// Answer [`MemoryMaintenance::flush_pending`] with `outcome`.
+        pub(crate) fn flushing(
+            mut self,
+            outcome: crate::openhuman::memory::api::provider::types::FlushOutcome,
+        ) -> Self {
+            self.flush = outcome;
+            self
+        }
+
+        /// Answer [`MemoryMaintenance::reset_derived_index`] with `outcome`.
+        pub(crate) fn resetting(
+            mut self,
+            outcome: crate::openhuman::memory::api::provider::types::ResetOutcome,
+        ) -> Self {
+            self.reset = outcome;
             self
         }
 
@@ -675,6 +699,20 @@ mod fixed_diagnostics_impl {
 
         async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
             Ok(self.backfill)
+        }
+
+        async fn flush_pending(
+            &self,
+        ) -> Result<crate::openhuman::memory::api::provider::types::FlushOutcome, MemoryError>
+        {
+            Ok(self.flush.clone())
+        }
+
+        async fn reset_derived_index(
+            &self,
+        ) -> Result<crate::openhuman::memory::api::provider::types::ResetOutcome, MemoryError>
+        {
+            Ok(self.reset.clone())
         }
     }
 

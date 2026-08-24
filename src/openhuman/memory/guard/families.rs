@@ -1080,6 +1080,25 @@ impl MemoryRetrieval for GuardedRetrieval {
             .await
     }
 
+    /// Namespace-scoped like its scored sibling, and admitted under the same
+    /// capability: recency versus ranking is a retrieval mode, not a policy
+    /// boundary.
+    async fn recall_namespace_recent(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.recall_namespace_recent",
+            namespace,
+            false,
+        )?;
+        self.family()?
+            .recall_namespace_recent(namespace, limit)
+            .await
+    }
+
     async fn search_entities(
         &self,
         query: &str,

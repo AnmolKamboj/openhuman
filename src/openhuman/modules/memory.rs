@@ -146,8 +146,9 @@ use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::provider::types::{
-    DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
-    MaintenanceReport, QueueFailure, QueueStats, SnapshotRef, SourceItem, SourceScope, StoreStats,
+    DiffReport, EntityHit, ExportPage, ExportRecord, FlushOutcome, ImportOutcome, IngestItem,
+    IngestOutcome, MaintenanceReport, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
+    SourceItem, SourceScope, StoreStats,
 };
 use tinymemory_api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
@@ -984,6 +985,12 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
         module_call!(self, "backfill_in_progress", "BackfillInProgress", ())
     }
+    async fn flush_pending(&self) -> Result<FlushOutcome, MemoryError> {
+        module_call!(self, "flush_pending", "FlushPending", ())
+    }
+    async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
+        module_call!(self, "reset_derived_index", "ResetDerivedIndex", ())
+    }
 }
 
 #[cfg(test)]
@@ -1124,6 +1131,18 @@ impl MemoryRetrieval for ModuleMemoryProvider {
             "retrieve_leaves",
             "RetrieveLeaves",
             (chunk_ids, scope)
+        )
+    }
+    async fn recall_namespace_recent(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        module_call!(
+            self,
+            "recall_namespace_recent",
+            "RecallNamespaceRecent",
+            (namespace, limit)
         )
     }
     async fn recall_namespace_scored(
