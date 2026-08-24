@@ -167,18 +167,11 @@ jobs:
           memory_dir="$module_root/tinymemory"
           rm -rf "$module_root"
           mkdir -p "$memory_dir"
-          # Match the host's TinyBus module transport rather than using the
-          # older nested checkout pinned inside TinyMemory.
-          sed -i \
-            -e 's#../../vendor/tinybus/crates/tinybus#../../../tinybus/crates/tinybus#g' \
-            -e 's#../../vendor/tinybus/crates/tinybus-module#../../../tinybus/crates/tinybus-module#g' \
-            vendor/tinymemory/crates/tinymemory-module/Cargo.toml
           cargo build --release \
             --manifest-path vendor/tinymemory/crates/tinymemory-module/Cargo.toml
           cp vendor/tinymemory/crates/tinymemory-module/target/release/libtinymemory_module.so \
             "$memory_dir/libtinymemory_module.so"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" >> "$GITHUB_ENV"
-          echo "OPENHUMAN_MODULE_PATH=$memory_dir" >> "$GITHUB_ENV"
       - name: Test core crate (openhuman)
         # This script uses Bash-only process substitution below. Reusable
         # workflows do not inherit the caller's `defaults.run.shell`, and

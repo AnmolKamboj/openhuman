@@ -292,12 +292,24 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
 }
 
 /// A configured local artifact for `id`, if one is set.
+///
+/// The test fixture uses the same explicit-override path as a developer build,
+/// so TinyMemory is initialized with the host's real module configuration.
+/// Loading it through `OPENHUMAN_MODULE_PATH` would initialize it during boot
+/// before that configuration and its host callbacks are installed.
 fn local_override(config: &Config, id: &str) -> Option<PathBuf> {
-    config
+    let configured = config
         .modules
         .overrides
         .iter()
-        .find_map(|entry| (entry.id == id).then(|| PathBuf::from(entry.path.clone())))
+        .find_map(|entry| (entry.id == id).then(|| PathBuf::from(entry.path.clone())));
+
+    configured.or_else(|| {
+        (id == super::memory::MODULE_ID)
+            .then(|| std::env::var_os("TINYMEMORY_TEST_MODULE"))
+            .flatten()
+            .map(PathBuf::from)
+    })
 }
 
 /// The artifact an earlier run extracted, if it is still there.
