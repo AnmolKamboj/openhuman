@@ -147,6 +147,7 @@ jobs:
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
             >> "$GITHUB_ENV"
+          echo "OPENHUMAN_MODULE_PATH=$memory_dir" >> "$GITHUB_ENV"
           echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
             >> "$GITHUB_ENV"
 
