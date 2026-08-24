@@ -165,16 +165,17 @@ jobs:
           # owned directory outside the runner-owned checkout is required.
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
-          memory_archive="$memory_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
+          memory_archive="$memory_dir/tinymemory-module-1.2.0-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir"
           mkdir -p "$memory_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.0.1/$(basename "$memory_archive")" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.2.0/$(basename "$memory_archive")" \
             --output "$memory_archive"
-          echo "35d13463041f455bebd833a71ba370d891a4e59d1b8e576e81635e2777a0c3dd  $memory_archive" \
+          echo "d0ebc87c56141c54fc188f5666515fc9b11649ac982715a4053bc4e51582e4cb  $memory_archive" \
             | sha256sum --check
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" >> "$GITHUB_ENV"
+          echo "OPENHUMAN_MODULE_PATH=$memory_dir" >> "$GITHUB_ENV"
       - name: Test core crate (openhuman)
         # This script uses Bash-only process substitution below. Reusable
         # workflows do not inherit the caller's `defaults.run.shell`, and
