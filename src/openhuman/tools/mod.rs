@@ -34,10 +34,7 @@ pub use crate::openhuman::flows::memory_tools::*;
 #[cfg(feature = "flows")]
 #[cfg(feature = "flows")]
 pub use crate::openhuman::flows::tools::*;
-pub use crate::openhuman::hosted::billing::tools::*;
 pub use crate::openhuman::hosted::orchestration::tools::*;
-pub use crate::openhuman::hosted::referral::tools::*;
-pub use crate::openhuman::hosted::team::tools::*;
 pub use crate::openhuman::integrations::composio::tools::*;
 pub use crate::openhuman::integrations::task_sources::tools::*;
 pub use crate::openhuman::integrations::tools::*;
@@ -47,7 +44,6 @@ pub use crate::openhuman::memory::agent::tools::*;
 #[cfg(feature = "memory-git")]
 pub use crate::openhuman::memory::tools::diff::*;
 pub use crate::openhuman::memory::tools::goals::*;
-pub use crate::openhuman::memory::tools::people::*;
 pub use crate::openhuman::memory::tools::*;
 pub use crate::openhuman::platform::cost::tools::*;
 pub use crate::openhuman::platform::doctor::tools::*;
@@ -63,8 +59,6 @@ pub use crate::openhuman::skills::runtime::tools::*;
 #[cfg(feature = "skills")]
 pub use crate::openhuman::skills::tools::*;
 pub use crate::openhuman::threads::todos::tools::*;
-pub use crate::openhuman::threads::tools::*;
-pub use crate::openhuman::tinyplace::tools::*;
 #[cfg(feature = "voice")]
 pub use crate::openhuman::voice::audio_toolkit::tools::*;
 #[cfg(feature = "web3")]

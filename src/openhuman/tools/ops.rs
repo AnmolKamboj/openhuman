@@ -518,17 +518,6 @@ pub fn all_tools_with_runtime(
             security.clone(),
         )),
         Box::new(GmailUnsubscribeTool),
-        // Knowledge & memory tools (agent-tool expansion). Read/bounded-write
-        // ship default-ON; the overextending siblings (people_refresh_address_book —
-        // bulk OS contacts ingest with a permission prompt) ship default-OFF via
-        // `tools::user_filter`. (The vault domain was removed upstream in #3040.)
-        Box::new(PeopleListTool),
-        Box::new(PeopleResolveTool),
-        Box::new(PeopleScoreTool),
-        Box::new(PeopleGetTool),
-        Box::new(PeopleAddAliasTool),
-        Box::new(PeopleRecordInteractionTool),
-        Box::new(PeopleRefreshAddressBookTool),
         // Skills metadata tools. `skill_run` is already exposed by RunSkillTool
         // above, so it is not duplicated. Reads ship default-ON; the
         // create/install/uninstall mutators ship default-OFF via
@@ -588,28 +577,6 @@ pub fn all_tools_with_runtime(
         Box::new(WorkflowInstallFromUrlTool::new(config.clone())),
         #[cfg(feature = "skills")]
         Box::new(WorkflowUninstallTool),
-        // Threads (conversation) tools. Read/bounded-write ship default-ON;
-        // the destructive thread_delete / thread_purge_all ship default-OFF
-        // via `tools::user_filter` (thread_destructive toggle).
-        Box::new(ThreadListTool),
-        Box::new(ThreadReadTool),
-        Box::new(ThreadCreateTool),
-        Box::new(ThreadUpdateTitleTool),
-        Box::new(ThreadUpdateLabelsTool),
-        Box::new(ThreadMessageListTool),
-        // Read-only cross-thread transcript search (trigram index). Lets the
-        // context scout and other agents recall what was said in earlier chats.
-        Box::new(ThreadTranscriptSearchTool),
-        Box::new(ThreadMessageAppendTool),
-        Box::new(ThreadMessageUpdateTool),
-        Box::new(ThreadTitleGenerateTool),
-        Box::new(ThreadTurnStateGetTool),
-        Box::new(ThreadTurnStateListTool),
-        Box::new(ThreadTurnStateClearTool),
-        Box::new(ThreadTaskBoardReadTool::new(config.clone())),
-        Box::new(ThreadTaskBoardWriteTool::new(config.clone())),
-        Box::new(ThreadDeleteTool),
-        Box::new(ThreadPurgeAllTool),
         // Learning (user-profile facet cache) tools. Reads ship default-ON;
         // every mutator ships default-OFF via `tools::user_filter`
         // (learning_manage toggle) — they persistently rewrite the assistant's
@@ -684,41 +651,11 @@ pub fn all_tools_with_runtime(
         Box::new(ConfigRuntimeFlagsTool),
         Box::new(ConfigResolveApiUrlTool),
         Box::new(ConfigDataPathsTool),
-        // Account & money. Reads default-ON; billing money-movers (billing_writes)
-        // and team admin ops (team_admin) ship default-OFF via `tools::user_filter`.
-        // credentials exposes only non-secret reads.
-        Box::new(ReferralStatsTool::new(config.clone())),
-        Box::new(ReferralClaimTool::new(config.clone())),
-        Box::new(BillingPlanTool::new(config.clone())),
-        Box::new(BillingBalanceTool::new(config.clone())),
-        Box::new(BillingTransactionsTool::new(config.clone())),
-        Box::new(BillingAutoRechargeTool::new(config.clone())),
-        Box::new(BillingCardsTool::new(config.clone())),
-        Box::new(BillingCouponsTool::new(config.clone())),
-        Box::new(BillingPortalTool::new(config.clone())),
-        Box::new(BillingPurchasePlanTool::new(config.clone())),
-        Box::new(BillingTopUpTool::new(config.clone())),
-        Box::new(BillingCoinbaseChargeTool::new(config.clone())),
-        Box::new(BillingSetupIntentTool::new(config.clone())),
-        Box::new(BillingUpdateCardTool::new(config.clone())),
-        Box::new(BillingDeleteCardTool::new(config.clone())),
-        Box::new(BillingRedeemCouponTool::new(config.clone())),
-        Box::new(BillingUpdateAutoRechargeTool::new(config.clone())),
-        Box::new(TeamListTool::new(config.clone())),
-        Box::new(TeamUsageTool::new(config.clone())),
-        Box::new(TeamGetTool::new(config.clone())),
-        Box::new(TeamListMembersTool::new(config.clone())),
-        Box::new(TeamListInvitesTool::new(config.clone())),
-        Box::new(TeamCreateTool::new(config.clone())),
-        Box::new(TeamUpdateTool::new(config.clone())),
-        Box::new(TeamDeleteTool::new(config.clone())),
-        Box::new(TeamSwitchTool::new(config.clone())),
-        Box::new(TeamJoinTool::new(config.clone())),
-        Box::new(TeamLeaveTool::new(config.clone())),
-        Box::new(TeamCreateInviteTool::new(config.clone())),
-        Box::new(TeamRevokeInviteTool::new(config.clone())),
-        Box::new(TeamRemoveMemberTool::new(config.clone())),
-        Box::new(TeamChangeMemberRoleTool::new(config.clone())),
+        // Account & money. The billing / team / referral agent-tool families were
+        // removed: money movement and team administration are dashboard
+        // surfaces, not things an agent should reach for mid-turn, and their
+        // controllers remain registered for the UI. `credentials` exposes only
+        // non-secret reads.
         Box::new(CredentialListTool::new(config.clone())),
         Box::new(SessionStateTool::new(config.clone())),
         Box::new(SessionGetUserTool::new(config.clone())),
@@ -772,17 +709,6 @@ pub fn all_tools_with_runtime(
     // choosing it and reporting the failure back to the user.
     #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
-
-    // tiny.place agent surface. These wrap the internal tiny.place controllers
-    // so the dedicated tinyplace subagent can register identities, inspect
-    // inbox/DM state, trade marketplace assets, manage groups, and work jobs
-    // through the same validation/client paths as JSON-RPC.
-    let tinyplace_tools = crate::openhuman::tinyplace::tools::all_tinyplace_agent_tools();
-    log::debug!(
-        "[tools::ops][tinyplace] registering tinyplace agent tools count={}",
-        tinyplace_tools.len()
-    );
-    tools.extend(tinyplace_tools);
 
     // Presentation generation (#2778). Native-Rust engine (ppt-rs
     // backed) as of the #2780-follow-up rust-engine refactor — no
@@ -1130,20 +1056,6 @@ pub fn all_tools_with_runtime(
     // ── Agent integration tools (backend-proxied) ─────────────────
     if let Some(client) = crate::openhuman::integrations::build_client(root_config) {
         tracing::debug!("[integrations] client built successfully");
-        if root_config.integrations.apify.is_active() {
-            tools.push(Box::new(crate::openhuman::tools::ApifyRunActorTool::new(
-                Arc::clone(&client),
-            )));
-            tools.push(Box::new(
-                crate::openhuman::tools::ApifyGetRunStatusTool::new(Arc::clone(&client)),
-            ));
-            tools.push(Box::new(
-                crate::openhuman::tools::ApifyGetRunResultsTool::new(Arc::clone(&client)),
-            ));
-            tracing::debug!("[integrations] registered apify tools");
-        } else {
-            tracing::debug!("[integrations] apify disabled — skipping");
-        }
         if root_config.integrations.google_places.is_active() {
             tools.push(Box::new(
                 crate::openhuman::tools::GooglePlacesSearchTool::new(Arc::clone(&client)),
@@ -1262,10 +1174,24 @@ pub fn all_tools_with_runtime(
     let after_domains = tools.len();
 
     tools.retain(|t| crate::core::all::capability_allowed(tool_capability(t.name())));
+    let after_capabilities = tools.len();
+
+    // 3. ToolGroups: a group an embedder set to `Off` is not registered at all.
+    //    `Advertised` and `Withheld` both keep the tool here — they differ only
+    //    in whether its schema reaches the provider, which is decided later by
+    //    `strip_packed_from_visible`. Same default-open rule as the two filters
+    //    above: with no ambient context every group is `Withheld`, so nothing
+    //    is dropped and the desktop list is unchanged.
+    {
+        let groups = crate::openhuman::tools::toolpacks::groups::current();
+        tools.retain(|t| {
+            groups.mode_for_tool(t.name()) != crate::openhuman::tools::toolpacks::GroupMode::Off
+        });
+    }
 
     log::debug!(
-        "[tools::ops][post-filter] {before} assembled → {after_domains} after DomainSet → {} after \
-         memory capabilities",
+        "[tools::ops][post-filter] {before} assembled → {after_domains} after DomainSet → \
+         {after_capabilities} after memory capabilities → {} after ToolGroups",
         tools.len()
     );
 
@@ -1371,7 +1297,7 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "monitor_stop",
         "notify_user",
     ];
-    const THREADS_EXTRA: &[&str] = &["transcript_search", "goal_get", "goal_set", "goal_complete"];
+    const THREADS_EXTRA: &[&str] = &["goal_get", "goal_set", "goal_complete"];
     // Memory extras not covered by the `memory_`/`goals_` prefixes.
     const MEMORY_EXTRA: &[&str] = &[
         "remember_preference",
@@ -1419,6 +1345,10 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         return DomainGroup::Memory;
     }
     // Threads family (harness-kept): thread_* + todo_* + per-thread goal + search.
+    // `thread_` is kept as a prefix even though the `thread_*` agent-tool
+    // family was removed: `todo_`, `goal_*` and the THREADS_EXTRA entries still
+    // classify here, and a future threads tool should land in Threads rather
+    // than falling through to Platform.
     if name.starts_with("thread_") || name.starts_with("todo_") || THREADS_EXTRA.contains(&name) {
         return DomainGroup::Threads;
     }
@@ -1447,9 +1377,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     if name.starts_with("config_") || name.starts_with("workspace_") {
         return DomainGroup::Config;
     }
-    if name.starts_with("people_") {
-        return DomainGroup::Memory;
-    }
     if name.starts_with("security_")
         || name.starts_with("credential_")
         || name.starts_with("session_")
@@ -1476,7 +1403,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         || name.starts_with("brave_")
         || name.starts_with("parallel_")
         || name.starts_with("querit_")
-        || name.starts_with("apify_")
         || name.starts_with("google_places_")
         || name.starts_with("stock_")
         || name.starts_with("storage_")
@@ -1491,18 +1417,15 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     {
         return DomainGroup::Integrations;
     }
-    // Hosted: clients of the TinyHumans backend.
-    if name.starts_with("billing_")
-        || name.starts_with("referral_")
-        || name.starts_with("team_")
-        || name.starts_with("orchestration_")
-    {
+    // Hosted: clients of the TinyHumans backend. The `billing_` / `team_` /
+    // `referral_` prefixes were removed with those agent-tool families; their
+    // controllers stay registered for the dashboard, which does not route
+    // through this classifier.
+    if name.starts_with("orchestration_") {
         return DomainGroup::Hosted;
     }
-    // Relay: the multi-agent relay surface.
-    if name.starts_with("tinyplace_") {
-        return DomainGroup::Relay;
-    }
+    // Relay owns no agent tools since the `tinyplace_*` family was removed —
+    // see `TOOL_LESS` in `ops_tests.rs`, which is what keeps that honest.
     // Desktop: shell-facing surfaces.
     if name.starts_with("dashboard_") {
         return DomainGroup::Desktop;
@@ -1570,7 +1493,6 @@ fn tool_capability(name: &str) -> Option<tinymemory_api::capabilities::Capabilit
     // Not driver-backed. Each entry is an argued exception, not a fallthrough.
     if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly
         || name == "memory_store_kinds"    // enumerates `MemoryKind` constants; no store access
-        || name.starts_with("people_")     // per-workspace people SQLite store, not the driver
         || name.starts_with("flow_memory_")
     // flow-sandboxed; DomainGroup::Flows
     {
