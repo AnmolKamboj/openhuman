@@ -537,6 +537,31 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
         chunk
     };
 
+    let wrong_kind = {
+        let ts = Utc.timestamp_millis_opt(1_700_000_003_000).unwrap();
+        let text = "right source, owner and window, wrong source kind";
+        let chunk = Chunk {
+            id: chunk_id(SourceKind::Email, "chat:#status", 4, text),
+            content: text.to_string(),
+            metadata: Metadata {
+                source_kind: SourceKind::Email,
+                source_id: "chat:#status".into(),
+                owner: "round18-user".into(),
+                timestamp: ts,
+                time_range: (ts, ts),
+                tags: vec!["round18".into()],
+                source_ref: None,
+                path_scope: None,
+            },
+            token_count: 32,
+            seq_in_source: 4,
+            created_at: ts,
+            partial_message: false,
+        };
+        upsert_chunks(&cfg, std::slice::from_ref(&chunk)).expect("upsert decoy");
+        chunk
+    };
+
     let listed = list_chunks_rpc(
         &cfg,
         ListChunksRequest {
@@ -556,10 +581,11 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     assert_eq!(
         listed_ids,
         vec![chunk.id.as_str()],
-        "every filter must discriminate: {} (source id), {} (window), {} (owner) are all in the store",
+        "every filter must discriminate: {} (source id), {} (window), {} (owner), {} (source kind) are all in the store",
         wrong_source.id,
         wrong_time.id,
-        wrong_owner.id
+        wrong_owner.id,
+        wrong_kind.id
     );
     let fetched = get_chunk_rpc(
         &cfg,

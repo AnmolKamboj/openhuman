@@ -301,7 +301,7 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_rejects_secret_like_content() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let tool = MemoryStoreTool::new(test_security());
         let result = tool
             .execute(json!({
@@ -313,7 +313,10 @@ the tool resolves the bound driver rather than being handed a memory handle"]
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("looks like a secret"));
-        assert!(mem.get("global", "api").await.unwrap().is_none());
+        // Through the guard, not `test_mem()`: an absence assertion against a
+        // store the tool never writes to holds whether or not the refusal
+        // worked, which makes it worse than no assertion at all.
+        assert!(stored("global", "api").await.is_none());
     }
 
     #[tokio::test]
@@ -340,37 +343,39 @@ the tool resolves the bound driver rather than being handed a memory handle"]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_in_readonly_mode() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let readonly = Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::ReadOnly,
             ..SecurityPolicy::default()
         });
         let tool = MemoryStoreTool::new(readonly);
         let result = tool
-            .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
+            .execute(
+                json!({"namespace": "global", "key": "readonly_lang", "content": "Prefers Rust"}),
+            )
             .await
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("read-only mode"));
-        assert!(mem.get("global", "lang").await.unwrap().is_none());
+        assert!(stored("global", "readonly_lang").await.is_none());
     }
 
     #[tokio::test]
     #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
 the tool resolves the bound driver rather than being handed a memory handle"]
     async fn store_blocked_when_rate_limited() {
-        let (_tmp, mem) = test_mem();
+        let (_tmp, _mem) = test_mem();
         let limited = Arc::new(SecurityPolicy {
             max_actions_per_hour: 0,
             ..SecurityPolicy::default()
         });
         let tool = MemoryStoreTool::new(limited);
         let result = tool
-            .execute(json!({"namespace": "global", "key": "lang", "content": "Prefers Rust"}))
+            .execute(json!({"namespace": "global", "key": "ratelimited_lang", "content": "Prefers Rust"}))
             .await
             .unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("Rate limit exceeded"));
-        assert!(mem.get("global", "lang").await.unwrap().is_none());
+        assert!(stored("global", "ratelimited_lang").await.is_none());
     }
 }
