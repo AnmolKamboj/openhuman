@@ -354,16 +354,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/agent/harness/session/turn/context.rs",
-        Verdict::NeedsWiderSeam,
-        "preferences namespace and loaders are engine-owned (preferences::STANDING_PREFS_LIMIT, preferences::load_general_preferences); no capability family covers them",
-    ),
-    (
-        "src/openhuman/agent/harness/session/turn/core.rs",
-        Verdict::NeedsWiderSeam,
-        "preferences namespace and loaders are engine-owned (preferences::recall_situational_preferences); no capability family covers them",
-    ),
-    (
         "src/openhuman/agent/harness/subagent_runner/ops/runner.rs",
         Verdict::NeedsWiderSeam,
         "names engine-owned types (store::trees::types::TreeKind); relocating them to tinymemory-api is the ask, not a bus method",

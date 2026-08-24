@@ -74,8 +74,8 @@
 //! move in the same change that removed the duplicate.
 
 pub use tinymemory_api::{
-    capabilities, chunks, error, goals, health, provider, recall, tool_memory, tree, types, wire,
-    CONTRACT_VERSION,
+    capabilities, chunks, error, goals, health, provider, recall, tool_memory, traits, tree, types,
+    wire, CONTRACT_VERSION,
 };
 
 /// The inbound half of the seam: the only two `tinymemory_api::host` types that
