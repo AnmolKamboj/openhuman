@@ -200,6 +200,10 @@ fn setup_provider() -> (TempDir, Arc<MemoryClient>, Arc<dyn MemoryProvider>) {
         default_temperature: 0.2,
         output_language: None,
         memory_sources: serde_json::Value::Null,
+        memory_sync_interval_secs: None,
+        composio_mode: String::new(),
+        backend_api_url: String::new(),
+        composio_entity_id: String::new(),
     };
     let provider: Arc<dyn MemoryProvider> = Arc::new(TinycortexProvider::new(
         "tinycortex".into(),
