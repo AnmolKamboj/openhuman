@@ -163,6 +163,101 @@ fn error_completion(status: u16, message: &str) -> Value {
     json!({ "status": status, "error": message })
 }
 
+// ─── Fan-out overlap barrier ────────────────────────────────────────────────
+//
+// Only `parallel_subagent_fanout` arms this; every other test leaves it empty
+// and the handler's fast path is a single `is_empty()` check.
+//
+// The problem it solves: "both workers eventually issued a request" is
+// satisfied by strictly serial execution, so a deadline-based assertion cannot
+// tell a fan-out from a fast sequence. This barrier makes overlap the only way
+// through — each armed worker's response is withheld until a *second* armed
+// worker has also arrived. Serial execution parks on the first one until the
+// wait expires and never sets [`CANARY_OVERLAP`].
+
+/// Canary substrings whose worker requests must overlap. Empty = disarmed.
+static CANARY_BARRIER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+/// Worker requests currently parked at the barrier.
+static CANARY_IN_FLIGHT: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+/// Set once two armed workers were parked simultaneously.
+static CANARY_OVERLAP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// How long a parked worker waits for a peer before giving up. Generous — it is
+/// only ever reached when the property under test is already violated, so it
+/// costs nothing on a passing run and bounds a failing one.
+const CANARY_BARRIER_WAIT: Duration = Duration::from_secs(20);
+
+fn canary_barrier() -> &'static Mutex<Vec<String>> {
+    CANARY_BARRIER.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn canary_in_flight() -> &'static Mutex<std::collections::HashSet<String>> {
+    CANARY_IN_FLIGHT.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    }
+}
+
+/// Arms the barrier for `canaries` and clears any previous state.
+fn arm_canary_barrier(canaries: &[&str]) {
+    *lock_or_recover(canary_barrier()) = canaries.iter().map(|c| (*c).to_string()).collect();
+    lock_or_recover(canary_in_flight()).clear();
+    CANARY_OVERLAP.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn disarm_canary_barrier() {
+    lock_or_recover(canary_barrier()).clear();
+    lock_or_recover(canary_in_flight()).clear();
+}
+
+fn canary_overlap_observed() -> bool {
+    CANARY_OVERLAP.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Which armed canary this request is a **worker's own** request for, if any.
+///
+/// Structural, not a substring search over the serialized body, and that
+/// distinction is the whole point. Every captured request carries its full
+/// conversation history, so after the orchestrator's spawn turn its *own*
+/// follow-up request also contains both canary strings — inside the prior
+/// assistant message's `tool_calls`. Matching anywhere in the body would let
+/// that follow-up stand in for a worker that never ran.
+///
+/// A worker's own request ends with the `user` message carrying its prompt.
+/// The orchestrator's follow-up ends with a `tool` result. So: last message,
+/// `role == "user"`, content contains the canary.
+fn canary_worker_request(body: &Value) -> Option<String> {
+    let last = body.get("messages").and_then(Value::as_array)?.last()?;
+    if last.get("role").and_then(Value::as_str)? != "user" {
+        return None;
+    }
+    let content = last.get("content").and_then(Value::as_str)?;
+    lock_or_recover(canary_barrier())
+        .iter()
+        .find(|canary| content.contains(canary.as_str()))
+        .cloned()
+}
+
+/// Parks an armed worker until a second one joins it, or the wait expires.
+async fn hold_for_canary_peer(canary: String) {
+    {
+        let mut in_flight = lock_or_recover(canary_in_flight());
+        in_flight.insert(canary.clone());
+        if in_flight.len() >= 2 {
+            CANARY_OVERLAP.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let deadline = std::time::Instant::now() + CANARY_BARRIER_WAIT;
+    while !canary_overlap_observed() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    lock_or_recover(canary_in_flight()).remove(&canary);
+}
+
 async fn scripted_chat_completions(
     uri: Uri,
     _headers: HeaderMap,
@@ -179,6 +274,15 @@ async fn scripted_chat_completions(
             "body": body.clone(),
         }))
     });
+
+    // Park an armed fan-out worker before it is answered, so a peer has a
+    // chance to arrive. Before the queue pop, not after: holding the popped
+    // entry would serialize the FIFO itself and deadlock the peer.
+    if !lock_or_recover(canary_barrier()).is_empty() {
+        if let Some(canary) = canary_worker_request(&body) {
+            hold_for_canary_peer(canary).await;
+        }
+    }
 
     let next = with_scripted(|q| q.pop_front());
     let Some(entry) = next else {
@@ -1970,6 +2074,10 @@ fn parallel_subagent_fanout() {
 
 async fn parallel_subagent_fanout_inner() {
     let _lock = env_lock();
+    // Arm the overlap barrier before the stack boots: each worker's response is
+    // withheld until a second worker has also arrived, so a serial
+    // implementation parks and never reaches `canary_overlap_observed`.
+    arm_canary_barrier(&["PARALLEL_ALPHA_CANARY", "PARALLEL_BETA_CANARY"]);
     // ONE assistant message carrying TWO spawns — the "issued together" shape.
     // Both children are single-turn (text only, no inner tool loop), so the
     // remaining entries are: the orchestrator's own reply plus one completion
@@ -2016,57 +2124,52 @@ async fn parallel_subagent_fanout_inner() {
     // The children are detached, so the turn can end before they have issued
     // their upstream calls. Poll rather than assert immediately — a bare
     // assertion here would be a race, and a sleep would be a guess.
-    let both_dispatched = |reqs: &[Value]| {
-        let all = serde_json::to_string(reqs).unwrap_or_default();
-        all.contains("Find PARALLEL_ALPHA_CANARY") && all.contains("Find PARALLEL_BETA_CANARY")
+    let worker_canaries = |reqs: &[Value]| -> std::collections::HashSet<String> {
+        reqs.iter()
+            .filter_map(|r| canary_worker_request(r.get("body")?))
+            .collect()
     };
     let deadline = std::time::Instant::now() + Duration::from_secs(60);
     loop {
-        if with_captured(|c| both_dispatched(c)) {
+        if with_captured(|c| worker_canaries(c).len()) >= 2 {
             break;
         }
         assert!(
             std::time::Instant::now() < deadline,
-            "both workers must be dispatched; captured requests: {}",
+            "both workers must issue their own request; captured: {}",
             serde_json::to_string_pretty(&with_captured(|c| c.clone())).unwrap_or_default()
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
     let requests = with_captured(|c| c.clone());
+    let found = worker_canaries(&requests);
+    disarm_canary_barrier();
 
-    // Both prompts reached the upstream, so both workers really ran — not one
-    // worker twice, and not one worker while the other was dropped on the
-    // floor. This is the claim that justifies retiring `spawn_parallel_agents`.
-    let alpha = requests
-        .iter()
-        .filter(|r| {
-            serde_json::to_string(r)
-                .unwrap_or_default()
-                .contains("Find PARALLEL_ALPHA_CANARY")
-        })
-        .count();
-    let beta = requests
-        .iter()
-        .filter(|r| {
-            serde_json::to_string(r)
-                .unwrap_or_default()
-                .contains("Find PARALLEL_BETA_CANARY")
-        })
-        .count();
-    assert!(
-        alpha >= 1 && beta >= 1,
-        "each worker must be dispatched at least once (alpha={alpha}, beta={beta}); \
-         requests: {}",
-        serde_json::to_string_pretty(&requests).unwrap_or_default()
-    );
+    // Each worker issued its OWN request — identified by request shape, not by
+    // a substring hit anywhere in the serialized body. Every captured request
+    // carries its full history, so after the spawn turn the orchestrator's own
+    // follow-up also contains both canary strings inside the prior assistant
+    // message's `tool_calls`; matching on those would let this pass with one
+    // worker dropped on the floor.
+    for canary in ["PARALLEL_ALPHA_CANARY", "PARALLEL_BETA_CANARY"] {
+        assert!(
+            found.contains(canary),
+            "worker `{canary}` never issued its own request (found: {found:?}); \
+             requests: {}",
+            serde_json::to_string_pretty(&requests).unwrap_or_default()
+        );
+    }
 
-    // ≥3 upstream calls: the orchestrator's spawn turn, its own reply, and at
-    // least the two children. Fewer means a child never reached the model.
+    // ...and they were in flight at the same time. This is the assertion that
+    // makes the test about concurrency rather than eventual dispatch: the
+    // barrier only releases when a second worker joins the first, so strictly
+    // serial execution cannot reach here — it parks, times out, and leaves the
+    // flag clear. It is the claim that justified retiring `spawn_parallel_agents`.
     assert!(
-        requests.len() >= 3,
-        "expected ≥3 upstream requests (orchestrator + 2 workers), got {};\nrequests: {}",
-        requests.len(),
+        canary_overlap_observed(),
+        "the two workers never overlapped — fan-out ran serially, which is the \
+         regression #4754 measured (145-200s gaps); requests: {}",
         serde_json::to_string_pretty(&requests).unwrap_or_default()
     );
 
