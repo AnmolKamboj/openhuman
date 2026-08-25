@@ -143,10 +143,10 @@ pub mod rpc_models;
 pub use rpc_models::*;
 // Named on the crate directly — `traits` is engine scaffolding, not bus
 // vocabulary, and is deliberately not re-exported from `memory::api` (#5560).
-pub use tinymemory_api::traits::Memory;
 pub use crate::openhuman::memory::api::types::{
     MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };
+pub use tinymemory_api::traits::Memory;
 
 // Types that external tests and consumers historically imported from
 // `memory::*`. The definitions moved to sibling crates during the memory

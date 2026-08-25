@@ -222,10 +222,9 @@ impl ComposioCallbacks {
     /// not something to smuggle in through its host half.
     async fn api_key(&self) -> tinybus::Result<Option<String>> {
         let config = self.live_config_or_installed().await;
-        let stored =
-            crate::openhuman::security::credentials::get_composio_api_key(config.as_ref())
-                .ok()
-                .flatten();
+        let stored = crate::openhuman::security::credentials::get_composio_api_key(config.as_ref())
+            .ok()
+            .flatten();
         let configured = config
             .composio
             .api_key
