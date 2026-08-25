@@ -115,12 +115,6 @@ pub async fn graph_export_rpc(
 async fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>), String> {
     const MAX_TREE_NODES: usize = 10_000;
 
-    struct SummaryRow {
-        node: GraphNode,
-        tree_scope: String,
-        child_ids: Vec<String>,
-    }
-
     let binding = crate::openhuman::memory::binding::for_config(cfg)?;
     // Resolved once and held across both calls: the forest skeleton and its
     // bottom edge are two members of the same family, and re-resolving between
@@ -161,11 +155,86 @@ async fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEd
         forest.truncated
     );
 
+    let mut nodes = shape_summary_nodes(forest.summaries, MAX_TREE_NODES);
+
+    let chunk_budget = MAX_TREE_NODES.saturating_sub(nodes.len());
+    // The guard is load-bearing, not cosmetic: the driver clamps a listing
+    // limit into `1..=cap`, so asking for zero leaves would return one.
+    if chunk_budget > 0 {
+        let leaves = match tree {
+            Some(tree) => tree
+                .recent_leaves(chunk_budget, None)
+                .await
+                .map_err(|e| format!("recent_leaves: {e}"))?,
+            None => Vec::new(),
+        };
+        log::debug!(
+            "[memory_tree::read::graph_tree] leaves={} budget={chunk_budget}",
+            leaves.len()
+        );
+        for leaf in leaves {
+            let TreeLeaf {
+                chunk_id,
+                parent_summary_id,
+                // Selected by the read this replaced and discarded there too:
+                // a leaf node draws its edge from its summary, not its source.
+                source_id: _,
+                preview,
+                time_range_start,
+                time_range_end,
+            } = leaf;
+            let label = preview.chars().take(CHUNK_LABEL_CHARS).collect::<String>();
+            nodes.push(GraphNode {
+                kind: "chunk".into(),
+                id: chunk_id,
+                label,
+                tree_kind: None,
+                tree_scope: None,
+                tree_id: None,
+                level: None,
+                // The contract's driver already drops the empty string; kept
+                // here so a driver that does not cannot draw an edge to a node
+                // named "".
+                parent_id: parent_summary_id.filter(|s| !s.is_empty()),
+                child_count: None,
+                time_range_start_ms: Some(time_range_start.timestamp_millis()),
+                time_range_end_ms: Some(time_range_end.timestamp_millis()),
+                file_basename: None,
+                entity_kind: None,
+            });
+        }
+    }
+
+    Ok((nodes, Vec::new()))
+}
+
+/// Shape the forest's summary nodes into graph nodes: a synthetic source root
+/// per scope, every summary re-parented onto its root when its real parent is
+/// not itself in the forest, and a document leaf per child id of an L1 summary
+/// that sealed over raw items rather than other summaries.
+///
+/// Split out of [`collect_tree_graph`] because it is the whole of what this
+/// export decides. The driver supplies the forest and nothing else: which
+/// nodes exist, how they are labelled, what is a root, what is an orphan and
+/// what becomes a document leaf are all decided here. Keeping it a pure
+/// function of the forest is what lets those rules be asserted directly —
+/// `summary_forest` is served by the memory module now, so a test that reached
+/// them through `graph_export_rpc` would need a loaded module to say anything
+/// about node shape (see graph_tests.rs).
+///
+/// `max_nodes` bounds the whole result, document leaves included; the summary
+/// nodes are emitted first and the document tail is what gets cut.
+fn shape_summary_nodes(summaries: Vec<TreeSummary>, max_nodes: usize) -> Vec<GraphNode> {
+    struct SummaryRow {
+        node: GraphNode,
+        tree_scope: String,
+        child_ids: Vec<String>,
+    }
+
     // Destructured exhaustively rather than field-picked: a field added to
     // `TreeSummary` upstream then fails to compile here instead of silently
     // going unrendered.
-    let summary_rows: Vec<SummaryRow> = forest
-        .summaries
+    let summary_rows: Vec<SummaryRow> = summaries
         .into_iter()
         .map(|summary| {
             let TreeSummary {
@@ -254,7 +323,7 @@ async fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEd
         nodes.push(node);
     }
 
-    let doc_budget = MAX_TREE_NODES.saturating_sub(nodes.len());
+    let doc_budget = max_nodes.saturating_sub(nodes.len());
     let mut doc_count = 0usize;
     for sr in &summary_rows {
         if doc_count >= doc_budget {
@@ -295,55 +364,7 @@ async fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEd
         }
     }
 
-    let chunk_budget = MAX_TREE_NODES.saturating_sub(nodes.len());
-    // The guard is load-bearing, not cosmetic: the driver clamps a listing
-    // limit into `1..=cap`, so asking for zero leaves would return one.
-    if chunk_budget > 0 {
-        let leaves = match tree {
-            Some(tree) => tree
-                .recent_leaves(chunk_budget, None)
-                .await
-                .map_err(|e| format!("recent_leaves: {e}"))?,
-            None => Vec::new(),
-        };
-        log::debug!(
-            "[memory_tree::read::graph_tree] leaves={} budget={chunk_budget}",
-            leaves.len()
-        );
-        for leaf in leaves {
-            let TreeLeaf {
-                chunk_id,
-                parent_summary_id,
-                // Selected by the read this replaced and discarded there too:
-                // a leaf node draws its edge from its summary, not its source.
-                source_id: _,
-                preview,
-                time_range_start,
-                time_range_end,
-            } = leaf;
-            let label = preview.chars().take(CHUNK_LABEL_CHARS).collect::<String>();
-            nodes.push(GraphNode {
-                kind: "chunk".into(),
-                id: chunk_id,
-                label,
-                tree_kind: None,
-                tree_scope: None,
-                tree_id: None,
-                level: None,
-                // The contract's driver already drops the empty string; kept
-                // here so a driver that does not cannot draw an edge to a node
-                // named "".
-                parent_id: parent_summary_id.filter(|s| !s.is_empty()),
-                child_count: None,
-                time_range_start_ms: Some(time_range_start.timestamp_millis()),
-                time_range_end_ms: Some(time_range_end.timestamp_millis()),
-                file_basename: None,
-                entity_kind: None,
-            });
-        }
-    }
-
-    Ok((nodes, Vec::new()))
+    nodes
 }
 
 fn scope_display_label(scope: &str) -> String {
@@ -558,3 +579,7 @@ pub fn sanitize_basename(id: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "graph_tests.rs"]
+mod tests;
