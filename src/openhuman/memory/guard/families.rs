@@ -1400,8 +1400,10 @@ impl MemoryEpisodic for GuardedEpisodic {
         start_timestamp: f64,
         now: f64,
     ) -> Result<(), MemoryError> {
-        // The only episodic call that names a namespace, so it is the only one
-        // that can be admitted against it.
+        // One of the two episodic calls that names a namespace — `insert_event`
+        // is the other — so it is admitted against that namespace rather than
+        // `NO_NAMESPACE`. The rest of this family addresses a segment by id and
+        // has no namespace to check.
         self.policy.admit_write(
             Capability::Episodic,
             "episodic.create_segment",
