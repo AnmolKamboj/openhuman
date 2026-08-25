@@ -800,9 +800,11 @@ fn check_command_available(
 
 // ── Memory-tree DB health ────────────────────────────────────────
 
-/// Probe the memory-tree SQLite database and push a [`DiagnosticItem`].
+/// Probe the memory-tree and push [`DiagnosticItem`]s.
 ///
-/// - If the DB directory / file does not exist yet: `Warn` (not yet created).
+/// - If the legacy SQLite file does not exist: `Warn` (not yet created by the
+///   embedded driver). This is an informational SQLite-artifact check, not a
+///   gate: drivers that store memory elsewhere have no `chunks.db` by design.
 /// - If a stale `.db-shm` file is present alongside the DB: `Warn`.
 /// - If the driver answered with a chunk count: `Ok`.
 /// - If it did not: `Error`.
@@ -812,10 +814,8 @@ fn check_command_available(
 /// `memory_chunks`, taken by the async caller: see [`MemoryChunkCount`] for
 /// why it arrives as an argument rather than being read here.
 ///
-/// The two are ordered, not independent: an absent file short-circuits before
-/// the count is consulted at all, exactly as it short-circuited before the
-/// connection was opened. A workspace that has never ingested anything must
-/// keep reading as "not yet created" rather than as a failed probe.
+/// The driver probe always runs regardless of file existence, so a bound driver
+/// that does not use SQLite still surfaces its health here.
 fn check_memory_tree_db(
     config: &Config,
     memory_chunks: &MemoryChunkCount,
@@ -844,7 +844,7 @@ fn check_memory_tree_db(
         }
     }
 
-    // ── File existence ──────────────────────────────────────────────
+    // ── SQLite-artifact check (informational only, not a gate) ──────
     if !db_path.exists() {
         items.push(DiagnosticItem::warn(
             cat,
@@ -853,7 +853,6 @@ fn check_memory_tree_db(
                 db_path.display()
             ),
         ));
-        return;
     }
 
     // ── Driver probe ────────────────────────────────────────────────

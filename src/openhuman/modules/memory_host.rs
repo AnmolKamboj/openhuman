@@ -222,11 +222,18 @@ impl ComposioCallbacks {
     /// not something to smuggle in through its host half.
     async fn api_key(&self) -> tinybus::Result<Option<String>> {
         let config = self.live_config_or_installed().await;
-        Ok(
+        let stored =
             crate::openhuman::security::credentials::get_composio_api_key(config.as_ref())
                 .ok()
-                .flatten(),
-        )
+                .flatten();
+        let configured = config
+            .composio
+            .api_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_owned);
+        Ok(stored.or(configured))
     }
 
     /// Whether *some* viable Composio client resolves right now.

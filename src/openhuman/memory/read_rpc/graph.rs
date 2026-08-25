@@ -12,19 +12,13 @@ use crate::rpc::RpcOutcome;
 // `MemoryChunks::list_chunks` + `MemoryEntities::chunk_entities` for the
 // contacts view — so neither reaches the engine's tables any more (#5560).
 //
-// **Three of those four members need a host-side forwarder that does not exist
-// yet**, and this is the same hazard `tree::rpc::ingest_rpc` documents for
-// `IngestEmail`. `ModuleMemoryProvider` — the driver every shipped build
-// binds — implements `MemoryTree` without `summary_forest` / `recent_leaves`
-// and `MemoryEntities` without `chunk_entities`, so those calls fall to the
-// trait's default body and answer `Unsupported`. The errors are propagated
-// rather than degraded to an empty graph, deliberately: `summary_forest`'s own
-// contract refuses to answer an empty forest for exactly this reason, and a
-// Memory tab that renders "no memories" because a method is missing is the
-// failure nobody chases. Closing it is three things in order, none of them
-// here: a forwarder per member in `modules::memory`, a `tinymemory` release
-// carrying them, and the `modules::registry` + `ARTIFACT_CAPABILITIES_PIN`
-// re-pin onto it.
+// All four forwarders now exist in `modules::memory` (`summary_forest`,
+// `recent_leaves`, `chunk_entities` — added in this PR alongside the
+// `modules::registry` re-pin to `ARTIFACT_CAPABILITIES_PIN = "1.5.0"`). Errors
+// are propagated rather than degraded to an empty graph, deliberately:
+// `summary_forest`'s own contract refuses to answer an empty forest for exactly
+// this reason, and a Memory tab that renders "no memories" because a method is
+// missing is the failure nobody chases.
 
 // ── wire types ────────────────────────────────────────────────────────────
 

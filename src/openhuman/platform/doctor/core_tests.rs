@@ -77,25 +77,30 @@ fn model_matches_rejects_different_base_models() {
 // ── check_memory_tree_db tests (#2206) ───────────────────────────────────────
 
 /// When the workspace exists but the DB file has never been created,
-/// `check_memory_tree_db` should push exactly one `Warn` item mentioning
-/// "not yet created".
+/// `check_memory_tree_db` should push a `Warn` about the missing file AND
+/// still surface the driver's probe result. Drivers that do not use SQLite
+/// have no `chunks.db` by design, so the file check must not gate the probe.
 #[test]
 fn check_memory_tree_db_warns_when_db_missing() {
     let tmp = TempDir::new().expect("tempdir");
     let cfg = test_config_in(&tmp);
 
     let mut items = vec![];
-    // A count is supplied and must go unread: an absent file short-circuits
-    // before the driver's answer is consulted, so a workspace that has never
-    // ingested anything reads as "not yet created" and not as a failed probe.
     check_memory_tree_db(&cfg, &Ok(7), &mut items);
 
-    assert_eq!(items.len(), 1, "expected exactly one diagnostic item");
-    assert_eq!(items[0].severity, Severity::Warn);
+    // Warn item for the missing file.
     assert!(
-        items[0].message.contains("not yet created"),
-        "unexpected message: {}",
-        items[0].message
+        items
+            .iter()
+            .any(|i| i.severity == Severity::Warn && i.message.contains("not yet created")),
+        "expected a 'not yet created' warn item; got: {items:?}",
+    );
+    // Driver probe result is surfaced regardless of file absence.
+    assert!(
+        items
+            .iter()
+            .any(|i| i.severity == Severity::Ok && i.message.contains('7')),
+        "expected a driver-probe Ok item with count 7; got: {items:?}",
     );
 }
 

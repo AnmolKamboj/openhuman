@@ -179,6 +179,24 @@ async fn api_key_is_the_hosts_own_credential_store() {
     assert_eq!(answer, json!(expected));
 }
 
+/// `api_key` falls back to `config.composio.api_key` when the credential store
+/// holds nothing, keeping parity with `create_composio_client`'s fallback so
+/// `is_available` and `api_key` cannot disagree for a direct-mode user.
+#[tokio::test]
+async fn api_key_falls_back_to_config_key_when_credential_store_is_empty() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::default();
+    config.workspace_dir = dir.path().join("workspace");
+    config.config_path = dir.path().join("config.toml");
+    config.composio.api_key = Some("direct-key-from-config".to_owned());
+    let callbacks = ComposioCallbacks(Arc::new(config));
+
+    let answer = call(&callbacks, "ApiKey", json!([]))
+        .await
+        .expect("ApiKey never fails");
+    assert_eq!(answer, json!("direct-key-from-config"));
+}
+
 #[tokio::test]
 async fn a_probe_survives_a_config_it_cannot_read() {
     // The two probes have nowhere to put "could not tell", and answering "no"
