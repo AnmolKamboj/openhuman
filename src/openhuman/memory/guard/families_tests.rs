@@ -461,7 +461,7 @@ fn episodic_event(content: &str) -> crate::openhuman::memory::api::provider::Epi
 async fn episodic_writes_are_redacted_for_a_foreign_driver() {
     let secrety = "Authorization: Bearer abcdefghijklmnop";
 
-    let (driver, guard) = guarded(external_policy("untrusted"));
+    let (driver, guard) = guarded(external_policy("trusted"));
     guard
         .as_episodic()
         .expect("episodic family")
@@ -475,7 +475,7 @@ async fn episodic_writes_are_redacted_for_a_foreign_driver() {
         "the bearer token reached a foreign driver verbatim"
     );
 
-    let (driver, guard) = guarded(external_policy("untrusted"));
+    let (driver, guard) = guarded(external_policy("trusted"));
     guard
         .as_episodic()
         .expect("episodic family")

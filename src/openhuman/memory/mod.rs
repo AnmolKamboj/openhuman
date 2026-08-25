@@ -82,9 +82,6 @@ pub mod goals;
 pub mod people;
 pub mod schema;
 pub mod sources;
-/// The golden-fixture seeder. Public so `tests/memory_golden_fixture_e2e.rs`
-/// can drive it; it walks the RPC handlers, which is why it stayed host-side.
-pub mod store_golden;
 pub mod sync;
 pub mod tool_memory;
 pub mod tree;

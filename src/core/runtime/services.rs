@@ -286,37 +286,29 @@ pub fn start_bootstrap_jobs(services: ServiceSet, _config: &Config) {
         log::debug!("[runtime.bootstrap] memory queue workers disabled by ServiceSet");
     }
 
-    // Integrations — Composio periodic connection sync + one-shot source
-    // reconcile. Both no-op without active Composio connections.
+    // Integrations — Composio source reconcile. No-ops without active
+    // connections.
     //
-    // ── This call is STILL host-side, and deleting it is not tidying ────────
+    // ── The periodic loops are NOT started here any more ────────────────────
     //
-    // `start_periodic_sync` is not host code. It re-exports through
-    // `integrations::composio::mod.rs` to `memory::sync::composio::periodic`,
-    // and that module is `pub use tinymemory_core::sync::composio::*` — so the
-    // loop this line starts is engine code running in the host process.
-    // `ensure_composio_sources` below reaches `tinymemory_core::sources` the
-    // same way.
+    // They were, and deleting them was blocked on upstream rather than on
+    // taste: `start_periodic_sync` is not host code, it re-exported through
+    // `integrations::composio` to `memory::sync::composio::periodic`, which was
+    // `pub use tinymemory_core::sync::composio::*` — engine code running in
+    // this process against the engine this host used to boot.
     //
-    // The queue pool above moved into the module; **these two loops did not**,
-    // and the pinned release says so in its own words. `tinymemory` v1.5.0's
-    // `tinymemory-module/src/lib.rs` carries a section headed "The periodic
-    // sync loops are deliberately NOT started here" listing three reasons they
-    // cannot be: the pipeline reads Composio credentials off `Config` rather
-    // than off the `ComposioHost` seam, `global::client_if_ready()` is `None`
-    // inside the module, and `EngineRuntimeConfig::memory_sync_interval_secs()`
-    // answers `Some(0)` — "manual only" — so every tick would skip every
-    // source without logging anything.
+    // tinymemory v1.6.0 moves both loops into the module and closes the three
+    // things that stopped them working there: the cadence, the Composio mode,
+    // and the module's client not being in the engine's global slot. The host
+    // now passes the first two in `ModuleConfig` (see `modules::ops`).
     //
-    // So this line stays until an upstream release moves the loops, and the
-    // shim at `memory/sync/composio/mod.rs` stays with it. **Both failure modes
-    // here are silent**: removing the call stops Composio sync outright, and
-    // the sync layer reporting "no connections" is indistinguishable from a
-    // user who has none. The first symptom either way is somebody noticing
-    // their mail stopped being indexed weeks later.
+    // Restoring either call would be worse than a duplicate. The cdylib carries
+    // its OWN copy of `tinymemory-core`, so each loop's `OnceLock` is a
+    // different static from this process's: a host that starts them while
+    // loading the module gets TWO pairs of loops over one store, and neither
+    // can see the other.
     if plan.composio_integration_sync {
-        log::debug!("[runtime.bootstrap] starting composio integration sync + source reconcile");
-        crate::openhuman::integrations::composio::start_periodic_sync();
+        log::debug!("[runtime.bootstrap] starting composio source reconcile");
         tokio::spawn(async {
             log::debug!("[runtime.bootstrap] composio source reconcile started");
             crate::openhuman::memory::sources::reconcile::ensure_composio_sources().await;
@@ -332,8 +324,16 @@ pub fn start_bootstrap_jobs(services: ServiceSet, _config: &Config) {
     // web pages) get their own cadence loop; the Composio scheduler above only
     // walks Composio connections.
     if plan.workspace_memory_sync {
-        log::debug!("[runtime.bootstrap] starting workspace memory-source periodic sync");
-        crate::openhuman::memory::sync::workspace::start_workspace_periodic_sync();
+        // Owned by the module for the same reason as the Composio loop above.
+        // The flag survives because `ServiceSet` is the host's declaration of
+        // which background work it wants running at all, and a host that turns
+        // this off should not have the module running it either — wiring that
+        // through is follow-up, and until then this logs the divergence rather
+        // than hiding it.
+        log::debug!(
+            "[runtime.bootstrap] workspace memory-source periodic sync is owned by the memory \
+             module; this process starts none"
+        );
     } else {
         log::debug!("[runtime.bootstrap] workspace periodic sync disabled by ServiceSet");
     }

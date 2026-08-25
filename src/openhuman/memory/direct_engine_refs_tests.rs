@@ -285,21 +285,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine-internal ingest pipeline entry (ingest_pipeline::ingest_chat, queue::drain_until_idle); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
     ),
     (
-        "src/core/memory_cli.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init, store::MemoryClientRef, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/core/runtime/context.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/core/runtime/services.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::start) has no capability family",
-    ),
-    (
         "src/openhuman/agent/experience/ops.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::init, global::client_if_ready, store::UnifiedMemory::new_with_memory_dir); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -350,21 +335,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "names engine-owned types (store::trees::types::TreeKind); relocating them to tinymemory-api is the ask, not a bus method",
     ),
     (
-        "src/openhuman/agent/learning/linkedin_enrichment.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::MemoryClient, store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/learning/startup.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/channels/runtime/startup.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/channels/tests/memory.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -373,11 +343,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/config/migration_helpers/core.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/desktop/app_state/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/flows/memory_tools.rs",
@@ -390,11 +355,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers, both Phase F: the in-process engine handle (store::MemoryClientRef), which belongs to memory::binding; and engine internals (tinycortex::HostSyncAdapter, the reader for notion sync state), which are tinycortex-shaped so no engine-neutral family can express them. The three chunk deletes this entry also used to name are gone — they are MemorySourceSink::forget_matching now",
-    ),
-    (
         "src/openhuman/integrations/composio/ops/mod.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -403,21 +363,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/integrations/composio/ops/providers_ops.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/integrations/composio/schemas.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client_if_ready); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/documents.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init, store::NamespaceRetrievalContext); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/guard.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/memory/ops/helpers.rs",
@@ -450,16 +395,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine internals (tinycortex::CodingSession* request/response/status types, tinycortex::SyncAuditEntry); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
-        "src/openhuman/memory/sources/schemas.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::CodingSessionIngestRequest); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/store_golden.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers: engine storage below the contract (store::chunks), where MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door; and the in-process engine handle (global::client, store::UnifiedMemory::new)",
-    ),
-    (
         "src/openhuman/memory/sync/composio/bus.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (events::MemoryEvent/publish, observability::report_error_or_expected, tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
@@ -489,11 +424,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         Verdict::NeedsWiderSeam,
         "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
     ),
-    (
-        "src/openhuman/security/credentials/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers: the re-embed queue (queue::ensure_reembed_backfill), which has no capability family; and the in-process engine handle (global::init), which belongs to memory::binding",
-    ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
     // These are the historical-path aliases `memory/mod.rs` documents. They
@@ -510,16 +440,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "re-export shim for the thread-id task-local",
     ),
     (
-        "src/openhuman/inference/embeddings/provider_trait.rs",
-        Verdict::HostSide,
-        "re-export shim for TinyAgentsEmbeddingProvider, which cannot live host-side",
-    ),
-    (
-        "src/openhuman/memory/conversations/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::conversations::*",
-    ),
-    (
         "src/openhuman/memory/diff/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::diff::*",
@@ -528,11 +448,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/mod.rs",
         Verdict::HostSide,
         "the re-export block itself — twenty-five engine modules under their historical paths",
-    ),
-    (
-        "src/openhuman/memory/people/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::people::*",
     ),
     (
         "src/openhuman/memory/sources/mod.rs",
@@ -558,11 +473,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/sync/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::sync::*",
-    ),
-    (
-        "src/openhuman/memory/sync/sync_status/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::sync_status::*",
     ),
     (
         "src/openhuman/memory/tool_memory/mod.rs",
@@ -612,11 +522,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/sync/composio/providers/context_ext.rs",
         Verdict::NeedsWiderSeam,
         "extends the engine's ProviderContext; the sync pipeline is engine-internal and has no capability family",
-    ),
-    (
-        "src/openhuman/memory/tools/diff.rs",
-        Verdict::NeedsWiderSeam,
-        "sources::{get_source, list_sources}; MemorySourceSink is accept_source_items + forget_source, with no list door",
     ),
 ];
 

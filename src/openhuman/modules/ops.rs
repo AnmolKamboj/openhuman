@@ -287,6 +287,16 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
         "cloud_embedding_model": config.memory.embedding_model,
         "cloud_embedding_dimensions": config.memory.embedding_dimensions,
         "models_supporting_dimensions": [],
+        // The periodic composio and workspace-source sync loops run INSIDE the
+        // module now (tinymemory#100), and these three are what let them run at
+        // all. Without the cadence the module answers manual-only and skips
+        // every source silently; without the mode `composio_config` never
+        // selects its direct branch and every connection fails. All three are
+        // `#[serde(default)]` upstream, so an older module ignores them rather
+        // than failing to load.
+        "memory_sync_interval_secs": config.memory_sync_interval_secs,
+        "composio_mode": config.composio.mode,
+        "composio_entity_id": config.composio.entity_id,
         "driver_id": "tinymemory",
     })
 }

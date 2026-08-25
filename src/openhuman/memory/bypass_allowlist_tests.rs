@@ -190,28 +190,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // family", and it now has one. The learning subsystem reads facets through
     // `MemoryProfile` on the bound driver.
     (
-        "src/openhuman/agent/learning/linkedin_enrichment.rs",
-        "active_memory_client(",
-        "LinkedIn profile persistence needs `MemoryClient::store_skill_sync`, which \
-         derives the `skill-<id>` namespace and stamps every write \
-         `MemoryTaint::ExternalSync` so the subconscious gate can see the \
-         provenance through the persistence layer. No provider family exposes \
-         either, and reimplementing them at the call site is the duplication the \
-         method exists to prevent. Note it does NOT get the opaque-`document_id` \
-         key protection: this caller passes `None`, and `store_skill_sync` names \
-         it as the exception — the key stays the title and does go through the \
-         secret/PII guard. Harmless for a LinkedIn URL, but stated here because a \
-         reason string that overclaims is worse than none. Previously reached the \
-         same client via `MemoryClient::new_local()`, which the scanner had no \
-         needle for and which pinned `~/.openhuman` regardless of \
-         OPENHUMAN_WORKSPACE",
-    ),
-    (
-        "src/openhuman/agent/learning/startup.rs",
-        "MemoryClient::from_workspace_dir(",
-        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
         "src/openhuman/memory/tree/retrieval/rpc.rs",
         "NullMemoryProvider::new(",
         "inline #[cfg(test)] module only; it builds the no-retrieval driver these handlers must degrade against, which is the opposite of a bypass — the test exists to prove the family is asked for and its absence handled",
@@ -229,21 +207,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // the guarded driver, and its `#[cfg(test)]` override now injects a real
     // `MemoryGuard` over an in-memory provider rather than a raw handle.
     // ── Composio integration: &MemoryClientRef parameter shape ──
-    (
-        "src/openhuman/integrations/composio/ops/connections.rs",
-        "active_memory_client(",
-        "delete_connection resolves the LIVE client for cleanup-target \
-         discovery, which loads notion sync state through HostSyncAdapter — a \
-         seam beneath the contract with no provider door. Replaces \
-         memory_cleanup.rs constructing a second engine per delete via \
-         from_workspace_dir, which started a second ingestion worker on the \
-         live store every time",
-    ),
-    (
-        "src/openhuman/integrations/composio/schemas.rs",
-        "global::client_if_ready(",
-        "passes &MemoryClientRef into user_scopes::save; the contract has no such shape",
-    ),
     // ── The driver and the binding: guarding these would be a cycle ──
     (
         "src/openhuman/memory/binding.rs",
@@ -340,16 +303,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // segment, event and profile tiers, which have no guard-routed writer — the
     // archivist and the learning cache reach them the same way, and those two
     // are already allowlisted below/above for the same reason.
-    (
-        "src/openhuman/memory/store_golden.rs",
-        ".profile_conn(",
-        "fixture seeder: episodic/segment/event/profile tiers have no guarded writer",
-    ),
-    (
-        "src/openhuman/memory/store_golden.rs",
-        "global::client(",
-        "resolved only to reach profile_conn() for the fixture seed/read-back",
-    ),
     // ── Inline test modules and the two sync seams ──
     //
     // tinymemory#18 §C1 renamed `core/src/tinycortex/` to `core/src/engine/`,
