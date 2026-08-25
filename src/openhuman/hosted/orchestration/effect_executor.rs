@@ -780,6 +780,7 @@ fn evict_source_id(session_id: &str, cycle_id: &str) -> String {
 pub async fn execute_evict(effect: &EvictEffect) -> Result<(), String> {
     use crate::openhuman::memory::api::chunks::{DataSource, SourceRef};
     use crate::openhuman::memory::api::provider::types::IngestItem;
+    use crate::openhuman::memory::api::provider::MemoryProvider;
     use crate::openhuman::memory::api::types::MemoryTaint;
 
     let config = crate::openhuman::config::Config::load_or_init()
@@ -790,7 +791,10 @@ pub async fn execute_evict(effect: &EvictEffect) -> Result<(), String> {
     // A write, so an absent family refuses rather than reporting success. The
     // caller un-claims the `callId` on `Err`, so the brain redelivers the evict
     // instead of us acking away a summary that was never stored.
-    let Some(ingest) = binding.provider().as_ingest() else {
+    // Routed through the guard so policy (redaction, taint stamping) applies
+    // to evicted summaries the same way it applies to explicit ingest calls.
+    let guard = binding.guard();
+    let Some(ingest) = guard.as_ingest() else {
         return Err(format!(
             "evict ingest: driver '{}' does not serve the Ingest family",
             binding.driver_id()

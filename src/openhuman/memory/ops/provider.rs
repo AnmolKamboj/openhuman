@@ -168,25 +168,19 @@ mod tests {
                 crate::openhuman::memory::api::CONTRACT_VERSION
             )
         );
-        // The seventeen families the pinned v1.2.0 tinymemory artifact actually
-        // serves — not the eighteen the contract crate declares. This used to
-        // assert all eighteen, including `chunks`, `episodic`, `people`,
-        // `profile`, and `retrieval`; that encoded #5598 as expected: those
-        // five had no bus member in the pre-v1.2.0 release, so calling them
-        // answered `UnknownMethod` rather than reporting themselves absent.
-        // The v1.2.0 re-pin gave `chunks`, `people`, `profile` and `retrieval`
-        // bus members, widening the boundary from thirteen to seventeen;
-        // `episodic` alone stays withheld, because the artifact serves it but
-        // `ModuleMemoryProvider` has no `as_episodic`, so advertising it would
-        // be the same over-claim in a different coat.
-        // `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match what
-        // is actually served (see its module docs); this pins the same
-        // corrected boundary. Spelled out rather than derived from
-        // `Capabilities::all()` on purpose: this is the wire surface the
-        // frontend reads, so the strings themselves are the assertion. A
-        // family the pinned artifact starts serving should widen this
-        // deliberately, together with the registry version bump — not
-        // silently.
+        // The full eighteen families the pinned tinymemory artifact serves.
+        // Previously this comment documented a narrower set (seventeen, then
+        // thirteen) while the host under-claimed or over-claimed; the gap is
+        // now closed: v1.4.0 serves all eighteen, `ModuleMemoryProvider`
+        // implements all eighteen accessors including `as_episodic`, so the
+        // wire surface and the advertised set agree.
+        // `modules::memory::ARTIFACT_CAPABILITIES` is the machine-checked
+        // source of truth for what the pinned release serves (see its module
+        // docs); this pins the same corrected boundary. Spelled out rather
+        // than derived from `Capabilities::all()` on purpose: this is the
+        // wire surface the frontend reads, so the strings themselves are the
+        // assertion. A NEW contract family must still widen this deliberately,
+        // together with the registry version bump — not silently.
         assert_eq!(
             status.capabilities,
             vec![

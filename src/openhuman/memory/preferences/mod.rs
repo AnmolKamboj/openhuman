@@ -185,6 +185,7 @@ pub async fn recall_situational_preferences_on(
         .unwrap_or_default()
         .into_iter()
         .map(|(_topic, value)| value)
+        .filter(|value| !value.trim().is_empty())
         .collect()
 }
 

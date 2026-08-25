@@ -76,13 +76,29 @@ pub fn capability_unavailable_message(
 /// capability one: a null or external binding does not necessarily lack the
 /// family — the legacy command is unavailable because it operates on the
 /// embedded engine directly, and the bound driver is not that engine.
-pub fn legacy_client_unavailable_message(driver_id: &str, invocation: &str) -> String {
+///
+/// The `class` parameter tailors the explanation: a `Null` driver is
+/// unconfigured (no external source), while an `External` one answers from
+/// a remote store — both refuse legacy subcommands for the same structural
+/// reason but deserve different descriptions.
+pub fn legacy_client_unavailable_message(
+    driver_id: &str,
+    class: DriverClass,
+    invocation: &str,
+) -> String {
+    let detail = if class == DriverClass::Null {
+        "no memory driver is configured".to_string()
+    } else {
+        format!(
+            "this configuration bound a driver (`{driver_id}`) that answers from \
+             a remote store, not this machine's embedded engine"
+        )
+    };
     format!(
         "{LEGACY_CLIENT_UNAVAILABLE_PREFIX}`{driver_id}` does not keep memory in the \
          local store, so `{invocation}` is unavailable: it reads that store \
-         directly, and this configuration bound a driver that answers from \
-         somewhere else. Run `openhuman subsystems` to see the bound driver, or \
-         change `[subsystems.memory] driver` in your config.",
+         directly, and {detail}. Run `openhuman subsystems` to see the bound driver, \
+         or change `[subsystems.memory] driver` in your config.",
     )
 }
 
@@ -222,7 +238,9 @@ pub fn legacy_client_verdict(driver_id: &str, class: DriverClass, invocation: &s
          class={} — not the embedded engine",
         class.as_str()
     );
-    anyhow::bail!(legacy_client_unavailable_message(driver_id, invocation))
+    anyhow::bail!(legacy_client_unavailable_message(
+        driver_id, class, invocation
+    ))
 }
 
 #[cfg(test)]

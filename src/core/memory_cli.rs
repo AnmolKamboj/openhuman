@@ -834,8 +834,10 @@ mod tests {
     /// The legacy-client diagnostic must not leak credentials or endpoints.
     #[test]
     fn legacy_message_never_contains_a_credential_or_endpoint() {
+        use crate::core::subsystem::DriverClass;
         let msg = crate::core::cli_capability::legacy_client_unavailable_message(
             "supermemory",
+            DriverClass::External,
             "openhuman memory clear",
         );
         assert!(!msg.contains("keychain:"), "{msg}");

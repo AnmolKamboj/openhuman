@@ -1150,7 +1150,9 @@ impl MemoryEpisodic for GuardedEpisodic {
             NO_NAMESPACE,
             false,
         )?;
-        self.family()?.insert_turn(turn).await
+        let mut turn = turn.clone();
+        turn.content = self.policy.redact_outbound(&turn.content).into_owned();
+        self.family()?.insert_turn(&turn).await
     }
 
     async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
@@ -1239,7 +1241,9 @@ impl MemoryEpisodic for GuardedEpisodic {
             &event.namespace,
             false,
         )?;
-        self.family()?.insert_event(event).await
+        let mut event = event.clone();
+        event.content = self.policy.redact_outbound(&event.content).into_owned();
+        self.family()?.insert_event(&event).await
     }
 
     async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {
