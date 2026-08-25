@@ -1165,12 +1165,6 @@ e2e-test-support = []
 # Unit tests get it from `cfg(test)`. Integration tests under `tests/` are
 # separate crates and `cfg(test)` does NOT reach them, which is the whole reason
 # this feature exists rather than a bare `#[cfg(test)]`.
-#
-# Deliberately absent from `scripts/ci/product-features.txt` and from `default`,
-# and allow-listed in `check-feature-forwarding.mjs`: forwarding it to the
-# desktop shell would put the engine back into the shipped graph, which is the
-# single thing #5560 exists to prevent.
-memory-embedded-test-seams = []
 # Builds the `rss-bench` benchmark binary (#5046). Default-OFF, so it is never
 # part of the shipped desktop/library build and the feature-forwarding gate
 # (which only inspects the `default` list) never requires forwarding it.

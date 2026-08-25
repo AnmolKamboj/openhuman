@@ -203,16 +203,7 @@ jobs:
           # raw_coverage_all — see Cargo.toml). Without these features
           # `cargo test --test json_rpc_e2e` matches NOTHING and exits 0, and
           # json_rpc_e2e alone is >12k lines of RPC contract coverage.
-          # `memory-embedded-test-seams` is deliberately NOT a product feature
-          # (#5560): it exposes `memory::host_impls`, the embedded-engine host
-          # seams, which the shipped build no longer installs now that memory is
-          # served over the bus. Three tests/*.rs targets still drive the embedded
-          # path through mocks and name that module, so this lane must add it or
-          # they fail to COMPILE — the same class of gap as `bin-tools` above,
-          # only louder, since a missing test seam is a hard error rather than a
-          # silent skip. Adding it here keeps it out of the product graph that
-          # scripts/ci/product-features.txt and the clippy lanes select.
-          FEATURES="$(bash scripts/ci/product-features.sh),bin-tools,memory-embedded-test-seams"
+          FEATURES="$(bash scripts/ci/product-features.sh),bin-tools"
           echo "[test-reusable] feature set: ${FEATURES}"
 
           # `--features bin-tools` is load-bearing, not cosmetic: the ops binaries

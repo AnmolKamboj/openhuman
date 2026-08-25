@@ -46,7 +46,6 @@ pub mod host;
 /// is the test suite, which binds the in-process TinyCortex driver directly —
 /// legitimate, because `tinymemory-core` is a dev-dependency there and a
 /// dev-dependency is not linked into the shipped binary.
-#[cfg(any(test, feature = "memory-embedded-test-seams"))]
 pub mod host_impls;
 /// Host desktop policy: is the memory content root a vault Obsidian already
 /// knows about? See the module docs for why this is OpenHuman's and not the

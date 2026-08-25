@@ -545,10 +545,14 @@ async fn create_memory_binding(
         }
     }
 
-    // The `[modules]` policy, which a module-backed driver needs published
-    // before it can load and which only the runtime bootstrap otherwise sets.
-    // Idempotent. The engine seams that used to be installed alongside it are
-    // gone: this process embeds no engine, so there is nothing to call back.
+    // The engine seams, plus the `[modules]` policy a module-backed driver
+    // needs published before it can load. Both idempotent. The seams are back
+    // because this process does still embed the engine — see the note in
+    // `runtime::context::init_stores`; a `memory` subcommand that reached one
+    // unwired would report a broken subsystem rather than a missing one.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
     #[cfg(feature = "modules")]
     crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config.clone()));
 

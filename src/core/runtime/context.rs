@@ -596,11 +596,24 @@ pub async fn init_stores(
         domains,
     );
     if plan.memory {
-        // No seam installation here any more. Those seams exist so an engine
-        // running INSIDE this process can call back into it, and this process
-        // no longer runs one: the driver is the loaded TinyMemory module, which
-        // installs its own seams and reaches this host over the bus through
-        // `modules::memory_host` instead.
+        // The seams the in-process engine calls back through. They must be
+        // installed BEFORE the first memory call: they fail loudly when
+        // unwired rather than degrading, because a quiet degrade would write
+        // vectors into the wrong embedding space or make a sync run look empty
+        // instead of broken.
+        //
+        // #5560 removed this on the reasoning that "this process embeds no
+        // engine, so there is nothing to call back". That is not true yet.
+        // `tinymemory-core` is still a normal dependency of this crate, and
+        // `session::builder::factory` still reaches
+        // `store::factories::create_session_memory_with_local_ai`, which calls
+        // `require_embedding_host()` on the chat hot path — so every chat turn
+        // failed with "no EmbeddingHost installed". The module installing its
+        // own seams does not help: a `cdylib` has its own statics, so what it
+        // sets is invisible here.
+        //
+        // These go when the last in-process engine caller goes, not before.
+        crate::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(cfg.clone()));
         // Publish the config a module-backed memory driver should load
         // against, before the binding below can construct one. Boot-only and
         // idempotent (first call wins) — see `modules::memory::set_modules_policy`

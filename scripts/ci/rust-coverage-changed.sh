@@ -50,15 +50,7 @@ log() { echo "[ci][rust-cov-changed] $*"; }
 # measuring code that ships, and the diff-coverage gate would pass a PR whose
 # changed lines were never compiled. Source of truth:
 # scripts/ci/product-features.txt.
-# `memory-embedded-test-seams` rides along because this lane compiles
-# `tests/*.rs`, and 25 of those targets name `memory::host_impls` — the
-# embedded-engine host seams, which the shipped build no longer installs and
-# which are therefore deliberately NOT a product feature (#5560). Without it
-# those targets fail to COMPILE here while passing every other lane, because
-# every other lane that builds them adds the feature too (test-reusable.yml).
-# It cannot leak into what is measured as product code: the feature gates one
-# module of test support and nothing else.
-PRODUCT_FEATURES="$(bash scripts/ci/product-features.sh),memory-embedded-test-seams"
+PRODUCT_FEATURES="$(bash scripts/ci/product-features.sh)"
 
 # The CI job normally supplies a linker-only RUSTFLAGS value. cargo-llvm-cov
 # owns this variable while it compiles coverage-instrumented crates; preserving
