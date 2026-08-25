@@ -828,6 +828,12 @@ pub async fn execute_evict(effect: &EvictEffect) -> Result<(), String> {
             author: None,
             channel_label: None,
             platform: None,
+            // Mail-only fields; this source is not mail, and the contract
+            // documents empty/absent as the same statement as "not mail".
+            to: Vec::new(),
+            cc: Vec::new(),
+            subject: None,
+            list_unsubscribe: None,
             // The chunk tier cannot carry a non-default taint and the driver
             // rejects an item that claims one, so `Internal` is the only value
             // ingest accepts. It is also the true one: this is the hosted

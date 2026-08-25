@@ -188,7 +188,7 @@ pub async fn composio_delete_connection(
     let mut memory_chunks_deleted = 0;
     let mut memory_clear_errors = Vec::new();
     for target in &memory_targets {
-        match target.delete(config) {
+        match target.delete(config).await {
             Ok(deleted) => {
                 memory_chunks_deleted += deleted;
             }

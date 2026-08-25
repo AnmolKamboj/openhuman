@@ -4,9 +4,18 @@ use std::sync::Arc;
 
 use crate::openhuman::config::Config;
 use tinymemory_api::chunks::SourceKind;
-use tinymemory_core::store::chunks::store as memory_tree_store;
+use tinymemory_api::provider::ForgetSelector;
 use tinymemory_core::store::MemoryClientRef;
 
+/// One thing a connection delete has to remove from memory.
+///
+/// The three variants are the three [`ForgetSelector`] arms this domain needs,
+/// named in this domain's own vocabulary: a Composio connection files content
+/// under an exact source id, under a family of derived ids sharing a prefix,
+/// and — for a mailbox shared with other connections — under an owner. They
+/// stay a local enum rather than becoming `ForgetSelector` directly because
+/// `label` is what a partial-failure message shows the user, and that wording
+/// is this host's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MemoryCleanupTarget {
     Exact(SourceKind, String),
@@ -15,22 +24,69 @@ pub(crate) enum MemoryCleanupTarget {
 }
 
 impl MemoryCleanupTarget {
-    pub(super) fn delete(&self, config: &Config) -> anyhow::Result<usize> {
+    /// The contract selector this target names.
+    ///
+    /// `source_kind` crosses as a wire string because the set of source kinds
+    /// belongs to the host's sync machinery and grows without a contract
+    /// change; `SourceKind::as_str` is the same spelling `label` already
+    /// shows.
+    fn selector(&self) -> ForgetSelector {
         match self {
-            Self::Exact(source_kind, source_id) => {
-                memory_tree_store::delete_chunks_by_source(config, *source_kind, source_id)
-            }
-            Self::Prefix(source_kind, source_id_prefix) => {
-                memory_tree_store::delete_chunks_by_source_prefix(
-                    config,
-                    *source_kind,
-                    source_id_prefix,
-                )
-            }
-            Self::Owner(source_kind, owner) => {
-                memory_tree_store::delete_chunks_by_owner(config, *source_kind, owner)
-            }
+            Self::Exact(source_kind, source_id) => ForgetSelector::Source {
+                source_kind: source_kind.as_str().to_string(),
+                source_id: source_id.clone(),
+            },
+            Self::Prefix(source_kind, source_id_prefix) => ForgetSelector::SourcePrefix {
+                source_kind: source_kind.as_str().to_string(),
+                source_id_prefix: source_id_prefix.clone(),
+            },
+            Self::Owner(source_kind, owner) => ForgetSelector::Owner {
+                source_kind: source_kind.as_str().to_string(),
+                owner: owner.clone(),
+            },
         }
+    }
+
+    /// Remove this target through the bound memory driver, returning the chunk
+    /// count it took with it.
+    ///
+    /// A driver without the `Sources` family is **refused**, not degraded to
+    /// zero: this is a delete, and its only empty answer — zero chunks
+    /// removed — is byte-identical to a successful delete of nothing. The
+    /// caller sums these into `memory_chunks_deleted` on the delete-connection
+    /// reply, so a silent zero would tell the user a disconnected account's
+    /// mail had left memory while it is still on disk. The caller already
+    /// collects per-target failures and reports them beside the count, so a
+    /// refusal here is surfaced rather than fatal.
+    ///
+    /// `ForgetOutcome::trees_cleaned` is dropped on purpose —
+    /// `memory_chunks_deleted` has always been a chunk count, and this does
+    /// not change the reply's shape.
+    ///
+    /// No `spawn_blocking`: the driver owns whether its own writes block, and
+    /// the module's do not run on this thread at all.
+    pub(super) async fn delete(&self, config: &Config) -> anyhow::Result<usize> {
+        let binding = crate::openhuman::memory::binding::for_config(config)
+            .map_err(|e| anyhow::anyhow!("forget_matching: {e}"))?;
+        let Some(sources) = binding.provider().as_sources() else {
+            return Err(anyhow::anyhow!(
+                "forget_matching: driver '{}' does not serve Sources",
+                binding.driver_id()
+            ));
+        };
+        let selector = self.selector();
+        let outcome = sources
+            .forget_matching(&selector)
+            .await
+            .map_err(|e| anyhow::anyhow!("forget_matching: {e}"))?;
+        log::debug!(
+            "[composio][memory] forget_matching target={} removed chunks={} trees={} (driver='{}')",
+            self.label(),
+            outcome.chunks_removed,
+            outcome.trees_cleaned,
+            binding.driver_id()
+        );
+        Ok(usize::try_from(outcome.chunks_removed).unwrap_or(usize::MAX))
     }
 
     pub(super) fn label(&self) -> String {

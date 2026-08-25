@@ -133,17 +133,22 @@
 //!   SQLite contract wearing a trait.
 //! - **Host policy reached through the engine crate** — **drained.** The
 //!   scrubbers (`store::safety::{sanitize_text, sanitize_json,
-//!   has_likely_secret}`), `util::redact::redact` and `source_scope::*` all
-//!   live host-side now, in `memory::safety`, `util::redact` and
-//!   `memory::source_scope`. The route each took is the shape to reuse, and it
-//!   is **not** "move it to `tinymemory-api`": a scrubber costs `regex` +
-//!   `serde_json` and `util::redact` costs `sha2` in a crate whose whole point
-//!   is that a caller can depend on it and compile almost nothing, and
-//!   `source_scope` is a `tokio::task_local`, which would put tokio there too.
-//!   None of the three is contract vocabulary — nothing crosses the bus as a
-//!   `SanitizationReport` or a log hash — so each is simply the host's, with
-//!   the engine keeping its own copy for its own writes. Independent copies are
-//!   the design: neither side reads the other's output.
+//!   has_likely_secret}`), `util::redact::redact`, `source_scope::*` and the
+//!   Obsidian vault-registration probe (`store::content::obsidian_registry`)
+//!   all live host-side now, in `memory::safety`, `util::redact`,
+//!   `memory::source_scope` and `memory::obsidian_registry`. The route each
+//!   took is the shape to reuse, and it is **not** "move it to
+//!   `tinymemory-api`": a scrubber costs `regex` + `serde_json`,
+//!   `util::redact` costs `sha2`, and the vault probe costs `dirs` +
+//!   `serde_json`, in a crate whose whole point is that a caller can depend on
+//!   it and compile almost nothing — and `source_scope` is a
+//!   `tokio::task_local`, which would put tokio there too. None of the four is
+//!   contract vocabulary — nothing crosses the bus as a `SanitizationReport`,
+//!   a log hash or a `VaultRegistration`, and "is my content root a registered
+//!   Obsidian vault" is not a capability a second driver would answer
+//!   differently — so each is simply the host's, with the engine keeping its
+//!   own copy for its own callers. Independent copies are the design: neither
+//!   side reads the other's output.
 //! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
 //!   ensure_reembed_backfill, requeue_failed_after_provider_change,
 //!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
@@ -315,11 +320,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "reaches engine storage below the contract (store::events, store::fts5::EpisodicEntry, store::profile, store::segments, chat::build_chat_provider); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
-        "src/openhuman/agent/harness/archivist/mod.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::profile); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
         "src/openhuman/agent/harness/archivist/recap.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::fts5, store::segments::ConversationSegment, store::chunks::types::approx_token_count); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
@@ -360,11 +360,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/channels/controllers/ops/connect.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
         "src/openhuman/channels/runtime/startup.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -397,7 +392,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind, tinycortex::HostSyncAdapter); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "two blockers, both Phase F: the in-process engine handle (store::MemoryClientRef), which belongs to memory::binding; and engine internals (tinycortex::HostSyncAdapter, the reader for notion sync state), which are tinycortex-shaped so no engine-neutral family can express them. The three chunk deletes this entry also used to name are gone — they are MemorySourceSink::forget_matching now",
     ),
     (
         "src/openhuman/integrations/composio/ops/mod.rs",
@@ -442,32 +437,12 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/read_rpc/admin.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (queue::store, queue::types, queue::wake_workers, store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/chunks.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/entities.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/graph.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "one call left: flush_source_tree wants a live source-tree handle (tree_source::get_or_create_source_tree) to feed the host's TreeFactory label strategy and force_flush_tree, and MemoryTree is namespace-addressed (append/query_source/drill_down/seal/cascade/summary_forest/recent_leaves) with no door onto a tree object. wipe_all, clear_composio_sync_state and delete_source have left for purge_all, kv_list+kv_delete and forget_matching(Source)",
     ),
     (
         "src/openhuman/memory/read_rpc/mod.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::chunks::store::with_connection, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/vault.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::content::obsidian_registry, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/memory/sources/rpc.rs",
@@ -513,11 +488,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
         "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
-    ),
-    (
-        "src/openhuman/platform/doctor/core.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, store::factories::effective_embedding_settings); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
         "src/openhuman/security/credentials/ops.rs",

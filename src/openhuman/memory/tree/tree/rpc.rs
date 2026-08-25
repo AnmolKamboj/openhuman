@@ -239,6 +239,12 @@ fn chat_items(source_id: &str, owner: &str, tags: &[String], batch: ChatBatch) -
             path_scope: None,
             author: Some(message.author),
             channel_label: Some(channel_label.clone()),
+            // Mail-only fields; this source is not mail, and the contract
+            // documents empty/absent as the same statement as "not mail".
+            to: Vec::new(),
+            cc: Vec::new(),
+            subject: None,
+            list_unsubscribe: None,
             platform: Some(platform.clone()),
         })
         .collect()
@@ -268,6 +274,12 @@ fn document_item(source_id: &str, owner: &str, tags: &[String], doc: DocumentInp
         path_scope: None,
         author: None,
         channel_label: None,
+        // Mail-only fields; this source is not mail, and the contract
+        // documents empty/absent as the same statement as "not mail".
+        to: Vec::new(),
+        cc: Vec::new(),
+        subject: None,
+        list_unsubscribe: None,
         platform: None,
     }
 }
@@ -488,6 +500,10 @@ pub async fn list_chunks_rpc(
         limit: req.limit,
         offset: None,
         exclude_dropped: false,
+        // The filtered-listing predicates this request does not carry. An empty
+        // predicate is unfiltered, so the defaults leave the query exactly as
+        // narrow as the fields above already make it.
+        ..Default::default()
     };
 
     // No `spawn_blocking`: the driver owns whether its own reads block, and the

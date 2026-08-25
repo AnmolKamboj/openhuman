@@ -85,7 +85,10 @@ fn check_memory_tree_db_warns_when_db_missing() {
     let cfg = test_config_in(&tmp);
 
     let mut items = vec![];
-    check_memory_tree_db(&cfg, &mut items);
+    // A count is supplied and must go unread: an absent file short-circuits
+    // before the driver's answer is consulted, so a workspace that has never
+    // ingested anything reads as "not yet created" and not as a failed probe.
+    check_memory_tree_db(&cfg, &Ok(7), &mut items);
 
     assert_eq!(items.len(), 1, "expected exactly one diagnostic item");
     assert_eq!(items[0].severity, Severity::Warn);
@@ -96,19 +99,23 @@ fn check_memory_tree_db_warns_when_db_missing() {
     );
 }
 
-/// After `with_connection` has successfully initialised the DB, the probe
-/// should push an `Ok` item.
+/// With the DB file present and the driver's chunk count in hand, the probe
+/// should push an `Ok` item carrying that count.
+///
+/// The file is created directly rather than by opening a store: the count is
+/// the async caller's now (`ops::memory_chunk_count`), so this check only ever
+/// asks the filesystem whether the path exists.
 #[test]
 fn check_memory_tree_db_ok_when_accessible() {
     let tmp = TempDir::new().expect("tempdir");
     let cfg = test_config_in(&tmp);
 
-    // Trigger DB creation.
-    tinymemory_core::store::chunks::store::with_connection(&cfg, |_conn| Ok(()))
-        .expect("DB init must succeed");
+    let db_dir = cfg.workspace_dir.join("memory_tree");
+    std::fs::create_dir_all(&db_dir).expect("create memory_tree dir");
+    std::fs::write(db_dir.join("chunks.db"), b"").expect("create chunks.db");
 
     let mut items = vec![];
-    check_memory_tree_db(&cfg, &mut items);
+    check_memory_tree_db(&cfg, &Ok(42), &mut items);
 
     // There may be a Warn about the SHM file on some platforms; there must
     // be at least one Ok item about the DB being accessible.
@@ -124,5 +131,51 @@ fn check_memory_tree_db_ok_when_accessible() {
         ok_items[0].message.contains("accessible"),
         "unexpected ok message: {}",
         ok_items[0].message
+    );
+    assert!(
+        ok_items[0].message.contains("(42 chunks)"),
+        "the driver's count must reach the message: {}",
+        ok_items[0].message
+    );
+}
+
+/// A driver that could not answer is an `Error` item, not a silent zero: "0
+/// chunks" from a store nobody could count reads exactly like an empty store.
+#[test]
+fn check_memory_tree_db_errors_when_the_driver_could_not_count() {
+    let tmp = TempDir::new().expect("tempdir");
+    let cfg = test_config_in(&tmp);
+
+    let db_dir = cfg.workspace_dir.join("memory_tree");
+    std::fs::create_dir_all(&db_dir).expect("create memory_tree dir");
+    std::fs::write(db_dir.join("chunks.db"), b"").expect("create chunks.db");
+
+    let mut items = vec![];
+    check_memory_tree_db(
+        &cfg,
+        &Err("driver 'null' does not serve Maintenance".to_string()),
+        &mut items,
+    );
+
+    let error_items: Vec<_> = items
+        .iter()
+        .filter(|i| i.severity == Severity::Error && i.category == "memory_tree_db")
+        .collect();
+    assert_eq!(
+        error_items.len(),
+        1,
+        "expected exactly one Error memory_tree_db item; got: {items:?}"
+    );
+    assert!(
+        error_items[0].message.contains("DB probe failed at"),
+        "unexpected error message: {}",
+        error_items[0].message
+    );
+    assert!(
+        error_items[0]
+            .message
+            .contains("does not serve Maintenance"),
+        "the driver's own reason must survive into the report: {}",
+        error_items[0].message
     );
 }

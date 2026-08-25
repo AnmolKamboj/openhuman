@@ -107,6 +107,12 @@ impl ArchivistHook {
                     path_scope: None,
                     author: Some(e.role.clone()),
                     channel_label: Some(session_id.to_string()),
+                    // Mail-only fields; this source is not mail, and the contract
+                    // documents empty/absent as the same statement as "not mail".
+                    to: Vec::new(),
+                    cc: Vec::new(),
+                    subject: None,
+                    list_unsubscribe: None,
                     platform: Some("agent".into()),
                 })
             })

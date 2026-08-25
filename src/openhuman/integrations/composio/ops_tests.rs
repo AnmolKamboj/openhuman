@@ -549,6 +549,11 @@ async fn composio_delete_connection_clear_memory_deletes_slack_source() {
     let base = start_mock_backend(app).await;
     let tmp = tempfile::tempdir().unwrap();
     let config = config_with_backend(&tmp, base);
+    // The memory clear-out runs through the bound driver now that it is routed
+    // onto `forget_matching`, so the test has to bind one. TinyCortex is the
+    // engine the loadable module wraps, and unlike the module it is not a
+    // process singleton, so several of these can share one test binary.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     let target = sample_memory_chunk(SourceKind::Chat, "slack:c1", 0);
     let unrelated = sample_memory_chunk(SourceKind::Chat, "slack:c2", 0);
     memory_tree_store::upsert_chunks(&config, &[target, unrelated]).expect("chunks should seed");
@@ -604,6 +609,11 @@ async fn composio_delete_connection_clear_memory_cascades_source_tree_and_conten
     let base = start_mock_backend(app).await;
     let tmp = tempfile::tempdir().unwrap();
     let config = config_with_backend(&tmp, base);
+    // The memory clear-out runs through the bound driver now that it is routed
+    // onto `forget_matching`, so the test has to bind one. TinyCortex is the
+    // engine the loadable module wraps, and unlike the module it is not a
+    // process singleton, so several of these can share one test binary.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
 
     // One slack chunk for connection c1 → source_id `slack:c1`.
     let chunk = sample_memory_chunk(SourceKind::Chat, "slack:c1", 0);
@@ -727,6 +737,11 @@ async fn composio_delete_connection_clear_memory_cascades_live_sealed_tree_and_f
     let base = start_mock_backend(app).await;
     let tmp = tempfile::tempdir().unwrap();
     let mut config = config_with_backend(&tmp, base);
+    // The memory clear-out runs through the bound driver now that it is routed
+    // onto `forget_matching`, so the test has to bind one. TinyCortex is the
+    // engine the loadable module wraps, and unlike the module it is not a
+    // process singleton, so several of these can share one test binary.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     // Force the inert embedder so the real seal's summary-embed step doesn't
     // reach a live endpoint. `config_with_backend` stores a cloud session +
     // api_url, so the factory would otherwise build a *cloud* embedder against
@@ -844,6 +859,11 @@ async fn composio_delete_connection_clear_memory_keeps_other_gmail_connections()
     let base = start_mock_backend(app).await;
     let tmp = tempfile::tempdir().unwrap();
     let config = config_with_backend(&tmp, base);
+    // The memory clear-out runs through the bound driver now that it is routed
+    // onto `forget_matching`, so the test has to bind one. TinyCortex is the
+    // engine the loadable module wraps, and unlike the module it is not a
+    // process singleton, so several of these can share one test binary.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     let c1_account = sample_memory_chunk_with_owner(
         SourceKind::Email,
         "gmail:pilot-at-example-dot-com",

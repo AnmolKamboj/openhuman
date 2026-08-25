@@ -30,6 +30,10 @@ pub mod driver;
 pub mod guard;
 pub mod host;
 pub mod host_impls;
+/// Host desktop policy: is the memory content root a vault Obsidian already
+/// knows about? See the module docs for why this is OpenHuman's and not the
+/// engine's.
+pub mod obsidian_registry;
 pub mod ops;
 pub mod preferences;
 pub mod sync_events_bridge;

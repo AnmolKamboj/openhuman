@@ -260,6 +260,42 @@ pub fn start_bootstrap_jobs(services: ServiceSet, config: &Config) {
 
     // Integrations — Composio periodic connection sync + one-shot source
     // reconcile. Both no-op without active Composio connections.
+    //
+    // ── This call comes out with the in-process engine, and not before ──────
+    //
+    // `start_periodic_sync` is not host code. It re-exports through
+    // `integrations::composio::mod.rs` to `memory::sync::composio::periodic`,
+    // and that module is `pub use tinymemory_core::sync::composio::*` — so the
+    // loop this line starts is engine code running in the host process against
+    // the engine this binary still compiles in. `ensure_composio_sources` below
+    // reaches `tinymemory_core::sources` the same way.
+    //
+    // openhuman#5560 deletes that second, in-process engine and leaves the
+    // loaded TinyMemory module as the only one. Deleting this line before then
+    // stops Composio sync outright; leaving it after would run a loop against
+    // an engine that is no longer there. Both are silent — the sync layer
+    // reports "no connections", which is indistinguishable from a user who has
+    // none — so the removal is ordered, and every step before the last has to
+    // land first:
+    //
+    //   1. The host serves `ai.tinyhumans.tinymemory.ComposioHost` over the
+    //      module bus. Done — `modules/memory_host.rs`.
+    //   2. The module installs a bus-backed `ComposioHost` seam, so engine code
+    //      running *inside* the module can reach this host's Composio client.
+    //      Without it `require_composio_host()` returns `Err` and `is_available`
+    //      reads `false`, which is the quiet failure above.
+    //   3. The module starts the sync loop itself at load, because nothing in
+    //      the host will be able to. `tinymemory-module`'s `install_unserved_
+    //      seams` names this explicitly: the module starts none of the
+    //      background loops today; `queue::start`, `start_periodic_sync` and
+    //      `start_workspace_periodic_sync` are all called host-side.
+    //   4. A `tinymemory` **release** carrying 2 and 3, and a re-pin of
+    //      `modules::registry` to its digest. The registry pins a released,
+    //      SHA-256-verified artifact, so until the re-pin the loaded module has
+    //      neither, however far ahead `vendor/tinymemory` is.
+    //   5. Only then: delete this line, delete the shim at
+    //      `memory/sync/composio/mod.rs`, and delete the host's in-process
+    //      engine.
     if plan.composio_integration_sync {
         log::debug!("[runtime.bootstrap] starting composio integration sync + source reconcile");
         crate::openhuman::integrations::composio::start_periodic_sync();

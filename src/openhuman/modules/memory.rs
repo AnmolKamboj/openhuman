@@ -148,23 +148,24 @@ use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
 use tinymemory_api::provider::types::{
-    DiffReport, EntityHit, ExportPage, ExportRecord, FlushOutcome, ImportOutcome, IngestItem,
-    IngestOutcome, MaintenanceReport, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
+    ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ExportPage, ExportRecord,
+    FlushOutcome, ForgetOutcome, ForgetSelector, ImportOutcome, IngestItem, IngestOutcome,
+    MaintenanceReport, PurgeOutcome, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
     SourceItem, SourceScope, StoreStats,
 };
 use tinymemory_api::provider::{
-    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, ConversationSegment,
-    CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType, FastRetrieveQuery,
-    MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic,
-    MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability,
-    MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval, MemorySourceSink,
-    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
-    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
-    SourceRetrievalQuery, UserState,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery,
+    ConversationSegment, CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType,
+    FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities,
+    MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
+    MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
+    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
+    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, SourceTotal, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::tool_memory::ToolMemoryRule;
-use tinymemory_api::tree::{IngestRequest, QueryResult, TreeStatus};
+use tinymemory_api::tree::{IngestRequest, QueryResult, SummaryForest, TreeLeaf, TreeStatus};
 use tinymemory_api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
     NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
@@ -769,6 +770,20 @@ impl MemoryTree for ModuleMemoryProvider {
     async fn cascade(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
         module_call!(self, "cascade", "Cascade", (namespace,))
     }
+    async fn summary_forest(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<SummaryForest, MemoryError> {
+        module_call!(self, "summary_forest", "SummaryForest", (limit, scope))
+    }
+    async fn recent_leaves(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<TreeLeaf>, MemoryError> {
+        module_call!(self, "recent_leaves", "RecentLeaves", (limit, scope))
+    }
 }
 
 #[async_trait]
@@ -809,6 +824,32 @@ impl MemoryEntities for ModuleMemoryProvider {
             "touch_entities",
             "TouchEntities",
             (namespace, entity_ids.to_vec())
+        )
+    }
+    async fn top_entities(
+        &self,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EntityOccurrence>, MemoryError> {
+        module_call!(self, "top_entities", "TopEntities", (kind, limit))
+    }
+    async fn chunk_entities(
+        &self,
+        chunk_ids: &[String],
+        kinds: Option<&[String]>,
+    ) -> Result<Vec<ChunkEntityOccurrence>, MemoryError> {
+        module_call!(self, "chunk_entities", "ChunkEntities", (chunk_ids, kinds))
+    }
+    async fn entity_chunk_ids(
+        &self,
+        entity_id: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, MemoryError> {
+        module_call!(
+            self,
+            "entity_chunk_ids",
+            "EntityChunkIds",
+            (entity_id, limit)
         )
     }
 }
@@ -963,6 +1004,12 @@ impl MemorySourceSink for ModuleMemoryProvider {
     async fn forget_source(&self, source_id: &str) -> Result<u64, MemoryError> {
         module_call!(self, "forget_source", "ForgetSource", (source_id,))
     }
+    async fn forget_matching(
+        &self,
+        selector: &ForgetSelector,
+    ) -> Result<ForgetOutcome, MemoryError> {
+        module_call!(self, "forget_matching", "ForgetMatching", (selector,))
+    }
 }
 
 #[async_trait]
@@ -999,6 +1046,9 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
     async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
         module_call!(self, "reset_derived_index", "ResetDerivedIndex", ())
+    }
+    async fn purge_all(&self) -> Result<PurgeOutcome, MemoryError> {
+        module_call!(self, "purge_all", "PurgeAll", ())
     }
 }
 
@@ -1176,6 +1226,32 @@ impl MemoryChunks for ModuleMemoryProvider {
             "ChunkEmbeddings",
             (chunk_ids, model_signature)
         )
+    }
+    async fn count_chunks(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<u64, MemoryError> {
+        module_call!(self, "count_chunks", "CountChunks", (query, scope))
+    }
+    async fn list_chunk_details(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<ChunkListRow>, MemoryError> {
+        module_call!(
+            self,
+            "list_chunk_details",
+            "ListChunkDetails",
+            (query, scope)
+        )
+    }
+    async fn source_totals(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<SourceTotal>, MemoryError> {
+        module_call!(self, "source_totals", "SourceTotals", (limit, scope))
     }
 }
 
