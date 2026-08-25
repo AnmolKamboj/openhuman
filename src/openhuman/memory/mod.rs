@@ -141,10 +141,9 @@ pub use tinymemory_core::ingestion::{
 // are simply ours now. See `rpc_models`'s module docs.
 pub mod rpc_models;
 pub use rpc_models::*;
-// Named at the contract, where they are defined — `tinymemory_core::traits`
-// is itself a re-export of these (#18 §A1), so this changes no item, only
-// which crate the alias holds in the build (#5560).
-pub use crate::openhuman::memory::api::traits::Memory;
+// Named on the crate directly — `traits` is engine scaffolding, not bus
+// vocabulary, and is deliberately not re-exported from `memory::api` (#5560).
+pub use tinymemory_api::traits::Memory;
 pub use crate::openhuman::memory::api::types::{
     MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };

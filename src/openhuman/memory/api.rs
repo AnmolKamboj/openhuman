@@ -52,11 +52,13 @@
 //! - **`null`** is `NullMemoryProvider`, the fallback bound by
 //!   `memory::binding` when no module driver is available. It is what runs
 //!   when nothing crosses the bus, which makes it the opposite of contract.
-//! - **`traits`**, **`version`** (as a module path) and **`is_compatible`** had
-//!   no use anywhere in `src/`; they were alias surface only. Version
-//!   negotiation is done through [`CONTRACT_VERSION`], which `memory::binding`
-//!   and `memory::ops::provider` compare against the driver's reported
-//!   contract, so that constant stays.
+//! - **`traits`** is the engine-embedding scaffolding (`Memory` supertrait and
+//!   its provider helpers). It is not wire vocabulary and never crosses a bus
+//!   boundary. `memory::mod` re-exports `tinymemory_api::traits::Memory`
+//!   directly for the handful of in-process callers that need it; reaching it
+//!   through this facade would make engine-only scaffolding appear to be contract
+//!   surface. **`version`** (as a module path) and **`is_compatible`** likewise
+//!   had no bus use; version negotiation uses [`CONTRACT_VERSION`] directly.
 //!
 //! Everything else is re-exported as a whole namespace on purpose: each of
 //! `capabilities`, `chunks`, `error`, `goals`, `health`, `provider` (with its
@@ -74,8 +76,8 @@
 //! move in the same change that removed the duplicate.
 
 pub use tinymemory_api::{
-    capabilities, chunks, error, goals, health, provider, recall, tool_memory, traits, tree, types,
-    wire, CONTRACT_VERSION,
+    capabilities, chunks, error, goals, health, provider, recall, tool_memory, tree, types, wire,
+    CONTRACT_VERSION,
 };
 
 /// The inbound half of the seam: the `tinymemory_api::host` types that cross
