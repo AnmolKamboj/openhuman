@@ -88,12 +88,13 @@ fn check_memory_tree_db_warns_when_db_missing() {
     let mut items = vec![];
     check_memory_tree_db(&cfg, &Ok(7), &mut items);
 
-    // Warn item for the missing file.
+    // Warn item for the missing file (driver-neutral: describes the SQLite
+    // artifact as absent, not the driver as broken).
     assert!(
         items
             .iter()
-            .any(|i| i.severity == Severity::Warn && i.message.contains("not yet created")),
-        "expected a 'not yet created' warn item; got: {items:?}",
+            .any(|i| i.severity == Severity::Warn && i.message.contains("absent")),
+        "expected a 'legacy SQLite artifact is absent' warn item; got: {items:?}",
     );
     // Driver probe result is surfaced regardless of file absence.
     assert!(

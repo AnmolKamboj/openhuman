@@ -848,10 +848,7 @@ fn check_memory_tree_db(
     if !db_path.exists() {
         items.push(DiagnosticItem::warn(
             cat,
-            format!(
-                "DB not yet created (first ingest will initialise it): {}",
-                db_path.display()
-            ),
+            format!("legacy SQLite artifact is absent: {}", db_path.display()),
         ));
     }
 
@@ -868,7 +865,10 @@ fn check_memory_tree_db(
             );
             items.push(DiagnosticItem::ok(
                 cat,
-                format!("DB accessible at {} ({count} chunks)", db_path.display()),
+                format!(
+                    "memory driver accessible ({count} chunks); SQLite artifact: {}",
+                    db_path.display()
+                ),
             ));
         }
         Err(err) => {
