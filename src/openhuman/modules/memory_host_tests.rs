@@ -189,6 +189,20 @@ async fn api_key_falls_back_to_config_key_when_credential_store_is_empty() {
     config.workspace_dir = dir.path().join("workspace");
     config.config_path = dir.path().join("config.toml");
     config.composio.api_key = Some("direct-key-from-config".to_owned());
+
+    // Persisted, not only constructed. `api_key` answers from a LIVE re-read so
+    // that a key the user changes mid-session is followed, and falls back to the
+    // install-time snapshot only when that read fails. A config that exists only
+    // in memory is not the case this test means to cover — the re-read would
+    // succeed against an empty file and quietly answer `None`, which is the
+    // fallback never firing rather than the fallback working.
+    std::fs::create_dir_all(dir.path()).expect("config dir");
+    std::fs::write(
+        &config.config_path,
+        toml::to_string(&config).expect("serialise config"),
+    )
+    .expect("write config");
+
     let callbacks = ComposioCallbacks(Arc::new(config));
 
     let answer = call(&callbacks, "ApiKey", json!([]))

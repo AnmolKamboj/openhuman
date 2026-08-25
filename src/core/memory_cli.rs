@@ -15,7 +15,6 @@ use anyhow::Result;
 use std::io::Read;
 use std::path::PathBuf;
 
-use crate::openhuman::memory::api::provider::MemoryDocuments;
 use crate::openhuman::memory::api::types::NamespaceDocumentInput;
 
 /// Entry point for `openhuman memory <subcommand>`.

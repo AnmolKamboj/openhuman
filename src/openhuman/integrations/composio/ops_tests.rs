@@ -921,6 +921,11 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
     crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
+    // The cleanup targets are read back through the bound driver now, so the
+    // test has to bind one — the writes below go through a client over the
+    // same workspace, and an unbound config resolves to the null driver,
+    // which serves nothing and would report no targets at all.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     let memory = std::sync::Arc::new(
         MemoryClient::from_workspace_dir(config.workspace_dir.clone())
             .expect("memory client should initialise"),
@@ -958,6 +963,11 @@ async fn notion_cleanup_targets_surface_corrupt_sync_state() {
     crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
+    // The cleanup targets are read back through the bound driver now, so the
+    // test has to bind one — the writes below go through a client over the
+    // same workspace, and an unbound config resolves to the null driver,
+    // which serves nothing and would report no targets at all.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     let memory = std::sync::Arc::new(
         MemoryClient::from_workspace_dir(config.workspace_dir.clone())
             .expect("memory client should initialise"),
@@ -993,10 +1003,9 @@ async fn drive_cleanup_targets_are_connection_scoped() {
             .expect("memory client should initialise"),
     );
 
-    let targets =
-        composio_memory_targets_for_connection(&config, Some("google_drive"), "conn-1")
-            .await
-            .expect("drive cleanup targets should resolve");
+    let targets = composio_memory_targets_for_connection(&config, Some("google_drive"), "conn-1")
+        .await
+        .expect("drive cleanup targets should resolve");
 
     assert!(targets.contains(&MemoryCleanupTarget::Exact(
         SourceKind::Document,
