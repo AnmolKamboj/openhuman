@@ -559,12 +559,23 @@ pub struct SyncResponse {
 pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, String> {
     tracing::info!(source_id = %req.source_id, "[memory_sources] sync_rpc: entry");
 
-    let source = registry::get_source(&req.source_id)
-        .await?
-        .ok_or_else(|| format!("source '{}' not found", req.source_id))?;
-
     let config = config_rpc::load_config_with_timeout().await?;
-    crate::openhuman::memory::sources::sync::sync_source(source, config.to_arc()).await?;
+
+    // The existence check is the driver's now: `run_source_sync` resolves the id
+    // against the registry it already reads for per-source budgets, and answers
+    // `NotFound` for an id nobody registered. Looking it up here as well would
+    // be a second read of the same file that can disagree with the one the
+    // pipeline actually applies.
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let sync = binding.provider().as_source_sync().ok_or_else(|| {
+        format!(
+            "the bound memory driver '{}' does not serve source sync",
+            binding.driver_id()
+        )
+    })?;
+    sync.run_source_sync(&req.source_id)
+        .await
+        .map_err(|error| error.to_string())?;
 
     Ok(RpcOutcome::new(
         SyncResponse {
@@ -1019,6 +1030,18 @@ pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
 
     // Trigger a background sync for every enabled source.
     let config = config_rpc::load_config_with_timeout().await?;
+
+    // Resolved once for the whole sweep: a driver that serves no sync has
+    // nothing to say about any source, and refusing per source would turn one
+    // fact into a warning per row.
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let sync = binding.provider().as_source_sync().ok_or_else(|| {
+        format!(
+            "the bound memory driver '{}' does not serve source sync",
+            binding.driver_id()
+        )
+    })?;
+
     let mut sync_triggered: u32 = 0;
 
     for source in &sources {
@@ -1030,10 +1053,12 @@ pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
             kind = %source.kind.as_str(),
             "[memory_sources] apply_all_in_rpc: triggering sync"
         );
-        match crate::openhuman::memory::sources::sync::sync_source(source.clone(), config.to_arc())
+        match sync
+            .run_source_sync(&source.id)
             .await
+            .map_err(|error| error.to_string())
         {
-            Ok(()) => {
+            Ok(_) => {
                 sync_triggered += 1;
             }
             Err(e) => {

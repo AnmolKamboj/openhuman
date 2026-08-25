@@ -58,11 +58,16 @@ async fn call(
 }
 
 #[test]
-fn the_composio_interface_is_the_engines_four_contract_methods_in_order() {
-    // The engine's `ComposioHost` trait has exactly these four, and the module
-    // side proxies each by name. A method renamed on this side is not a compile
+fn the_composio_interface_is_the_engines_contract_methods_in_order() {
+    // The engine's `ComposioHost` trait has exactly these, and the module side
+    // proxies each by name. A method renamed on this side is not a compile
     // error over there — it is a `MethodFailed: UnknownMethod` the first time a
     // sync run reaches for it.
+    //
+    // `SessionBearer` joined in tinymemory v1.8.0. It is what lets the proxied
+    // ("backend") branch of `composio_config` resolve a credential inside a
+    // loaded module, which is what unblocked routing this host's Composio sync
+    // through the driver at all.
     let dir = tempfile::tempdir().expect("tempdir");
     let callbacks = ComposioCallbacks(scoped_config(dir.path()));
 
@@ -74,7 +79,13 @@ fn the_composio_interface_is_the_engines_four_contract_methods_in_order() {
         .collect();
     assert_eq!(
         members,
-        ["ListConnections", "Execute", "ApiKey", "IsAvailable"]
+        [
+            "ListConnections",
+            "Execute",
+            "ApiKey",
+            "SessionBearer",
+            "IsAvailable"
+        ]
     );
 }
 

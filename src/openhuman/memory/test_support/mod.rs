@@ -29,6 +29,15 @@ pub(crate) fn install_tinycortex_for_test(config: &crate::openhuman::config::Con
         tinymemory_core::store::MemoryClient::from_workspace_dir(config.workspace_dir.clone())
             .expect("open the workspace store"),
     );
+    // Registered in the process-global slot as well as handed to the driver.
+    // The engine's Composio sync pipeline opens with `global::client_if_ready`
+    // and refuses with "memory client is not ready" without it — the module
+    // path calls `global::bind` for exactly this reason (tinymemory#100), and a
+    // fixture that builds a client owes the same registration. `bind` rather
+    // than `init` so the driver and the slot are the SAME client: `init` would
+    // construct a second one over the same SQLite file, which is two ingestion
+    // workers and the hazard `global.rs` documents at length.
+    let _ = tinymemory_core::global::bind(config.workspace_dir.clone(), Arc::clone(&client));
     let engine_config = tinymemory_tinycortex::engine::EngineRuntimeConfig {
         workspace_dir: config.workspace_dir.clone(),
         config_path: config.workspace_dir.join("config.toml"),
@@ -41,9 +50,17 @@ pub(crate) fn install_tinycortex_for_test(config: &crate::openhuman::config::Con
         // Added by tinymemory#100, which moved the periodic sync loops into the
         // module. A test fixture wants the same "no cadence configured" default
         // the module answers for an older host that sends nothing.
-        memory_sync_interval_secs: None,
-        composio_mode: String::new(),
-        composio_entity_id: String::new(),
+        // Carried from the host config rather than blanked: the engine's
+        // `composio_config` branches on this, so an empty mode sends every
+        // fixture down the proxied path whether or not that is what the test
+        // configured.
+        memory_sync_interval_secs: config.memory_sync_interval_secs,
+        composio_mode: config.composio.mode.clone(),
+        composio_entity_id: config.composio.entity_id.clone(),
+        // Added by tinymemory#103: proxied Composio addresses the backend with
+        // this. Empty means the host named none, and the request then fails in the
+        // HTTP client rather than falling back to a guessed host.
+        backend_api_url: crate::api::config::effective_backend_api_url(&config.api_url),
         default_model: None,
         default_temperature: 0.2,
         output_language: None,

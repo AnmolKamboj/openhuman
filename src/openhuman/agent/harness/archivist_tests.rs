@@ -94,6 +94,10 @@ fn provider_over(workspace: &std::path::Path) -> (Arc<MemoryClient>, Arc<dyn Mem
         memory_sync_interval_secs: None,
         composio_mode: String::new(),
         composio_entity_id: String::new(),
+        // Added by tinymemory#103: proxied Composio addresses the backend with
+        // this. Empty means the host named none, and the request then fails in the
+        // HTTP client rather than falling back to a guessed host.
+        backend_api_url: String::new(),
     };
     let provider: Arc<dyn MemoryProvider> = Arc::new(TinycortexProvider::new(
         "tinycortex".into(),

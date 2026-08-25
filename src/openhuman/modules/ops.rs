@@ -297,6 +297,9 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
         "memory_sync_interval_secs": config.memory_sync_interval_secs,
         "composio_mode": config.composio.mode,
         "composio_entity_id": config.composio.entity_id,
+        // Proxied Composio addresses the backend with this; without it the module
+        // builds its request against an empty base and fails in the HTTP client.
+        "backend_api_url": crate::api::config::effective_backend_api_url(&config.api_url),
         "driver_id": "tinymemory",
     })
 }

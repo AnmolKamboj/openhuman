@@ -263,6 +263,24 @@ impl ComposioHost for OpenHumanComposioHost {
         .flatten()
     }
 
+    /// The app-session bearer proxied Composio mode authenticates with.
+    ///
+    /// The trait defaults this to `None`, which is right for a host that has no
+    /// session concept — and wrong here, where the whole point of the member is
+    /// that the engine can reach a live one. Left on the default, the engine's
+    /// proxied branch falls back to `Config::session_token`, which works only
+    /// while the engine runs in THIS process and answers nothing once it moves
+    /// behind the bus.
+    ///
+    /// Resolved through `host_config` for the same reason every other member
+    /// here does: the seam is handed a `dyn MemoryHostConfig` that may be the
+    /// module's snapshot rather than this host's own config.
+    fn session_bearer(&self, config: &SeamConfig) -> Option<String> {
+        crate::api::jwt::get_session_token(host_config(config, &self.config))
+            .ok()
+            .flatten()
+    }
+
     fn is_available(&self, config: &SeamConfig) -> bool {
         use crate::openhuman::integrations::composio::client::create_composio_client;
         create_composio_client(host_config(config, &self.config)).is_ok()

@@ -1255,7 +1255,21 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     config.memory_tree.embedding_strict = false;
     let _workspace_env_guard = WorkspaceEnvGuard::set(tmp.path());
     config.save().await.unwrap();
-    let _ = tinymemory_core::global::init(config.workspace_dir.clone()).unwrap();
+    // The sync writes through the bound driver now, so the fixture binds one and
+    // the read-back goes to the same place. Binding the global slot instead would
+    // have the test write to one client and read from another — zero documents,
+    // looking exactly like a sync that silently did nothing.
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+    // And the seams are re-installed against THIS config, not the
+    // `Config::default()` that `install_for_tests` latched. Proxied Composio
+    // resolves its bearer through `ComposioHost::session_bearer`, which reads
+    // the installed host config — a default one has no session, so the sync
+    // would refuse before reaching the mock backend. The setters overwrite, so
+    // calling this after the latched install is what points the seam at the
+    // config carrying the mock's URL and token.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
 
     let outcome = composio_sync(&config, "c1", Some("manual".to_string()))
         .await
@@ -1286,8 +1300,12 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     let documents = {
         let mut documents = Vec::new();
         for _ in 0..50 {
-            documents = tinymemory_core::global::client_if_ready()
-                .expect("memory client remains initialized")
+            let binding = crate::openhuman::memory::binding::for_config(&config)
+                .expect("the fixture bound a driver");
+            documents = binding
+                .provider()
+                .as_documents()
+                .expect("the bound driver serves documents")
                 .list_documents(Some("skill-gmail"))
                 .await
                 .unwrap()

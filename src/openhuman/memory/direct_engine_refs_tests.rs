@@ -260,26 +260,6 @@ const NEEDLE: &str = "tinymemory_core::";
 /// path — [`scan`] returns a `BTreeSet`, so keeping the literal in the same
 /// order makes diffs readable.
 const ALLOWED: &[(&str, Verdict, &str)] = &[
-    (
-        "src/openhuman/integrations/composio/ops/providers_ops.rs",
-        Verdict::NeedsWiderSeam,
-        "runs a composio connection sync (tinycortex::run_composio_connection). The contract's MemorySourceSync::run_connection_sync exists but the driver refuses BACKEND mode by design (EngineRuntimeConfig::session_token answers NO_BACKEND_SESSION), and backend is this product's default composio mode — routing here would break manual sync for every user who has not switched to direct",
-    ),
-    (
-        "src/openhuman/memory/ops/sync.rs",
-        Verdict::NeedsWiderSeam,
-        "manual 'sync now' path; same blocker as providers_ops.rs — run_connection_sync cannot serve the default backend mode, so this stays on the engine until the contract can carry a backend session",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/bus.rs",
-        Verdict::NeedsWiderSeam,
-        "post-OAuth initial sync; same backend-mode blocker as ops/sync.rs",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/providers/slack/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "slack sync trigger and status; same backend-mode blocker as ops/sync.rs",
-    ),
     // ── Revealed by deleting the `memory/mod.rs` re-export facade ───────────
     //
     // This lint was calibrated against a tree where `memory/mod.rs` re-exported
