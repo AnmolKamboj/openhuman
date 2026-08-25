@@ -305,11 +305,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "the engine-side chat provider seam (chat::ChatProvider); MemoryIngest has no provider-override door",
     ),
     (
-        "src/openhuman/agent/harness/session/builder/factory.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/channels/tests/memory.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
