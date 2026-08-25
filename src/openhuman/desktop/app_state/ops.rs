@@ -523,11 +523,15 @@ async fn finish_revalidated_user_activation(
     user_id: &str,
     service_rebind_source: Option<&Config>,
 ) {
-    if let Err(error) = tinymemory_core::global::init(target_config.workspace_dir.clone()) {
-        warn!(
-            "{LOG_PREFIX} failed to bind memory client after pending session revalidation: {error}"
-        );
-    }
+    // ── No explicit memory re-point here any more (#5560) ──────────────────
+    //
+    // This was `tinymemory_core::global::init(...)`, the in-process engine's
+    // process-global slot, which had to be re-pointed by hand at every
+    // activation site or it kept writing into the previous workspace.
+    // `memory::binding` is keyed on (workspace, `[subsystems.memory]`), and the
+    // context rebind immediately below re-points both — so memory follows it by
+    // construction. `CoreContext::memory_binding`'s docs state this property as
+    // the reason these sites need no memory call of their own.
     if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
         &target_config.workspace_dir,
         target_config.subsystems.memory.clone(),

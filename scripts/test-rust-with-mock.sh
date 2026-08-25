@@ -75,9 +75,18 @@ fi
 # Source of truth: scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
 
+# `memory-embedded-test-seams` is added on top of the product set, and only
+# here. It compiles `memory::host_impls`, the host side of the seam traits the
+# memory ENGINE declares, which the integration tests under `tests/` need
+# because they bind the in-process TinyCortex driver. `cfg(test)` cannot serve
+# them — an integration test is a separate crate and never sees it.
+#
+# It must NOT reach the product build: forwarding it to the desktop shell would
+# put the engine back into the shipped dependency graph, which is precisely what
+# #5560 removed. That is why it lives here rather than in product-features.txt.
 cargo_test() {
   cargo test --manifest-path Cargo.toml --workspace \
-    --features "${PRODUCT_FEATURES},bin-tools" "$@"
+    --features "${PRODUCT_FEATURES},bin-tools,memory-embedded-test-seams" "$@"
 }
 
 integration_test_targets() {

@@ -2,6 +2,42 @@
 //!
 //! Sync RPCs publish `DomainEvent::MemorySyncRequested` on the global event
 //! bus — they are fire-and-forget hooks for future ingestion subscribers.
+//!
+//! # Both engine calls here are openhuman#5560 blockers, and both degrade
+//!
+//! Neither of the two `tinymemory_core::` calls below could be routed through
+//! the contract, and both change behaviour the moment the host's in-process
+//! engine is deleted. Written down here because both failures are quiet, and
+//! the quiet one is the one that gets shipped.
+//!
+//! - **`spawn_manual_sync` → `tinycortex::run_composio_connection`.** The
+//!   engine's own `run_composio_connection_with_caps` opens with
+//!   `global::client_if_ready().ok_or(… "memory client is not ready")`, so with
+//!   the in-process engine gone every target fails and this handler emits
+//!   `MemorySyncStage::Failed` per connection. Loud, at least, but wrong. There
+//!   is no contract member to move to: the whole pipeline is `tinycortex`-shaped
+//!   (a `SyncPipeline` over provider-specific fetchers), and the loaded module
+//!   does not run it either — `tinymemory` v1.5.0's module carries a section
+//!   headed "The periodic sync loops are deliberately NOT started here" with
+//!   three named reasons. Manual sync and the periodic loop share this call, so
+//!   they move together or not at all.
+//! - **[`memory_ingestion_status`] → `global::client_if_ready()`.** Reads the
+//!   engine's live `IngestionState` — running flag, in-flight document, queue
+//!   depth. The contract has no member for it (`memory::bypass_allowlist_tests`
+//!   already records it as "queue telemetry, absent from the contract"), and
+//!   the state now lives inside the module's own address space. **This is the
+//!   quiet one**: the `None` arm already answers "idle, queue empty", which is
+//!   indistinguishable from a healthy store with nothing to do — so once the
+//!   second engine goes this RPC reports permanent idle rather than failing,
+//!   and the Memory panel's ingestion indicator simply never lights up again.
+//!
+//!   The honest fix is not a new bus member. `tinymemory_api::host::MemoryEvent`
+//!   already carries `DocumentIngestStarted`/`Completed` **with `queue_depth`**,
+//!   and the host already serves the event sink over the bus
+//!   (`modules/memory_host.rs`), so the module's ingestion events reach this
+//!   process today. The status snapshot should be folded up from that stream
+//!   host-side, which is a host change with no release coupling — but it needs
+//!   a home next to the sink in `memory/host.rs`, not here.
 
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::memory::sync::composio;

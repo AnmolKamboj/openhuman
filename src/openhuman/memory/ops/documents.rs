@@ -372,13 +372,35 @@ pub async fn context_recall(
 ///
 /// `request.jwt_token` is accepted for backward compatibility but ignored — all
 /// memory operations are local.  Remote/cloud sync is a future consideration.
+///
+/// "Initialise" now means **bind the memory driver for this workspace**, not
+/// construct an in-process engine: this was `tinymemory_core::global::init`, a
+/// second `MemoryClient` over the same SQLite file as the bound driver (#5560).
+/// `active_memory_guard` is the cached, workspace-keyed resolution every other
+/// handler in this file already takes, so calling it here warms exactly the
+/// driver the next `memory_*` call will use.
+///
+/// One behaviour difference, stated rather than hidden: binding is infallible
+/// by design — an inadmissible driver *falls back* and records why, where
+/// `global::init` returned `Err`. So a driver that cannot bind is now reported
+/// through `memory.provider_status` instead of failing this call, and only an
+/// unresolvable workspace or a poisoned binding lock still errors. The driver
+/// id is logged here so the distinction is not invisible at this handler
+/// either.
 pub async fn memory_init(
     request: MemoryInitRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<MemoryInitResponse>>, String> {
     let _ = request.jwt_token; // accepted but unused — memory is local-only
     let workspace_dir = current_workspace_dir().await?;
-    // Initialise (or return existing) global singleton.
-    let _ = tinymemory_core::global::init(workspace_dir.clone())?;
+    // Resolve (and thereby warm) the guarded driver for this workspace — the
+    // same door every other handler in this file takes, so `memory_init`
+    // initialises exactly what the next `memory_*` call will use.
+    let guard = active_memory_guard().await?;
+    log::debug!(
+        "[memory:ops] memory_init: workspace={} driver={}",
+        workspace_dir.display(),
+        guard.driver_id(),
+    );
     let memory_dir = workspace_dir.join("memory");
     Ok(envelope(
         MemoryInitResponse {

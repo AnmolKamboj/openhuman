@@ -389,11 +389,13 @@ impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
                     // The classifier named here is the host's own. The
                     // engine crate exposes a `report_error_or_expected` of its
                     // own, but that is a global slot for *extracted* code to
-                    // report through, and the reporter installed into it
-                    // (`memory::host_impls::OpenHumanErrorReporter`) forwards
-                    // verbatim to this function. This subscriber is host code,
-                    // so the detour buys nothing and only costs an engine
-                    // dependency the seam is trying to shed (#5560).
+                    // report through — installed by whichever process embeds
+                    // the engine, which since #5560 is the loaded TinyMemory
+                    // module and no longer this one (`memory/host_impls.rs`,
+                    // the host's installer, is deleted; `modules/memory_host.rs`
+                    // is the bus-served twin). This subscriber is host code, so
+                    // the detour buys nothing and only costs an engine
+                    // dependency the seam is trying to shed.
                     crate::core::observability::report_error_or_expected(
                         detail.as_str(),
                         "composio",

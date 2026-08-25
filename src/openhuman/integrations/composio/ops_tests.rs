@@ -931,7 +931,7 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
     let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(std::sync::Arc::clone(&memory));
     state.save(&adapter).await.expect("sync state should save");
 
-    let targets = composio_memory_targets_for_connection(&memory, Some("notion"), "conn-1")
+    let targets = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
         .await
         .expect("notion cleanup targets should resolve");
 
@@ -971,7 +971,7 @@ async fn notion_cleanup_targets_surface_corrupt_sync_state() {
         .await
         .expect("corrupt sync state should be written");
 
-    let err = composio_memory_targets_for_connection(&memory, Some("notion"), "conn-1")
+    let err = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
         .await
         .expect_err("corrupt sync state should surface");
 
@@ -994,7 +994,7 @@ async fn drive_cleanup_targets_are_connection_scoped() {
     );
 
     let targets =
-        composio_memory_targets_for_connection(&drive_memory, Some("google_drive"), "conn-1")
+        composio_memory_targets_for_connection(&config, Some("google_drive"), "conn-1")
             .await
             .expect("drive cleanup targets should resolve");
 

@@ -234,9 +234,9 @@ async fn load_dump_config(
     // `dump-all` invocation aborts before rendering a single prompt.
     // Idempotent, so calling it per invocation is safe. Same rationale as
     // `memory_cli` / `subconscious_cli`.
-    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
-        config.clone(),
-    ));
+    // The seams are the module's to install now — this process embeds no
+    // engine, and the embedding seam a session agent needs is served back to
+    // the module over the bus by `modules::memory_host`.
 
     Ok(config)
 }

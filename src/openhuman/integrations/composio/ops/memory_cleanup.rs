@@ -1,11 +1,18 @@
 //! Memory cleanup helpers used when deleting a Composio connection.
 
-use std::sync::Arc;
-
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::binding::MemoryBinding;
 use tinymemory_api::chunks::SourceKind;
 use tinymemory_api::provider::ForgetSelector;
-use tinymemory_core::store::MemoryClientRef;
+
+/// KV namespace the Composio sync pipelines keep their per-connection cursor
+/// state under.
+///
+/// `tinycortex`'s `memory::sync::state::STATE_NAMESPACE`, which
+/// `tinymemory-core`'s `sync_state::KV_NAMESPACE` aliases — one namespace, two
+/// crates naming it, and the row this module reads is written by whichever of
+/// them ran the last sync.
+const SYNC_STATE_NAMESPACE: &str = "composio-sync-state";
 
 /// One thing a connection delete has to remove from memory.
 ///
@@ -104,20 +111,38 @@ impl MemoryCleanupTarget {
     }
 }
 
-/// `memory` is the caller's handle on the live store — the RPC path resolves
-/// the process client, tests pass one bound to their own workspace. Taken as a
-/// parameter rather than constructed here: `MemoryClient::from_workspace_dir`
-/// starts an ingestion worker at construction, so building one per
-/// connection-delete put a second worker on the live store every time — the
-/// exact hazard `memory::bypass_allowlist_tests` names for that constructor.
+/// Enumerate what a connection delete has to remove, for one toolkit.
+///
+/// **Takes a `&Config`, not a memory handle, and that is the openhuman#5560
+/// change.** This used to take `&MemoryClientRef` — the caller's handle on the
+/// live in-process store — because the notion arm loaded sync state through
+/// `tinymemory_core::tinycortex::HostSyncAdapter`. That adapter is two lines
+/// (`kv_get` / `kv_set` on the client), the contract's `MemoryGraph` serves
+/// exactly those, and the in-process engine is gone — so the read goes over the
+/// bus and the parameter became the config the binding is keyed on.
+///
+/// The old signature's warning still applies to whoever is tempted to construct
+/// a client here instead: `MemoryClient::from_workspace_dir` starts an
+/// ingestion worker at construction, so building one per connection-delete put
+/// a second worker on the live store every time — the hazard
+/// `memory::bypass_allowlist_tests` names for that constructor. The binding is
+/// a workspace-keyed cache and starts nothing.
+///
+/// The binding is resolved here rather than inside the notion arm so the
+/// ordering the caller had is preserved: `composio_delete_connection` resolved
+/// the memory handle **before** target discovery and refused the whole delete
+/// if it could not, rather than deleting the connection and then discovering
+/// memory was unreachable.
 pub(crate) async fn composio_memory_targets_for_connection(
-    memory: &MemoryClientRef,
+    config: &Config,
     toolkit: Option<&str>,
     connection_id: &str,
 ) -> anyhow::Result<Vec<MemoryCleanupTarget>> {
     let Some(toolkit) = toolkit.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Vec::new());
     };
+    let binding = crate::openhuman::memory::binding::for_config(config)
+        .map_err(|error| anyhow::anyhow!("memory driver unavailable: {error}"))?;
 
     let targets = match toolkit.to_ascii_lowercase().as_str() {
         "slack" => vec![MemoryCleanupTarget::Exact(
@@ -125,7 +150,7 @@ pub(crate) async fn composio_memory_targets_for_connection(
             format!("slack:{connection_id}"),
         )],
         "gmail" => gmail_memory_sources_for_connection(connection_id),
-        "notion" => notion_memory_targets_for_connection(memory, connection_id).await?,
+        "notion" => notion_memory_targets_for_connection(&binding, connection_id).await?,
         "drive" | "googledrive" | "google_drive" => {
             drive_memory_targets_for_connection(connection_id)
         }
@@ -143,19 +168,58 @@ fn gmail_memory_sources_for_connection(connection_id: &str) -> Vec<MemoryCleanup
     ]
 }
 
+/// Notion files one memory document per synced page, so the delete has to know
+/// which pages this connection ever synced — that list lives in the sync
+/// pipeline's own KV row, not in any chunk.
+///
+/// Read through the contract's `Graph` family. The three outcomes are kept
+/// exactly as `SyncState::load` had them, because the caller's contract is
+/// "every page this connection synced, or an error":
+///
+/// - **no row** → an empty synced set, same as `SyncState::new`. A connection
+///   that never synced has nothing extra to forget.
+/// - **a row that will not deserialise** → `Err`, *not* an empty set. A corrupt
+///   cursor means the page list is unknown, and reporting "nothing to delete"
+///   would leave a disconnected account's pages in memory while telling the
+///   user they were removed. `notion_cleanup_targets_surface_corrupt_sync_state`
+///   pins the message.
+/// - **a driver with no `Graph` family** → `Err`, for the same reason.
+///
+/// All three failures render through [`sync_state_load_error`] so they stay one
+/// message to the caller, exactly as they were when `SyncState::load` produced
+/// all three itself.
 async fn notion_memory_targets_for_connection(
-    memory: &MemoryClientRef,
+    binding: &MemoryBinding,
     connection_id: &str,
 ) -> anyhow::Result<Vec<MemoryCleanupTarget>> {
     let mut targets = connection_scoped_document_targets("notion", connection_id);
 
-    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(Arc::clone(memory));
-    let state = tinycortex::memory::sync::SyncState::load(&adapter, "notion", connection_id)
+    let Some(graph) = binding.provider().as_graph() else {
+        return Err(sync_state_load_error(format!(
+            "driver '{}' does not serve Graph",
+            binding.driver_id()
+        )));
+    };
+    let key = format!("notion:{connection_id}");
+    let record = graph
+        .kv_get(Some(SYNC_STATE_NAMESPACE), &key)
         .await
-        .map_err(|error| {
-            anyhow::anyhow!("failed to load notion sync state for memory cleanup: {error}")
-        })?;
-    for raw_id in state.synced_ids {
+        .map_err(sync_state_load_error)?;
+    let synced_ids = match record {
+        Some(record) => {
+            serde_json::from_value::<tinycortex::memory::sync::SyncState>(record.value)
+                .map_err(sync_state_load_error)?
+                .synced_ids
+        }
+        None => {
+            log::debug!(
+                "[composio][memory] no notion sync state for connection (driver='{}'); no page targets",
+                binding.driver_id()
+            );
+            Default::default()
+        }
+    };
+    for raw_id in synced_ids {
         let Some(page_id) = notion_synced_page_id(&raw_id) else {
             continue;
         };
@@ -170,6 +234,17 @@ async fn notion_memory_targets_for_connection(
     }
 
     Ok(dedupe_memory_targets(targets))
+}
+
+/// The one message the notion sync-state read reports, whatever went wrong.
+///
+/// `notion_cleanup_targets_surface_corrupt_sync_state` asserts on the
+/// `"failed to load notion sync state"` prefix, and the caller in
+/// `composio_delete_connection` renders it into a user-facing "cannot enumerate
+/// memory targets" refusal — so the wording is load-bearing in both directions
+/// and is kept identical to the one `SyncState::load`'s caller used to build.
+fn sync_state_load_error(detail: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!("failed to load notion sync state for memory cleanup: {detail}")
 }
 
 fn drive_memory_targets_for_connection(connection_id: &str) -> Vec<MemoryCleanupTarget> {

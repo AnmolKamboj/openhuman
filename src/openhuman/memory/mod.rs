@@ -19,9 +19,18 @@
 //! | [`global`] | the per-workspace singleton |
 //! | [`host`] | the seam impls — [`host::install_memory_event_sink`] and `MemoryHostConfig for Config` |
 //!
-//! Everything else in this module is a **re-export** of the extracted crate, so
-//! the ~550 `crate::openhuman::memory::…` paths elsewhere in this crate keep
-//! resolving unchanged. Prefer `tinymemory_core::…` in new code.
+//! What is left below is a handful of flat **type** re-exports, kept so the
+//! ~550 `crate::openhuman::memory::…` paths elsewhere in this crate keep
+//! resolving unchanged. The engine's *modules* are no longer re-exported here
+//! at all — see the block at the bottom of this file for why that facade was
+//! deleted.
+//!
+//! **Prefer `tinymemory_api::…` in new code, never `tinymemory_core::…`.** This
+//! paragraph used to say the opposite, which predates #5560: the contract crate
+//! is what the host, `ModuleMemoryProvider` and the loaded module all speak, and
+//! naming the engine crate is the thing that keeps it linked into the shipped
+//! binary. A path that has no contract equivalent is a gap to report, not a
+//! reason to reach for the engine.
 
 pub mod agent;
 pub mod api;
@@ -29,6 +38,15 @@ pub mod binding;
 pub mod driver;
 pub mod guard;
 pub mod host;
+/// Host implementations of the seam traits the ENGINE declares.
+///
+/// `#[cfg(test)]` because the production host embeds no engine any more: the
+/// module installs its own seams and this host answers it over the bus through
+/// [`crate::openhuman::modules::memory_host`] instead. What still needs these
+/// is the test suite, which binds the in-process TinyCortex driver directly —
+/// legitimate, because `tinymemory-core` is a dev-dependency there and a
+/// dev-dependency is not linked into the shipped binary.
+#[cfg(any(test, feature = "memory-embedded-test-seams"))]
 pub mod host_impls;
 /// Host desktop policy: is the memory content root a vault Obsidian already
 /// knows about? See the module docs for why this is OpenHuman's and not the

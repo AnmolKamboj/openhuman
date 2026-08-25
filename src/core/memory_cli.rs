@@ -15,8 +15,8 @@ use anyhow::Result;
 use std::io::Read;
 use std::path::PathBuf;
 
+use crate::openhuman::memory::api::provider::MemoryDocuments;
 use crate::openhuman::memory::api::types::NamespaceDocumentInput;
-use tinymemory_core::ingestion::{MemoryIngestionConfig, MemoryIngestionRequest};
 
 /// Entry point for `openhuman memory <subcommand>`.
 pub fn run_memory_command(args: &[String]) -> Result<()> {
@@ -149,8 +149,14 @@ fn run_ingest(args: &[String]) -> Result<()> {
         .enable_all()
         .build()?;
 
-    let result = rt.block_on(async {
-        let client = create_memory_client("ingest").await?;
+    let document_id = rt.block_on(async {
+        let binding = create_memory_binding("ingest").await?;
+        let documents = binding.provider().as_documents().ok_or_else(|| {
+            anyhow::anyhow!(
+                "the bound memory driver '{}' does not serve documents",
+                binding.driver_id()
+            )
+        })?;
 
         let document = NamespaceDocumentInput {
             namespace: namespace.clone(),
@@ -167,39 +173,33 @@ fn run_ingest(args: &[String]) -> Result<()> {
             taint: crate::openhuman::memory::MemoryTaint::Internal,
         };
 
-        let ingestion_config = MemoryIngestionConfig::default();
-
-        eprintln!(
-            "[memory:cli] starting ingestion with model={}",
-            ingestion_config.model_name,
-        );
-
-        let result = client
-            .ingest_doc(MemoryIngestionRequest {
-                document,
-                config: ingestion_config,
-            })
+        documents
+            .put_document(document)
             .await
-            .map_err(anyhow::Error::msg)?;
-
-        Ok::<_, anyhow::Error>(result)
+            .map_err(|e| anyhow::anyhow!("{e}"))
     })?;
 
     eprintln!();
     eprintln!("=== Ingestion Result ===");
-    eprintln!("  document_id:  {}", result.document_id);
-    eprintln!("  namespace:    {}", result.namespace);
-    eprintln!("  model:        {}", result.model_name);
-    eprintln!("  mode:         {}", result.extraction_mode);
-    eprintln!("  chunks:       {}", result.chunk_count);
-    eprintln!("  entities:     {}", result.entity_count);
-    eprintln!("  relations:    {}", result.relation_count);
-    eprintln!("  preferences:  {}", result.preference_count);
-    eprintln!("  decisions:    {}", result.decision_count);
-    eprintln!("  tags:         {:?}", result.tags);
+    eprintln!("  document_id:  {document_id}");
+    eprintln!("  namespace:    {namespace}");
+    // Narrower than this command used to print, and the reason is worth stating
+    // rather than leaving as an apparent regression. It used to call the
+    // engine's `ingest_doc` directly and report the extraction tally it
+    // returned — chunk, entity, relation, preference and decision counts, the
+    // model and the extraction mode. The module contract's `put_document`
+    // answers a document id, and `IngestOutcome` carries only written/skipped
+    // counts and ids, so there is nothing on the wire to print those from.
+    // The extraction still happens; only the report is smaller. Widening it
+    // means a new contract member and a release, not a host change.
 
-    // Print full JSON to stdout for piping/scripting
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "document_id": document_id,
+            "namespace": namespace,
+        }))?
+    );
 
     Ok(())
 }
@@ -362,14 +362,24 @@ fn run_query(args: &[String]) -> Result<()> {
         .build()?;
 
     let result = rt.block_on(async {
-        let client = create_memory_client("query").await?;
-        client
-            .query_namespace(&namespace, &query, limit)
+        let binding = create_memory_binding("query").await?;
+        let documents = binding.provider().as_documents().ok_or_else(|| {
+            anyhow::anyhow!(
+                "the bound memory driver '{}' does not serve documents",
+                binding.driver_id()
+            )
+        })?;
+        documents
+            .query_documents(&namespace, &query, limit as usize)
             .await
-            .map_err(anyhow::Error::msg)
+            .map_err(|e| anyhow::anyhow!("{e}"))
     })?;
 
-    println!("{result}");
+    // The contract answers a structured context where the engine handed back a
+    // rendered string, so the CLI does the rendering. JSON rather than a guess
+    // at the engine's old prose layout: a scripted caller can read it, and it
+    // cannot silently diverge from what the driver actually returned.
+    println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
 
@@ -536,12 +546,10 @@ async fn create_memory_binding(
         }
     }
 
-    // Same seams, same reason as `create_memory_client` — plus the `[modules]`
-    // policy, which a module-backed driver needs published before it can load
-    // and which only the runtime bootstrap otherwise sets. Both are idempotent.
-    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
-        config.clone(),
-    ));
+    // The `[modules]` policy, which a module-backed driver needs published
+    // before it can load and which only the runtime bootstrap otherwise sets.
+    // Idempotent. The engine seams that used to be installed alongside it are
+    // gone: this process embeds no engine, so there is nothing to call back.
     #[cfg(feature = "modules")]
     crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config.clone()));
 
@@ -594,45 +602,6 @@ fn documents_family(
 /// Both gates are default-OPEN when the binding cannot be resolved, mirroring
 /// [`crate::core::all::capability_allowed`]: denying is only ever correct after
 /// a driver has actually answered `capabilities()`.
-async fn create_memory_client(subcommand: &str) -> Result<tinymemory_core::store::MemoryClientRef> {
-    let config = crate::openhuman::config::Config::load_or_init()
-        .await
-        .unwrap_or_default();
-
-    // Resolved through `cli_capability` rather than `binding::for_workspace`
-    // here, so the memory-guard bypass ratchet carries ONE allowlisted line
-    // for the whole CLI layer instead of one per entry point. Default-OPEN
-    // when the binding cannot be resolved.
-    let invocation = format!("openhuman memory {subcommand}");
-    if let Some((driver_id, class, advertised)) =
-        crate::core::cli_capability::bound_memory_driver_for(
-            &config.workspace_dir,
-            &config.subsystems.memory,
-        )
-    {
-        crate::core::cli_capability::legacy_client_verdict(&driver_id, class, &invocation)?;
-        if let Some(required) = required_capability(subcommand) {
-            crate::core::cli_capability::capability_verdict(
-                &driver_id,
-                advertised,
-                Some(required),
-                &invocation,
-            )?;
-        }
-    }
-
-    // The CLI dispatches straight to a subcommand and never runs the runtime
-    // bootstrap, so nothing else installs these. They must be in place before
-    // the first memory call: the embedding, chat, Composio and config seams
-    // fail loudly when unwired rather than degrading, and a `memory` subcommand
-    // that reached one would report a broken subsystem rather than a missing
-    // one. Idempotent, so calling it per invocation is safe.
-    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
-        config.clone(),
-    ));
-    tinymemory_core::global::init(config.workspace_dir).map_err(anyhow::Error::msg)
-}
-
 fn print_memory_help() {
     println!("Usage: openhuman memory <subcommand> [options]");
     println!();

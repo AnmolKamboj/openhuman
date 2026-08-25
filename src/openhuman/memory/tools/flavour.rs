@@ -24,6 +24,25 @@ use tinycortex::memory::tree::{compile_flavoured_root, flavoured_root_abs_path};
 
 use crate::openhuman::config::Config;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+// The `Config` → `tinycortex::memory::MemoryConfig` mapping, and the one engine
+// reference left in this file (#5560).
+//
+// It cannot be repointed at `tinycortex` — the mapping is `tinymemory-core`'s
+// own (`engine/config.rs`), not a re-export — and it cannot be reimplemented
+// here. Two of its three assignments are trivial (`workspace`, `content_root`);
+// the third sets `embedding.provider` from `effective_embedder_slug`, the
+// engine's embedder-resolution ladder, and that field is the *signature every
+// per-model embedding sidecar row is keyed by*. A host-side twin of that ladder
+// would be a second copy of the function whose whole documented purpose is that
+// `config.memory().embedding_provider` is not authoritative — and a copy that
+// drifted would file locally-produced vectors under the cloud provider.
+//
+// It also is not this file's to fix alone: four other host call sites take the
+// same helper (`memory::sync::sync_status::rpc`,
+// `agent::harness::archivist::{hook_impl, recap}`, plus the archivist tests),
+// so the mapping needs one home, host-side, once the engine-config seam moves.
+// There is no contract member for it and there should not be — the contract is
+// deliberately engine-neutral and `MemoryConfig` is TinyCortex's runtime shape.
 use tinymemory_core::tinycortex::memory_config_from;
 
 /// The seven valid `flavour` slugs, for error messages.

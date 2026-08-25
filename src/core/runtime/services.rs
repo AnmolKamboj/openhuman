@@ -12,9 +12,10 @@
 //! spawned at all) up to a `ServiceSet` chosen by the embedder, while these
 //! functions keep their config gates (is it enabled for this user).
 
-// `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
-use tinymemory_api::host::MemoryHostConfig;
-
+// `MemoryHostConfig` was imported here for `config.to_arc()`, the argument to
+// the engine's `queue::start`. That call left with the in-process engine
+// (openhuman#5560 — see `start_bootstrap_jobs`); every remaining `config.…` in
+// this file is plain field access on OpenHuman's own `Config`.
 use crate::core::runtime::ServiceSet;
 use crate::openhuman::config::Config;
 
@@ -247,13 +248,40 @@ pub(crate) fn bootstrap_job_plan(services: &ServiceSet) -> BootstrapJobPlan {
 /// `services.channels` — a channels-off + memory/integrations-on embedder
 /// silently lost all of them (#5028) — so they now sit behind `integrations` /
 /// `memory_sync` / `orchestration` instead.
-pub fn start_bootstrap_jobs(services: ServiceSet, config: &Config) {
+///
+/// `config` is unread as of openhuman#5560 — the engine's `queue::start` was
+/// this function's only consumer of it, and the loaded TinyMemory module starts
+/// that pool itself now. The parameter is **kept** rather than dropped: every
+/// other job here is one config read away from needing it again (the periodic
+/// sync loops below already re-load config internally), and removing it would
+/// churn every embedder that calls `start_bootstrap_jobs` for no gain. Named
+/// `_config` so the compiler does not have to be told to ignore it.
+pub fn start_bootstrap_jobs(services: ServiceSet, _config: &Config) {
     let plan = bootstrap_job_plan(&services);
     log::debug!("[runtime.bootstrap] starting bootstrap jobs with plan {plan:?}");
 
+    // ── The queue pool moved into the module, and must NOT be started here ──
+    //
+    // This block used to call `tinymemory_core::queue::start(config.to_arc())`,
+    // and it was the only caller of the engine's worker pool in any tree.
+    // openhuman#5560 deletes the host's second, in-process engine, so that call
+    // has no engine to drain — and `tinymemory` v1.5.0's module starts its own
+    // pool at load (`tinymemory-module/src/lib.rs`, `start_queue_pool`), which
+    // is what keeps ingest, `retry_failed` and `ensure_reembed_backfill` alive.
+    //
+    // **Restoring the call would not be a duplicate, it would be a second pool
+    // that cannot see the first.** The `cdylib` links its own copy of
+    // `tinymemory-core`, so the `Once` inside `queue::start` is a *different*
+    // static from the host's: two pools would claim jobs from one SQLite queue
+    // with neither aware of the other. That is why the line is gone rather than
+    // gated.
+    //
+    // `plan.memory_queue` is kept — it is `ServiceSet`'s statement of intent
+    // and other jobs may hang off it — but the host has no work to do for it.
     if plan.memory_queue {
-        log::debug!("[runtime.bootstrap] starting memory queue workers");
-        tinymemory_core::queue::start(config.to_arc());
+        log::debug!(
+            "[runtime.bootstrap] memory queue workers are owned by the tinymemory module (start_queue_pool); host starts none"
+        );
     } else {
         log::debug!("[runtime.bootstrap] memory queue workers disabled by ServiceSet");
     }
@@ -261,41 +289,31 @@ pub fn start_bootstrap_jobs(services: ServiceSet, config: &Config) {
     // Integrations — Composio periodic connection sync + one-shot source
     // reconcile. Both no-op without active Composio connections.
     //
-    // ── This call comes out with the in-process engine, and not before ──────
+    // ── This call is STILL host-side, and deleting it is not tidying ────────
     //
     // `start_periodic_sync` is not host code. It re-exports through
     // `integrations::composio::mod.rs` to `memory::sync::composio::periodic`,
     // and that module is `pub use tinymemory_core::sync::composio::*` — so the
-    // loop this line starts is engine code running in the host process against
-    // the engine this binary still compiles in. `ensure_composio_sources` below
-    // reaches `tinymemory_core::sources` the same way.
+    // loop this line starts is engine code running in the host process.
+    // `ensure_composio_sources` below reaches `tinymemory_core::sources` the
+    // same way.
     //
-    // openhuman#5560 deletes that second, in-process engine and leaves the
-    // loaded TinyMemory module as the only one. Deleting this line before then
-    // stops Composio sync outright; leaving it after would run a loop against
-    // an engine that is no longer there. Both are silent — the sync layer
-    // reports "no connections", which is indistinguishable from a user who has
-    // none — so the removal is ordered, and every step before the last has to
-    // land first:
+    // The queue pool above moved into the module; **these two loops did not**,
+    // and the pinned release says so in its own words. `tinymemory` v1.5.0's
+    // `tinymemory-module/src/lib.rs` carries a section headed "The periodic
+    // sync loops are deliberately NOT started here" listing three reasons they
+    // cannot be: the pipeline reads Composio credentials off `Config` rather
+    // than off the `ComposioHost` seam, `global::client_if_ready()` is `None`
+    // inside the module, and `EngineRuntimeConfig::memory_sync_interval_secs()`
+    // answers `Some(0)` — "manual only" — so every tick would skip every
+    // source without logging anything.
     //
-    //   1. The host serves `ai.tinyhumans.tinymemory.ComposioHost` over the
-    //      module bus. Done — `modules/memory_host.rs`.
-    //   2. The module installs a bus-backed `ComposioHost` seam, so engine code
-    //      running *inside* the module can reach this host's Composio client.
-    //      Without it `require_composio_host()` returns `Err` and `is_available`
-    //      reads `false`, which is the quiet failure above.
-    //   3. The module starts the sync loop itself at load, because nothing in
-    //      the host will be able to. `tinymemory-module`'s `install_unserved_
-    //      seams` names this explicitly: the module starts none of the
-    //      background loops today; `queue::start`, `start_periodic_sync` and
-    //      `start_workspace_periodic_sync` are all called host-side.
-    //   4. A `tinymemory` **release** carrying 2 and 3, and a re-pin of
-    //      `modules::registry` to its digest. The registry pins a released,
-    //      SHA-256-verified artifact, so until the re-pin the loaded module has
-    //      neither, however far ahead `vendor/tinymemory` is.
-    //   5. Only then: delete this line, delete the shim at
-    //      `memory/sync/composio/mod.rs`, and delete the host's in-process
-    //      engine.
+    // So this line stays until an upstream release moves the loops, and the
+    // shim at `memory/sync/composio/mod.rs` stays with it. **Both failure modes
+    // here are silent**: removing the call stops Composio sync outright, and
+    // the sync layer reporting "no connections" is indistinguishable from a
+    // user who has none. The first symptom either way is somebody noticing
+    // their mail stopped being indexed weeks later.
     if plan.composio_integration_sync {
         log::debug!("[runtime.bootstrap] starting composio integration sync + source reconcile");
         crate::openhuman::integrations::composio::start_periodic_sync();

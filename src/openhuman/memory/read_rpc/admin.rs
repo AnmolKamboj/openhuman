@@ -272,6 +272,28 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
 
 // ── flush_source_tree ────────────────────────────────────────────────────
 
+/// Force a flush of one source's summary tree.
+///
+/// # The last engine reference in this module (#5560)
+///
+/// `get_or_create_source_tree` hands back a live `Tree` **object**, and both
+/// things this handler does next need the object rather than a namespace: the
+/// host's `TreeFactory::from_tree(&tree).label_strategy(&cfg)` picks the
+/// labelling policy from the tree's own kind/scope, and `force_flush_tree`
+/// takes `&tree.id`.
+///
+/// `MemoryTree` cannot express that. It is namespace-addressed end to end —
+/// `append`, `query_source`, `drill_down`, `seal`, `cascade`, `summary_forest`,
+/// `recent_leaves` — and there is no member that returns a tree handle, nor
+/// should there be: handing a driver's internal object across the bus is the
+/// thing the contract exists to prevent. `tinymemory_core::tree_source` is also
+/// genuinely engine-owned (it wraps `tree::tree::registry::get_or_create_tree`
+/// and writes the `_source.md` mirror as a side effect), so there is no
+/// tinycortex twin to repoint at either.
+///
+/// Migrating this needs a bus member shaped like "flush the tree for this
+/// source scope, using the host's label strategy", which does not exist in the
+/// pinned release — an upstream ask, not a host change.
 pub async fn flush_source_tree_rpc(
     config: &Config,
     source_scope: &str,

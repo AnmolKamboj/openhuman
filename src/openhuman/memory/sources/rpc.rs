@@ -9,6 +9,21 @@ use crate::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
 use crate::rpc::RpcOutcome;
 use tinymemory_api::host::MemoryHostConfig;
 
+/// The coding-session ingest request, under this domain's own name.
+///
+/// The type is the engine's (`tinymemory_core::tinycortex`, which is
+/// `tinymemory-core`'s host-orchestration layer over TinyCortex's persona
+/// pipeline — 305 lines that name `walkdir`, `RawSession` and `FileStateStore`,
+/// with no capability family and no contract equivalent). It is re-exported
+/// here so `schemas.rs` can name it as `rpc::CodingSessionIngestRequest`, the
+/// way every other handler adapter in that file names its request type.
+///
+/// That is a consolidation, not a migration (#5560): the engine dependency does
+/// not go away, it stops being spread over two files. When the persona pipeline
+/// finally moves — behind the bus, or home the way `rpc_models` did — this
+/// module is the only one that has to change.
+pub use tinymemory_core::tinycortex::CodingSessionIngestRequest;
+
 #[derive(Debug, serde::Serialize)]
 pub struct CodingSessionStatusResponse {
     pub sources: Vec<tinymemory_core::tinycortex::CodingSessionSourceStatus>,
@@ -85,7 +100,7 @@ fn ingest_budget(max_sessions: usize) -> std::time::Duration {
 }
 
 pub async fn ingest_coding_sessions_rpc(
-    req: tinymemory_core::tinycortex::CodingSessionIngestRequest,
+    req: CodingSessionIngestRequest,
 ) -> Result<RpcOutcome<tinymemory_core::tinycortex::CodingSessionIngestResponse>, String> {
     tracing::info!("[memory_sources] ingest_coding_sessions_rpc: entry");
     let config = crate::openhuman::config::Config::load_or_init()

@@ -796,8 +796,16 @@ impl MemoryEpisodic for RecordingProvider {
         Ok(())
     }
 
-    async fn insert_event(&self, _event: &EpisodicEvent) -> Result<(), MemoryError> {
-        self.record(Call::plain("episodic.insert_event"));
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        // Records the event text for the same reason `insert_turn` does: a guard
+        // that stopped redacting one would otherwise be invisible to every test,
+        // and the redaction on this path has already been missing once.
+        self.record(Call {
+            method: "episodic.insert_event".into(),
+            content: Some(event.content.clone()),
+            taint: None,
+            scoped: None,
+        });
         Ok(())
     }
 
