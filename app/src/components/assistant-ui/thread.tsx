@@ -350,6 +350,14 @@ const Composer: FC<{
     };
   }, []);
 
+  // DOM text -> composer store. Deferred by a microtask so the editor has
+  // finished applying the event before the DOM is read.
+  const syncComposerFromDom = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return;
+    const text = target.textContent ?? '';
+    globalThis.queueMicrotask(() => aui.composer.setText(text));
+  };
+
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
       <ComposerPrimitive.Root
@@ -373,11 +381,23 @@ const Composer: FC<{
               ref={inputWrapperRef}
               placeholder="Send a message..."
               onInputCapture={event => {
-                const target = event.target;
-                if (target instanceof HTMLElement) {
-                  const text = target.textContent ?? '';
-                  globalThis.queueMicrotask(() => aui.composer.setText(text));
+                // An IME fires `input` per keystroke while the candidate window is
+                // still open, and the text on the DOM then is the pre-edit, not the
+                // user's input. Writing it into the store re-renders the editor and
+                // cancels the composition, so `nihao` + Enter committed as
+                // `n ni nihao 你好` (#5763). The keydown guard below already refuses
+                // to act mid-composition; this bridge was the one that did not.
+                if ('isComposing' in event.nativeEvent && event.nativeEvent.isComposing) {
+                  return;
                 }
+                syncComposerFromDom(event.target);
+              }}
+              onCompositionEndCapture={event => {
+                // Chromium emits a trailing `input` with `isComposing === false` that
+                // the handler above picks up; WebKit does not, so on Safari the
+                // committed text exists only here. Running in both is harmless -- the
+                // second write carries the same string.
+                syncComposerFromDom(event.target);
               }}
               onKeyDownCapture={event => {
                 if (event.key === 'Escape' && onEscape) {

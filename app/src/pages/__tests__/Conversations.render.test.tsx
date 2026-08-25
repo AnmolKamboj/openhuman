@@ -380,6 +380,31 @@ function setComposerText(textarea: HTMLElement, text: string) {
   fireEvent.input(textarea, { data: text, inputType: 'insertText' });
 }
 
+/**
+ * Drive one IME composition the way a browser does: keystrokes arrive as `input`
+ * events carrying the PRE-EDIT text with `isComposing` set, then the commit lands
+ * on `compositionend`.
+ *
+ * `fireEvent.input` builds an `InputEvent` from these props, so `isComposing` is a
+ * real property on the native event rather than something the handler has to be
+ * told about.
+ */
+function typeImePreEdits(textarea: HTMLElement, preEdits: string[]) {
+  for (const preEdit of preEdits) {
+    textarea.textContent = preEdit;
+    fireEvent.input(textarea, {
+      data: preEdit,
+      inputType: 'insertCompositionText',
+      isComposing: true,
+    });
+  }
+}
+
+function commitIme(textarea: HTMLElement, committed: string) {
+  textarea.textContent = committed;
+  fireEvent.compositionEnd(textarea, { data: committed });
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
@@ -958,6 +983,75 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
     resolveSend?.();
+  });
+
+  // #5763. The DOM->store bridge on the composer fired on every `input`, and an
+  // IME emits one per keystroke carrying the PRE-EDIT text. In a browser the
+  // resulting store write re-renders the editor and cancels the composition, so
+  // `nihao` + Enter committed as `n ni nihao 你好`. jsdom has no real Lexical
+  // composition to cancel, so what it shows instead is the other half of the same
+  // fault: the committed text never arrives and the last pre-edit stands. Either
+  // way the composer must end up holding what the user committed.
+  it('does not push the pre-edit into the composer while an IME composition runs', async () => {
+    const { textarea } = await renderSelectedConversation();
+
+    await act(async () => {
+      typeImePreEdits(textarea, ['n', 'ni', 'nihao']);
+    });
+
+    // Nothing was committed, so the composer must still be empty. Before the fix
+    // each pre-edit keystroke was written straight into the store, which is the
+    // write that cancels the composition in a real browser (#5763).
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    });
+  });
+
+  it('takes the committed IME text when the composition ends', async () => {
+    const { textarea, thread } = await renderSelectedConversation();
+
+    await act(async () => {
+      typeImePreEdits(textarea, ['n', 'ni', 'nihao']);
+      commitIme(textarea, '你好');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    });
+
+    await waitFor(() => {
+      expect(chatSend).toHaveBeenCalledTimes(1);
+    });
+    expect(chatSend).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: thread.id, message: '你好' })
+    );
+  });
+
+  // The gate keys on `isComposing`, so ordinary typing must be untouched. This is
+  // the property the 22 existing composer tests depend on: in jsdom the bridge is
+  // the only path from a synthetic `input` to the store.
+  it('still syncs ordinary typing, which carries no composition flag', async () => {
+    const { textarea, thread } = await renderSelectedConversation();
+
+    await act(async () => {
+      setComposerText(textarea, 'plain text');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    });
+
+    await waitFor(() => {
+      expect(chatSend).toHaveBeenCalledTimes(1);
+    });
+    expect(chatSend).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: thread.id, message: 'plain text' })
+    );
   });
 
   it('cancels the in-flight generation when the in-composer Stop button is clicked', async () => {
