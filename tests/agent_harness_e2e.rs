@@ -144,6 +144,21 @@ fn tool_call_completion(name: &str, arguments: Value) -> Value {
     }]})
 }
 
+/// A completion carrying several tool calls in ONE assistant message.
+///
+/// Fan-out is now several `spawn_async_subagent` calls "issued together"
+/// (orchestrator `prompt.md`), which on the wire is one message with several
+/// entries in `toolCalls` — not several messages. [`tool_call_completion`]
+/// cannot express that, and scripting them as separate completions would test
+/// the serial shape the fan-out guidance exists to prevent.
+fn tool_calls_completion(calls: &[(&str, Value)]) -> Value {
+    json!({ "content": "", "toolCalls": calls.iter().map(|(name, arguments)| json!({
+        "id": format!("call_{name}_{}", arguments.to_string().len()),
+        "name": name,
+        "arguments": arguments.to_string(),
+    })).collect::<Vec<_>>() })
+}
+
 fn error_completion(status: u16, message: &str) -> Value {
     json!({ "status": status, "error": message })
 }
@@ -1920,11 +1935,34 @@ async fn provider_error_retry_inner() {
 //     request[2] = researcher (inner loop continuation) → DEPTH2_CANARY text
 //     request[3] = orchestrator synthesis
 
-/// spawn_parallel_agents with 2 researcher tasks: both children consume from
-/// the global scripted FIFO; both canaries appear in the final synthesis.
-/// Orchestrator allowlist (agent.toml) includes "researcher" so both tasks pass
-/// the allowlist check in spawn_parallel_agents.rs:223.
-/// ≥4 upstream requests and no "Unknown tool:" confirm the full fan-out path ran.
+/// Two `spawn_async_subagent` calls issued together really do put two workers
+/// in flight: both are dispatched and both run, concurrently.
+///
+/// This is the surviving half of what `spawn_parallel_agents` used to prove.
+/// #5757 (`02d81f6cf`) retired that tool on the grounds that "several spawns
+/// are already several workers in flight" (`orchestrator/agent.toml`), and
+/// `prompt.md` now teaches exactly that: "N independent subtasks means N
+/// spawns, issued together. They run concurrently." That claim is the thing
+/// worth pinning — it is the whole justification for dropping the dedicated
+/// fan-out tool, and #4754 measured what happens when fan-out silently
+/// serializes (145-200s gaps between workers).
+///
+/// The *other* half — both results reaching the user — is deliberately not
+/// asserted here, and not because it stopped mattering. `spawn_async_subagent`
+/// returns a task id immediately and results come back through
+/// `orchestration::background_delivery`, which is documented "idle-gated —
+/// never mid-turn" and debounced, i.e. on a LATER system turn. That subsystem
+/// is registered from `bootstrap_core_runtime`, which `boot_stack` does not
+/// call (see the note on `ensure_approval_gate`), so no delivery turn can fire
+/// in this harness at all. Asserting it here would need new harness plumbing;
+/// it is covered instead at the layer that can see it, in
+/// `orchestration::tools::tools_e2e_tests`, where `background_completions` is
+/// reachable.
+///
+/// Assertions are on the captured upstream *requests* rather than on the final
+/// synthesis, because detached children race the orchestrator's own reply for
+/// the global FIFO and any assertion keyed on script order would be a coin
+/// flip. What each worker was asked is deterministic; when it asked is not.
 #[test]
 fn parallel_subagent_fanout() {
     run_on_agent_stack("parallel_subagent_fanout", parallel_subagent_fanout_inner);
@@ -1932,24 +1970,26 @@ fn parallel_subagent_fanout() {
 
 async fn parallel_subagent_fanout_inner() {
     let _lock = env_lock();
+    // ONE assistant message carrying TWO spawns — the "issued together" shape.
+    // Both children are single-turn (text only, no inner tool loop), so the
+    // remaining entries are: the orchestrator's own reply plus one completion
+    // per child. Their order is NOT fixed: the children are detached and race
+    // the orchestrator's reply for the queue, which is why nothing below keys
+    // on a script index.
     reset_script(vec![
-        // request[0]: Orchestrator issues spawn_parallel_agents with 2 researcher tasks.
-        tool_call_completion(
-            "spawn_parallel_agents",
-            json!({ "tasks": [
-                { "agent_id": "researcher", "prompt": "Find alpha canary" },
-                { "agent_id": "researcher", "prompt": "Find beta canary" }
-            ]}),
-        ),
-        // request[1] + request[2]: The two researcher children consume from the
-        // FIFO queue concurrently via join_all. Order between children is
-        // non-deterministic; both carry distinct canaries so the synthesis test
-        // is order-agnostic. Both children are single-turn (text only → no inner
-        // tool loop → one LLM call each).
-        text_completion("PARALLEL_ALPHA_CANARY"),
-        text_completion("PARALLEL_BETA_CANARY"),
-        // request[3]: Orchestrator receives both results and synthesizes.
-        text_completion("Both done: PARALLEL_ALPHA_CANARY and PARALLEL_BETA_CANARY"),
+        tool_calls_completion(&[
+            (
+                "spawn_async_subagent",
+                json!({ "agent_id": "researcher", "prompt": "Find PARALLEL_ALPHA_CANARY" }),
+            ),
+            (
+                "spawn_async_subagent",
+                json!({ "agent_id": "researcher", "prompt": "Find PARALLEL_BETA_CANARY" }),
+            ),
+        ]),
+        text_completion("Spawned two workers; results will arrive as they land."),
+        text_completion("alpha worker done"),
+        text_completion("beta worker done"),
     ]);
     let stack = boot_stack().await;
 
@@ -1972,66 +2012,75 @@ async fn parallel_subagent_fanout_inner() {
         Some("chat_done"),
         "expected chat_done for parallel fanout: {done}"
     );
-    let full_response = done
-        .get("full_response")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("chat_done missing full_response: {done}"));
+
+    // The children are detached, so the turn can end before they have issued
+    // their upstream calls. Poll rather than assert immediately — a bare
+    // assertion here would be a race, and a sleep would be a guess.
+    let both_dispatched = |reqs: &[Value]| {
+        let all = serde_json::to_string(reqs).unwrap_or_default();
+        all.contains("Find PARALLEL_ALPHA_CANARY") && all.contains("Find PARALLEL_BETA_CANARY")
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        if with_captured(|c| both_dispatched(c)) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "both workers must be dispatched; captured requests: {}",
+            serde_json::to_string_pretty(&with_captured(|c| c.clone())).unwrap_or_default()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let requests = with_captured(|c| c.clone());
+
+    // Both prompts reached the upstream, so both workers really ran — not one
+    // worker twice, and not one worker while the other was dropped on the
+    // floor. This is the claim that justifies retiring `spawn_parallel_agents`.
+    let alpha = requests
+        .iter()
+        .filter(|r| {
+            serde_json::to_string(r)
+                .unwrap_or_default()
+                .contains("Find PARALLEL_ALPHA_CANARY")
+        })
+        .count();
+    let beta = requests
+        .iter()
+        .filter(|r| {
+            serde_json::to_string(r)
+                .unwrap_or_default()
+                .contains("Find PARALLEL_BETA_CANARY")
+        })
+        .count();
     assert!(
-        full_response.contains("PARALLEL_ALPHA_CANARY")
-            && full_response.contains("PARALLEL_BETA_CANARY"),
-        "synthesis must contain both canaries; full_response: {full_response}"
+        alpha >= 1 && beta >= 1,
+        "each worker must be dispatched at least once (alpha={alpha}, beta={beta}); \
+         requests: {}",
+        serde_json::to_string_pretty(&requests).unwrap_or_default()
     );
 
-    // ≥4 upstream requests: orchestrator + 2 researcher children + orchestrator synthesis.
-    let requests = with_captured(|c| c.clone());
+    // ≥3 upstream calls: the orchestrator's spawn turn, its own reply, and at
+    // least the two children. Fewer means a child never reached the model.
     assert!(
-        requests.len() >= 4,
-        "expected ≥4 upstream requests (orchestrator + 2 researchers + synthesis), got {};\
-        \nrequests: {}",
+        requests.len() >= 3,
+        "expected ≥3 upstream requests (orchestrator + 2 workers), got {};\nrequests: {}",
         requests.len(),
         serde_json::to_string_pretty(&requests).unwrap_or_default()
     );
 
-    // No "Unknown tool:" — spawn_parallel_agents was synthesised and ran successfully.
-    let all_serialized = serde_json::to_string(&requests).unwrap_or_default();
+    // The spawn tool must actually be in scope. If the orchestrator's tool list
+    // drifts again, this is the assertion that says so in one line instead of
+    // leaving a canary mismatch to be decoded.
+    let all = serde_json::to_string(&requests).unwrap_or_default();
     assert!(
-        !all_serialized.contains("Unknown tool:"),
-        "found 'Unknown tool:' — spawn_parallel_agents was not available; requests: {}",
+        !all.contains("Unknown tool:"),
+        "no tool call may be rejected as unknown; requests: {}",
         serde_json::to_string_pretty(&requests).unwrap_or_default()
     );
-
-    // ── Last upstream request (orchestrator synthesis) must carry BOTH child
-    // canaries in its messages ── proves both children's results were forwarded
-    // into the orchestrator's synthesis context, not merely that the scripted
-    // synthesis text echoed them.
-    let last_messages = requests
-        .last()
-        .unwrap()
-        .pointer("/body/messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_else(|| {
-            panic!(
-                "last upstream request missing /body/messages; request: {}",
-                serde_json::to_string_pretty(requests.last().unwrap()).unwrap_or_default()
-            )
-        });
-    let serialized = serde_json::to_string(&last_messages).unwrap();
-    assert!(
-        serialized.contains("PARALLEL_ALPHA_CANARY"),
-        "synthesis request missing child result PARALLEL_ALPHA_CANARY; messages: {serialized}"
-    );
-    assert!(
-        serialized.contains("PARALLEL_BETA_CANARY"),
-        "synthesis request missing child result PARALLEL_BETA_CANARY; messages: {serialized}"
-    );
-
-    stack.shutdown();
 }
 
-/// Delegation two levels deep (orchestrator → researcher → tool loop continues):
-/// orchestrator delegates to researcher via `research`; researcher scripted to
-/// call ask_user_clarification (blocked — not in researcher named tools →
 /// SubagentToolSource returns error); researcher loops and returns DEPTH2_CANARY;
 /// dispatch_subagent forwards the result; orchestrator synthesizes.
 ///
