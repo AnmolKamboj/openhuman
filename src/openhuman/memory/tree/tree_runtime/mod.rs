@@ -4,6 +4,29 @@
 //! JSON-RPC surface — handlers and controller schemas name OpenHuman's
 //! `RpcOutcome` and `ControllerSchema`, which the engine crate cannot see.
 //! The glob re-export keeps every historical `memory::tree::tree_runtime::…` path resolving.
+//!
+//! # What is left of the glob, and the one thing that pins it (#5560)
+//!
+//! Everything below this line is already off the engine crate: the node model
+//! is named on the contract (see the next comment), and `ops.rs` reaches the
+//! summarisation entry points at `tinycortex::memory::tree::runtime::*`
+//! directly. What the glob still supplies is exactly two modules:
+//!
+//! - `engine` — `run_summarization` / `rebuild_tree` / `run_hourly_loop`,
+//!   thin adapters that wrap the host `Config` around tinycortex's `*_observed`
+//!   entry points and publish `TreeSummarizer*` events.
+//! - `store` — ~18 `Config`-taking wrappers over
+//!   `tinycortex::memory::tree::runtime::store`.
+//!
+//! Both are one step: they call `engine_config(config)`, which is
+//! `tinymemory_core::tinycortex::memory_config_from`. So the blocker here is
+//! not a capability family, it is that **nothing host-side can build a
+//! `tinycortex::memory::MemoryConfig`.** That function resolves the embedder
+//! slug through the engine's own resolution ladder (`effective_embedder_slug`),
+//! and keying a vector sidecar on the wrong provider files local vectors under
+//! the cloud one — so it is not a helper worth reimplementing from the outside.
+//! `memory::sync::sync_status::rpc` and `memory::tools::flavour` are blocked on
+//! the same call.
 
 pub use tinymemory_core::tree::tree_runtime::*;
 

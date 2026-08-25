@@ -1,11 +1,28 @@
 //! Shared test infrastructure for `memory::ops` submodule tests.
 //!
-//! All `ops` submodules that need a global [`MemoryClient`] call
+//! All `ops` submodules that need a global `MemoryClient` call
 //! [`ensure_shared_memory_client`] instead of creating their own
 //! `OnceLock<PathBuf>`.  Sharing one leaked workspace means concurrent
 //! `global::init()` calls always resolve to the same path and hit the
 //! no-op fast-path inside `init_in_slot`, preventing one test thread
 //! from silently rebinding the global under another thread's feet.
+//!
+//! # This is the one engine reference in `memory::ops` that is meant to stay
+//!
+//! Everything else under `ops/` was routed onto the contract for openhuman#5560
+//! so `tinymemory-core` can leave `[dependencies]` and survive as a
+//! **dev-dependency only**. This fixture deliberately still boots the
+//! in-process engine, because that is what it is for: it hands the `ops` tests a
+//! real store to write rows into and read back, and a dev-dependency reference
+//! from `#[cfg(test)]` code is not linked into the shipped binary.
+//!
+//! It lives in a `test_support/` **directory** rather than as a
+//! `test_support.rs` file for one reason: both memory ratchets skip by path, and
+//! `is_test_path` matches a *path component* named `test_support`, not a file
+//! stem. As a flat file this module had to carry an entry in
+//! `direct_engine_refs_tests::ALLOWED` that read like an unmigrated production
+//! call site. The same reasoning already put `memory::test_support` in a
+//! directory — see its module docs.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;

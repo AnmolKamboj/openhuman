@@ -30,11 +30,15 @@
 //! named it.
 //!
 //! The fourth row is **test-only** and stays on the engine crate deliberately:
-//! `MockMemory` is a test fixture reached from three inline `#[cfg(test)]`
+//! `MockMemory` is a test fixture reached from four inline `#[cfg(test)]`
 //! modules, and `cfg(test)` code links against the `tinymemory-core`
 //! **dev-dependency** (declared with `features = ["test-support"]`), which
 //! survives the shed. It is not a production reference and does not keep the
-//! engine crate in the shipped binary.
+//! engine crate in the shipped binary. It now sits in `test_support/` — a
+//! directory both memory lints skip by path, and `#[cfg(test)]` so it is not
+//! link-resolvable from a docs build — which is why the one line of this file
+//! that named the engine crate no longer reads as an unmigrated production
+//! call. See that module for why the classification is the point.
 
 use std::sync::Arc;
 
@@ -62,14 +66,22 @@ pub fn tool_memory_store(memory: Arc<dyn Memory>) -> ToolMemoryStore {
     ToolMemoryStore::new(memory)
 }
 
-/// The engine crate's `MockMemory` fixture, under its historical path.
-///
-/// Test-only in both directions: `tinymemory-core` compiles this module behind
-/// `cfg(any(test, feature = "test-support"))`, and this re-export is
-/// `#[cfg(test)]`, so it exists only in `cargo test --lib` builds where the
-/// dev-dependency at `Cargo.toml`'s `[dev-dependencies]` supplies the crate.
-/// Three inline `#[cfg(test)]` modules reach it —
-/// `agent::experience::{capture, store}` and
-/// `agent::tinyagents::host::experience_store`.
+// The engine crate's `MockMemory` fixture, re-exported under its historical
+// path `memory::tool_memory::test_helpers`.
+//
+// Test-only in both directions: `tinymemory-core` compiles it behind
+// `cfg(any(test, feature = "test-support"))`, and both items below are
+// `#[cfg(test)]`, so they exist only in `cargo test --lib` builds where the
+// dev-dependency at `Cargo.toml`'s `[dev-dependencies]` supplies the crate.
+// Four inline `#[cfg(test)]` modules reach it — `capture` in this directory,
+// `agent::experience::{capture, store}` and
+// `agent::tinyagents::host::experience_store`.
+//
+// The `pub use tinymemory_core::…` line itself sits one level down, in
+// `test_support/mod.rs`; that module's docs say why, and the path callers use
+// does not change.
 #[cfg(test)]
-pub use tinymemory_core::tool_memory::test_helpers;
+pub mod test_support;
+
+#[cfg(test)]
+pub use test_support::test_helpers;

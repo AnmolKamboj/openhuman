@@ -1,4 +1,43 @@
 //! RPC handler implementations for memory sources.
+//!
+//! # The engine references in this file (#5560), by surface
+//!
+//! This file sits on `direct_engine_refs_tests::ALLOWED` as `NeedsWiderSeam`.
+//! That verdict was re-tested on 2026-08-25 and it holds, for two independent
+//! reasons that are worth recording so the next reader does not re-derive
+//! them: **no** `MemoryProvider` member expresses any of the four surfaces
+//! below, and **every** symbol they name is defined in `tinymemory-core`
+//! itself rather than re-exported from a crate this manifest already lists, so
+//! there is no repoint available either. (Absence was checked against the
+//! contract at `vendor/tinymemory` HEAD, which leads the pinned release — an
+//! absence there is an absence in the pin.) `tinymemory_core::tinycortex` is
+//! an alias for `tinymemory_core::engine`, which is why all four read as
+//! `tinycortex::…` below.
+//!
+//! - **Coding sessions** — `CodingSessionIngestRequest`,
+//!   `CodingSessionIngestResponse`, `CodingSessionSourceStatus`,
+//!   `coding_session_status`, `ingest_coding_sessions`. TinyCortex's persona
+//!   pipeline: `walkdir` over session roots, `RawSession`, `FileStateStore`.
+//!   No capability family covers any of it.
+//! - **Raw-archive coverage** — `raw_coverage`, `rebuild_tree_from_raw`. A
+//!   filesystem-vs-tree crosscheck. `MemoryTree` is namespace-addressed
+//!   (`append` / `query_source` / `drill_down` / `seal` / `cascade` /
+//!   `summary_forest` / `recent_leaves`) and has no coverage member.
+//! - **Sync audit log** — `SyncAuditEntry`, `read_audit_log`. A host-owned log
+//!   read out of `MemoryHostConfig::workspace_dir`; nothing in the contract
+//!   reads it.
+//! - **Sync cost model** — `estimate_cost_usd`. Pure arithmetic, so it *looks*
+//!   like a free move host-side — but the same constants back
+//!   `SyncAuditEntry::effective_cost_usd` (used in `monthly_cost_summary_rpc`
+//!   below) and the engine's own cost accumulator. Copying it here would be a
+//!   second price that can drift from the one the audit rows were written with.
+//!
+//! Clearing this file needs all four to move, not any one of them, and the
+//! first two are the persona and sync pipelines going behind the bus — Phase F
+//! work, not a call-site migration. One thing not to do in the meantime:
+//! re-routing these through the `memory::sync` / `memory::tinycortex`
+//! re-export shims takes the path off the scanner without removing an ounce of
+//! coupling, which is exactly the edit that would make the ratchet lie.
 
 // `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
 use crate::openhuman::config::rpc as config_rpc;
@@ -11,17 +50,13 @@ use tinymemory_api::host::MemoryHostConfig;
 
 /// The coding-session ingest request, under this domain's own name.
 ///
-/// The type is the engine's (`tinymemory_core::tinycortex`, which is
-/// `tinymemory-core`'s host-orchestration layer over TinyCortex's persona
-/// pipeline — 305 lines that name `walkdir`, `RawSession` and `FileStateStore`,
-/// with no capability family and no contract equivalent). It is re-exported
-/// here so `schemas.rs` can name it as `rpc::CodingSessionIngestRequest`, the
-/// way every other handler adapter in that file names its request type.
-///
-/// That is a consolidation, not a migration (#5560): the engine dependency does
-/// not go away, it stops being spread over two files. When the persona pipeline
-/// finally moves — behind the bus, or home the way `rpc_models` did — this
-/// module is the only one that has to change.
+/// Re-exported here so `schemas.rs` can name it as
+/// `rpc::CodingSessionIngestRequest`, the way every other handler adapter in
+/// that file names its request type. That is a consolidation, not a migration
+/// (#5560): the engine dependency does not go away, it stops being spread over
+/// two files — so when the persona pipeline finally moves, behind the bus or
+/// home the way `rpc_models` did, this module is the only one that has to
+/// change. The module docs above record why it has not moved yet.
 pub use tinymemory_core::tinycortex::CodingSessionIngestRequest;
 
 #[derive(Debug, serde::Serialize)]

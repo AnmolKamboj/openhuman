@@ -82,8 +82,23 @@ impl PostTurnHook for ArchivistHook {
         // segment ops can store it alongside the FTS5 episodic id.
         let mut current_seq: Option<u32> = None;
         if let Some(cfg) = self.config.as_ref() {
-            let engine_config =
-                tinymemory_core::tinycortex::memory_config_from(cfg, cfg.workspace_dir.clone());
+            // The archivist store addresses `MemoryConfig::workspace` and
+            // nothing else: `tinycortex::memory::archivist::store` computes its
+            // own content root as `<workspace>/memory_tree/content` (a private
+            // `content_root(config)` in that module) and never reads
+            // `config.content_root` or `config.embedding`.
+            //
+            // This used to build the config through
+            // `tinymemory_core::tinycortex::memory_config_from`, which is the
+            // engine crate's `Config` → `MemoryConfig` mapping. That mapping
+            // sets two further fields — the content-root override and the
+            // embedding signature — and neither reaches `record_turn` or
+            // `session_entries`, so constructing the workspace-rooted config
+            // directly is the same value where it is read. Naming it here also
+            // drops the last `tinymemory_core::` reference in this file (#5560);
+            // `tinycortex` stays a direct dependency of this crate and is where
+            // the archivist store itself lives, two lines below.
+            let engine_config = tinycortex::memory::MemoryConfig::new(cfg.workspace_dir.clone());
             let ts_ms = (timestamp * 1000.0) as i64;
             let user_turn = tinycortex::memory::archivist::types::ArchivedTurn {
                 session_id: session_id.to_string(),

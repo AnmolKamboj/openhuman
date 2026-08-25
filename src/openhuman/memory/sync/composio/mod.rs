@@ -5,51 +5,66 @@
 //! `RpcOutcome` and `ControllerSchema`, which the engine crate cannot see.
 //! The glob re-export keeps every historical `memory::sync::composio::…` path resolving.
 //!
-//! # This shim cannot go yet, and the reason is upstream, not here
+//! # This shim cannot go yet — but the reason changed, so read this before acting on it
 //!
-//! The glob below is what makes `integrations::composio::start_periodic_sync`
-//! resolve, and therefore what lets `core/runtime/services.rs` start an engine
-//! sync loop inside the host process. openhuman#5560 deletes the second,
-//! in-process engine and leaves the loaded TinyMemory module as the only one,
-//! so the obvious reading is that this file goes with it.
+//! **The upstream blocker is closed.** This section used to say the loops could
+//! not move because the pinned v1.5.0 module carried a heading reading *"The
+//! periodic sync loops are deliberately NOT started here"* and three reasons
+//! behind it: the pipeline read Composio credentials off `Config` rather than
+//! the `ComposioHost` seam, `global::client_if_ready()` was `None` inside the
+//! module, and `EngineRuntimeConfig::memory_sync_interval_secs()` answered
+//! `Some(0)` (which the contract defines as *manual only*, so every tick would
+//! skip every source silently).
 //!
-//! **It does not, and this was checked against the pinned artifact rather than
-//! assumed.** `modules::registry` pins `tinymemory` v1.5.0, whose module
-//! carries a section headed *"The periodic sync loops are deliberately NOT
-//! started here"* (`tinymemory-module/src/lib.rs`, right after
-//! `start_queue_pool`). It names three reasons the loops cannot move yet, none
-//! of which a host change can close:
+//! tinymemory#100 closed all three and shipped as **v1.6.0**, which is what
+//! `modules::registry` and `modules::memory`'s `ARTIFACT_CAPABILITIES_PIN` now
+//! pin. The host's half is wired too: `modules::ops` puts
+//! `memory_sync_interval_secs`, `composio_mode` and `composio_entity_id` into
+//! the `ModuleConfig` precisely so the module's own loops have a cadence and a
+//! mode to run with. `core/runtime/services.rs` no longer starts either loop
+//! and its comment block records why.
 //!
-//! 1. The pipeline reads Composio credentials off `Config`, not off the
-//!    `ComposioHost` seam — `composio_config` takes the direct-mode branch only
-//!    when `config.composio().mode == "direct"` and otherwise wants
-//!    `config.session_token()`, and the module's `EngineRuntimeConfig` answers
-//!    neither. Routing it through `ComposioHost::execute` is a change to the
-//!    *engine's* contract.
-//! 2. `global::client_if_ready()` is `None` inside the module — it builds its
-//!    store through `create_memory_client_with_local_ai`, which never touches
-//!    the global slot.
-//! 3. `EngineRuntimeConfig::memory_sync_interval_secs()` answers `Some(0)`,
-//!    which the contract defines as *manual only*, so every tick would skip
-//!    every source silently.
+//! # So what still pins this file, and it is not the loop
 //!
-//! The queue pool **did** move in v1.5.0, which is why `services.rs` no longer
-//! calls `queue::start` — do not read that as precedent for these two.
+//! The glob below is the only definition of every name in this list, and each
+//! one has a live caller and no capability family:
 //!
-//! So the ordering stands, with one step still open. Composio sync degrades
-//! **quietly** — an unwired `ComposioHost` makes `is_available` read `false`
-//! and a sync run report zero connections, which nobody can tell apart from a
-//! user with none. A half-removed loop looks like a working one for as long as
-//! it takes someone to notice their mail stopped being indexed.
+//! - `periodic` — reached by `integrations::composio::{mod, periodic}`, and by
+//!   `super::bus`, which calls `periodic::record_sync_success` after a
+//!   trigger-driven sync.
+//! - `init_default_composio_sync_providers` + `all_composio_sync_providers` —
+//!   `memory::sources::rpc`'s supported-toolkit list is built from exactly this
+//!   pair; `get_composio_sync_provider` joins them in `tests/raw_coverage/`.
+//! - `SyncTarget` / `list_sync_targets` — `memory::ops::sync`'s manual
+//!   trigger path.
+//! - `ComposioProvider`, `ProviderContext`, `ProviderUserProfile`,
+//!   `SyncOutcome`, `SyncReason` — re-exported onward by
+//!   `integrations::composio`.
 //!
-//! The full ordered list lives next to the call site it protects, in
-//! `core/runtime/services.rs`'s `start_bootstrap_jobs`. In short: the host
-//! serves `ComposioHost` on the module bus (**done** — `modules/memory_host.rs`),
-//! the module installs a bus-backed seam for it (**done** in v1.5.0 —
-//! `composio::BusComposioHost`) **and starts the loop itself** (⛔ *not done*,
-//! for the three reasons above), a `tinymemory` release carries all of it and
-//! `modules::registry` is re-pinned to its digest — **then** this file and that
-//! call go.
+//! None has a capability family: the sync pipelines are engine-internal, and
+//! `MemorySourceSink` addresses source *records*, not provider runs. So this
+//! shim goes when the pipelines themselves move behind the bus — the same ask
+//! as `sync/composio/bus.rs` and `providers/slack/rpc.rs`, both of which call
+//! `tinycortex::run_composio_connection` directly.
+//!
+//! # ⚠ One host caller did not get the memo (found 2026-08-25)
+//!
+//! `services.rs` dropped its `start_periodic_sync()` call, but
+//! `channels/runtime/startup.rs` still makes one, through
+//! `integrations::composio::start_periodic_sync` → `periodic` → this glob. That
+//! is the *engine's* loop, started in this process, next to the module's own —
+//! which is the case `services.rs` warns is "worse than a duplicate", because
+//! the `cdylib` links its own `tinymemory-core` and neither loop's
+//! `SCHEDULER_STARTED` `OnceLock` can see the other. Its store handle is a
+//! second question: no production path calls `tinymemory_core::global::init`
+//! any more — only test fixtures do — so whatever that loop reaches is not the
+//! client the rest of the host uses.
+//!
+//! It is left alone here deliberately — that file is outside this change — but
+//! do not read "the loops moved" as done until it goes. Composio sync degrades
+//! **quietly** in either direction: a run that reports zero connections is
+//! indistinguishable from a user who has none, so a half-removed loop looks
+//! like a working one until someone notices their mail stopped being indexed.
 
 pub use tinymemory_core::sync::composio::*;
 

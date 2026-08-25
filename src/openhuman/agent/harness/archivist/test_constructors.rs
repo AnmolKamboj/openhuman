@@ -1,5 +1,12 @@
 //! Test-only constructors for `ArchivistHook` that inject stub providers
 //! directly, bypassing `with_config`'s provider-build logic.
+//!
+//! This module is `#[cfg(test)]` at its declaration in `archivist/mod.rs`, so
+//! the engine-crate import below is not linked by a production build — the
+//! engine is a dev-dependency for exactly this kind of fixture (#5560). The
+//! `ChatProvider` it injects is an override for the memory summariser's own
+//! chat task-local, not a handle the archivist calls; see
+//! `types::ArchivistHook::chat_provider`.
 
 use super::boundary::BoundaryConfig;
 use super::types::ArchivistHook;
@@ -26,6 +33,9 @@ impl ArchivistHook {
             enabled: true,
             boundary_config: BoundaryConfig::default(),
             config: Some(Config::default()),
+            // Injecting a stub is the assertion that the LLM path runs, so the
+            // availability flag `with_config` would have probed is set here.
+            summariser_available: true,
             chat_provider: Some(chat_provider),
             embedder: Some(embedder),
         }
@@ -48,6 +58,7 @@ impl ArchivistHook {
             enabled: true,
             boundary_config: BoundaryConfig::default(),
             config: Some(config),
+            summariser_available: true,
             chat_provider: Some(chat_provider),
             embedder: Some(embedder),
         }

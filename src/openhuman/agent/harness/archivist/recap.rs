@@ -5,7 +5,11 @@ use crate::openhuman::memory::api::provider::{ConversationSegment, EpisodicTurn}
 use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
 #[cfg(test)]
 use std::sync::Arc;
-use tinymemory_core::store::trees::types::TreeKind;
+// `SummaryContext::tree_kind` is TinyCortex's own enum, and
+// `tinymemory_core::store::trees::types::TreeKind` was a re-export of exactly
+// this item. Naming the owning crate changes no type — only which crate alias
+// holds it (#5560).
+use tinycortex::memory::tree::store::TreeKind;
 
 /// An episodic entry paired with the stable identity exposed by its backing
 /// store. The md archivist uses a per-session sequence while the legacy FTS5
@@ -65,8 +69,13 @@ impl ArchivistHook {
     /// the sub-millisecond timestamps used when a segment is opened.
     pub(super) async fn read_session_entries(&self, session_id: &str) -> Vec<SessionEntry> {
         if let Some(cfg) = self.config.as_ref() {
-            let engine_config =
-                tinymemory_core::tinycortex::memory_config_from(cfg, cfg.workspace_dir.clone());
+            // Workspace-rooted and nothing else, for the same reason as the
+            // write side in `hook_impl.rs`: `session_entries` resolves its
+            // directory through the archivist store's own private
+            // `<workspace>/memory_tree/content` root and reads neither
+            // `content_root` nor `embedding`. See that call site for why this
+            // replaced `tinymemory_core::tinycortex::memory_config_from`.
+            let engine_config = tinycortex::memory::MemoryConfig::new(cfg.workspace_dir.clone());
             match tinycortex::memory::archivist::store::session_entries(&engine_config, session_id)
             {
                 Ok(turns) => {
@@ -119,9 +128,9 @@ impl ArchivistHook {
     /// (`rolling_segment_recap`).
     ///
     /// Builds a prose corpus from `entries`, calls the `LlmSummariser` when a
-    /// `chat_provider` is configured, and falls back to the heuristic
-    /// `segments::fallback_summary` on any failure or when no provider is
-    /// wired in. Always returns a non-empty string.
+    /// summariser is available for this workspace, and falls back to the
+    /// heuristic `segments::fallback_summary` on any failure or when none is.
+    /// Always returns a non-empty string.
     ///
     /// Invariants:
     /// - NEVER mutates DB state (no `segment_set_summary`, no embedding).
@@ -189,12 +198,20 @@ impl ArchivistHook {
         let first = entries.first().map(|e| e.content.as_str()).unwrap_or("");
         let last = entries.last().map(|e| e.content.as_str()).unwrap_or(first);
 
-        if self.chat_provider.is_some() {
+        // Was `self.chat_provider.is_some()`. Same predicate — the archivist
+        // never called that handle, it only asked whether one could be built —
+        // recorded as the boolean it always was. See `lifecycle::with_config`.
+        if self.summariser_available {
             if let Some(ref config) = self.config {
                 tracing::debug!(
                     "[archivist] summarize_entries: LLM recap segment={segment_id} entries={}",
                     entries.len()
                 );
+                // Test-only: `summarise` builds its own chat provider, and
+                // `build_chat_runtime` consults this task-local before building
+                // one. Scoping the call is what keeps the recap tests off the
+                // network. Production has no such override and never names the
+                // engine's chat module (#5560).
                 #[cfg(test)]
                 let summary_result = if let Some(provider) = self.chat_provider.as_ref() {
                     tinymemory_core::chat::test_override::with_provider(
@@ -238,7 +255,7 @@ impl ArchivistHook {
             }
         } else {
             tracing::debug!(
-                "[archivist] summarize_entries: no chat provider — \
+                "[archivist] summarize_entries: no summariser available — \
                  heuristic fallback segment={segment_id}"
             );
         }

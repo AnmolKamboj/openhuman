@@ -334,27 +334,47 @@ fn response_from_engine(source_id: String, result: IngestResult) -> IngestRespon
 /// swap and not a wire change —
 /// `the_response_body_serialises_exactly_as_the_engine_summary` still holds.
 ///
-/// **Mail stays on the in-process pipeline**, for two reasons that the pin
-/// does not touch:
+/// **Mail is still on the in-process pipeline, and it is the last thing in this
+/// file that is** (#5560). This paragraph used to list two blockers, and
+/// **both are closed** — re-checked 2026-08-25 rather than inherited, because
+/// leaving them stated is what would stop the next reader from finishing it:
 ///
-/// 1. `IngestItem` carries no recipient list, no per-message subject and no
-///    `List-Unsubscribe`, and the driver's mail mapping fills those with
-///    `Vec::new()` / the thread subject / `None`. A thread routed through
-///    `ingest_email` therefore loses those header lines from the canonical
-///    markdown — content that is chunked, embedded and searched, and, for the
-///    unsubscribe link, read back out of retrieved mail to populate the
-///    `gmail_unsubscribe` tool's required argument. Nothing on this side can
-///    preserve them: the loss happens inside the driver's mapping, below any
-///    field this handler can set.
-/// 2. `ModuleMemoryProvider` — the driver every shipped build binds — does not
-///    forward `IngestEmail`. The module declares the method and the contract
-///    has served it since v1.4.0, but the host-side forwarder in
-///    `modules::memory` implements only `ingest_document` and `ingest_chat`,
-///    so the trait's default body would answer `Unsupported` and every mail
-///    ingest would fail at run time.
+/// 1. *"`IngestItem` carries no recipient list, no per-message subject and no
+///    `List-Unsubscribe`."* It carries all of them now, plus `platform`, and
+///    the contract's own field docs are written for this path — they say
+///    dropping the unsubscribe header makes the unsubscribe flow impossible
+///    rather than merely less complete. `chat_items` and `document_item`
+///    already spell the five mail fields as their not-mail values.
+/// 2. *"`ModuleMemoryProvider` does not forward `IngestEmail`."* It does —
+///    `modules::memory` implements `ingest_email` beside `ingest_document` and
+///    `ingest_chat`, and the module declares the member.
 ///
-/// Both have to be answered before the mail arm can move: (1) by widening
-/// `IngestItem` upstream, (2) by a forwarder in `modules::memory`.
+/// The driver's mapping is a lossless inverse: it rebuilds `EmailThread` with
+/// `provider` from `platform`, `thread_subject` from `channel_label`, `from`
+/// from `author`, and `to` / `cc` / `subject` / `list_unsubscribe` verbatim,
+/// then calls the same `ingest_pipeline::ingest_email` this arm calls now.
+///
+/// So what is left is host work plus one verification, and neither is a
+/// contract change:
+///
+/// - An `email_items(source_id, owner, tags, EmailThread)` mapper that is the
+///   **exact** inverse of that reconstruction (`platform: Some(provider)`,
+///   `channel_label: Some(thread_subject)`, `author: Some(from)`,
+///   `subject: Some(msg.subject)` — always `Some`, so no `unwrap_or` fallback
+///   on the far side can substitute a different value), a `DataSource` chooser
+///   in the shape of `chat_data_source`, and a `DriverIngest::Email` arm.
+/// - A decision on empty bodies, which is a real behaviour delta and wants its
+///   own test: `validate_ingest_item` answers `Invalid` for empty content and
+///   the driver validates every item before ingesting any, so one body-less
+///   message fails the whole thread where the in-process pipeline writes the
+///   rest of it. The chat arm answers this by filtering first; mail has to
+///   choose the same, and a header-only message is more plausible in mail.
+/// - **Check the released artifact, not the submodule.** The five mail fields
+///   are `#[serde(default)]`, so a pinned module that predates them decodes
+///   every one to its default and mail loses its headers **silently** — the
+///   capability check stays green because the family and the member both
+///   exist. `vendor/tinymemory` is currently *behind* the pinned release, so
+///   grep the tag.
 pub async fn ingest_rpc(
     config: &Config,
     req: IngestRequest,

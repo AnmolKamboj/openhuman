@@ -560,6 +560,38 @@ mod tests {
         MemoryCategory as EngineCategory, MemoryTaint as EngineTaint,
     };
 
+    // ── Why `UnifiedMemory` is still here, and what replacing it costs (#5560)
+    //
+    // This whole module is `#[cfg(test)]`, so the engine is not linked into a
+    // production build from this file; the crate survives #5560 as a
+    // dev-dependency and this is the kind of fixture that keeps it. What the
+    // fixture cannot do is move to the bound driver in a one-line swap, and
+    // there are two independent reasons worth recording before someone tries.
+    //
+    // 1. **The seam is a different trait.** `test_mem` hands back
+    //    `Arc<dyn memory::Memory>` (= `tinymemory_api::traits::Memory`), and
+    //    `Arc<dyn MemoryProvider>` does not coerce to it: `MemoryProvider`'s
+    //    supertrait is `MemoryCore`, which is a *different* trait with taint as
+    //    an argument rather than a second method (see `provider/mandatory.rs`,
+    //    which says so at the definition). Rebinding the fixture onto
+    //    `memory::test_support::install_tinycortex_for_test` therefore rewrites
+    //    every `mem.store_with_taint(..)` / `mem.get(..)` in this module, not
+    //    just its two lines.
+    // 2. **The backend choice is load-bearing.** `FLOW_MEMORY_NAMESPACE_PREFIX`'s
+    //    doc above turns on `UnifiedMemory::sanitize_namespace` disagreeing with
+    //    `Memory::forget`'s raw `WHERE namespace = ?1`. A volatile stand-in such
+    //    as `tinycortex::memory::store::InMemoryMemoryStore` implements the same
+    //    `Memory` trait and would compile, but it does not reproduce that
+    //    inconsistency — so it would quietly stop testing the property the
+    //    prefix exists to satisfy.
+    //
+    // Every test below that touches `test_mem` is already `#[ignore]`d, and
+    // their ignore reason is the deeper problem: the tools resolve the *bound
+    // driver*, so a store seeded here is not the store they read. Making them
+    // coherent again is a fixture rewrite against the binding — a change worth
+    // making on its own, with the tests un-ignored so the result is verified,
+    // not folded into a dependency-shedding pass.
+
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy::default())
     }

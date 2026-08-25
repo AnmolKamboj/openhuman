@@ -256,16 +256,23 @@ impl Agent {
         .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
         let memory: Arc<dyn Memory> = Arc::from(session_memory.memory);
         // Dedicated profiles still recall unstamped experiences written by
-        // pre-profile versions from the shared memory DB. Retain the global
-        // shared handle explicitly on the session rather than making the hot
-        // turn path reload config or reach into process-global state.
+        // pre-profile versions from the shared memory DB. Resolve that shared
+        // store once, here, and hand it to the session rather than making the
+        // hot turn path reload config.
+        //
+        // This was `global::init(workspace).memory_handle()` — booting the
+        // second, in-process engine purely to borrow its `Arc<dyn Memory>`
+        // (#5560). `DriverMemory` serves the same trait off the driver already
+        // bound for this workspace's shared `memory` subtree, so the recall
+        // reads the same rows without a second engine over the same file. Only
+        // recall goes here; writes stay on the session's own store, which is
+        // what keeps new records inside the profile subtree.
         let shared_experience_memory = if memory_subdir == "memory" {
             None
         } else {
             Some(
-                tinymemory_core::global::init(config.workspace_dir.clone())
-                    .map_err(anyhow::Error::msg)?
-                    .memory_handle(),
+                crate::openhuman::agent::experience::ops::DriverMemory::for_config(config)
+                    .map_err(anyhow::Error::msg)?,
             )
         };
 

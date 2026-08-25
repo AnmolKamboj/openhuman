@@ -12,7 +12,15 @@ use crate::openhuman::memory::api::provider::{
 use crate::openhuman::memory::tree::score::embed::{build_embedder_from_config, Embedder};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tinymemory_core::chat::ChatProvider;
+
+/// The inference role the segment recap runs as.
+///
+/// Named here rather than inlined because it is the one string that has to
+/// match what the memory summariser asks for — `tinymemory_core::chat::
+/// build_chat_runtime` routes `"summarization"`, and the probe in
+/// [`ArchivistHook::with_config`] is only meaningful if it asks the same
+/// question of the same role.
+const RECAP_INFERENCE_ROLE: &str = "summarization";
 
 impl ArchivistHook {
     /// Create an Archivist hook over the workspace's bound memory driver.
@@ -25,36 +33,73 @@ impl ArchivistHook {
             enabled,
             boundary_config: BoundaryConfig::default(),
             config: None,
+            summariser_available: false,
+            #[cfg(test)]
             chat_provider: None,
             embedder: None,
         }
     }
 
     /// Attach runtime config so the archivist can gate the tree-ingest path
-    /// and build its LLM chat provider + embedder from config.
+    /// and record whether an LLM summariser and an embedder are available.
     ///
     /// When `config.learning.chat_to_tree_enabled` is `true`, each closed
     /// segment's raw prose turns are ingested into the memory tree as
     /// `source_id="conversations:agent"` (one batch per segment, not per turn).
-    /// The chat provider is built via `build_chat_provider(config, Summarise)`;
-    /// the embedder via `build_embedder_from_config(config)`. Both are
-    /// soft-fallback: if construction fails, the fields stay `None` and the
-    /// archivist falls back to heuristic summary / no embedding.
+    /// Both the summariser probe and the embedder are soft-fallback: if
+    /// construction fails, the archivist falls back to the heuristic summary /
+    /// no embedding rather than failing the turn.
+    ///
+    /// # Why the summariser is probed and not held
+    ///
+    /// This used to call `tinymemory_core::chat::build_chat_provider(&config)`
+    /// and store the `Arc<dyn ChatProvider>` it returned. Nothing ever called
+    /// that handle: the summariser the archivist drives is
+    /// `memory::tree::summarise::summarise`, which builds
+    /// its own provider from the same `Config` on every call. So the stored
+    /// value was only ever read as `is_some()`, and what it actually asserted
+    /// was "a chat model for the summarise role can be constructed".
+    ///
+    /// That question is the host's to answer, and this asks it directly.
+    /// `build_chat_provider` wraps `tinymemory_core::chat_host::
+    /// create_chat_model_with_model_id`, which is a process-global seam whose
+    /// only implementation is `OpenHumanChatHost` in `memory/host_impls.rs`,
+    /// and that forwards verbatim to the call below — same role, same config,
+    /// same temperature. The predicate is therefore unchanged; what changed is
+    /// that the archivist no longer names the memory engine to evaluate it
+    /// (#5560), and no longer builds a model it will not use.
+    ///
+    /// One deliberate difference, stated rather than hidden: under `cfg(test)`
+    /// the engine's builder short-circuits on its chat task-local, so a stubbed
+    /// test would have reported "available" without a real provider. No test
+    /// takes this path — every archivist test constructs the hook through
+    /// `new`, `disabled` or `new_with_stubs*` — and the tests that do need a
+    /// deterministic LLM install the task-local around the call itself, which
+    /// is where it has to be anyway for `summarise` to see it.
     pub fn with_config(mut self, config: Config) -> Self {
-        // Build the LLM chat provider for segment recap.
-        let chat_provider: Option<Arc<dyn ChatProvider>> =
-            match tinymemory_core::chat::build_chat_provider(&config) {
-                Ok(p) => {
-                    tracing::debug!("[archivist] segment recap provider={} registered", p.name());
-                    Some(p)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "[archivist] failed to build chat provider for recap (will use fallback): {e}"
-                    );
-                    None
-                }
-            };
+        // Probe the summariser: can this host build a chat model for the recap
+        // role right now? The model is dropped immediately — see above.
+        let probe = crate::openhuman::inference::provider::create_chat_model_with_model_id(
+            RECAP_INFERENCE_ROLE,
+            &config,
+            config.default_temperature,
+        );
+        let summariser_available = match probe {
+            Ok((_model, model_id)) => {
+                tracing::debug!(
+                    "[archivist] segment recap summariser ready role={RECAP_INFERENCE_ROLE} \
+                     model={model_id}"
+                );
+                true
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[archivist] no chat model for role={RECAP_INFERENCE_ROLE} \
+                     (segment recap falls back to the heuristic summary): {e}"
+                );
+                false
+            }
+        };
 
         // Build the embedder for segment recap vectors.
         let embedder: Option<Arc<dyn Embedder>> = match build_embedder_from_config(&config) {
@@ -70,7 +115,7 @@ impl ArchivistHook {
             }
         };
 
-        self.chat_provider = chat_provider;
+        self.summariser_available = summariser_available;
         self.embedder = embedder;
         self.config = Some(config);
         self
@@ -83,6 +128,8 @@ impl ArchivistHook {
             enabled: false,
             boundary_config: BoundaryConfig::default(),
             config: None,
+            summariser_available: false,
+            #[cfg(test)]
             chat_provider: None,
             embedder: None,
         }
