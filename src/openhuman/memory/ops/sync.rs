@@ -193,6 +193,11 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
         }
     }
 
+    // Resolved BEFORE the spawn so a missing driver is an error the caller
+    // sees, not a status line the spawned task emits into a channel nobody is
+    // reading yet.
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+
     tokio::spawn(async move {
         for target in targets {
             emit_sync_stage(
@@ -204,13 +209,21 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                 None, // provider-level composio sync — not a memory-source row
             );
 
-            match tinymemory_core::tinycortex::run_composio_connection(
-                &target.toolkit,
-                &target.connection_id,
-                &config,
-            )
-            .await
-            {
+            // Through the driver, not the engine. `run_connection_sync` drops
+            // the config argument the engine call took: the driver resolves its
+            // own, and its proxied branch now reaches this host for the session
+            // bearer rather than reading a snapshot that has none.
+            let outcome = match binding.provider().as_source_sync() {
+                Some(sync) => sync
+                    .run_connection_sync(&target.toolkit, &target.connection_id)
+                    .await
+                    .map_err(|error| error.to_string()),
+                None => Err(format!(
+                    "the bound memory driver '{}' does not serve source sync",
+                    binding.driver_id()
+                )),
+            };
+            match outcome {
                 Ok(outcome) => {
                     emit_sync_stage(
                         MemorySyncTrigger::Manual,
@@ -230,7 +243,7 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                         MemorySyncStage::Failed,
                         Some(&target.toolkit),
                         Some(&target.connection_id),
-                        Some(error.to_string()),
+                        Some(error.clone()),
                         None, // provider-level composio sync — not a memory-source row
                     );
                     tracing::warn!(

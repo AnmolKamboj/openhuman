@@ -713,13 +713,41 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                     );
                 }
 
-                match tinymemory_core::tinycortex::run_composio_connection(
-                    &toolkit,
-                    &connection_id,
-                    ctx.config.as_ref(),
+                // `ctx.config` is the seam's `dyn MemoryHostConfig`; the binding
+                // keys on this host's own `Config`, so it is re-read from the
+                // paths the seam carries — the same move the live-config read
+                // above this makes, and for the same reason.
+                let host_config = match crate::openhuman::config::rpc::reload_config_from_paths(
+                    ctx.config.config_path(),
+                    ctx.config.workspace_dir(),
                 )
                 .await
                 {
+                    Ok(config) => config,
+                    Err(error) => {
+                        tracing::warn!(
+                            toolkit = %toolkit,
+                            connection_id = %connection_id,
+                            error = %error,
+                            "[composio:bus] initial sync skipped: config re-read failed"
+                        );
+                        return;
+                    }
+                };
+                let attempted = match crate::openhuman::memory::binding::for_config(&host_config) {
+                    Ok(binding) => match binding.provider().as_source_sync() {
+                        Some(sync) => sync
+                            .run_connection_sync(&toolkit, &connection_id)
+                            .await
+                            .map_err(|error| error.to_string()),
+                        None => Err(format!(
+                            "the bound memory driver '{}' does not serve source sync",
+                            binding.driver_id()
+                        )),
+                    },
+                    Err(error) => Err(error),
+                };
+                match attempted {
                     Ok(outcome) => {
                         tracing::info!(
                             toolkit = %toolkit,
@@ -731,13 +759,19 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                         // Avoid immediately re-firing from the periodic scheduler.
                         super::periodic::record_sync_success(&toolkit, &connection_id);
                     }
+                    // `actions_called` and `provider_cost_usd` are no longer
+                    // separate fields here. The contract has one error channel
+                    // and the driver folds the usage into its message, because
+                    // a partial-success shape is not available on an error path
+                    // — so the spend a failed run incurred is in the text rather
+                    // than in two structured fields. Logged whole rather than
+                    // parsed back out: re-deriving numbers from a message is how
+                    // a log line becomes a fragile API.
                     Err(error) => tracing::warn!(
                         toolkit = %toolkit,
                         connection_id = %connection_id,
                         error = %error,
-                        actions_called = error.actions_called,
-                        provider_cost_usd = error.provider_cost_usd,
-                        "[composio:bus] tinycortex initial sync failed"
+                        "[composio:bus] initial sync failed"
                     ),
                 }
             }

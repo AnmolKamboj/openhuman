@@ -235,6 +235,33 @@ impl ComposioCallbacks {
         Ok(stored.or(configured))
     }
 
+    /// The app-session bearer proxied ("backend") Composio mode authenticates
+    /// with.
+    ///
+    /// Answered from a LIVE config read rather than the install-time snapshot,
+    /// and that is the whole reason this is a bus member instead of a field on
+    /// `ModuleConfig`. The bearer is a session JWT this host refreshes; a value
+    /// the module captured at load would work until it expired and then make
+    /// every sync fail with an auth error that reads as the user being signed
+    /// out. Asking per call means the module always gets the one valid now.
+    ///
+    /// `Ok(None)` means this host has no session to lend — a signed-out user,
+    /// not a broken one. The engine turns that into a named refusal rather than
+    /// treating it as "nothing to sync", which is the distinction that keeps a
+    /// signed-out user from looking like a user with no connected sources.
+    ///
+    /// The failure is folded into `None` deliberately: a token store that
+    /// errors and a store that is empty are the same fact to the caller — this
+    /// process cannot authenticate a proxied call right now — and splitting
+    /// them would give the module a second failure mode it cannot act on
+    /// differently.
+    async fn session_bearer(&self) -> tinybus::Result<Option<String>> {
+        let config = self.live_config_or_installed().await;
+        Ok(crate::api::jwt::get_session_token(config.as_ref())
+            .ok()
+            .flatten())
+    }
+
     /// Whether *some* viable Composio client resolves right now.
     ///
     /// Deliberately the factory probe rather than a session-token check: a
