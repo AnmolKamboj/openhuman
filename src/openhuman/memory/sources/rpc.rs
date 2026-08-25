@@ -56,7 +56,6 @@
 //! registry CRUD between them talks only to `registry` and `readers` and never
 //! resolves a binding at all.
 
-// `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::sessions::{
@@ -69,7 +68,6 @@ use crate::openhuman::memory::sources::readers;
 use crate::openhuman::memory::sources::registry::{self, MemorySourcePatch};
 use crate::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
 use crate::rpc::RpcOutcome;
-use tinymemory_api::host::MemoryHostConfig;
 
 /// The coding-session ingest request, under this domain's own name.
 ///

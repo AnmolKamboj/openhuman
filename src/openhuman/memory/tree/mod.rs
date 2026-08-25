@@ -20,6 +20,7 @@
 //!   `nlp::extract_query_entities` are reached from the archivist, the
 //!   sub-agent runner, `read_rpc::entities`, `inference::embeddings::rpc` and
 //!   `retrieval/rpc.rs` in this directory.
+//!
 //! The seven `Tree{LabelStrategy, LeafPayload, ReadHit, ReadRequest,
 //! ReadResult, WriteOutcome, WriteRequest}` I/O types used to be on that list
 //! too. They are **not** engine-owned — the crate re-exports them out of
