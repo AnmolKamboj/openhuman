@@ -75,6 +75,7 @@ export function AssistantUiChat({
   attachmentInteractionBlocked,
   onAttachmentOnlySend,
   onOpenHumanMode,
+  onSwitchToMicCloud,
 }: {
   threadGoal: ThreadGoalController;
   model: string | null;
@@ -93,6 +94,8 @@ export function AssistantUiChat({
   onAttachmentOnlySend: () => void;
   /** Opens the Human page from the composer's idle primary slot. */
   onOpenHumanMode?: () => void;
+  /** Switches to the existing microphone-first chat composer. */
+  onSwitchToMicCloud?: () => void;
 }) {
   const { t } = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -216,6 +219,7 @@ export function AssistantUiChat({
       ComposerExtras,
       ComposerHeader,
       ComposerIdleAction,
+      onSwitchToMicCloud,
       ...(attachmentsEnabled
         ? {
             ComposerAttachments,
@@ -234,6 +238,7 @@ export function AssistantUiChat({
       attachments.length,
       attachmentsEnabled,
       onAttachmentOnlySend,
+      onSwitchToMicCloud,
     ]
   );
 

@@ -21,7 +21,8 @@ use std::process::{Command, Stdio};
 
 #[cfg(any(
     all(target_os = "linux", feature = "sandbox-landlock"),
-    target_os = "macos"
+    target_os = "macos",
+    target_os = "windows"
 ))]
 use openhuman_core::openhuman::sandbox::cwd_jail::spawn;
 use openhuman_core::openhuman::sandbox::cwd_jail::{

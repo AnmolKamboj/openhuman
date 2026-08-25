@@ -79,7 +79,6 @@ pub async fn install_from_config(config: &crate::openhuman::config::Config) -> R
 pub(super) async fn proxy(
     config: &crate::openhuman::config::Config,
 ) -> Result<tinybus::Proxy, String> {
-    #[cfg(test)]
     let config = {
         let mut test_config = config.clone();
         if let Some(path) = std::env::var_os("TINYJUICE_TEST_MODULE") {
@@ -96,7 +95,6 @@ pub(super) async fn proxy(
         }
         test_config
     };
-    #[cfg(test)]
     let config = &config;
 
     crate::openhuman::modules::ensure_loaded(config, "tinyjuice").await?;

@@ -55,7 +55,10 @@ use async_trait::async_trait;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
-use crate::openhuman::agent::triage::{apply_decision, run_triage, TriageOutcome, TriggerEnvelope};
+use crate::openhuman::agent::triage::{
+    apply_decision, remote_trigger_origin, run_triage, TriageOutcome, TriggerEnvelope,
+};
+use crate::openhuman::agent::turn_origin::with_origin;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::integrations::composio::trigger_history;
 use tinybus::EventHandler;
@@ -347,7 +350,13 @@ impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
         tokio::spawn(async move {
             match run_triage(&envelope).await {
                 Ok(TriageOutcome::Decision(run)) => {
-                    if let Err(e) = apply_decision(run, &envelope).await {
+                    // Remote payload: a Composio trigger body is
+                    // attacker-influenceable, so the dispatch parks rather than
+                    // running on a trust root (#5634). Scoped here, inside the
+                    // spawned task, because `AGENT_TURN_ORIGIN` is a task-local
+                    // and does not cross `tokio::spawn`.
+                    let origin = remote_trigger_origin(&envelope);
+                    if let Err(e) = with_origin(origin, apply_decision(run, &envelope)).await {
                         tracing::error!(
                             label = %envelope.display_label,
                             error = %e,

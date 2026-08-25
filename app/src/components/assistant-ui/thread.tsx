@@ -116,6 +116,8 @@ export type ThreadComponents = {
    * branding and behaviour, and this file should not learn about either.
    */
   ComposerIdleAction?: ComponentType | undefined;
+  /** Switches the host chat surface into its microphone-first composer. */
+  onSwitchToMicCloud?: (() => void) | undefined;
 };
 
 export type ThreadProps = {
@@ -336,12 +338,23 @@ const Composer: FC<{
   useEffect(() => {
     const textbox = inputWrapperRef.current?.querySelector<HTMLElement>('[contenteditable="true"]');
     textbox?.setAttribute('aria-label', 'Message input');
-    return () => textbox?.removeAttribute('aria-label');
+    // The rich Lexical surface deliberately is not a native textarea, so give
+    // it an explicit stable hook for browser tests and assistive tooling. The
+    // old chat composer exposed a textarea with a placeholder; consumers must
+    // not have to depend on Lexical's internal DOM shape to find the primary
+    // message input.
+    textbox?.setAttribute('data-testid', 'chat-message-input');
+    return () => {
+      textbox?.removeAttribute('aria-label');
+      textbox?.removeAttribute('data-testid');
+    };
   }, []);
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+      <ComposerPrimitive.Root
+        className="aui-composer-root relative flex w-full flex-col"
+        data-walkthrough="chat-agent-panel">
         {ComposerHeader ? <ComposerHeader /> : null}
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
@@ -414,7 +427,9 @@ const ComposerAction: FC<{
     hasComposerAttachments,
     onComposerAttachmentSend,
     ComposerIdleAction,
+    onSwitchToMicCloud,
   } = useContext(ThreadComponentsContext);
+  const isRunning = useAuiState(state => state.thread.isRunning);
   // Nothing to send: the primary slot goes to the host's idle control instead
   // of a Send button that would refuse the click anyway. Guarded on
   // `isRunning` by the surrounding `AuiIf`, so a streaming turn still shows
@@ -429,6 +444,20 @@ const ComposerAction: FC<{
         <ComposerExtrasSlot />
       </div>
       <div className="flex items-center gap-1.5">
+        {onSwitchToMicCloud && (
+          <TooltipIconButton
+            tooltip="Voice mode"
+            side="bottom"
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="aui-composer-voice-mode text-muted-foreground hover:text-foreground size-7 rounded-full"
+            aria-label="Voice mode"
+            disabled={isRunning}
+            onClick={onSwitchToMicCloud}>
+            <MicIcon className="size-4" />
+          </TooltipIconButton>
+        )}
         <AuiIf condition={s => s.thread.capabilities.dictation}>
           <AuiIf condition={s => s.composer.dictation == null}>
             <ComposerPrimitive.Dictate asChild>
@@ -470,6 +499,7 @@ const ComposerAction: FC<{
               variant="default"
               size="icon"
               className="aui-composer-send size-7 rounded-full"
+              data-testid="send-message-button"
               aria-label="Send message"
               onClick={() => {
                 onComposerAttachmentSend?.();
@@ -486,6 +516,7 @@ const ComposerAction: FC<{
                 variant="default"
                 size="icon"
                 className="aui-composer-send size-7 rounded-full"
+                data-testid="send-message-button"
                 aria-label="Send message">
                 <ArrowUpIcon className="aui-composer-send-icon size-4" />
               </TooltipIconButton>
@@ -499,6 +530,7 @@ const ComposerAction: FC<{
               variant="default"
               size="icon"
               className="aui-composer-cancel size-7 rounded-full"
+              data-testid="stop-generation-button"
               aria-label="Stop generating">
               <SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
             </Button>
@@ -534,6 +566,7 @@ const AssistantMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
       data-role="assistant"
+      data-testid="agent-message"
       className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]">
       {/*
        * One vertical rhythm for the whole message, rather than each part
