@@ -408,11 +408,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
-    (
-        "src/openhuman/memory/sync/composio/providers/context_ext.rs",
-        Verdict::NeedsWiderSeam,
-        "extends the engine's ProviderContext; the sync pipeline is engine-internal and has no capability family",
-    ),
 ];
 
 /// True for source files the lint deliberately does not scan.
