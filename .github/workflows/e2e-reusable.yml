@@ -164,11 +164,11 @@ jobs:
           # live outside the runner-owned checkout in this root-run container.
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
-          memory_archive="$memory_dir/tinymemory-module-1.4.0-ubuntu-22.04-x86_64.tar.gz"
+          memory_archive="$memory_dir/tinymemory-module-1.5.0-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir"
           mkdir -p "$memory_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.4.0/$(basename "$memory_archive")" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.5.0/$(basename "$memory_archive")" \
             --output "$memory_archive"
           echo "d722d36e9fc35ef4ddbbb96499949a6a608f044e924d023f719deb9aa3f5875d  $memory_archive" \
             | sha256sum --check
@@ -362,11 +362,11 @@ jobs:
           # metadata API while the test is running.
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
-          memory_archive="$memory_dir/tinymemory-module-1.4.0-ubuntu-22.04-x86_64.tar.gz"
+          memory_archive="$memory_dir/tinymemory-module-1.5.0-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir"
           mkdir -p "$memory_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.4.0/$(basename "$memory_archive")" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.5.0/$(basename "$memory_archive")" \
             --output "$memory_archive"
           echo "d722d36e9fc35ef4ddbbb96499949a6a608f044e924d023f719deb9aa3f5875d  $memory_archive" \
             | sha256sum --check

@@ -36,7 +36,7 @@ use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::goals::GoalsDoc;
 use crate::openhuman::memory::api::provider::chunks::{
-    ChunkDetail, ChunkEmbedding, ChunkQuery, MemoryChunks,
+    ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery, MemoryChunks, SourceTotal,
 };
 use crate::openhuman::memory::api::provider::episodic::{
     ConversationSegment, EpisodicTurn, MemoryEpisodic,
@@ -53,7 +53,8 @@ use crate::openhuman::memory::api::provider::retrieval::{
     RetrievalResponse, SourceRetrievalQuery,
 };
 use crate::openhuman::memory::api::provider::types::{
-    DiffReport, EntityHit, IngestItem, IngestOutcome, MaintenanceReport, SnapshotRef, SourceItem,
+    ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ForgetOutcome, ForgetSelector,
+    IngestItem, IngestOutcome, MaintenanceReport, PurgeOutcome, SnapshotRef, SourceItem,
     SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
@@ -62,7 +63,9 @@ use crate::openhuman::memory::api::provider::{
     MemoryTree,
 };
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
-use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
+use crate::openhuman::memory::api::tree::{
+    IngestRequest, QueryResult, SummaryForest, TreeLeaf, TreeStatus,
+};
 use crate::openhuman::memory::api::types::NamespaceMemoryHit;
 use crate::openhuman::memory::api::types::{
     GraphRelationRecord, MemoryKvRecord, MemoryTaint, NamespaceDocumentInput,
@@ -476,6 +479,39 @@ impl MemoryTree for GuardedTree {
             .admit_write(Capability::Tree, "tree.cascade", namespace, false)?;
         self.family()?.cascade(namespace).await
     }
+
+    /// Enumerates the sealed forest, so it narrows by the ambient scope for the
+    /// same reason [`Self::query_source`] does: a summary is derived from the
+    /// chunks beneath it, and handing back a node built from sources the caller
+    /// may not read discloses their contents in condensed form.
+    async fn summary_forest(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<SummaryForest, MemoryError> {
+        self.policy
+            .admit_read(Capability::Tree, "tree.summary_forest", NO_NAMESPACE, false)?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .summary_forest(limit, effective.as_ref())
+            .await
+    }
+
+    /// Leaves are chunks, so this is the same disclosure as
+    /// [`Self::query_source`] with a different ordering, and takes the same
+    /// intersection.
+    async fn recent_leaves(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<TreeLeaf>, MemoryError> {
+        self.policy
+            .admit_read(Capability::Tree, "tree.recent_leaves", NO_NAMESPACE, false)?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .recent_leaves(limit, effective.as_ref())
+            .await
+    }
 }
 
 // ── Entities ─────────────────────────────────────────────────────────────────
@@ -529,6 +565,58 @@ impl MemoryEntities for GuardedEntities {
             false,
         )?;
         self.family()?.touch_entities(namespace, entity_ids).await
+    }
+
+    /// The occurrence index has no namespace and the contract gives this member
+    /// no scope argument, so there is nothing to intersect — the tier check is
+    /// the whole gate. Worth stating rather than leaving as an apparent
+    /// omission beside the scoped members above.
+    async fn top_entities(
+        &self,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EntityOccurrence>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Entities,
+            "entities.top_entities",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.top_entities(kind, limit).await
+    }
+
+    /// Scoped by the chunk ids the caller already holds: it can only name
+    /// chunks a previous, scoped read handed it, so this adds no reach beyond
+    /// the read that produced them.
+    async fn chunk_entities(
+        &self,
+        chunk_ids: &[String],
+        kinds: Option<&[String]>,
+    ) -> Result<Vec<ChunkEntityOccurrence>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Entities,
+            "entities.chunk_entities",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.chunk_entities(chunk_ids, kinds).await
+    }
+
+    /// Returns ids only, never content. A caller still has to read those chunks
+    /// through [`MemoryChunks`] to see anything, and that path applies the
+    /// scope intersection.
+    async fn entity_chunk_ids(
+        &self,
+        entity_id: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Entities,
+            "entities.entity_chunk_ids",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.entity_chunk_ids(entity_id, limit).await
     }
 }
 
@@ -766,6 +854,23 @@ impl MemorySourceSink for GuardedSources {
         )?;
         self.family()?.forget_source(source_id).await
     }
+
+    /// The one door for every scoped forget, so it takes the same write tier as
+    /// [`Self::forget_source`]. The selector names what to remove rather than
+    /// carrying content, which is why the egress flag is `false` — the same
+    /// reading its single-source sibling makes.
+    async fn forget_matching(
+        &self,
+        selector: &ForgetSelector,
+    ) -> Result<ForgetOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::Sources,
+            "sources.forget_matching",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.forget_matching(selector).await
+    }
 }
 
 // ── Maintenance ──────────────────────────────────────────────────────────────
@@ -813,6 +918,21 @@ impl MemoryMaintenance for GuardedMaintenance {
             false,
         )?;
         self.family()?.doctor().await
+    }
+
+    /// Empties the whole store, so it takes the write tier rather than
+    /// `doctor`'s read one — and deliberately carries no scope, because there
+    /// is no scoped reading of "purge everything". A source-restricted caller
+    /// that reached this would be destroying rows it is not even allowed to
+    /// read; the write tier is what stops it.
+    async fn purge_all(&self) -> Result<PurgeOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::Maintenance,
+            "maintenance.purge_all",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.purge_all().await
     }
 }
 
@@ -936,6 +1056,66 @@ impl MemoryChunks for GuardedChunks {
         // `GuardPolicy::narrow_scope`.
         let effective = self.policy.narrow_scope(scope);
         self.family()?.list_chunks(query, effective.as_ref()).await
+    }
+
+    /// The count that labels a [`Self::list_chunks`] page, and it must be
+    /// narrowed by exactly the same rule. A total computed against a wider
+    /// scope than the page it labels leaks the existence of rows the caller may
+    /// not read — "showing 20 of 4000" tells a source-restricted turn how much
+    /// it is not being shown.
+    async fn count_chunks(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<u64, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.count_chunks",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?.count_chunks(query, effective.as_ref()).await
+    }
+
+    /// Same rows as [`Self::list_chunks`] with the stored facts beside them, so
+    /// the same intersection applies for the same reason.
+    async fn list_chunk_details(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<ChunkListRow>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.list_chunk_details",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .list_chunk_details(query, effective.as_ref())
+            .await
+    }
+
+    /// Per-source totals are computed from the chunks the scope admits, not
+    /// filtered afterwards — so a restricted caller must not learn that a
+    /// forbidden source exists by seeing its row, nor see a permitted source
+    /// carrying a count that includes rows it cannot read.
+    async fn source_totals(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<SourceTotal>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.source_totals",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .source_totals(limit, effective.as_ref())
+            .await
     }
 
     async fn get_chunk(&self, chunk_id: &str) -> Result<Option<Chunk>, MemoryError> {

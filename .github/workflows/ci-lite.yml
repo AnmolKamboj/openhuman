@@ -746,12 +746,12 @@ jobs:
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
-          memory_archive="$memory_dir/tinymemory-module-1.4.0-ubuntu-22.04-x86_64.tar.gz"
+          memory_archive="$memory_dir/tinymemory-module-1.5.0-ubuntu-22.04-x86_64.tar.gz"
           juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir" "$juice_dir"
           mkdir -p "$memory_dir" "$juice_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.4.0/$(basename "$memory_archive")" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.5.0/$(basename "$memory_archive")" \
             --output "$memory_archive"
           curl --fail --location --silent --show-error \
             "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
