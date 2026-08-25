@@ -63,8 +63,6 @@ use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
 use tinymemory_api::host::COMPOSIO_MODE_DIRECT;
 
-use super::providers::get_provider;
-
 /// A backend-tenant Composio client for one toolkit.
 ///
 /// This was `ProviderContextExt::backend_client`, an extension trait on the
@@ -112,22 +110,50 @@ use crate::openhuman::integrations::composio::FetchConnectedIntegrationsStatus;
 /// non-registrable toolkits. Extracted as a pure predicate so the skip decision
 /// is unit-testable without driving the async event handler.
 ///
-/// # The one engine call left in this file (#5560)
+/// # Asked of the driver, not of a list read across the seam
 ///
-/// `get_provider` reaches the engine's provider registry through the
-/// `memory::sync::composio::providers` re-export, and this predicate plus the
-/// `init_default_providers` call in [`register_composio_trigger_subscriber`]
-/// are the only reasons that re-export still has a caller here. Both exist to
-/// answer one question: does a native pipeline exist for this toolkit.
+/// This was `get_provider(toolkit).is_some()`, reaching the engine's provider
+/// registry through the `memory::sync::composio::providers` re-export. The
+/// driver answers it now (tinymemory#106), which matters because the answer
+/// depends on a normalisation the driver owns — it trims and lower-cases
+/// before matching. A host matching its own copy of the list would have been
+/// right until that rule changed, and silently wrong after.
 ///
-/// tinymemory#106 adds `MemorySourceSync::is_toolkit_syncable`, which asks the
-/// driver instead — with the driver's own trim-and-lowercase normalisation
-/// applied, rather than a list read across the seam and re-matched here. When
-/// that releases, this body becomes a driver call, the host-side registry init
-/// goes with it (the module initialises its own, tinymemory#105), and the
-/// re-export loses its last consumer.
-fn toolkit_is_memory_source_registrable(toolkit: &str) -> bool {
-    get_provider(toolkit).is_some()
+/// `Unsupported` and a binding failure both read as "not registrable". That is
+/// the safe direction: registering a source that then fails every sync is the
+/// #4957 lie, whereas declining to register one leaves the connection working
+/// as an ordinary agent-tool integration.
+async fn toolkit_is_memory_source_registrable(
+    config: &crate::openhuman::config::Config,
+    toolkit: &str,
+) -> bool {
+    let Ok(binding) = crate::openhuman::memory::binding::for_config(config) else {
+        tracing::warn!(
+            toolkit = %toolkit,
+            "[composio:bus] memory binding failed; treating toolkit as not registrable"
+        );
+        return false;
+    };
+    let Some(sync) = binding.provider().as_source_sync() else {
+        tracing::debug!(
+            toolkit = %toolkit,
+            driver = %binding.driver_id(),
+            "[composio:bus] driver does not serve SourceSync; treating toolkit as not registrable"
+        );
+        return false;
+    };
+    match sync.is_toolkit_syncable(toolkit).await {
+        Ok(answer) => answer,
+        Err(error) => {
+            tracing::warn!(
+                toolkit = %toolkit,
+                error = %error,
+                "[composio:bus] driver could not answer is_toolkit_syncable; \
+                 treating toolkit as not registrable"
+            );
+            false
+        }
+    }
 }
 
 /// Env var that **disables** the triage pipeline. The pipeline is
@@ -157,10 +183,10 @@ static COMPOSIO_CONFIG_HANDLE: OnceLock<SubscriptionHandle> = OnceLock::new();
 /// Register both long-lived composio subscribers on the global event
 /// bus, and initialise the default provider registry. Idempotent.
 pub fn register_composio_trigger_subscriber() {
-    // Make sure the registry is populated before any event arrives —
-    // otherwise the very first webhook would no-op because the
-    // subscriber's `get_provider` lookup would miss.
-    super::providers::init_default_providers();
+    // No host-side provider registry any more. It existed so this process
+    // could answer `get_provider`; the driver answers that question now, and
+    // the module initialises its own registry in its own process
+    // (tinymemory#105) — which a `cdylib`'s separate statics require anyway.
 
     if COMPOSIO_TRIGGER_HANDLE.get().is_none() {
         match BUS.subscribe(Arc::new(ComposioTriggerSubscriber::new())) {
@@ -758,7 +784,7 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                 // than a second `get_provider` call beside it: the bootstrap
                 // that wanted the provider *handle* runs in the driver now, so
                 // all this site needs is the #4957 answer.
-                if !toolkit_is_memory_source_registrable(&toolkit) {
+                if !toolkit_is_memory_source_registrable(&config, &toolkit).await {
                     // No native memory-sync provider → this toolkit cannot ingest
                     // into memory. Do NOT auto-register it as a memory source: a
                     // source that reports ACTIVE and then fails every sync with
@@ -880,7 +906,7 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
             // memory source that would silently fail every sync (#4957). This also
             // guards the onboarding-incomplete path, which reaches here without
             // evaluating the provider branch above.
-            if !toolkit_is_memory_source_registrable(&toolkit) {
+            if !toolkit_is_memory_source_registrable(&config, &toolkit).await {
                 tracing::info!(
                     toolkit = %toolkit,
                     connection_id = %connection_id,
