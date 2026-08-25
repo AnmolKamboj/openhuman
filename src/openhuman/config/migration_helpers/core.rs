@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tinymemory_core::store as memory_store;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 struct SourceEntry {
@@ -120,28 +120,30 @@ pub async fn migrate_openclaw_memory(
 
 /// The memory the import writes into.
 ///
-/// **Still the engine's own migration constructor, and #5560 could not change
-/// that.** The contract's only door for this shape is `MemoryCore::store`,
-/// reached through `MemoryGuard` like every other write in the tree — and the
-/// guard applies `MemoryHooksConfig::capture_max_chars`, which defaults to
-/// **500**, to every `store` body (`guard::mandatory`, step 6). An OpenClaw /
-/// Hermes `MEMORY.md` entry is routinely longer than that, so routing the
-/// import through the guard would silently truncate the user's own imported
-/// memories: data loss on a migration path, which is worse than the second
-/// engine handle this keeps.
+/// The bound driver, through [`DriverMemory`] — the same store the engine
+/// constructor this replaced opened. That equivalence is checked rather than
+/// assumed: `create_memory_for_migration` bottoms out in
+/// `create_memory_full(..., workspace_dir, "memory")`, and
+/// `binding::for_workspace` resolves `for_subtree(workspace_dir, "memory")`.
+/// Same workspace, same subtree.
 ///
-/// The other two doors do not fit either. `MemoryDocuments::put_document` does
-/// not trim, but it writes namespace *documents* rather than memory entries, so
-/// the `get`/rename dedupe above would stop seeing what it wrote.
-/// `MemoryPortability::import_records` is the shape a migration wants, but
-/// `ExportRecord::payload` is explicitly "the exporting driver's own shape" —
-/// synthesising one host-side means encoding driver-private structure here.
+/// # Why the capture budget does not bite here
 ///
-/// What unblocks this is a capture budget that distinguishes an *import* from
-/// an auto-capture, or a `MemoryCore::store` variant that opts out of the
-/// budget. Both are upstream asks, not host changes.
-fn target_memory_backend(config: &Config) -> Result<Box<dyn Memory>> {
-    memory_store::create_memory_for_migration(&config.memory, &config.workspace_dir)
+/// This note used to say the contract had no door for an import, because
+/// `MemoryCore::store` is reached through `MemoryGuard`, which applies
+/// `MemoryHooksConfig::capture_max_chars` to every body — and an imported
+/// `MEMORY.md` entry is routinely longer than that, so routing an import
+/// through the guard would silently truncate the user's own memories.
+///
+/// The budget is real, and it is enforced host-side in
+/// `memory::guard::policy`. What the note missed is that `DriverMemory` does
+/// not go through the guard at all: it wraps `binding.provider()`, which is the
+/// **unguarded** driver — the binding keeps the guarded one separately behind
+/// `binding.guard()`. So an import writes full bodies here exactly as the
+/// engine constructor did, and no policy has to be special-cased to allow it.
+fn target_memory_backend(config: &Config) -> Result<Arc<dyn Memory>> {
+    crate::openhuman::agent::experience::ops::DriverMemory::for_config(config)
+        .map_err(|e| anyhow::anyhow!("bind memory for migration import: {e}"))
 }
 
 fn collect_source_entries(

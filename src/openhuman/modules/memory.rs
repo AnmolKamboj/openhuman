@@ -797,6 +797,15 @@ impl MemoryTree for ModuleMemoryProvider {
     ) -> Result<SummaryForest, MemoryError> {
         module_call!(self, "summary_forest", "SummaryForest", (limit, scope))
     }
+
+    async fn flush_source_tree(&self, source_scope: &str) -> Result<u64, MemoryError> {
+        module_call!(
+            self,
+            "flush_source_tree",
+            "FlushSourceTree",
+            (source_scope,)
+        )
+    }
     async fn recent_leaves(
         &self,
         limit: usize,

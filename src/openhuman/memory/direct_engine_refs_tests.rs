@@ -315,11 +315,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/config/migration_helpers/core.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/flows/memory_tools.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -330,24 +325,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/memory/read_rpc/admin.rs",
-        Verdict::NeedsWiderSeam,
-        "one call left: flush_source_tree wants a live source-tree handle (tree_source::get_or_create_source_tree) to feed the host's TreeFactory label strategy and force_flush_tree, and MemoryTree is namespace-addressed (append/query_source/drill_down/seal/cascade/summary_forest/recent_leaves) with no door onto a tree object. wipe_all, clear_composio_sync_state and delete_source have left for purge_all, kv_list+kv_delete and forget_matching(Source)",
-    ),
-    (
         "src/openhuman/memory/read_rpc/mod.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::chunks::store::with_connection, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/sync/sync_status/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/tree/tree/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
