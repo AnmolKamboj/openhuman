@@ -743,20 +743,28 @@ jobs:
           # checkout as the host runner uid while this container runs as root,
           # so a module below $GITHUB_WORKSPACE is correctly refused. Keep
           # native fixtures in a root-owned, container-ephemeral tree instead.
+          # Version and digest are ONE decision and live on adjacent lines for that
+          # reason: the archive name, the release tag and the checksum each used to
+          # carry the version independently, so a bump could update two of the three
+          # and leave a stale digest that only fails after the download. Both values
+          # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
+          # which is the authoritative pin — copy them from there, never recompute.
+          memory_version="1.6.0"
+          memory_sha256="7b932203e56867d2c1a0cd22573bea096e664a713dddad37255f5f401affbd5e"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
-          memory_archive="$memory_dir/tinymemory-module-1.6.0-ubuntu-22.04-x86_64.tar.gz"
+          memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
           juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir" "$juice_dir"
           mkdir -p "$memory_dir" "$juice_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.6.0/$(basename "$memory_archive")" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
             --output "$memory_archive"
           curl --fail --location --silent --show-error \
             "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
             --output "$juice_archive"
-          echo "d722d36e9fc35ef4ddbbb96499949a6a608f044e924d023f719deb9aa3f5875d  $memory_archive" \
+          echo "${memory_sha256}  $memory_archive" \
             | sha256sum --check
           echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
             | sha256sum --check

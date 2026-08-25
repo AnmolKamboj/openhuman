@@ -303,3 +303,69 @@ fn the_advertised_set_does_not_over_claim_the_artifact() {
     // registry bump.
     assert_eq!(advertised, Capabilities::all());
 }
+
+/// The CI workflows download the TinyMemory module and verify it against a
+/// digest written inline in the YAML. That digest is a second copy of the one
+/// in [`super::super::registry`], and the two drifted: a version bump moved the
+/// archive name and the release tag but left the checksum two releases behind,
+/// so every lane that installs the module died on
+/// `sha256sum: WARNING: 1 computed checksum did NOT match`.
+///
+/// The failure was loud, which is the system working — a mismatched digest is
+/// exactly what should stop a build rather than silently running the wrong
+/// artifact. What was missing is anything that catches the drift *before* CI
+/// downloads a file, and a comment asking the next person to keep three places
+/// in step is not that. This is.
+///
+/// Scoped to the one row the workflows actually install (`ubuntu-22.04-x86_64`,
+/// the CI runner's triple) rather than all eleven, because that is the only
+/// pair that can disagree.
+#[test]
+fn the_ci_workflows_pin_the_same_module_digest_as_the_registry() {
+    const HOST_KEY: &str = "ubuntu-22.04-x86_64";
+
+    let record = registry::find(MODULE_ID).expect("the memory module is registered");
+    let asset = record
+        .assets
+        .iter()
+        .find(|asset| asset.host_key == HOST_KEY)
+        .unwrap_or_else(|| panic!("the registry has no {HOST_KEY} asset to compare against"));
+
+    let workflows = [
+        "../.github/workflows/ci-full.yml",
+        "../.github/workflows/ci-lite.yml",
+        "../.github/workflows/e2e-reusable.yml",
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    let mut checked = 0usize;
+    for relative in workflows {
+        let path = root.join(relative.trim_start_matches("../"));
+        let Ok(yaml) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in yaml.lines() {
+            let Some(rest) = line.trim().strip_prefix("memory_sha256=") else {
+                continue;
+            };
+            let pinned = rest.trim().trim_matches('"');
+            assert_eq!(
+                pinned,
+                asset.sha256,
+                "{} pins a digest the registry does not: the workflow will download \
+                 {} and refuse it. Copy both `memory_version` and `memory_sha256` \
+                 from the {HOST_KEY} row of registry.rs.",
+                path.display(),
+                asset.archive,
+            );
+            checked += 1;
+        }
+    }
+
+    assert!(
+        checked >= 4,
+        "expected at least four workflow digest sites, found {checked} — either a \
+         lane stopped installing the module, or the assignment was renamed and this \
+         guard silently stopped checking anything"
+    );
+}

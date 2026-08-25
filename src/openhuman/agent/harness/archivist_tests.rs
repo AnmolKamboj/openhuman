@@ -88,6 +88,12 @@ fn provider_over(workspace: &std::path::Path) -> (Arc<MemoryClient>, Arc<dyn Mem
         default_temperature: 0.2,
         output_language: None,
         memory_sources: serde_json::Value::Null,
+        // Added by tinymemory#100, which moved the periodic sync loops into the
+        // module. A test fixture wants the same "no cadence configured" default
+        // the module answers for an older host that sends nothing.
+        memory_sync_interval_secs: None,
+        composio_mode: String::new(),
+        composio_entity_id: String::new(),
     };
     let provider: Arc<dyn MemoryProvider> = Arc::new(TinycortexProvider::new(
         "tinycortex".into(),

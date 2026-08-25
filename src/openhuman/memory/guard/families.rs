@@ -1324,11 +1324,18 @@ impl MemoryEpisodic for GuardedEpisodic {
         // A recorded turn is user-authored conversation content, so this is a
         // write and is admitted as one — the read/write split here is about
         // what the tier permits, not about how much data moves.
+        // `carries_content: true`, unlike the tier note above, which is about
+        // what the tier permits rather than how much data moves. This flag is a
+        // different question: it decides whether the egress record classifies
+        // the transfer as `FileContent` or `Metadata`. A turn IS the user's
+        // prose, and an audit trail that calls a transcript "metadata"
+        // understates what left the process — the one thing that record exists
+        // to get right. `tree.append` has always passed `true` for this shape.
         self.policy.admit_write(
             Capability::Episodic,
             "episodic.insert_turn",
             NO_NAMESPACE,
-            false,
+            true,
         )?;
         let mut turn = turn.clone();
         turn.content = self.policy.redact_outbound(&turn.content).into_owned();
@@ -1415,11 +1422,13 @@ impl MemoryEpisodic for GuardedEpisodic {
     /// Admitted like its sibling writes; the event's namespace is the
     /// admission subject, since it is the one the record is scoped to.
     async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        // `carries_content: true` for the same reason as `insert_turn`: an
+        // extracted event is the user's prose, not a descriptor of it.
         self.policy.admit_write(
             Capability::Episodic,
             "episodic.insert_event",
             &event.namespace,
-            false,
+            true,
         )?;
         let mut event = event.clone();
         event.content = self.policy.redact_outbound(&event.content).into_owned();

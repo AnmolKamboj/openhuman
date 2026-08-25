@@ -38,6 +38,12 @@ pub(crate) fn install_tinycortex_for_test(config: &crate::openhuman::config::Con
         local_ai: config.local_ai.clone(),
         embeddings_provider: config.embeddings_provider.clone(),
         memory_provider: None,
+        // Added by tinymemory#100, which moved the periodic sync loops into the
+        // module. A test fixture wants the same "no cadence configured" default
+        // the module answers for an older host that sends nothing.
+        memory_sync_interval_secs: None,
+        composio_mode: String::new(),
+        composio_entity_id: String::new(),
         default_model: None,
         default_temperature: 0.2,
         output_language: None,
