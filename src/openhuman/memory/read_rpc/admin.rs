@@ -276,24 +276,49 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
 ///
 /// # The last engine reference in this module (#5560)
 ///
+/// **The upstream half of this is done. What is left is two host forwarders,
+/// and until they land migrating here would be a regression — read on before
+/// changing it.**
+///
 /// `get_or_create_source_tree` hands back a live `Tree` **object**, and both
 /// things this handler does next need the object rather than a namespace: the
 /// host's `TreeFactory::from_tree(&tree).label_strategy(&cfg)` picks the
 /// labelling policy from the tree's own kind/scope, and `force_flush_tree`
 /// takes `&tree.id`.
 ///
-/// `MemoryTree` cannot express that. It is namespace-addressed end to end —
-/// `append`, `query_source`, `drill_down`, `seal`, `cascade`, `summary_forest`,
-/// `recent_leaves` — and there is no member that returns a tree handle, nor
-/// should there be: handing a driver's internal object across the bus is the
-/// thing the contract exists to prevent. `tinymemory_core::tree_source` is also
-/// genuinely engine-owned (it wraps `tree::tree::registry::get_or_create_tree`
-/// and writes the `_source.md` mirror as a side effect), so there is no
-/// tinycortex twin to repoint at either.
+/// This note used to say `MemoryTree` could not express that — namespace-addressed
+/// end to end, no member returning a tree handle — and asked upstream for
+/// "flush the tree for this source scope, using the host's label strategy".
+/// **tinymemory v1.7.0 shipped exactly that**:
+/// `MemoryTree::flush_source_tree(&self, source_scope) -> Result<u64, MemoryError>`,
+/// answering the seal count rather than a tree, with the labelling decision made
+/// driver-side (which is where it comes from anyway). The module serves it and
+/// `TinycortexProvider` implements it, so the driver behind the bus is ready.
 ///
-/// Migrating this needs a bus member shaped like "flush the tree for this
-/// source scope, using the host's label strategy", which does not exist in the
-/// pinned release — an upstream ask, not a host change.
+/// What is **not** ready is this host's two forwarders onto that member:
+/// neither `modules::memory`'s `ModuleMemoryProvider` (`impl MemoryTree`) nor
+/// `memory::guard::families`' `GuardedTree` overrides it, so both inherit the
+/// trait default — `Err(Unsupported(Tree))`. Calling it today would turn a
+/// working flush into a runtime `Unsupported`, which is strictly worse than
+/// the direct call: the failure moves from compile time to run time, and this
+/// handler's caller has no fallback. That is the same trap
+/// `direct_engine_refs_tests`' module docs warn about for a method the pinned
+/// artifact does not serve; here the artifact serves it and the host does not
+/// ask.
+///
+/// So the remaining work is host-side and sits in two files this handler does
+/// not own. Once `ModuleMemoryProvider` and `GuardedTree` both forward
+/// `flush_source_tree`, this whole function collapses into the shape
+/// [`flush_now_rpc`] already has below: resolve the binding, take `as_tree()`,
+/// degrade by naming the driver when the family is absent, and map the returned
+/// count into `seals_fired`. Two behaviours have to survive that rewrite — the
+/// `ACTIVE` re-entrancy latch, and the fact that an unknown scope is a
+/// zero-count success rather than an error.
+///
+/// (`tinymemory_core::tree_source` itself is genuinely engine-owned — it wraps
+/// `tree::tree::registry::get_or_create_tree` and writes the `_source.md`
+/// mirror as a side effect — so there is no tinycortex twin to repoint at in
+/// the meantime.)
 pub async fn flush_source_tree_rpc(
     config: &Config,
     source_scope: &str,

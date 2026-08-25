@@ -20,12 +20,13 @@
 //!   `nlp::extract_query_entities` are reached from the archivist, the
 //!   sub-agent runner, `read_rpc::entities`, `inference::embeddings::rpc` and
 //!   `retrieval/rpc.rs` in this directory.
-//! - the seven `Tree{LabelStrategy, LeafPayload, ReadHit, ReadRequest,
-//!   ReadResult, WriteOutcome, WriteRequest}` I/O types, which the crate
-//!   re-exports out of `engine::backend::tree`. Nothing in `src/` names them —
-//!   `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` names all seven,
-//!   which is why narrowing this glob to what `src/` uses would compile here
-//!   and break the integration lane.
+//! The seven `Tree{LabelStrategy, LeafPayload, ReadHit, ReadRequest,
+//! ReadResult, WriteOutcome, WriteRequest}` I/O types used to be on that list
+//! too. They are **not** engine-owned — the crate re-exports them out of
+//! `engine::backend::tree`, i.e. `tinycortex` — so they are named there
+//! directly below and no longer depend on this glob. Nothing in `src/` uses
+//! them; `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` names all
+//! seven, which is why they are still re-exported at all.
 //!
 //! (`graph` is the fifth unshadowed name and has no caller under this path at
 //! all — it is carried only because the glob is all-or-nothing.)
@@ -35,6 +36,26 @@
 //! pinned by the engine's *scoring and summarisation* internals, and it goes
 //! when those move behind the bus — not before.
 
+// The seven tree I/O contracts, named at the crate that defines them
+// (`tinycortex::memory::tree::io`). `tinymemory_core::tree` re-exports them out
+// of `engine::backend::tree`, which is `pub use tinycortex::memory::tree`, so
+// this is the same item under a different crate alias — an explicit `use`
+// shadowing the glob below with itself. Nothing in `src/` names them;
+// `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` names all seven
+// through this path, which is why they are re-exported rather than dropped, and
+// why they now keep resolving once `tinymemory-core` leaves the build.
+pub use tinycortex::memory::tree::{
+    TreeLabelStrategy, TreeLeafPayload, TreeReadHit, TreeReadRequest, TreeReadResult,
+    TreeWriteOutcome, TreeWriteRequest,
+};
+
+// What is left of the glob is the scoring and summarisation half, and it is
+// `tinymemory-core`'s own code rather than a re-export: `score` (embed /
+// extract / store / resolver), `summarise`, `nlp` and `ingest`, plus `graph`,
+// which the glob carries because a glob is all-or-nothing. `tinymemory_api::tree`
+// is the summary-node vocabulary — not an embedder and not an entity extractor
+// — so there is nothing on the contract to route these at. This shim goes when
+// scoring and summarisation move behind the bus, not before.
 pub use tinymemory_core::tree::*;
 
 pub mod health;

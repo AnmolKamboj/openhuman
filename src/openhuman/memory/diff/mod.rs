@@ -42,6 +42,28 @@
 //!   translating at the handler would change the RPC payloads, which is a
 //!   behaviour change, not a migration.
 
+// The eight wire types, named at the crate that defines them. They are
+// `tinycortex::memory::diff::types` — `tinymemory_core::diff` re-exports them
+// out of its `engine::backend::diff::types`, which is that same module — so
+// this is the identical item under a different crate alias, and an explicit
+// `use` shadows the glob below with itself. `rpc.rs` and `tools/diff.rs`
+// already spell them this way; saying it here too means the flat
+// `memory::diff::ChangeKind` paths keep resolving when `tinymemory-core`
+// leaves the build, with no edit at any call site.
+//
+// Ungated on both sides of `memory-git`, mirroring tinycortex's own carve-out:
+// these are serde-only values that always-on callers (the subconscious memory
+// profile renders `CrossSourceDiff` and `ChangeKind` into prompts) name in a
+// slim build too.
+pub use tinycortex::memory::diff::types::{
+    ChangeKind, Checkpoint, CrossSourceDiff, DiffResult, DiffSummary, ItemChange, Snapshot,
+    SnapshotTrigger,
+};
+
+// What is left of the glob, and all that pins it: `ops` (or its `memory-git`-off
+// stub) and `source`. Both are `tinymemory-core`'s own — see the header above
+// for why neither can come home ahead of `memory::sources`, and why
+// `MemoryDiff` covers three of `ops`' ten entry points rather than replacing it.
 pub use tinymemory_core::diff::*;
 
 #[cfg(feature = "memory-git")]

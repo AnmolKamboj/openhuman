@@ -76,17 +76,19 @@ use std::path::{Path, PathBuf};
 /// `global::init(` is deliberately absent. It binds a workspace; it does not
 /// read or write memory, and every call site is a login / user-switch / boot /
 /// CLI-entry lifecycle event. See `docs/specs/memory-guard-allowlist.md`.
+// Three needles were retired in #5560 rather than renamed, and the distinction
+// matters: `active_memory_client(`, `global::client(` and `.memory_handle(` all
+// named ways of getting an undecorated `MemoryClient` out of the process-global
+// engine slot. That slot is gone — the host no longer boots an in-process
+// engine at all — so there is no longer an API to rename them to. They matched
+// nothing, and a needle that matches nothing is a guard that guards nothing.
+//
+// `global::client_if_ready(` survives because it still matches: the remaining
+// callers are test fixtures, which the scanner reaches but production no longer
+// does.
 const BYPASS_PATTERNS: &[(&str, &str)] = &[
     (
-        "active_memory_client(",
-        "resolves a MemoryClientRef with no policy decorator",
-    ),
-    (
         "global::client_if_ready(",
-        "process-global MemoryClient, no policy decorator",
-    ),
-    (
-        "global::client(",
         "process-global MemoryClient, no policy decorator",
     ),
     (
@@ -96,10 +98,6 @@ const BYPASS_PATTERNS: &[(&str, &str)] = &[
     (
         ".profile_store(",
         "typed profile store — the profile/facet tables have no capability family, so these reads and writes still skip the guard's seven steps",
-    ),
-    (
-        ".memory_handle(",
-        "raw Arc<dyn Memory> — bypasses the MemoryClient API surface",
     ),
     (
         ".get_document(",
@@ -168,21 +166,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "the per-workspace bind site — guarding it would be a cycle",
     ),
     // ── Needs a concrete engine type the contract does not expose ──
-    (
-        "src/openhuman/agent/experience/ops.rs",
-        ".memory_handle(",
-        "AgentExperienceStore::new takes Arc<dyn Memory>; no contract door for it",
-    ),
-    (
-        "src/openhuman/agent/experience/ops.rs",
-        "global::client_if_ready(",
-        "same store; also builds a per-profile UnifiedMemory the binding cannot model",
-    ),
-    (
-        "src/openhuman/agent/harness/session/builder/factory.rs",
-        ".memory_handle(",
-        "session builder needs Arc<dyn Memory>; no contract door for it",
-    ),
     // ── Profile/facet access ──
     //
     // The five `.profile_store(` / `global::client_if_ready(` entries that
@@ -230,16 +213,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "the guarded resolver; this is where the binding becomes a guard",
     ),
     (
-        "src/openhuman/memory/ops/helpers.rs",
-        "active_memory_client(",
-        "defines active_memory_client — the unguarded twin of ops::guard",
-    ),
-    (
-        "src/openhuman/memory/ops/helpers.rs",
-        "global::client_if_ready(",
-        "same definition site",
-    ),
-    (
         "src/openhuman/memory/ops/provider.rs",
         ".memory_binding(",
         "reports driver status; it is about the binding, not about reading memory",
@@ -253,16 +226,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "src/openhuman/memory/ops/provider.rs",
         "binding::for_workspace(",
         "same status surface",
-    ),
-    (
-        "src/openhuman/memory/ops/sync.rs",
-        "global::client_if_ready(",
-        "ingestion_state().snapshot() — queue telemetry, absent from the contract",
-    ),
-    (
-        "src/openhuman/memory/ops/sync.rs",
-        "global::client(",
-        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
         "vendor/tinymemory/crates/tinymemory-core/src/store/client.rs",

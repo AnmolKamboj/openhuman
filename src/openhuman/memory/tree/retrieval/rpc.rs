@@ -505,10 +505,17 @@ mod tests {
         MemoryCategory, MemoryEntry, MemoryTaint, NamespaceMemoryHit, NamespaceSummary,
     };
     use crate::openhuman::memory::source_scope::with_source_scope;
+    // The engine-backed chunk writes these fixtures need live in
+    // `retrieval::test_support` rather than here. They are the engine's chunk
+    // store — `MemoryChunks` is read-only on the contract — and they are
+    // test-only, which is exactly the pair `direct_engine_refs_tests`'
+    // line-based scanner cannot tell apart when the reference sits inside an
+    // inline `#[cfg(test)]` module. See that module's docs.
+    use crate::openhuman::memory::tree::retrieval::test_support::{
+        stage_test_chunks, upsert_chunks,
+    };
     use tinymemory_api::chunks::{chunk_id, Chunk, Metadata, SourceRef};
     use tinymemory_api::null::NullMemoryProvider;
-    use tinymemory_core::store::chunks::store::upsert_chunks;
-    use tinymemory_core::store::content as content_store;
 
     fn test_config() -> (TempDir, Config) {
         let tmp = TempDir::new().unwrap();
@@ -520,22 +527,6 @@ mod tests {
         cfg.memory_tree.embedding_model = None;
         cfg.memory_tree.embedding_strict = false;
         (tmp, cfg)
-    }
-
-    /// Write chunks the in-process driver can read back — both the row and the
-    /// staged content body, since a hit carries the body.
-    fn stage_test_chunks(cfg: &Config, chunks: &[Chunk]) {
-        let content_root = cfg.memory_tree_content_root();
-        std::fs::create_dir_all(&content_root).expect("create content_root for test");
-        let staged = content_store::stage_chunks(&content_root, chunks)
-            .expect("stage_chunks for test chunks");
-        tinymemory_core::store::chunks::store::with_connection(cfg, |conn| {
-            let tx = conn.unchecked_transaction()?;
-            tinymemory_core::store::chunks::store::upsert_staged_chunks_tx(&tx, &staged)?;
-            tx.commit()?;
-            Ok(())
-        })
-        .expect("persist staged chunk pointers");
     }
 
     fn sample_chunk(source: &str, seq: u32) -> Chunk {

@@ -41,11 +41,34 @@
 //!   `SyncOutcome`, `SyncReason` — re-exported onward by
 //!   `integrations::composio`.
 //!
-//! None has a capability family: the sync pipelines are engine-internal, and
-//! `MemorySourceSink` addresses source *records*, not provider runs. So this
-//! shim goes when the pipelines themselves move behind the bus — the same ask
-//! as `sync/composio/bus.rs` and `providers/slack/rpc.rs`, both of which call
-//! `tinycortex::run_composio_connection` directly.
+//! # What v1.7.0 took off that list, and what it did not
+//!
+//! **Running a connection is no longer on it.** `MemorySourceSync` landed in
+//! tinymemory v1.7.0, so `run_connection_sync` / `source_sync_state` are
+//! contract members and all five host call sites moved onto the bound driver:
+//! `memory::ops::sync`, `super::bus`, `providers::slack::rpc` (both the trigger
+//! and the status read) and `integrations::composio::ops::providers_ops`. None
+//! of them names the engine crate any more. The member takes no `Config` —
+//! the driver resolves its own and reads the per-source budgets from the
+//! registry it already owns.
+//!
+//! **Two of the value types moved too, and the rest did not.** `SyncOutcome`,
+//! `SyncReason`, `ProviderUserProfile`, `SyncState` and the scope/task
+//! vocabulary are defined in `tinymemory-bus` now and re-exported here through
+//! the engine, so a consumer that wants a *type* can repoint at
+//! `tinymemory_api::composio::…` instead. What stayed behind is behaviour and
+//! I/O: `ProviderContext` (an `Arc<Config>` plus host-seam dispatch), the
+//! `ComposioProvider` trait and the provider registry, `profile_md`, and
+//! `SyncState`'s `load` / `save` — the contract crate holds no traits and no
+//! I/O, so those are the engine's `PersistedSyncState` extension trait. A host
+//! site reaching for `load`/`save` is a site that should be calling
+//! `source_sync_state` instead; the four above now do.
+//!
+//! So what still pins the glob is *target discovery and scheduling*:
+//! `list_sync_targets` / `SyncTarget`, the provider registry, and `periodic`.
+//! No capability family addresses those — `MemorySourceSink` covers source
+//! *records*, not which connections exist — so this shim goes when the registry
+//! moves behind the bus, which is a design pass upstream.
 //!
 //! # ⚠ One host caller did not get the memo (found 2026-08-25)
 //!

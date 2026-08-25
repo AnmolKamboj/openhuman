@@ -144,10 +144,35 @@ pub use schemas::{
     all_tool_memory_controller_schemas as all_memory_tool_memory_controller_schemas,
     all_tool_memory_registered_controllers as all_memory_tool_memory_registered_controllers,
 };
+// The ingestion vocabulary, split by who actually defines it (#5560).
+//
+// It was one `pub use tinymemory_core::ingestion::{…}` line of eleven names,
+// which read as eleven engine types. Seven of them are not: `tinymemory-core`'s
+// `ingestion` module re-exports them out of `engine::backend::ingest`, which is
+// `pub use tinycortex::memory::ingest`. So the line below names the **same
+// items** at the crate that defines them — `tinycortex` stays a direct
+// dependency of this crate, `tinymemory-core` is the one being shed — and no
+// type, wire byte or call site changes. Same move as `memory::people`,
+// `memory::tool_memory` and `memory::tree::health`'s taxonomy half.
+pub use tinycortex::memory::ingest::{
+    ExtractedEntity, ExtractedRelation, ExtractionMode, MemoryIngestionConfig,
+    MemoryIngestionRequest, MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
+};
+// The remaining four are genuinely `tinymemory-core`'s own: the in-process
+// ingest queue (`ingestion::queue`) and its status snapshot
+// (`ingestion::state`). They have no contract equivalent — the ingest queue is
+// named in `direct_engine_refs_tests`' upstream-gap list as one of the four
+// things with no bus representation at all — so this is what still pins the
+// engine crate here, and it is now visible as such rather than hidden in a
+// list of eleven.
+//
+// `IngestionState` is the one with a live consumer
+// (`tests/raw_coverage/memory_raw_coverage_e2e.rs`). The other three are kept
+// because they are one module's worth of a single domain and splitting a queue
+// from its own job type would leave a re-export that documents nothing; when
+// the queue moves behind the bus they go together.
 pub use tinymemory_core::ingestion::{
-    ExtractedEntity, ExtractedRelation, ExtractionMode, IngestionJob, IngestionQueue,
-    IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
-    MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
+    IngestionJob, IngestionQueue, IngestionState, IngestionStatusSnapshot,
 };
 // The host's own JSON-RPC request/response shapes. They lived in
 // `tinymemory_core::rpc_models` and were re-exported here by a glob; nothing

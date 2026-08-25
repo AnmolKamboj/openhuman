@@ -930,6 +930,10 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
         MemoryClient::from_workspace_dir(config.workspace_dir.clone())
             .expect("memory client should initialise"),
     );
+    // `save` is the extension trait, not an inherent method: `SyncState` moved
+    // to the contract crate in v1.7.0, which stays free of I/O, so persistence
+    // stayed behind in the engine.
+    use tinymemory_core::sync::composio::providers::sync_state::PersistedSyncState;
     let mut state = SyncState::new("notion", "conn-1");
     state.mark_synced("page-a@2026-01-01T00:00:00Z");
     state.mark_synced("page-b");

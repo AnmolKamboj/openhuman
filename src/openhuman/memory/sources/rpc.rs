@@ -1,46 +1,69 @@
 //! RPC handler implementations for memory sources.
 //!
-//! # The engine references in this file (#5560), by surface
+//! # How this file reaches memory (#5560)
 //!
-//! This file sits on `direct_engine_refs_tests::ALLOWED` as `NeedsWiderSeam`.
-//! That verdict was re-tested on 2026-08-25 and it holds, for two independent
-//! reasons that are worth recording so the next reader does not re-derive
-//! them: **no** `MemoryProvider` member expresses any of the four surfaces
-//! below, and **every** symbol they name is defined in `tinymemory-core`
-//! itself rather than re-exported from a crate this manifest already lists, so
-//! there is no repoint available either. (Absence was checked against the
-//! contract at `vendor/tinymemory` HEAD, which leads the pinned release — an
-//! absence there is an absence in the pin.) `tinymemory_core::tinycortex` is
-//! an alias for `tinymemory_core::engine`, which is why all four read as
-//! `tinycortex::…` below.
+//! Every memory call below goes through the bound driver — never through an
+//! in-process engine handle. The four surfaces this file used to reach into
+//! `tinymemory_core::tinycortex` for became contract members in tinymemory
+//! v1.7.0, and the mapping is one-for-one:
 //!
-//! - **Coding sessions** — `CodingSessionIngestRequest`,
-//!   `CodingSessionIngestResponse`, `CodingSessionSourceStatus`,
-//!   `coding_session_status`, `ingest_coding_sessions`. TinyCortex's persona
-//!   pipeline: `walkdir` over session roots, `RawSession`, `FileStateStore`.
-//!   No capability family covers any of it.
-//! - **Raw-archive coverage** — `raw_coverage`, `rebuild_tree_from_raw`. A
-//!   filesystem-vs-tree crosscheck. `MemoryTree` is namespace-addressed
-//!   (`append` / `query_source` / `drill_down` / `seal` / `cascade` /
-//!   `summary_forest` / `recent_leaves`) and has no coverage member.
-//! - **Sync audit log** — `SyncAuditEntry`, `read_audit_log`. A host-owned log
-//!   read out of `MemoryHostConfig::workspace_dir`; nothing in the contract
-//!   reads it.
-//! - **Sync cost model** — `estimate_cost_usd`. Pure arithmetic, so it *looks*
-//!   like a free move host-side — but the same constants back
-//!   `SyncAuditEntry::effective_cost_usd` (used in `monthly_cost_summary_rpc`
-//!   below) and the engine's own cost accumulator. Copying it here would be a
-//!   second price that can drift from the one the audit rows were written with.
+//! | What a handler needs | Contract member |
+//! |---|---|
+//! | coding-session discovery | `MemoryCodingSessions::coding_session_status` |
+//! | coding-session ingestion | `MemoryCodingSessions::ingest_coding_sessions` |
+//! | raw-archive coverage, and its repair | `MemorySourceSync::raw_archive_coverage` / `rebuild_from_raw_archive` |
+//! | the sync audit log | `MemorySourceSync::sync_audit_log` |
+//! | the sync price | `MemorySourceSync::estimate_sync_cost_usd` |
 //!
-//! Clearing this file needs all four to move, not any one of them, and the
-//! first two are the persona and sync pipelines going behind the bus — Phase F
-//! work, not a call-site migration. One thing not to do in the meantime:
-//! re-routing these through the `memory::sync` / `memory::tinycortex`
-//! re-export shims takes the path off the scanner without removing an ounce of
-//! coupling, which is exactly the edit that would make the ratchet lie.
+//! Two of those look shortcuttable and are not, so the reasons are recorded
+//! here rather than left to be re-derived:
+//!
+//! - **The audit log is not read through the `memory::sync::audit` host shim.**
+//!   That path resolves, and taking it would move this file off the
+//!   direct-engine-reference scanner while removing no coupling whatsoever —
+//!   precisely the edit the ratchet's own docs call the one that would make the
+//!   lint lie.
+//! - **The price is asked, never computed here.** The same constants behind
+//!   `estimate_sync_cost_usd` stamped `estimated_cost_usd` onto every audit row
+//!   the driver has already written, and `monthly_cost_summary_rpc` below totals
+//!   those very rows. A host-side copy of the arithmetic becomes a second price
+//!   the moment either side is retuned, and one screen would then show a
+//!   projection and a history priced differently with nothing to say which.
+//!
+//! ## Refusing when the driver does not serve the family
+//!
+//! `as_source_sync()` / `as_coding_sessions()` answering `None` means the bound
+//! driver serves no such family, and every handler here **refuses, naming the
+//! driver** (see [`unserved`]). None of them reports an empty log, a zero cost
+//! or an empty source list instead.
+//!
+//! That is a deliberately different trade from the tree read handlers, which do
+//! degrade to empty. There, "no hits" is a true statement about a driver that
+//! keeps no summary tree. Here the family *is* the entire subject of the call,
+//! so an empty success is indistinguishable from "nothing has ever synced" or
+//! "no coding agent is installed" — a wrong answer the caller cannot tell from
+//! a right one, on the two screens where the number is a promise about money
+//! and about how long an import will take.
+//!
+//! ## On this file's length
+//!
+//! It is over the ~500-line guidance, and was before this change; it is not
+//! split as part of it. The seam is visible, though, and the routing made it
+//! sharper: `coding_session_status_rpc`, `ingest_coding_sessions_rpc`,
+//! `reconcile_rpc`, `sync_audit_log_rpc`, `estimate_sync_cost_rpc` and
+//! `monthly_cost_summary_rpc` are the driver-facing half — six handlers over
+//! two capability families, all sharing the binding preamble — while the
+//! registry CRUD between them talks only to `registry` and `readers` and never
+//! resolves a binding at all.
 
 // `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
 use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::sessions::{
+    CodingSessionIngestReport, CodingSessionSource,
+};
+use crate::openhuman::memory::api::provider::sync::SyncAuditEntry;
+use crate::openhuman::memory::binding::MemoryBinding;
 use crate::openhuman::memory::sources::apply_kind_defaults;
 use crate::openhuman::memory::sources::readers;
 use crate::openhuman::memory::sources::registry::{self, MemorySourcePatch};
@@ -52,30 +75,70 @@ use tinymemory_api::host::MemoryHostConfig;
 ///
 /// Re-exported here so `schemas.rs` can name it as
 /// `rpc::CodingSessionIngestRequest`, the way every other handler adapter in
-/// that file names its request type. That is a consolidation, not a migration
-/// (#5560): the engine dependency does not go away, it stops being spread over
-/// two files — so when the persona pipeline finally moves, behind the bus or
-/// home the way `rpc_models` did, this module is the only one that has to
-/// change. The module docs above record why it has not moved yet.
-pub use tinymemory_core::tinycortex::CodingSessionIngestRequest;
+/// that file names its request type. The path behind the alias is now the
+/// contract's (`tinymemory_api::provider::sessions`) rather than the engine's,
+/// which is what lets `ingest_coding_sessions_rpc` hand the value straight to
+/// the driver with no conversion in between — the request that crosses the bus
+/// is the request `schemas.rs` deserialised.
+pub use crate::openhuman::memory::api::provider::sessions::CodingSessionIngestRequest;
+
+/// The refusal a handler returns when the bound driver serves no such family.
+///
+/// One place, so the message and the log line cannot drift between the six
+/// call sites, and so the driver id is always in both. See the module docs for
+/// why these handlers refuse rather than degrade to an empty answer.
+fn unserved(binding: &MemoryBinding, family: &str, call: &str) -> String {
+    tracing::warn!(
+        driver = %binding.driver_id(),
+        family = %family,
+        call = %call,
+        "[memory_sources] refusing: bound driver does not serve this capability family"
+    );
+    format!(
+        "the bound memory driver '{}' does not serve {family}",
+        binding.driver_id()
+    )
+}
 
 #[derive(Debug, serde::Serialize)]
 pub struct CodingSessionStatusResponse {
-    pub sources: Vec<tinymemory_core::tinycortex::CodingSessionSourceStatus>,
+    pub sources: Vec<CodingSessionSource>,
 }
 
+/// Discover what each supported coding agent's session store holds.
+///
+/// The scan happens driver-side and is bounded by the driver's own caps, which
+/// is why this no longer needs a blocking worker: the walk that used to run on
+/// this process's pool now runs behind the bus, and what comes back is counts.
+/// `CodingSessionSource::scan_truncated` is how a caller learns the counts are
+/// a floor — the same field the engine's `CodingSessionSourceStatus` carried,
+/// under the same name.
 pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatusResponse>, String>
 {
     tracing::debug!("[memory_sources] coding_session_status_rpc: entry");
-    let sources = tokio::task::spawn_blocking(tinymemory_core::tinycortex::coding_session_status)
+    let config = config_rpc::load_config_with_timeout().await?;
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sessions) = binding.provider().as_coding_sessions() else {
+        return Err(unserved(
+            &binding,
+            "coding sessions",
+            "coding_session_status",
+        ));
+    };
+
+    let sources = sessions
+        .coding_session_status()
         .await
-        .map_err(|error| format!("join coding-session discovery: {error}"))?;
+        .map_err(|error| format!("coding session status: {error}"))?;
+
     tracing::debug!(
+        driver = %binding.driver_id(),
         sources = sources.len(),
         files = sources
             .iter()
             .map(|source| source.session_files)
             .sum::<usize>(),
+        truncated = sources.iter().any(|source| source.scan_truncated),
         "[memory_sources] coding_session_status_rpc: exit"
     );
     Ok(RpcOutcome::new(
@@ -134,52 +197,69 @@ fn ingest_budget(max_sessions: usize) -> std::time::Duration {
     std::time::Duration::from_secs(scaled.min(HARD_CAP_SECS))
 }
 
+/// Distil local coding-agent transcripts into observations.
+///
+/// The pipeline runs driver-side now, which removes the blocking-worker hop
+/// this handler used to need: the engine's persona pass carried borrowed path
+/// state and was not `Send`, so it had to be driven from `spawn_blocking` with
+/// a `block_on` inside. The contract member is an ordinary `Send` future, so
+/// the RPC simply awaits it.
+///
+/// **The deadline stays here on purpose.** `MemoryCodingSessions` documents
+/// that it cannot bound the wall-clock cost — each session is one or more
+/// sequential model calls — and that a caller needing a deadline enforces it on
+/// its own side. [`ingest_budget`] is that deadline, unchanged; a timeout is
+/// still reported as a structured error rather than as a short report, because
+/// a report the run never finished writing is not progress the caller can keep.
 pub async fn ingest_coding_sessions_rpc(
     req: CodingSessionIngestRequest,
-) -> Result<RpcOutcome<tinymemory_core::tinycortex::CodingSessionIngestResponse>, String> {
-    tracing::info!("[memory_sources] ingest_coding_sessions_rpc: entry");
-    let config = crate::openhuman::config::Config::load_or_init()
+) -> Result<RpcOutcome<CodingSessionIngestReport>, String> {
+    tracing::info!(
+        backfill = req.backfill,
+        max_sessions = req.max_sessions,
+        "[memory_sources] ingest_coding_sessions_rpc: entry"
+    );
+    let config = Config::load_or_init()
         .await
         .map_err(|error| format!("load config for coding-session ingestion: {error}"))?;
-    // TinyCortex's persona pipeline intentionally carries borrowed path state
-    // and is not `Send`. Drive it from a blocking worker while its async I/O
-    // remains attached to the ambient Tokio runtime, keeping the controller
-    // future itself Send-safe for the registry.
-    let runtime = tokio::runtime::Handle::current();
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sessions) = binding.provider().as_coding_sessions() else {
+        return Err(unserved(
+            &binding,
+            "coding sessions",
+            "ingest_coding_sessions",
+        ));
+    };
+
     // Wall-clock ceiling so a stalled provider call or a wedged session step
-    // can't keep the RPC (and its blocking worker) waiting indefinitely (#4863
-    // review), sized to the requested backfill so a legitimate large run isn't
-    // killed mid-flight while a genuine infinite hang still terminates.
+    // can't keep the RPC waiting indefinitely (#4863 review), sized to the
+    // requested backfill so a legitimate large run isn't killed mid-flight
+    // while a genuine infinite hang still terminates. Read before `req` moves.
     let ingest_timeout = ingest_budget(req.max_sessions);
-    let response = tokio::task::spawn_blocking(move || {
-        runtime.block_on(async move {
-            tokio::time::timeout(
-                ingest_timeout,
-                tinymemory_core::tinycortex::ingest_coding_sessions(&config, req),
+    let report = tokio::time::timeout(ingest_timeout, sessions.ingest_coding_sessions(req))
+        .await
+        .map_err(|_elapsed| {
+            tracing::error!(
+                driver = %binding.driver_id(),
+                timeout_secs = ingest_timeout.as_secs(),
+                "[memory_sources] ingest_coding_sessions_rpc: timed out"
+            );
+            format!(
+                "ingest coding sessions: timed out after {}s",
+                ingest_timeout.as_secs()
             )
-            .await
-        })
-    })
-    .await
-    .map_err(|error| format!("join coding-session ingestion: {error}"))?
-    .map_err(|_elapsed| {
-        tracing::error!(
-            timeout_secs = ingest_timeout.as_secs(),
-            "[memory_sources] ingest_coding_sessions_rpc: timed out"
-        );
-        format!(
-            "ingest coding sessions: timed out after {}s",
-            ingest_timeout.as_secs()
-        )
-    })?
-    .map_err(|error| format!("ingest coding sessions: {error:#}"))?;
+        })?
+        .map_err(|error| format!("ingest coding sessions: {error}"))?;
+
     tracing::info!(
-        processed = response.sessions_processed,
-        failed = response.sessions_failed,
-        budget_hit = response.budget_hit,
+        driver = %binding.driver_id(),
+        mode = %report.mode,
+        processed = report.sessions_processed,
+        failed = report.sessions_failed,
+        budget_hit = report.budget_hit,
         "[memory_sources] ingest_coding_sessions_rpc: exit"
     );
-    Ok(RpcOutcome::new(response, vec![]))
+    Ok(RpcOutcome::new(report, vec![]))
 }
 
 // ── List ──
@@ -513,11 +593,18 @@ pub struct ReconcileScopeReport {
     pub source_id: String,
     pub tree_scope: String,
     /// Raw `.md` files on disk for this scope.
-    pub total_raw_files: usize,
+    pub total_raw_files: u64,
     /// Files already covered by a tree summary.
-    pub covered: usize,
+    pub covered: u64,
     /// Files awaiting summarisation into the tree.
-    pub pending: usize,
+    ///
+    /// A count the driver computed, not one this handler derived from a list.
+    /// The engine's coverage scan returned each pending file's absolute path
+    /// inside the content vault and this handler called `.len()` on it;
+    /// `RawArchiveCoverage` deliberately reports the count alone, because a
+    /// path describes the driver's storage layout and nothing here ever read
+    /// one. The number is the same number.
+    pub pending: u64,
     /// True when `execute` was set and a background reconcile was started.
     pub started: bool,
 }
@@ -530,9 +617,12 @@ pub struct ReconcileResponse {
 /// Report (and optionally repair) raw-archive → tree coverage for memory
 /// sources. The same incremental reconcile runs automatically after every
 /// sync; this RPC exposes it for inspection and manual triggering.
+///
+/// The scopes themselves are still derived host-side (`derive_scopes` reads the
+/// registry row); what moved is the crosscheck and the repair, which are
+/// `MemorySourceSync::raw_archive_coverage` and `rebuild_from_raw_archive`.
 pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<ReconcileResponse>, String> {
     use crate::openhuman::memory::sources::sync::derive_scopes;
-    use tinymemory_core::tinycortex::{raw_coverage, rebuild_tree_from_raw};
 
     tracing::info!(
         source_id = ?req.source_id,
@@ -541,6 +631,11 @@ pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<Reconcile
     );
 
     let config = config_rpc::load_config_with_timeout().await?;
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sync) = binding.provider().as_source_sync() else {
+        return Err(unserved(&binding, "source sync", "reconcile"));
+    };
+
     let sources: Vec<MemorySourceEntry> = match &req.source_id {
         Some(id) => vec![registry::get_source(id)
             .await?
@@ -551,16 +646,34 @@ pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<Reconcile
     let mut reports: Vec<ReconcileScopeReport> = Vec::new();
     for source in sources.iter().filter(|s| s.enabled) {
         for scope in derive_scopes(source, &config) {
-            let coverage = raw_coverage(&config, &scope.tree_scope, &scope.archive_source_id)
-                .map_err(|e| format!("coverage for {}: {e:#}", scope.tree_scope))?;
-            let pending = coverage.pending.len();
+            let coverage = sync
+                .raw_archive_coverage(&scope.tree_scope, &scope.archive_source_id)
+                .await
+                .map_err(|e| format!("coverage for {}: {e}", scope.tree_scope))?;
             let mut started = false;
-            if req.execute && pending > 0 {
-                let cfg = config.clone();
+            if req.execute && coverage.pending > 0 {
+                // The binding, not the config: the repair is a driver call now,
+                // and the spawned task must reach the same bound driver this
+                // request resolved rather than re-deriving one.
+                let binding = std::sync::Arc::clone(&binding);
                 let tree_scope = scope.tree_scope.clone();
                 let archive = scope.archive_source_id.clone();
                 tokio::spawn(async move {
-                    match rebuild_tree_from_raw(&cfg, &tree_scope, &archive).await {
+                    // Re-resolved inside the task because the borrow cannot
+                    // cross the spawn. It answered `Some` a moment ago on this
+                    // same binding, so `None` here would mean the driver
+                    // changed underneath the request — logged loudly rather
+                    // than returning as a silent no-op.
+                    let Some(sync) = binding.provider().as_source_sync() else {
+                        tracing::error!(
+                            driver = %binding.driver_id(),
+                            tree_scope = %tree_scope,
+                            "[memory_sources] reconcile_rpc: background reconcile abandoned — \
+                             driver stopped serving source sync between the report and the repair"
+                        );
+                        return;
+                    };
+                    match sync.rebuild_from_raw_archive(&tree_scope, &archive).await {
                         Ok(outcome) => tracing::info!(
                             tree_scope = %tree_scope,
                             files = outcome.files_read,
@@ -569,7 +682,7 @@ pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<Reconcile
                         ),
                         Err(e) => tracing::warn!(
                             tree_scope = %tree_scope,
-                            error = %format!("{e:#}"),
+                            error = %e,
                             "[memory_sources] reconcile_rpc: background reconcile failed"
                         ),
                     }
@@ -577,11 +690,12 @@ pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<Reconcile
                 started = true;
             }
             tracing::debug!(
+                driver = %binding.driver_id(),
                 source_id = %source.id,
                 tree_scope = %scope.tree_scope,
                 total = coverage.total,
                 covered = coverage.covered,
-                pending = pending,
+                pending = coverage.pending,
                 started = started,
                 "[memory_sources] reconcile_rpc: scope report"
             );
@@ -590,7 +704,7 @@ pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<Reconcile
                 tree_scope: scope.tree_scope,
                 total_raw_files: coverage.total,
                 covered: coverage.covered,
-                pending,
+                pending: coverage.pending,
                 started,
             });
         }
@@ -661,12 +775,46 @@ pub async fn supported_toolkits_rpc() -> Result<RpcOutcome<SupportedToolkitsResp
 
 #[derive(Debug, serde::Serialize)]
 pub struct SyncAuditLogResponse {
-    pub entries: Vec<tinymemory_core::tinycortex::SyncAuditEntry>,
+    pub entries: Vec<SyncAuditEntry>,
 }
 
+/// Past sync runs, newest first.
+///
+/// # This is now the driver's most recent rows, not the whole log
+///
+/// The engine call this replaced returned every line in
+/// `<workspace>/memory_tree/sync_audit.jsonl`. `sync_audit_log` is capped:
+/// `None` means "the driver's own ceiling", explicitly **not** unbounded,
+/// because the log is append-only for the life of a workspace and an unbounded
+/// read eventually cannot cross a frame at all. The panel that renders this
+/// shows recent runs, so the cap is not a visible reduction there — but it is a
+/// real one, and `monthly_cost_summary_rpc` below is where it has to be said
+/// out loud rather than absorbed.
+///
+/// A read failure is now an error rather than an empty log. The engine wrapper
+/// ended in `unwrap_or_default()`, so an unreadable file was reported as "no
+/// syncs have run" — the one answer a caller cannot distinguish from the truth.
 pub async fn sync_audit_log_rpc() -> Result<RpcOutcome<SyncAuditLogResponse>, String> {
+    tracing::debug!("[memory_sources] sync_audit_log_rpc: entry");
     let config = config_rpc::load_config_with_timeout().await?;
-    let entries = tinymemory_core::tinycortex::read_audit_log(&config);
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sync) = binding.provider().as_source_sync() else {
+        return Err(unserved(&binding, "source sync", "sync_audit_log"));
+    };
+
+    // `None` = the driver's own cap. A caller cannot raise it by asking for
+    // more, so passing a number here would only be this host inventing a
+    // ceiling the driver then clamps anyway.
+    let entries = sync
+        .sync_audit_log(None)
+        .await
+        .map_err(|error| format!("sync audit log: {error}"))?;
+
+    tracing::debug!(
+        driver = %binding.driver_id(),
+        entries = entries.len(),
+        "[memory_sources] sync_audit_log_rpc: exit"
+    );
     Ok(RpcOutcome::new(SyncAuditLogResponse { entries }, vec![]))
 }
 
@@ -687,6 +835,14 @@ pub struct EstimateSyncCostResponse {
     pub budget_max_tokens: Option<u64>,
 }
 
+/// Project what syncing one source would cost.
+///
+/// The item count and the token estimate are this host's (they come from the
+/// reader's listing and from the per-item allowances below); the **price** is
+/// the driver's, asked through `estimate_sync_cost_usd`. That split is the
+/// whole point of the member — see the module docs. A driver that serves no
+/// sync family has no price to quote, and this refuses rather than quoting
+/// `0.0`, which would read as "syncing this is free".
 pub async fn estimate_sync_cost_rpc(
     req: EstimateSyncCostRequest,
 ) -> Result<RpcOutcome<EstimateSyncCostResponse>, String> {
@@ -697,6 +853,11 @@ pub async fn estimate_sync_cost_rpc(
         .ok_or_else(|| format!("source '{}' not found", req.source_id))?;
 
     let config = config_rpc::load_config_with_timeout().await?;
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sync) = binding.provider().as_source_sync() else {
+        return Err(unserved(&binding, "source sync", "estimate_sync_cost"));
+    };
+
     let reader = readers::reader_for(&source.kind);
     let items = reader.list_items(&source, &config).await?;
 
@@ -706,11 +867,19 @@ pub async fn estimate_sync_cost_rpc(
     let estimated_input_tokens = item_count as u64 * 500;
     let estimated_output_tokens = item_count as u64 * 100;
     let estimated_tokens = estimated_input_tokens + estimated_output_tokens;
-    let estimated_cost_usd = tinymemory_core::tinycortex::estimate_cost_usd(
-        estimated_input_tokens,
-        estimated_output_tokens,
-    );
+    let estimated_cost_usd = sync
+        .estimate_sync_cost_usd(estimated_input_tokens, estimated_output_tokens)
+        .await
+        .map_err(|error| format!("estimate sync cost: {error}"))?;
 
+    tracing::debug!(
+        driver = %binding.driver_id(),
+        source_id = %req.source_id,
+        item_count,
+        estimated_tokens,
+        estimated_cost_usd,
+        "[memory_sources] estimate_sync_cost_rpc: exit"
+    );
     Ok(RpcOutcome::new(
         EstimateSyncCostResponse {
             source_id: req.source_id,
@@ -726,7 +895,7 @@ pub async fn estimate_sync_cost_rpc(
 
 // ── Monthly Cost Summary ──
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MonthlyCostSummaryResponse {
     pub month: String,
     pub total_cost_usd: f64,
@@ -734,43 +903,94 @@ pub struct MonthlyCostSummaryResponse {
     pub total_items: u32,
     pub total_input_tokens: u64,
     pub total_output_tokens: u64,
+    /// Whether the audit read reached back past the start of `month`.
+    ///
+    /// `sync_audit_log` is capped by the driver, so a workspace that synced
+    /// more times this month than the cap allows would silently total only the
+    /// newest of them. `true` means at least one row *older* than `month` came
+    /// back, which proves every row inside `month` was in the read; `false`
+    /// means the read ran out first and the totals above are a **floor**.
+    ///
+    /// Deliberately conservative in one direction: a driver that simply has no
+    /// older rows also reports `false`, so this can say "possibly short" when
+    /// the totals are in fact exact. It never says "complete" when they are
+    /// not, which is the direction that matters for a money figure.
+    pub totals_complete: bool,
+}
+
+/// Total one month of audit rows.
+///
+/// Pure, so the cap-versus-boundary rule above is unit-testable without a
+/// driver. Order-independent on purpose: the contract promises newest-first and
+/// stopping at the first older row would be cheaper, but the list is already
+/// bounded by the driver's cap, and a scan that does not depend on the ordering
+/// cannot silently under-count if a driver ever returns rows out of order.
+fn summarise_month(entries: &[SyncAuditEntry], month: &str) -> MonthlyCostSummaryResponse {
+    let mut summary = MonthlyCostSummaryResponse {
+        month: month.to_string(),
+        total_cost_usd: 0.0,
+        total_syncs: 0,
+        total_items: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        // An empty log has no rows the cap could have hidden.
+        totals_complete: entries.is_empty(),
+    };
+
+    for entry in entries {
+        let entry_month = entry.timestamp.format("%Y-%m").to_string();
+        // `%Y-%m` is zero-padded and fixed-width, so lexicographic order is
+        // chronological order and this needs no date arithmetic.
+        if entry_month.as_str() < month {
+            summary.totals_complete = true;
+            continue;
+        }
+        // Not `else` — a row stamped in a *later* month (clock skew) is skipped
+        // rather than counted, exactly as the engine-backed filter did.
+        if entry_month != month {
+            continue;
+        }
+        summary.total_cost_usd += entry.effective_cost_usd();
+        // Saturating: the counters are `u32` on the wire and an overflow here
+        // would be a debug-build panic inside a read-only reporting RPC.
+        summary.total_syncs = summary.total_syncs.saturating_add(1);
+        summary.total_items = summary.total_items.saturating_add(entry.items_fetched);
+        summary.total_input_tokens = summary
+            .total_input_tokens
+            .saturating_add(entry.input_tokens);
+        summary.total_output_tokens = summary
+            .total_output_tokens
+            .saturating_add(entry.output_tokens);
+    }
+
+    summary
 }
 
 pub async fn monthly_cost_summary_rpc() -> Result<RpcOutcome<MonthlyCostSummaryResponse>, String> {
     tracing::debug!("[memory_sources] monthly_cost_summary_rpc: entry");
     let config = config_rpc::load_config_with_timeout().await?;
-    let entries = tinymemory_core::tinycortex::read_audit_log(&config);
+    let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    let Some(sync) = binding.provider().as_source_sync() else {
+        return Err(unserved(&binding, "source sync", "monthly_cost_summary"));
+    };
 
-    let now = chrono::Utc::now();
-    let month_str = now.format("%Y-%m").to_string();
+    let entries = sync
+        .sync_audit_log(None)
+        .await
+        .map_err(|error| format!("sync audit log: {error}"))?;
 
-    let mut total_cost_usd = 0.0f64;
-    let mut total_syncs = 0u32;
-    let mut total_items = 0u32;
-    let mut total_input_tokens = 0u64;
-    let mut total_output_tokens = 0u64;
+    let month = chrono::Utc::now().format("%Y-%m").to_string();
+    let summary = summarise_month(&entries, &month);
 
-    for entry in &entries {
-        if entry.timestamp.format("%Y-%m").to_string() == month_str {
-            total_cost_usd += entry.effective_cost_usd();
-            total_syncs += 1;
-            total_items += entry.items_fetched;
-            total_input_tokens += entry.input_tokens;
-            total_output_tokens += entry.output_tokens;
-        }
-    }
-
-    Ok(RpcOutcome::new(
-        MonthlyCostSummaryResponse {
-            month: month_str,
-            total_cost_usd,
-            total_syncs,
-            total_items,
-            total_input_tokens,
-            total_output_tokens,
-        },
-        vec![],
-    ))
+    tracing::debug!(
+        driver = %binding.driver_id(),
+        month = %summary.month,
+        rows_read = entries.len(),
+        syncs = summary.total_syncs,
+        totals_complete = summary.totals_complete,
+        "[memory_sources] monthly_cost_summary_rpc: exit"
+    );
+    Ok(RpcOutcome::new(summary, vec![]))
 }
 
 // ── Apply All In ──
@@ -1091,3 +1311,129 @@ mod budget_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod monthly_summary_tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+
+    /// One audit row, dated `stamp`, costing `estimated` with no real charge.
+    fn row(stamp: &str, items: u32, input: u64, output: u64, estimated: f64) -> SyncAuditEntry {
+        SyncAuditEntry {
+            timestamp: stamp
+                .parse::<DateTime<Utc>>()
+                .expect("an RFC 3339 timestamp"),
+            source_id: "src_1".to_string(),
+            source_kind: "composio".to_string(),
+            scope: "gmail".to_string(),
+            items_fetched: items,
+            batches: 1,
+            input_tokens: input,
+            output_tokens: output,
+            estimated_cost_usd: estimated,
+            composio_actions_called: 0,
+            composio_cost_usd: 0.0,
+            actual_charged_usd: None,
+            duration_ms: 10,
+            success: true,
+            error: None,
+        }
+    }
+
+    fn close(left: f64, right: f64) -> bool {
+        (left - right).abs() < 1e-9
+    }
+
+    /// Only the requested month is totalled, and a row from an earlier month
+    /// proves the read crossed the boundary.
+    #[test]
+    fn totals_the_month_and_reports_complete_when_the_read_reached_past_it() {
+        let entries = vec![
+            row("2026-08-20T10:00:00Z", 3, 100, 20, 0.5),
+            row("2026-08-01T00:00:00Z", 2, 50, 10, 0.25),
+            // Older month — excluded from the totals, and the proof the read
+            // covered the whole of August.
+            row("2026-07-31T23:59:59Z", 99, 9_999, 9_999, 42.0),
+        ];
+        let summary = summarise_month(&entries, "2026-08");
+
+        assert_eq!(summary.month, "2026-08");
+        assert_eq!(summary.total_syncs, 2);
+        assert_eq!(summary.total_items, 5);
+        assert_eq!(summary.total_input_tokens, 150);
+        assert_eq!(summary.total_output_tokens, 30);
+        assert!(close(summary.total_cost_usd, 0.75));
+        assert!(
+            summary.totals_complete,
+            "a row older than the month proves every row inside it was read"
+        );
+    }
+
+    /// The cap case: every row the driver returned is inside the month, so the
+    /// totals may be a floor and must not claim to be complete.
+    #[test]
+    fn reports_incomplete_when_every_returned_row_is_inside_the_month() {
+        let entries = vec![
+            row("2026-08-20T10:00:00Z", 1, 10, 1, 0.1),
+            row("2026-08-19T10:00:00Z", 1, 10, 1, 0.1),
+        ];
+        let summary = summarise_month(&entries, "2026-08");
+
+        assert_eq!(summary.total_syncs, 2);
+        assert!(
+            !summary.totals_complete,
+            "the read may have been cut off at the driver's cap — totals are a floor"
+        );
+    }
+
+    /// An empty log has no rows the cap could have hidden, so zero is exact.
+    #[test]
+    fn an_empty_log_totals_zero_and_is_complete() {
+        let summary = summarise_month(&[], "2026-08");
+
+        assert_eq!(summary.total_syncs, 0);
+        assert_eq!(summary.total_items, 0);
+        assert!(close(summary.total_cost_usd, 0.0));
+        assert!(summary.totals_complete);
+    }
+
+    /// The real charge wins over the estimate, and Composio's own action cost
+    /// is added on top — the audit's own view of what a run cost, unchanged by
+    /// the move onto the contract.
+    #[test]
+    fn cost_uses_the_actual_charge_and_adds_composio() {
+        let mut charged = row("2026-08-20T10:00:00Z", 1, 10, 1, 0.10);
+        charged.actual_charged_usd = Some(0.30);
+        charged.composio_cost_usd = 0.05;
+        let estimated_only = row("2026-08-21T10:00:00Z", 1, 10, 1, 0.20);
+
+        let summary = summarise_month(&[charged, estimated_only], "2026-08");
+
+        // 0.30 (actual) + 0.05 (composio) + 0.20 (estimate) — the estimate on
+        // the charged row is not counted.
+        assert!(close(summary.total_cost_usd, 0.55));
+    }
+
+    /// A row stamped in a later month (clock skew) is skipped rather than
+    /// counted, and does not count as proof the read crossed the boundary —
+    /// the same exclusion the engine-backed month filter made.
+    #[test]
+    fn a_future_stamped_row_is_skipped_and_proves_nothing() {
+        let entries = vec![
+            row("2026-09-01T00:00:00Z", 7, 700, 70, 9.0),
+            row("2026-08-20T10:00:00Z", 1, 10, 1, 0.1),
+        ];
+        let summary = summarise_month(&entries, "2026-08");
+
+        assert_eq!(summary.total_syncs, 1, "the September row is not August's");
+        assert_eq!(summary.total_items, 1);
+        assert!(
+            !summary.totals_complete,
+            "a newer row says nothing about how far back the read reached"
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "rpc_tests.rs"]
+mod rpc_tests;

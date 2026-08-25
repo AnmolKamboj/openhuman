@@ -41,6 +41,21 @@
 //!    what the issue is for: a second unpoliced door spelled differently is
 //!    still a second unpoliced door.
 //!
+//! ## What is *not* blocked, so nobody looks for it here
+//!
+//! The RPC layer above this glob no longer names the engine at all. [`rpc`]
+//! moved its coding-session, raw-archive-coverage, audit-log and sync-price
+//! calls onto `MemoryCodingSessions` / `MemorySourceSync` when tinymemory
+//! v1.7.0 added them, so the two references left in this domain are the two in
+//! *this file*. Neither is a call site anyone can reroute: they are the shim
+//! itself.
+//!
+//! The unlock for them is a **manifest** decision, not a code one, and it has
+//! not changed — `tinymemory` re-exports the types as `tinymemory::sources`
+//! behind an off-by-default `sources` feature (`sources-network` on top for the
+//! network readers) that the root `Cargo.toml` does not enable, and even with
+//! it on, points 2 and 3 above still stand.
+//!
 //! So this stays until the queue and the sync pipeline go behind the module.
 //! `MemorySourceSink` is not the answer either — it is `accept_source_items` +
 //! `forget_source` + `forget_matching`, an *ingest* door, with no listing or

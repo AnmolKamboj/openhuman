@@ -52,15 +52,22 @@ use crate::openhuman::memory::api::provider::retrieval::{
     CoverWindowQuery, EntityMatch, FastRetrieveQuery, MemoryRetrieval, RetrievalHit,
     RetrievalResponse, SourceRetrievalQuery,
 };
+use crate::openhuman::memory::api::provider::sessions::{
+    CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
+};
+use crate::openhuman::memory::api::provider::sync::{
+    RawArchiveCoverage, RawRebuildOutcome, SourceSyncState, SourceSyncStatus, SyncAuditEntry,
+    SyncRunOutcome,
+};
 use crate::openhuman::memory::api::provider::types::{
     ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ForgetOutcome, ForgetSelector,
     IngestItem, IngestOutcome, MaintenanceReport, PurgeOutcome, SnapshotRef, SourceItem,
     SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
-    EpisodicEvent, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
-    MemoryIngest, MemoryMaintenance, MemoryProvider, MemorySourceSink, MemoryToolMemory,
-    MemoryTree,
+    EpisodicEvent, MemoryCodingSessions, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals,
+    MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryProvider, MemorySourceSink,
+    MemorySourceSync, MemoryToolMemory, MemoryTree,
 };
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{
@@ -206,6 +213,20 @@ decorator!(
     dyn MemoryEpisodic,
     as_episodic,
     Episodic
+);
+decorator!(
+    /// Guarded [`MemorySourceSync`].
+    GuardedSourceSync,
+    dyn MemorySourceSync,
+    as_source_sync,
+    SourceSync
+);
+decorator!(
+    /// Guarded [`MemoryCodingSessions`].
+    GuardedCodingSessions,
+    dyn MemoryCodingSessions,
+    as_coding_sessions,
+    CodingSessions
 );
 decorator!(
     /// Guarded [`MemoryProfile`].
@@ -1638,3 +1659,147 @@ impl MemoryProfile for GuardedProfile {
 #[cfg(test)]
 #[path = "families_tests.rs"]
 mod tests;
+
+// ── Source sync ──────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemorySourceSync for GuardedSourceSync {
+    /// A write: it fetches from an upstream connector and ingests what it finds.
+    /// The tier check is what stops a `readonly` operator triggering one.
+    async fn run_connection_sync(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<SyncRunOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::SourceSync,
+            "source_sync.run_connection_sync",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .run_connection_sync(toolkit, connection_id)
+            .await
+    }
+
+    async fn source_sync_state(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<Option<SourceSyncState>, MemoryError> {
+        self.policy.admit_read(
+            Capability::SourceSync,
+            "source_sync.source_sync_state",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .source_sync_state(toolkit, connection_id)
+            .await
+    }
+
+    async fn sync_audit_log(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<SyncAuditEntry>, MemoryError> {
+        self.policy.admit_read(
+            Capability::SourceSync,
+            "source_sync.sync_audit_log",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.sync_audit_log(limit).await
+    }
+
+    /// Arithmetic over the driver's own price table — no stored content is read,
+    /// so this is the lightest check in the family.
+    async fn estimate_sync_cost_usd(
+        &self,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> Result<f64, MemoryError> {
+        self.policy.admit_read(
+            Capability::SourceSync,
+            "source_sync.estimate_sync_cost_usd",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .estimate_sync_cost_usd(input_tokens, output_tokens)
+            .await
+    }
+
+    async fn sync_statuses(&self) -> Result<Vec<SourceSyncStatus>, MemoryError> {
+        self.policy.admit_read(
+            Capability::SourceSync,
+            "source_sync.sync_statuses",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.sync_statuses().await
+    }
+
+    async fn raw_archive_coverage(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawArchiveCoverage, MemoryError> {
+        self.policy.admit_read(
+            Capability::SourceSync,
+            "source_sync.raw_archive_coverage",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .raw_archive_coverage(tree_scope, archive_source_id)
+            .await
+    }
+
+    /// Rebuilds a summary tree from the raw archive, so it writes.
+    async fn rebuild_from_raw_archive(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawRebuildOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::SourceSync,
+            "source_sync.rebuild_from_raw_archive",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .rebuild_from_raw_archive(tree_scope, archive_source_id)
+            .await
+    }
+}
+
+// ── Coding sessions ──────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryCodingSessions for GuardedCodingSessions {
+    async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
+        self.policy.admit_read(
+            Capability::CodingSessions,
+            "coding_sessions.coding_session_status",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.coding_session_status().await
+    }
+
+    /// `carries_content: true` — the request carries the session transcripts
+    /// themselves, which is the case the egress record exists to classify
+    /// correctly.
+    async fn ingest_coding_sessions(
+        &self,
+        request: CodingSessionIngestRequest,
+    ) -> Result<CodingSessionIngestReport, MemoryError> {
+        self.policy.admit_write(
+            Capability::CodingSessions,
+            "coding_sessions.ingest_coding_sessions",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.ingest_coding_sessions(request).await
+    }
+}

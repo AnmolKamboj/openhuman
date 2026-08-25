@@ -232,6 +232,44 @@ impl Agent {
             has_profile = profile.is_some(),
             "[profiles] session memory subtree selected"
         );
+        // ── The engine reference this file has left (#5560) ──────────────────
+        //
+        // `direct_engine_refs_tests::ALLOWED` still explains this entry as
+        // "boots the in-process engine handle (`global::init`)". That is stale:
+        // `global::init` is gone from here, and what remains is this one
+        // factory call — the *only* caller of
+        // `create_session_memory_with_local_ai` anywhere in the tree. The
+        // bypass allowlist's `.memory_handle(` entry for this file is stale for
+        // the same reason; the only `memory_handle` left below is in prose.
+        //
+        // A door onto the contract does exist —
+        // `experience::ops::DriverMemory::for_subtree(config, &memory_subdir)`
+        // hands back an `Arc<dyn Memory>` over exactly the binding
+        // `archivist_provider` resolves two statements down, so the swap is
+        // one line and would collapse two stores over one subtree into one.
+        // It is deliberately NOT taken here yet, for two reasons that need
+        // measuring rather than reasoning about:
+        //
+        // 1. **Embedder resolution differs.** This factory resolves the
+        //    embedding provider from `local_embedding` + `embedding_api_key` +
+        //    `embedding_routes` and applies an Ollama reachability health-gate
+        //    before falling back. The bound driver resolves its own embedder
+        //    from the boot policy config instead. Those two ladders are
+        //    *believed* to agree; nothing here proves it, and disagreeing means
+        //    vectors filed under the wrong provider signature — silent, not
+        //    loud, exactly as `memory::tools::flavour` warns about the same
+        //    class of mistake.
+        // 2. **The test build binds a different workspace.** Under
+        //    `cfg(test)`, `binding::module_provider` pins every binding to the
+        //    shared `memory::ops` test workspace and to a module that a unit
+        //    test cannot `dlopen`, so a migrated session would get a driver
+        //    that answers nothing where it gets a working store today. The
+        //    archivist tolerates that (it degrades); a session's `Arc<dyn
+        //    Memory>` is on the recall path and does not.
+        //
+        // So this is not "no contract door exists" — it is one behavioural
+        // equivalence and one test-fixture problem, both of which need the
+        // harness suite run against the change to settle.
         let session_memory = memory_store::factories::create_session_memory_with_local_ai(
             &config.memory,
             local_embedding.as_deref(),

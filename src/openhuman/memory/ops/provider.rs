@@ -172,7 +172,7 @@ mod tests {
         // Previously this comment documented a narrower set (seventeen, then
         // thirteen) while the host under-claimed or over-claimed; the gap is
         // now closed: v1.4.0 serves all eighteen, `ModuleMemoryProvider`
-        // implements all eighteen accessors including `as_episodic`, so the
+        // implements all twenty accessors including `as_episodic`, so the
         // wire surface and the advertised set agree.
         // `modules::memory::ARTIFACT_CAPABILITIES` is the machine-checked
         // source of truth for what the pinned release serves (see its module
@@ -184,13 +184,19 @@ mod tests {
         assert_eq!(
             status.capabilities,
             vec![
-                // Widened to the full eighteen with the Episodic accessor
+                // Widened to eighteen with the Episodic accessor, then twenty when
+                // tinymemory v1.7.0 added SourceSync and CodingSessions —
                 // landing — the archivist writes its turns and segments
                 // through that family, so hiding it here would be the
                 // under-claim. The list stays spelled out: a NEW contract
                 // family must still widen this deliberately, with its
                 // accessor and its release.
                 "chunks",
+                // v1.7.0's two families. Deliberately widened here rather than
+                // derived: this list is the wire surface the frontend reads, so
+                // a new family has to be a decision someone made, not something
+                // that appeared.
+                "coding_sessions",
                 "core",
                 "diff",
                 "documents",
@@ -205,6 +211,7 @@ mod tests {
                 "profile",
                 "recall",
                 "retrieval",
+                "source_sync",
                 "sources",
                 "tool_memory",
                 "tree"

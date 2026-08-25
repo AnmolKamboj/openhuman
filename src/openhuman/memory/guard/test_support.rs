@@ -16,18 +16,26 @@ use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::goals::GoalsDoc;
 use crate::openhuman::memory::api::health::MemoryHealth;
+use crate::openhuman::memory::api::provider::sessions::{
+    CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
+};
+use crate::openhuman::memory::api::provider::sync::{
+    RawArchiveCoverage, RawRebuildOutcome, SourceSyncState, SourceSyncStatus, SyncAuditEntry,
+    SyncRunOutcome,
+};
 use crate::openhuman::memory::api::provider::types::{
     DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    EpisodicEvent, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff,
-    MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest,
-    MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider,
-    MemoryRecall, MemoryRetrieval, MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle,
-    PersonInteraction, PersonRecord, PersonScore, ProfileFacet, RankedPerson, ResolvedPerson,
-    RetrievalHit, RetrievalResponse, SourceRetrievalQuery, UserState,
+    EpisodicEvent, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore,
+    MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph,
+    MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile,
+    MemoryProvider, MemoryRecall, MemoryRetrieval, MemorySourceSink, MemorySourceSync,
+    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
+    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, UserState,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
@@ -725,6 +733,91 @@ impl MemoryProvider for RecordingProvider {
     }
     fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
         Some(self)
+    }
+    fn as_source_sync(&self) -> Option<&dyn MemorySourceSync> {
+        Some(self)
+    }
+    fn as_coding_sessions(&self) -> Option<&dyn MemoryCodingSessions> {
+        Some(self)
+    }
+}
+
+// The two families tinymemory v1.7.0 added. `capabilities()` above answers
+// `Capabilities::all()`, so a driver that advertises them and then hands back
+// `None` from the accessor is exactly the inconsistency `audit_provider`
+// exists to catch — the recorder has to serve them to stay honest.
+
+#[async_trait]
+impl MemorySourceSync for RecordingProvider {
+    async fn run_connection_sync(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<SyncRunOutcome, MemoryError> {
+        self.record(Call::plain("source_sync.run_connection_sync"));
+        let _ = (toolkit, connection_id);
+        Ok(SyncRunOutcome::default())
+    }
+    async fn source_sync_state(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<Option<SourceSyncState>, MemoryError> {
+        self.record(Call::plain("source_sync.source_sync_state"));
+        let _ = (toolkit, connection_id);
+        Ok(None)
+    }
+    async fn sync_audit_log(
+        &self,
+        _limit: Option<usize>,
+    ) -> Result<Vec<SyncAuditEntry>, MemoryError> {
+        self.record(Call::plain("source_sync.sync_audit_log"));
+        Ok(Vec::new())
+    }
+    async fn estimate_sync_cost_usd(
+        &self,
+        _input_tokens: u64,
+        _output_tokens: u64,
+    ) -> Result<f64, MemoryError> {
+        self.record(Call::plain("source_sync.estimate_sync_cost_usd"));
+        Ok(0.0)
+    }
+    async fn sync_statuses(&self) -> Result<Vec<SourceSyncStatus>, MemoryError> {
+        self.record(Call::plain("source_sync.sync_statuses"));
+        Ok(Vec::new())
+    }
+    async fn raw_archive_coverage(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawArchiveCoverage, MemoryError> {
+        self.record(Call::plain("source_sync.raw_archive_coverage"));
+        let _ = (tree_scope, archive_source_id);
+        Ok(RawArchiveCoverage::default())
+    }
+    async fn rebuild_from_raw_archive(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawRebuildOutcome, MemoryError> {
+        self.record(Call::plain("source_sync.rebuild_from_raw_archive"));
+        let _ = (tree_scope, archive_source_id);
+        Ok(RawRebuildOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryCodingSessions for RecordingProvider {
+    async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
+        self.record(Call::plain("coding_sessions.coding_session_status"));
+        Ok(Vec::new())
+    }
+    async fn ingest_coding_sessions(
+        &self,
+        _request: CodingSessionIngestRequest,
+    ) -> Result<CodingSessionIngestReport, MemoryError> {
+        self.record(Call::plain("coding_sessions.ingest_coding_sessions"));
+        Ok(CodingSessionIngestReport::default())
     }
 }
 
