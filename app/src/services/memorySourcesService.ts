@@ -314,35 +314,44 @@ export interface CodingSessionDrainProgress {
 }
 
 /**
- * Whether a rejected ingest pass is a deadline rather than a failure.
+ * Whether a rejected ingest pass is a deadline the **core itself** reported.
  *
- * Three shapes reach here, and all three mean "stopped waiting", not "broke":
+ * Suppressing a timeout is only defensible when the work is genuinely still
+ * running, and that needs proof — not merely the absence of a reply. The proof
+ * used here is the message prefix: `ingest coding sessions: ` is added by
+ * `ingest_coding_sessions_rpc` (`src/openhuman/memory/sources/rpc.rs`) around
+ * both of its deadline paths, so a message carrying it can only have been
+ * produced *inside* that handler. The core received the request, resolved the
+ * binding and started the call. Two shapes qualify:
  *
- * - `CoreRpcError` with `kind === 'timeout'` — the client's own
- *   `AbortController` fired at `timeoutMs`.
- * - `... timed out after 30000ms` — a tinybus call deadline, rendered by
- *   `vendor/tinybus/crates/tinybus/src/error.rs`. `classifyRpcError` already
- *   maps this to `'timeout'`, but it is matched here too so the check does not
- *   depend on a `CoreRpcError` reaching this frame intact.
- * - `ingest coding sessions: timed out after 570s` — the core's own
- *   `ingest_budget` ceiling (`memory/sources/rpc.rs`). Note the unit: this one
- *   is **seconds**, so it does not match `classifyRpcError`'s `\d+ms` arm and
- *   is classified `'transport'`. Only the message catches it.
+ * - `ingest coding sessions: timed out after 570s` — the RPC's own
+ *   `ingest_budget` ceiling. Note the unit: **seconds**.
+ * - ``ingest coding sessions: call to `IngestCodingSessions` timed out after
+ *   30000ms`` — the tinybus call deadline, wrapped by the same handler.
+ *   **Milliseconds.**
  *
- * The kind is read structurally rather than through `instanceof CoreRpcError`.
- * A class identity is the wrong thing to hang this on: it is one bundling
- * decision or one partially-mocked module away from silently answering `false`
- * and putting the failure banner back — which is exactly what a unit test
- * mocking `coreRpcClient` reproduces.
+ * Everything else is a failure, and two near-misses are deliberately excluded:
  *
- * A false positive here would hide a real failure, so the pattern stays
- * anchored on the literal phrase both layers emit rather than on a bare
- * "timeout" anywhere in the text.
+ * - **The renderer's own `AbortController`** (`CoreRpcError` with
+ *   `kind === 'timeout'`, message `Core RPC <method> timed out after <n>ms`).
+ *   It proves the client stopped waiting and nothing more. A core that is
+ *   wedged, overloaded, or not running produces exactly the same signal as one
+ *   that is happily distilling sessions, so treating it as "still running"
+ *   would show a false success and discourage a retry that is actually needed
+ *   — the same false-reporting defect as #5802 with the sign flipped.
+ * - **A bare timeout phrase.** A provider failure surfacing as
+ *   `request timed out after 30s` would have matched an unprefixed pattern.
+ *
+ * That asymmetry is the point: a *false negative* here costs a banner that
+ * says "failed" when the work continues — annoying, and recoverable, because
+ * the next status poll shows what landed. A *false positive* costs a banner
+ * that says "still running" over work that stopped, which is unrecoverable
+ * without the user noticing on their own. So the predicate is deliberately
+ * narrow and keyed on evidence rather than on symptom.
  */
 export function isIngestTimeout(cause: unknown): boolean {
-  if ((cause as { kind?: unknown } | null)?.kind === 'timeout') return true;
   const message = cause instanceof Error ? cause.message : String(cause);
-  return /timed out after \d+\s*(ms|s)\b/i.test(message);
+  return /ingest coding sessions:[\s\S]*timed out after \d+\s*(ms|s)\b/i.test(message);
 }
 
 export interface CodingSessionDrainOptions {

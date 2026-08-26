@@ -7195,7 +7195,7 @@ const en: TranslationMap = {
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
   'memorySources.codingSessions.stillRunning': 'Import still running',
   'memorySources.codingSessions.stillRunningMessage':
-    'Imported {processed} sessions so far. The import did not finish inside its time budget but is still running in the background; check back in a minute rather than starting it again.',
+    'Sessions imported so far: {processed}. The import did not finish inside its time budget but is still running in the background; check back in a minute rather than starting it again.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
   'notifications.configRecovered.title': 'Settings file recovered',
   'notifications.configRecovered.body':

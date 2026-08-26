@@ -6844,7 +6844,7 @@ const messages: TranslationMap = {
     '{failed} sesi gagal sementara {processed} berhasil diproses. Jalankan penyerapan lagi untuk mencoba ulang.',
   'memorySources.codingSessions.stillRunning': 'Impor masih berjalan',
   'memorySources.codingSessions.stillRunningMessage':
-    'Sejauh ini {processed} sesi telah diimpor. Impor belum selesai dalam batas waktunya tetapi masih berjalan di latar belakang; periksa lagi sebentar lagi daripada memulainya ulang.',
+    'Sesi yang sudah diimpor: {processed}. Impor belum selesai dalam batas waktunya tetapi masih berjalan di latar belakang; periksa lagi sebentar lagi daripada memulainya ulang.',
   'memorySources.codingSessions.failed': 'Gagal menyerap sesi pemrograman',
   'flows.canvas.sidePanelToggle': 'Panel samping',
   'flows.canvas.legendTab': 'Manual',

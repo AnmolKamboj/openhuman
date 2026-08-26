@@ -223,7 +223,7 @@ describe('CodingSessionsCard', () => {
         expect.objectContaining({
           type: 'info',
           title: 'Import still running',
-          message: expect.stringContaining('Imported 3 sessions so far'),
+          message: expect.stringContaining('Sessions imported so far: 3'),
         })
       )
     );

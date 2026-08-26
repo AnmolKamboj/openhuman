@@ -6983,7 +6983,7 @@ const messages: TranslationMap = {
     '{failed} sessions ont échoué tandis que {processed} ont été traitées. Relancez l’ingestion pour réessayer.',
   'memorySources.codingSessions.stillRunning': 'Import toujours en cours',
   'memorySources.codingSessions.stillRunningMessage':
-    "{processed} sessions importées jusqu'ici. L'import n'a pas abouti dans le temps imparti mais continue en arrière-plan ; revenez dans une minute plutôt que de le relancer.",
+    "Sessions importées jusqu'ici : {processed}. L'import n'a pas abouti dans le temps imparti mais continue en arrière-plan ; revenez dans une minute plutôt que de le relancer.",
   'memorySources.codingSessions.failed': 'Échec de l’ingestion des sessions de programmation',
   'flows.canvas.sidePanelToggle': 'Panneau latéral',
   'flows.canvas.legendTab': 'Manuel',

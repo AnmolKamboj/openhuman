@@ -6734,7 +6734,7 @@ const messages: TranslationMap = {
     '세션 {processed}개를 처리하는 동안 {failed}개가 실패했습니다. 다시 시도하려면 수집을 다시 실행하세요.',
   'memorySources.codingSessions.stillRunning': '가져오기가 아직 진행 중입니다',
   'memorySources.codingSessions.stillRunningMessage':
-    '지금까지 {processed}개의 세션을 가져왔습니다. 제한 시간 안에 끝나지 않았지만 백그라운드에서 계속 실행 중입니다. 다시 시작하지 말고 잠시 후 확인하세요.',
+    '지금까지 가져온 세션: {processed}개. 제한 시간 안에 끝나지 않았지만 백그라운드에서 계속 실행 중입니다. 다시 시작하지 말고 잠시 후 확인하세요.',
   'memorySources.codingSessions.failed': '코딩 세션 수집 실패',
   'flows.canvas.sidePanelToggle': '사이드 패널',
   'flows.canvas.legendTab': '수동',

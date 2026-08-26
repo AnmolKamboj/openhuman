@@ -6658,7 +6658,7 @@ const messages: TranslationMap = {
     'فشلت {failed} جلسات بينما تمت معالجة {processed}. شغّل الاستيعاب مرة أخرى لإعادة المحاولة.',
   'memorySources.codingSessions.stillRunning': 'الاستيراد ما زال جاريًا',
   'memorySources.codingSessions.stillRunningMessage':
-    'تم استيراد {processed} جلسة حتى الآن. لم ينتهِ الاستيراد ضمن المهلة المحددة لكنه ما زال يعمل في الخلفية؛ تحقق مرة أخرى بعد دقيقة بدلًا من بدئه من جديد.',
+    'عدد الجلسات المستوردة حتى الآن: {processed}. لم ينتهِ الاستيراد ضمن المهلة المحددة لكنه ما زال يعمل في الخلفية؛ تحقق مرة أخرى بعد دقيقة بدلًا من بدئه من جديد.',
   'memorySources.codingSessions.failed': 'فشل استيعاب جلسات البرمجة',
   'flows.canvas.sidePanelToggle': 'اللوحة الجانبية',
   'flows.canvas.legendTab': 'يدوي',

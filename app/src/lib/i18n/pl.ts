@@ -6910,7 +6910,7 @@ const messages: TranslationMap = {
     'Nie udało się przetworzyć {failed} sesji, a {processed} przetworzono. Uruchom import ponownie, aby spróbować jeszcze raz.',
   'memorySources.codingSessions.stillRunning': 'Import wciąż trwa',
   'memorySources.codingSessions.stillRunningMessage':
-    'Zaimportowano dotąd {processed} sesji. Import nie zakończył się w wyznaczonym czasie, ale nadal działa w tle; sprawdź ponownie za minutę, zamiast uruchamiać go od nowa.',
+    'Zaimportowane dotąd sesje: {processed}. Import nie zakończył się w wyznaczonym czasie, ale nadal działa w tle; sprawdź ponownie za minutę, zamiast uruchamiać go od nowa.',
   'memorySources.codingSessions.failed': 'Nie udało się wczytać sesji programistycznych',
   'flows.canvas.sidePanelToggle': 'Panel boczny',
   'flows.canvas.legendTab': 'Ręczny',

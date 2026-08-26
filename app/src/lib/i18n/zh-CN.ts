@@ -6443,7 +6443,7 @@ const messages: TranslationMap = {
     '{processed} 个会话已处理，{failed} 个失败。请再次运行摄取以重试。',
   'memorySources.codingSessions.stillRunning': '导入仍在进行中',
   'memorySources.codingSessions.stillRunningMessage':
-    '目前已导入 {processed} 个会话。导入未在限定时间内完成，但仍在后台运行；请稍后再查看，不要重新开始。',
+    '目前已导入的会话数：{processed}。导入未在限定时间内完成，但仍在后台运行；请稍后再查看，不要重新开始。',
   'memorySources.codingSessions.failed': '编程会话摄取失败',
   'flows.canvas.sidePanelToggle': '侧边栏',
   'flows.canvas.legendTab': '手动',

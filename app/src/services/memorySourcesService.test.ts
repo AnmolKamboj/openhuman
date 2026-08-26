@@ -340,11 +340,43 @@ describe('memorySourcesService', () => {
     await expect(drainCodingSessions()).rejects.toThrow('persona pipeline failed');
   });
 
-  it('isIngestTimeout does not treat an unrelated message as a deadline', () => {
+  it('rejects a renderer-side abort instead of calling it still-running', async () => {
+    // The client's own AbortController proves the renderer stopped waiting and
+    // nothing else — a wedged, overloaded or absent core produces exactly the
+    // same signal as one happily distilling sessions. Suppressing it would show
+    // a false success over work that may never have started, which is #5802
+    // with the sign flipped. Only the core's own prefix is evidence.
+    const abort = Object.assign(
+      new Error(
+        'Core RPC openhuman.memory_sources_ingest_coding_sessions timed out after 585000ms'
+      ),
+      { kind: 'timeout' }
+    );
+    mockedCall.mockRejectedValueOnce(abort);
+
+    await expect(drainCodingSessions()).rejects.toThrow('timed out after 585000ms');
+  });
+
+  it('isIngestTimeout suppresses only deadlines the core reported', () => {
+    // Suppressed: both shapes carry `ingest coding sessions: `, which only
+    // `ingest_coding_sessions_rpc` adds — proof the handler ran.
+    expect(
+      isIngestTimeout(
+        new Error('ingest coding sessions: call to `IngestCodingSessions` timed out after 30000ms')
+      )
+    ).toBe(true);
+    expect(isIngestTimeout(new Error('ingest coding sessions: timed out after 570s'))).toBe(true);
+
+    // Not suppressed. A bare timeout phrase carries no evidence that anything
+    // was dispatched, and an unprefixed pattern would have swallowed an
+    // ordinary provider failure.
+    expect(isIngestTimeout(new Error('timed out after 30000ms'))).toBe(false);
+    expect(isIngestTimeout(new Error('request timed out after 30s'))).toBe(false);
+    expect(isIngestTimeout(new Error('Core RPC x timed out after 585000ms'))).toBe(false);
     expect(isIngestTimeout(new Error('the request timed out'))).toBe(false);
     expect(isIngestTimeout(new Error('session scan failed'))).toBe(false);
-    expect(isIngestTimeout(new Error('timed out after 30000ms'))).toBe(true);
-    expect(isIngestTimeout(new Error('timed out after 570s'))).toBe(true);
+    // A kind field alone is not evidence either.
+    expect(isIngestTimeout({ kind: 'timeout' })).toBe(false);
   });
 
   it('stops when a budget-hit pass makes no forward progress', async () => {
