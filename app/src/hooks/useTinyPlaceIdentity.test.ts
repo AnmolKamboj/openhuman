@@ -13,9 +13,7 @@ vi.mock('../lib/orchestration/orchestrationClient', () => ({
 // `wallet_status` RPC failing into the `unknown` fall-through; `beforeEach`
 // defaults it to a configured wallet, which is the path they were written for.
 const fetchWalletStatus = vi.fn();
-vi.mock('../services/walletApi', () => ({
-  fetchWalletStatus: () => fetchWalletStatus(),
-}));
+vi.mock('../services/walletApi', () => ({ fetchWalletStatus: () => fetchWalletStatus() }));
 
 describe('useTinyPlaceIdentity (#5424)', () => {
   beforeEach(() => {

@@ -25,7 +25,6 @@
 import { useEffect, useState } from 'react';
 
 import { orchestrationClient } from '../lib/orchestration/orchestrationClient';
-
 import { resolveWalletConfigured } from './useWalletConfigured';
 
 export interface TinyPlaceIdentityState {

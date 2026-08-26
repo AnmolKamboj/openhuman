@@ -2144,12 +2144,29 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
             // core-side change makes the call succeed — so demote to info: the
             // breadcrumb survives for correlation, no error event fires.
             // See `ExpectedErrorKind::WalletNotConfigured` (#5805).
+            //
+            // The raw message is deliberately NOT logged, and that follows from
+            // how this kind is matched. The classifier accepts the sentinel
+            // anywhere in the string so the demotion survives context wrapping —
+            // which means everything *around* the sentinel is arbitrary
+            // caller-supplied text. Today's wrappers are tame (`self_identity
+            // key_status: …`), but nothing constrains a future one, and a
+            // wrapper is exactly where an id, a path or a pasted value ends up.
+            // The permissive matcher is the right trade for correctness; paying
+            // for it with a careful log is the other half of that trade.
+            //
+            // Nothing is lost: the only part of the body this arm can vouch for
+            // is the sentinel itself, and it is a constant. `domain` and
+            // `operation` carry the correlation, which is what a breadcrumb is
+            // for. Same reasoning as the param-validation skip in
+            // `jsonrpc.rs`, which redacts because its messages embed
+            // caller-supplied param names.
             tracing::info!(
                 domain = domain,
                 operation = operation,
                 kind = "wallet_not_configured",
-                error = %message,
-                "[observability] {domain}.{operation} skipped expected wallet-not-configured error: {message}"
+                "[observability] {domain}.{operation} skipped expected wallet-not-configured \
+                 error (message withheld: the wrapper around the sentinel is caller-supplied)"
             );
         }
         ExpectedErrorKind::MemoryIdentifierRejected => {

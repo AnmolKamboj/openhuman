@@ -136,12 +136,15 @@ export default function TinyPlaceOrchestrationTab() {
     // either way — preserving the "one failure never hides the other" property
     // above. Only a positive `no` skips; `unknown` falls through and the core
     // boundary classifier handles anything that follows.
-    const skipIdentity = (await resolveWalletConfigured()) === 'no';
-    const [identityResult, relayResult] = await Promise.allSettled([
-      // `null` marks "not asked", which is distinct from "asked and failed".
-      skipIdentity ? Promise.resolve(null) : orchestrationClient.selfIdentity(),
-      orchestrationClient.relayInfo(),
-    ]);
+    // Fire the wallet-independent read FIRST, before awaiting anything: relay
+    // must not be delayed by the wallet probe, which is the whole reason the
+    // two are settled separately. `null` marks "not asked", which is distinct
+    // from "asked and failed".
+    const relayPromise = orchestrationClient.relayInfo();
+    const identityPromise = resolveWalletConfigured().then(configured =>
+      configured === 'no' ? null : orchestrationClient.selfIdentity()
+    );
+    const [identityResult, relayResult] = await Promise.allSettled([identityPromise, relayPromise]);
     if (!mountedRef.current) return;
     if (identityResult.status === 'fulfilled') {
       const identity = identityResult.value;

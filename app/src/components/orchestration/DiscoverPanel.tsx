@@ -39,23 +39,20 @@ export default function DiscoverPanel() {
     // travels as an Err and lands as an error-level report (#5805). Ask
     // wallet_status, which answers the same question without erroring, and skip
     // only on a positive `no`. relayInfo() needs no wallet and always runs.
-    void resolveWalletConfigured()
-      .then(configured =>
-        Promise.allSettled([
-          configured === 'no'
-            ? Promise.resolve(null)
-            : orchestrationClient.selfIdentity(),
-          orchestrationClient.relayInfo(),
-        ])
-      )
-      .then(([id, rel]) => {
-        if (cancelled) return;
-        // `null` is the skipped case — leave `identity` null, exactly as a
-        // failed fetch would, so the render path is unchanged.
-        if (id.status === 'fulfilled' && id.value !== null) setIdentity(id.value);
-        if (rel.status === 'fulfilled') setRelay(rel.value);
-        setIdentityLoading(false);
-      });
+    // Fire the wallet-independent read FIRST so relay is never delayed by the
+    // wallet probe.
+    const relayPromise = orchestrationClient.relayInfo();
+    const identityPromise = resolveWalletConfigured().then(configured =>
+      configured === 'no' ? null : orchestrationClient.selfIdentity()
+    );
+    void Promise.allSettled([identityPromise, relayPromise]).then(([id, rel]) => {
+      if (cancelled) return;
+      // `null` is the skipped case — leave `identity` null, exactly as a
+      // failed fetch would, so the render path is unchanged.
+      if (id.status === 'fulfilled' && id.value !== null) setIdentity(id.value);
+      if (rel.status === 'fulfilled') setRelay(rel.value);
+      setIdentityLoading(false);
+    });
     return () => {
       cancelled = true;
     };
