@@ -155,30 +155,55 @@ pub async fn migrate_openclaw_memory(
 /// and the user only discovers it later, with nothing left to re-run against.
 /// So this refuses up front and names which of the three it was.
 ///
-/// The third case is the reason this reads `driver_id()` rather than only
-/// `class()`. `admit` is pure config and never saw the feature flag, so it
-/// returns the configured id — the binding then reports `driver_id =
-/// "tinymemory"` with `class = Null` and **no** `fallback`, since nothing
-/// refused. Keying the message on the class alone put that case in the
-/// configured-null arm, which told a user whose config says `driver =
-/// "tinycortex"` that they had set it to `"null"` and sent them to edit a line
+/// Telling the third case apart needs what was *admitted*, not what was bound.
+/// `admit` is pure config and never saw the feature flag, so it answers
+/// `Module` for the configured `tinycortex`; `module_provider` then binds the
+/// null provider, and the binding reports `class = Null` with **no**
+/// `fallback`, since nothing refused. So `admitted != bound` is the signal, and
+/// it is the only one that works: `driver_id` alone does not separate this from
+/// a driver deliberately given `class = "null"`, because `admit` accepts a
+/// non-built-in id with that class (the `built_in_class` check is skipped for
+/// ids that are not built in) and returns it verbatim. Keying on the id would
+/// tell a user with a working modules build that their `modules` feature was
+/// off — the same class of misdirection this whole note exists to prevent.
+///
+/// Keying on the class alone was the original bug: it put the modules-off case
+/// in the configured-null arm and told a user whose config says `driver =
+/// "tinycortex"` that they had set it to `"null"`, sending them to edit a line
 /// that already said the opposite.
 fn target_memory_backend(config: &Config) -> Result<Arc<dyn Memory>> {
     let binding = crate::openhuman::memory::binding::for_config(config)
         .map_err(|e| anyhow::anyhow!("bind memory for migration import: {e}"))?;
     if binding.class() == crate::core::subsystem::DriverClass::Null {
-        let because = match (binding.fallback(), binding.driver_id()) {
+        let admitted = crate::openhuman::memory::binding::admit(&config.subsystems.memory).ok();
+        let because = match (binding.fallback(), admitted) {
             (Some(fallback), _) => format!(
                 "driver '{}' refused to bind: {}",
                 fallback.configured_driver, fallback.reason
             ),
-            (None, tinymemory_api::null::NULL_DRIVER_ID) => {
+            // Admitted as the null driver: the user asked for no memory.
+            (None, Some((id, crate::core::subsystem::DriverClass::Null)))
+                if id == tinymemory_api::null::NULL_DRIVER_ID =>
+            {
                 "memory is disabled by configuration ([subsystems.memory] driver = \"null\")"
                     .to_string()
             }
-            (None, driver_id) => format!(
-                "driver '{driver_id}' is configured, but this build has no memory module \
+            (None, Some((id, crate::core::subsystem::DriverClass::Null))) => format!(
+                "driver '{id}' is configured with class \"null\" under \
+                 [subsystems.memory.drivers.{id}], so every write is discarded"
+            ),
+            // Admitted as something that can hold data, bound to the null
+            // provider anyway — the module substitution.
+            (None, Some((id, _))) => format!(
+                "driver '{id}' is configured, but this build has no memory module \
                  compiled in (the 'modules' feature is off), so nothing can be written"
+            ),
+            // `admit` refused: `build` records that as a fallback, so this is
+            // unreachable. Named rather than merged into an arm that would
+            // state a cause this branch cannot actually establish.
+            (None, None) => format!(
+                "driver '{}' bound the null provider and the reason was not recorded",
+                binding.driver_id()
             ),
         };
         anyhow::bail!(

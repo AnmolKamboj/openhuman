@@ -143,7 +143,9 @@ mod tests {
 
         let source = tmp.path().join("openclaw-src");
         std::fs::create_dir_all(&source).unwrap();
-        std::fs::write(source.join("MEMORY.md"), "# Note\nwould be lost").unwrap();
+        let entry = source.join("MEMORY.md");
+        let original = "# Note\nwould be lost";
+        std::fs::write(&entry, original).unwrap();
 
         let err = migrate_openclaw(&config, Some(source), false)
             .await
@@ -160,6 +162,66 @@ mod tests {
         assert!(
             err.contains("the source workspace is untouched"),
             "refusal must still promise the source survived; got: {err}"
+        );
+        // The promise, checked rather than taken on trust: a refusal that moved
+        // or truncated the source would be the very loss it claims to prevent.
+        assert_eq!(
+            std::fs::read_to_string(&entry).expect("source entry must still be readable"),
+            original,
+            "the refused import must leave the source workspace byte-identical"
+        );
+    }
+
+    /// A driver deliberately given `class = "null"` is not a modules-off build.
+    ///
+    /// Codex raised this against the first version of the fix above, and it was
+    /// right. `admit` skips its `built_in_class` check for an id that is not
+    /// built in, so `[subsystems.memory] driver = "mynull"` with
+    /// `class = "null"` is admitted verbatim: `class = Null`, no `fallback`, and
+    /// a `driver_id` that is not `"null"`. Keyed on the id, that landed in the
+    /// modules-off arm and told a user with a perfectly good modules build that
+    /// their `modules` feature was off.
+    ///
+    /// Keying on what `admit` *answered* separates them: here it answers `Null`,
+    /// where the modules-off case answers `Module` and is then bound to the null
+    /// provider. This runs in **every** feature configuration, because the
+    /// confusion it guards against is one a modules-enabled build can hit.
+    #[tokio::test]
+    async fn apply_names_a_deliberately_null_classed_driver_rather_than_the_build() {
+        use crate::openhuman::config::schema::{MemoryDriverConfig, MemorySubsystemConfig};
+
+        let tmp = TempDir::new().unwrap();
+        let mut config = test_config(&tmp);
+        let mut drivers = std::collections::BTreeMap::new();
+        drivers.insert(
+            "mynull".to_string(),
+            MemoryDriverConfig {
+                class: Some("null".to_string()),
+                ..Default::default()
+            },
+        );
+        config.subsystems.memory = MemorySubsystemConfig {
+            driver: "mynull".to_string(),
+            drivers,
+            ..Default::default()
+        };
+
+        let source = tmp.path().join("openclaw-src");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("MEMORY.md"), "# Note\nkeep me").unwrap();
+
+        let err = migrate_openclaw(&config, Some(source), false)
+            .await
+            .expect_err("apply must refuse a null-classed driver");
+
+        assert!(
+            err.contains("mynull") && err.contains("class"),
+            "refusal must name the driver and its configured class; got: {err}"
+        );
+        assert!(
+            !err.contains("no memory module compiled in"),
+            "a deliberately null-classed driver must not be reported as a \
+             modules-off build; got: {err}"
         );
     }
 
