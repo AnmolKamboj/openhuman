@@ -25,7 +25,9 @@ use super::defaults::{
     network_defaults as default_networks, rpc_url_for_chain, EvmNetwork, WalletAssetDefinition,
     WalletNetworkDefaults,
 };
-use super::ops::{status as wallet_status, WalletAccount, WalletChain};
+use super::ops::{
+    status as wallet_status, WalletAccount, WalletChain, WALLET_NOT_CONFIGURED_MESSAGE,
+};
 
 const LOG_PREFIX: &str = "[wallet]";
 const QUOTE_TTL_MS: u64 = 5 * 60 * 1000;
@@ -316,7 +318,7 @@ pub(crate) async fn require_evm_account() -> Result<String, String> {
 async fn require_account(chain: WalletChain) -> Result<WalletAccount, String> {
     let status = wallet_status().await?.value;
     if !status.configured {
-        return Err("wallet is not configured; run wallet setup first".to_string());
+        return Err(WALLET_NOT_CONFIGURED_MESSAGE.to_string());
     }
     status
         .accounts
@@ -676,7 +678,7 @@ fn evm_native_asset(network: EvmNetwork) -> Result<WalletAssetDefinition, String
 pub async fn balances() -> Result<RpcOutcome<Vec<BalanceInfo>>, String> {
     let status = wallet_status().await?.value;
     if !status.configured {
-        return Err("wallet is not configured; run wallet setup first".to_string());
+        return Err(WALLET_NOT_CONFIGURED_MESSAGE.to_string());
     }
     let mut out = Vec::with_capacity(status.accounts.len() + EVM_BALANCE_NETWORKS.len());
     for account in &status.accounts {
