@@ -70,7 +70,7 @@ use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
     post_process as slack_post_process, schemas as slack_memory_schemas,
 };
 use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    extract_item_id, DailyBudget, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
+    extract_item_id, DailyBudget, PersistedSyncState, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
 };
 use openhuman_core::openhuman::memory::sync::composio::providers::user_scopes;
 use openhuman_core::openhuman::memory::sync::composio::providers::{

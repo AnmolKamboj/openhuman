@@ -19,9 +19,18 @@
 //! | [`global`] | the per-workspace singleton |
 //! | [`host`] | the seam impls — [`host::install_memory_event_sink`] and `MemoryHostConfig for Config` |
 //!
-//! Everything else in this module is a **re-export** of the extracted crate, so
-//! the ~550 `crate::openhuman::memory::…` paths elsewhere in this crate keep
-//! resolving unchanged. Prefer `tinymemory_core::…` in new code.
+//! What is left below is a handful of flat **type** re-exports, kept so the
+//! ~550 `crate::openhuman::memory::…` paths elsewhere in this crate keep
+//! resolving unchanged. The engine's *modules* are no longer re-exported here
+//! at all — see the block at the bottom of this file for why that facade was
+//! deleted.
+//!
+//! **Prefer `tinymemory_api::…` in new code, never `tinymemory_core::…`.** This
+//! paragraph used to say the opposite, which predates #5560: the contract crate
+//! is what the host, `ModuleMemoryProvider` and the loaded module all speak, and
+//! naming the engine crate is the thing that keeps it linked into the shipped
+//! binary. A path that has no contract equivalent is a gap to report, not a
+//! reason to reach for the engine.
 
 pub mod agent;
 pub mod api;
@@ -29,7 +38,19 @@ pub mod binding;
 pub mod driver;
 pub mod guard;
 pub mod host;
+/// Host implementations of the seam traits the ENGINE declares.
+///
+/// `#[cfg(test)]` because the production host embeds no engine any more: the
+/// module installs its own seams and this host answers it over the bus through
+/// [`crate::openhuman::modules::memory_host`] instead. What still needs these
+/// is the test suite, which binds the in-process TinyCortex driver directly —
+/// legitimate, because `tinymemory-core` is a dev-dependency there and a
+/// dev-dependency is not linked into the shipped binary.
 pub mod host_impls;
+/// Host desktop policy: is the memory content root a vault Obsidian already
+/// knows about? See the module docs for why this is OpenHuman's and not the
+/// engine's.
+pub mod obsidian_registry;
 pub mod ops;
 pub mod preferences;
 pub mod sync_events_bridge;
@@ -38,10 +59,16 @@ pub mod sync_events_bridge;
 // impl end to end, and the engine crate cannot name that trait.
 pub mod query;
 pub mod read_rpc;
+/// The host-side secret / PII scrubbers applied to anything this host persists
+/// or hands on. See the module docs for why this is OpenHuman's and not the
+/// engine's.
+pub mod safety;
 pub mod schemas;
 /// The host-side per-turn memory-source allowlist. See the module docs for why
 /// this is OpenHuman's and not the engine's.
 pub mod source_scope;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod tools;
 
 // Domains that are *mostly* extracted but keep their JSON-RPC surface here.
@@ -54,9 +81,6 @@ pub mod goals;
 pub mod people;
 pub mod schema;
 pub mod sources;
-/// The golden-fixture seeder. Public so `tests/memory_golden_fixture_e2e.rs`
-/// can drive it; it walks the RPC handlers, which is why it stayed host-side.
-pub mod store_golden;
 pub mod sync;
 pub mod tool_memory;
 pub mod tree;
@@ -119,10 +143,35 @@ pub use schemas::{
     all_tool_memory_controller_schemas as all_memory_tool_memory_controller_schemas,
     all_tool_memory_registered_controllers as all_memory_tool_memory_registered_controllers,
 };
+// The ingestion vocabulary, split by who actually defines it (#5560).
+//
+// It was one `pub use tinymemory_core::ingestion::{…}` line of eleven names,
+// which read as eleven engine types. Seven of them are not: `tinymemory-core`'s
+// `ingestion` module re-exports them out of `engine::backend::ingest`, which is
+// `pub use tinycortex::memory::ingest`. So the line below names the **same
+// items** at the crate that defines them — `tinycortex` stays a direct
+// dependency of this crate, `tinymemory-core` is the one being shed — and no
+// type, wire byte or call site changes. Same move as `memory::people`,
+// `memory::tool_memory` and `memory::tree::health`'s taxonomy half.
+pub use tinycortex::memory::ingest::{
+    ExtractedEntity, ExtractedRelation, ExtractionMode, MemoryIngestionConfig,
+    MemoryIngestionRequest, MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
+};
+// The remaining four are genuinely `tinymemory-core`'s own: the in-process
+// ingest queue (`ingestion::queue`) and its status snapshot
+// (`ingestion::state`). They have no contract equivalent — the ingest queue is
+// named in `direct_engine_refs_tests`' upstream-gap list as one of the four
+// things with no bus representation at all — so this is what still pins the
+// engine crate here, and it is now visible as such rather than hidden in a
+// list of eleven.
+//
+// `IngestionState` is the one with a live consumer
+// (`tests/raw_coverage/memory_raw_coverage_e2e.rs`). The other three are kept
+// because they are one module's worth of a single domain and splitting a queue
+// from its own job type would leave a re-export that documents nothing; when
+// the queue moves behind the bus they go together.
 pub use tinymemory_core::ingestion::{
-    ExtractedEntity, ExtractedRelation, ExtractionMode, IngestionJob, IngestionQueue,
-    IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
-    MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
+    IngestionJob, IngestionQueue, IngestionState, IngestionStatusSnapshot,
 };
 // The host's own JSON-RPC request/response shapes. They lived in
 // `tinymemory_core::rpc_models` and were re-exported here by a glob; nothing
@@ -131,12 +180,21 @@ pub use tinymemory_core::ingestion::{
 // are simply ours now. See `rpc_models`'s module docs.
 pub mod rpc_models;
 pub use rpc_models::*;
-pub use tinymemory_core::traits::{
-    Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
+// Named on the crate directly — `traits` is engine scaffolding, not bus
+// vocabulary, and is deliberately not re-exported from `memory::api` (#5560).
+pub use crate::openhuman::memory::api::types::{
+    MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };
+pub use tinymemory_api::traits::Memory;
 
 // Types that external tests and consumers historically imported from
 // `memory::*`. The definitions moved to sibling crates during the memory
 // refactor; these aliases keep the public surface stable.
-pub use tinymemory_core::store::types::NamespaceDocumentInput;
-pub use tinymemory_core::store::{MemoryClient, UnifiedMemory};
+//
+// `MemoryClient` and `UnifiedMemory` are gone from this list: both were engine
+// handles re-exported for consumers that no longer exist (grep found none in
+// `src/`, `tests/` or the shell), and an unused alias is a compile-time link to
+// the engine bought for nobody (#5560). A caller that genuinely needs the
+// in-process handle names the crate deliberately rather than reaching it
+// through the memory module's public surface.
+pub use crate::openhuman::memory::api::types::NamespaceDocumentInput;

@@ -118,6 +118,28 @@ pub async fn migrate_openclaw_memory(
     })
 }
 
+/// The memory the import writes into.
+///
+/// **Still the engine's own migration constructor, and #5560 could not change
+/// that.** The contract's only door for this shape is `MemoryCore::store`,
+/// reached through `MemoryGuard` like every other write in the tree — and the
+/// guard applies `MemoryHooksConfig::capture_max_chars`, which defaults to
+/// **500**, to every `store` body (`guard::mandatory`, step 6). An OpenClaw /
+/// Hermes `MEMORY.md` entry is routinely longer than that, so routing the
+/// import through the guard would silently truncate the user's own imported
+/// memories: data loss on a migration path, which is worse than the second
+/// engine handle this keeps.
+///
+/// The other two doors do not fit either. `MemoryDocuments::put_document` does
+/// not trim, but it writes namespace *documents* rather than memory entries, so
+/// the `get`/rename dedupe above would stop seeing what it wrote.
+/// `MemoryPortability::import_records` is the shape a migration wants, but
+/// `ExportRecord::payload` is explicitly "the exporting driver's own shape" —
+/// synthesising one host-side means encoding driver-private structure here.
+///
+/// What unblocks this is a capture budget that distinguishes an *import* from
+/// an auto-capture, or a `MemoryCore::store` variant that opts out of the
+/// budget. Both are upstream asks, not host changes.
 fn target_memory_backend(config: &Config) -> Result<Box<dyn Memory>> {
     memory_store::create_memory_for_migration(&config.memory, &config.workspace_dir)
 }

@@ -12,9 +12,10 @@
 //! spawned at all) up to a `ServiceSet` chosen by the embedder, while these
 //! functions keep their config gates (is it enabled for this user).
 
-// `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
-use tinymemory_api::host::MemoryHostConfig;
-
+// `MemoryHostConfig` was imported here for `config.to_arc()`, the argument to
+// the engine's `queue::start`. That call left with the in-process engine
+// (openhuman#5560 — see `start_bootstrap_jobs`); every remaining `config.…` in
+// this file is plain field access on OpenHuman's own `Config`.
 use crate::core::runtime::ServiceSet;
 use crate::openhuman::config::Config;
 
@@ -247,22 +248,67 @@ pub(crate) fn bootstrap_job_plan(services: &ServiceSet) -> BootstrapJobPlan {
 /// `services.channels` — a channels-off + memory/integrations-on embedder
 /// silently lost all of them (#5028) — so they now sit behind `integrations` /
 /// `memory_sync` / `orchestration` instead.
-pub fn start_bootstrap_jobs(services: ServiceSet, config: &Config) {
+///
+/// `config` is unread as of openhuman#5560 — the engine's `queue::start` was
+/// this function's only consumer of it, and the loaded TinyMemory module starts
+/// that pool itself now. The parameter is **kept** rather than dropped: every
+/// other job here is one config read away from needing it again (the periodic
+/// sync loops below already re-load config internally), and removing it would
+/// churn every embedder that calls `start_bootstrap_jobs` for no gain. Named
+/// `_config` so the compiler does not have to be told to ignore it.
+pub fn start_bootstrap_jobs(services: ServiceSet, _config: &Config) {
     let plan = bootstrap_job_plan(&services);
     log::debug!("[runtime.bootstrap] starting bootstrap jobs with plan {plan:?}");
 
+    // ── The queue pool moved into the module, and must NOT be started here ──
+    //
+    // This block used to call `tinymemory_core::queue::start(config.to_arc())`,
+    // and it was the only caller of the engine's worker pool in any tree.
+    // openhuman#5560 deletes the host's second, in-process engine, so that call
+    // has no engine to drain — and `tinymemory` v1.5.0's module starts its own
+    // pool at load (`tinymemory-module/src/lib.rs`, `start_queue_pool`), which
+    // is what keeps ingest, `retry_failed` and `ensure_reembed_backfill` alive.
+    //
+    // **Restoring the call would not be a duplicate, it would be a second pool
+    // that cannot see the first.** The `cdylib` links its own copy of
+    // `tinymemory-core`, so the `Once` inside `queue::start` is a *different*
+    // static from the host's: two pools would claim jobs from one SQLite queue
+    // with neither aware of the other. That is why the line is gone rather than
+    // gated.
+    //
+    // `plan.memory_queue` is kept — it is `ServiceSet`'s statement of intent
+    // and other jobs may hang off it — but the host has no work to do for it.
     if plan.memory_queue {
-        log::debug!("[runtime.bootstrap] starting memory queue workers");
-        tinymemory_core::queue::start(config.to_arc());
+        log::debug!(
+            "[runtime.bootstrap] memory queue workers are owned by the tinymemory module (start_queue_pool); host starts none"
+        );
     } else {
         log::debug!("[runtime.bootstrap] memory queue workers disabled by ServiceSet");
     }
 
-    // Integrations — Composio periodic connection sync + one-shot source
-    // reconcile. Both no-op without active Composio connections.
+    // Integrations — Composio source reconcile. No-ops without active
+    // connections.
+    //
+    // ── The periodic loops are NOT started here any more ────────────────────
+    //
+    // They were, and deleting them was blocked on upstream rather than on
+    // taste: `start_periodic_sync` is not host code, it re-exported through
+    // `integrations::composio` to `memory::sync::composio::periodic`, which was
+    // `pub use tinymemory_core::sync::composio::*` — engine code running in
+    // this process against the engine this host used to boot.
+    //
+    // tinymemory v1.6.0 moves both loops into the module and closes the three
+    // things that stopped them working there: the cadence, the Composio mode,
+    // and the module's client not being in the engine's global slot. The host
+    // now passes the first two in `ModuleConfig` (see `modules::ops`).
+    //
+    // Restoring either call would be worse than a duplicate. The cdylib carries
+    // its OWN copy of `tinymemory-core`, so each loop's `OnceLock` is a
+    // different static from this process's: a host that starts them while
+    // loading the module gets TWO pairs of loops over one store, and neither
+    // can see the other.
     if plan.composio_integration_sync {
-        log::debug!("[runtime.bootstrap] starting composio integration sync + source reconcile");
-        crate::openhuman::integrations::composio::start_periodic_sync();
+        log::debug!("[runtime.bootstrap] starting composio source reconcile");
         tokio::spawn(async {
             log::debug!("[runtime.bootstrap] composio source reconcile started");
             crate::openhuman::memory::sources::reconcile::ensure_composio_sources().await;
@@ -278,8 +324,16 @@ pub fn start_bootstrap_jobs(services: ServiceSet, config: &Config) {
     // web pages) get their own cadence loop; the Composio scheduler above only
     // walks Composio connections.
     if plan.workspace_memory_sync {
-        log::debug!("[runtime.bootstrap] starting workspace memory-source periodic sync");
-        crate::openhuman::memory::sync::workspace::start_workspace_periodic_sync();
+        // Owned by the module for the same reason as the Composio loop above.
+        // The flag survives because `ServiceSet` is the host's declaration of
+        // which background work it wants running at all, and a host that turns
+        // this off should not have the module running it either — wiring that
+        // through is follow-up, and until then this logs the divergence rather
+        // than hiding it.
+        log::debug!(
+            "[runtime.bootstrap] workspace memory-source periodic sync is owned by the memory \
+             module; this process starts none"
+        );
     } else {
         log::debug!("[runtime.bootstrap] workspace periodic sync disabled by ServiceSet");
     }

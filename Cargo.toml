@@ -1152,6 +1152,19 @@ whatsapp-web = ["channels", "tinychannels/whatsapp-web"]
 # build (app/scripts/e2e-build.sh) flips it on. Shipped binaries never have
 # this feature so the wipe RPC isn't even registered, let alone reachable.
 e2e-test-support = []
+# Compiles `memory::host_impls`, the host side of the seam traits the memory
+# ENGINE declares, for builds that embed that engine in-process.
+#
+# The shipped product does not: its driver is the loaded TinyMemory module,
+# which installs its own seams and calls back over the bus through
+# `modules::memory_host`. What still embeds the engine is the test suite, which
+# binds the in-process TinyCortex driver directly — legitimate there, because
+# `tinymemory-core` is a dev-dependency and dev-dependency features are not
+# linked into the shipped binary.
+#
+# Unit tests get it from `cfg(test)`. Integration tests under `tests/` are
+# separate crates and `cfg(test)` does NOT reach them, which is the whole reason
+# this feature exists rather than a bare `#[cfg(test)]`.
 # Builds the `rss-bench` benchmark binary (#5046). Default-OFF, so it is never
 # part of the shipped desktop/library build and the feature-forwarding gate
 # (which only inspects the `default` list) never requires forwarding it.

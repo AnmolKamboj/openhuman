@@ -30,7 +30,7 @@ use openhuman_core::openhuman::memory::sync::composio::providers::linear::Linear
 use openhuman_core::openhuman::memory::sync::composio::providers::slack::rpc::{
     sync_status_rpc, SyncStatusRequest,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::SyncState;
+use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{PersistedSyncState, SyncState};
 use openhuman_core::openhuman::memory::sync::composio::providers::{
     ComposioProvider, ProviderContext, SyncReason, TaskFetchFilter,
 };

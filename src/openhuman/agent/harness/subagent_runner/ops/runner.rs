@@ -1624,7 +1624,14 @@ mod fast_path_tests {
     };
     use crate::openhuman::memory::tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
     use chrono::Utc;
-    use tinymemory_core::store::trees::types::TreeKind;
+    // `RetrievalHit::tree_kind` is TinyCortex's own enum. `tinymemory_core::
+    // store::trees::types::TreeKind` was a re-export of exactly this item
+    // (`tinymemory_core::store::trees::types` → `engine::backend::tree::store`
+    // → `tinycortex::memory::tree::store`), so naming the owning crate here
+    // changes no type — only which crate alias holds it, which is what #5560
+    // is removing from the production graph. Same precedent as
+    // `memory/tools/flavour.rs`, which already imports it from this path.
+    use tinycortex::memory::tree::store::TreeKind;
 
     fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {
         RetrievalHit {

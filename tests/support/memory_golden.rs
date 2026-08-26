@@ -2,11 +2,53 @@
 //!
 //! This module is the engine behind `tests/memory_golden_fixture_e2e.rs`, the
 //! schema gate that stands between a memory-store change and a corrupted user
-//! workspace. It lives in-crate rather than in the test file because seeding a
-//! *complete* workspace needs `pub(crate)` reach that an integration test does
-//! not have — `MemoryClient::profile_conn`, `trees::store::insert_summary_tx`,
-//! and `trees::store::update_tree_after_seal_tx` are all deliberately
-//! crate-private escape hatches.
+//! workspace.
+//!
+//! # Why it is a test-target module and not a library one (#5560)
+//!
+//! It used to be `src/openhuman/memory/store_golden.rs`, declared
+//! `pub mod store_golden;` — **not** `#[cfg(test)]` — so it compiled into the
+//! shipped library and its seven `tinymemory_core::` references were production
+//! references, keeping the engine crate in the product dependency graph for the
+//! sake of a fixture.
+//!
+//! Its own module doc justified living in-crate by saying it needed
+//! `pub(crate)` reach an integration test does not have, naming
+//! `MemoryClient::profile_conn`, `trees::store::insert_summary_tx` and
+//! `trees::store::update_tree_after_seal_tx` as "deliberately crate-private
+//! escape hatches". That was true before the memory extraction and is not true
+//! now: all three live in `tinymemory-core`, a *different* crate, where
+//! `pub(crate)` would have been unreachable from `src/` too — and all three are
+//! `pub`. Every OpenHuman item this file names (`memory::ops::*`,
+//! `memory::rpc_models::QueryNamespaceRequest`, `config::Config`) is `pub` as
+//! well, so nothing here ever needed in-crate reach.
+//!
+//! The two alternatives were considered and are worse:
+//!
+//! - **`#[cfg(test)]` on the module** does not work at all. `cfg(test)` is set
+//!   only for the crate own unit-test build; an integration test links the
+//!   library as an ordinary dependency, so the module would simply not exist
+//!   and the golden gate would stop compiling.
+//! - **Routing it onto the memory contract** is both blocked and beside the
+//!   point. Blocked because `MemoryChunks` is a read family with no write or
+//!   transaction door, and this seeder writes through `store::chunks`,
+//!   `namespace_store::{events, fts5, profile, segments}` and two `_tx` tree
+//!   helpers inside one transaction. Beside the point because the gate exists
+//!   to exercise the engine own DDL and write paths against a `.db` built by
+//!   an older binary — a contract-routed seeder would be testing the module
+//!   wire surface, which is a different test.
+//!
+//! So it moved here. `tinymemory-core` is a **dev-dependency**
+//! (with `features = ["test-support"]`), which integration tests link exactly
+//! as they link `tinymemory-api`; `memory_golden_fixture_e2e.rs` already calls
+//! `tinymemory_core::global::init` directly, so this file sits in the same
+//! dependency position as the code that drives it. Nothing else changed: the
+//! only edits are the four `crate::openhuman::` paths, rewritten to name the
+//! library from outside as `openhuman_core::openhuman::`.
+//!
+//! Included as a module rather than being its own `tests/*.rs` file so cargo
+//! does not build it as a second test target — the same reason
+//! `tests/raw_coverage/` is a plain directory rather than a set of targets.
 //!
 //! # The four entry points
 //!
@@ -43,12 +85,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::openhuman::config::Config;
-use crate::openhuman::memory::ops::{
+use openhuman_core::openhuman::config::Config;
+use openhuman_core::openhuman::memory::ops::{
     doc_list, doc_put, graph_query, graph_upsert, kv_get, memory_query_namespace, GraphQueryParams,
     GraphUpsertParams, KvGetDeleteParams, KvSetParams, NamespaceOnlyParams, PutDocParams,
 };
-use crate::openhuman::memory::rpc_models::QueryNamespaceRequest;
+use openhuman_core::openhuman::memory::rpc_models::QueryNamespaceRequest;
 use tinymemory_api::chunks::{Chunk, Metadata, SourceKind, SourceRef};
 use tinymemory_core::store::chunks;
 use tinymemory_core::store::namespace_store::{events, fts5, profile, segments};
@@ -190,7 +232,7 @@ async fn seed_documents() -> Result<()> {
 async fn seed_kv() -> Result<()> {
     for namespace in [None, Some(NAMESPACE_PRIMARY.to_string())] {
         tracing::debug!(?namespace, key = KV_KEY, "[golden] seeding kv");
-        crate::openhuman::memory::ops::kv_set(KvSetParams {
+        openhuman_core::openhuman::memory::ops::kv_set(KvSetParams {
             namespace: namespace.clone(),
             key: KV_KEY.to_string(),
             value: serde_json::json!({ "fixture": "golden", "v": 1 }),

@@ -14,7 +14,7 @@ use tempfile::TempDir;
 use openhuman_core::openhuman::agent::progress::AgentProgress;
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::read_rpc::{
-    self, ChunkFilter, GraphMode, ResetTreeResponse,
+    self, ChunkFilter, GraphMode,
 };
 use tinymemory_core::tree_source::get_or_create_source_tree;
 use openhuman_core::openhuman::memory::{
@@ -403,12 +403,16 @@ async fn memory_read_rpc_filters_graphs_scores_reset_and_wipe_seeded_rows() {
             .deleted
     );
 
-    let reset: ResetTreeResponse = read_rpc::reset_tree_rpc(&cfg).await.unwrap().value;
-    assert!(reset.tree_rows_deleted >= 1);
-    assert_eq!(reset.chunks_requeued, 1);
-    assert_eq!(reset.jobs_enqueued, 1);
-    let flush = read_rpc::flush_now_rpc(&cfg).await.unwrap().value;
-    assert!(flush.enqueued);
+    // `reset_tree` and `flush_now` are deliberately no longer exercised here.
+    // Both read and mutate through the bound memory driver now
+    // (`Maintenance::reset_derived_index` / `flush_pending`), and an
+    // integration test cannot bind one: with nothing bound the resolve
+    // refuses, and with a real module on the path it answers from the
+    // module's own store rather than the rows staged above. Their behaviour
+    // is pinned where a real store exists — the driver's conformance suite
+    // (`resetting_the_derived_index_keeps_the_chunks_it_derives_from`,
+    // `flushing_twice_in_a_window_schedules_the_work_once`) — and the host's
+    // wire mapping in `read_rpc_tests`.
 
     fs::create_dir_all(cfg.memory_tree_content_root().join("raw")).unwrap();
     fs::write(cfg.memory_tree_content_root().join("raw").join("x.md"), "x").unwrap();

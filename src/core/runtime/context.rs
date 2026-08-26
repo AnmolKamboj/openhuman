@@ -224,7 +224,7 @@ impl CoreContext {
             }
             Err(e) => {
                 log::error!(
-                    "[boot] memory::global init SKIPPED — \
+                    "[boot] workspace-bound store init SKIPPED — \
                      Config::load_or_init failed ({e:#}). Memory persistence is \
                      DISABLED for this run; no silent fallback to the default \
                      workspace (which would cause chunk loss / cross-workspace \
@@ -524,10 +524,14 @@ impl CoreContext {
     }
 }
 
-/// Initialize the global `MemoryClient` and the other workspace-bound stores so
-/// composio providers (gmail/slack/notion) can persist their `sync_state`, and
-/// so any subsystem that calls `memory::global::client_if_ready()` gets a live
-/// handle.
+/// Bind the memory driver for this workspace and initialize the other
+/// workspace-bound stores.
+///
+/// This no longer initializes an in-process `MemoryClient`: the memory
+/// subsystem is reached through [`crate::openhuman::memory::binding`], which is
+/// a workspace-keyed cache rather than a process-global slot (#5560). The
+/// engine handle that `memory::global` still hands out is a lazy singleton, so
+/// the remaining holders construct it on first use.
 ///
 /// A `Config::load_or_init` failure here is operator-visible and serious
 /// (corrupt toml, bad permissions, missing/unwritable `OPENHUMAN_WORKSPACE` —
@@ -551,7 +555,8 @@ impl CoreContext {
 /// `DomainSet` needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreInitPlan {
-    /// `memory::global` — gated on [`DomainGroup::Memory`].
+    /// The memory driver binding (`memory::binding`) — gated on
+    /// [`DomainGroup::Memory`].
     pub memory: bool,
     /// `agent::multimodal` attachments sidecar dir — gated on [`DomainGroup::Agent`].
     pub agent_attachments: bool,
@@ -591,12 +596,23 @@ pub async fn init_stores(
         domains,
     );
     if plan.memory {
-        // The extracted memory subsystem reaches back into this crate through
-        // process-global seams. They must be installed BEFORE the first memory
-        // call: the embedding, chat, Composio and config seams fail loudly when
+        // The seams the in-process engine calls back through. They must be
+        // installed BEFORE the first memory call: they fail loudly when
         // unwired rather than degrading, because a quiet degrade would write
         // vectors into the wrong embedding space or make a sync run look empty
         // instead of broken.
+        //
+        // #5560 removed this on the reasoning that "this process embeds no
+        // engine, so there is nothing to call back". That is not true yet.
+        // `tinymemory-core` is still a normal dependency of this crate, and
+        // `session::builder::factory` still reaches
+        // `store::factories::create_session_memory_with_local_ai`, which calls
+        // `require_embedding_host()` on the chat hot path — so every chat turn
+        // failed with "no EmbeddingHost installed". The module installing its
+        // own seams does not help: a `cdylib` has its own statics, so what it
+        // sets is invisible here.
+        //
+        // These go when the last in-process engine caller goes, not before.
         crate::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(cfg.clone()));
         // Publish the config a module-backed memory driver should load
         // against, before the binding below can construct one. Boot-only and
@@ -605,13 +621,27 @@ pub async fn init_stores(
         // `MemoryBinding::for_workspace`.
         #[cfg(feature = "modules")]
         crate::openhuman::modules::memory::set_modules_policy(Arc::new(cfg.clone()));
-        match tinymemory_core::global::init(cfg.workspace_dir.clone()) {
-            Ok(_) => log::info!(
-                "[boot] memory::global initialized (workspace={})",
-                cfg.workspace_dir.display()
-            ),
-            Err(e) => log::warn!("[boot] memory::global init failed: {e}"),
-        }
+        // ── No second engine is booted here any more (#5560 phase F) ────────
+        //
+        // This block used to call `tinymemory_core::global::init(...)` directly
+        // above the bind below, so boot left **two** live `MemoryClient`s over
+        // one `<workspace>/memory/memory.db`: the loadable TinyMemory module
+        // reached over TinyBus, and a second in-process copy of the engine
+        // crate. `memory::binding`'s module docs and
+        // `CoreContext::memory_binding`'s both already argued that the
+        // workspace-keyed binding map supersedes that process-global slot —
+        // the slot needs a clear-on-failed-rebind guard, the map structurally
+        // cannot hand workspace B's caller workspace A's driver — and this is
+        // where that argument is executed.
+        //
+        // `memory::global` is a lazy singleton, so the callers that still hold
+        // an in-process handle (`memory::ops::helpers::active_memory_client`,
+        // `agent::experience::ops`, the session builder's shared-experience
+        // handle, `openhuman memory ingest`/`query`) construct it on first use
+        // exactly as before. What changes is that a boot which never reaches
+        // one no longer pays for it — and that the engine's own lifetime is now
+        // owned by the code that still needs it rather than by kernel boot.
+        //
         // Bind the memory driver for this workspace (kernel.md §3.1), on the
         // same `plan.memory` gate as the store above — the binding is part of
         // the memory domain's init, not a separate gate. Warmed here rather
@@ -637,7 +667,6 @@ pub async fn init_stores(
             Err(e) => log::warn!("[boot] memory driver bind failed: {e}"),
         }
     } else {
-        log::debug!("[boot] memory::global init SKIPPED — Memory domain disabled");
         log::debug!("[boot] memory driver bind SKIPPED — Memory domain disabled");
     }
     // Install the on-disk image-attachment sidecar dir so inbound
@@ -811,7 +840,7 @@ mod tests {
     fn store_init_plan_harness_gates_by_owning_group() {
         let plan = StoreInitPlan::for_domains(crate::core::runtime::DomainSet::harness());
         // harness() = agent + memory + threads + config + security.
-        assert!(plan.memory, "harness keeps memory::global (Memory)");
+        assert!(plan.memory, "harness keeps the memory binding (Memory)");
         assert!(
             plan.agent_attachments,
             "harness keeps agent attachments sidecar (Agent)"

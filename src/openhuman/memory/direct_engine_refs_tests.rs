@@ -131,18 +131,24 @@
 //!   behind the bus is the only shape that keeps a supermemory/mem0/cognee
 //!   driver implementable** — a contract with `with_connection` in it is a
 //!   SQLite contract wearing a trait.
-//! - **Host policy reached through the engine crate** (~14 files) —
-//!   `store::safety::{sanitize_text, sanitize_json, has_likely_secret}`,
-//!   `util::redact::redact`, `source_scope::*`. This looked like the cheapest
-//!   item on the list and mostly is not, which is worth stating so the next
-//!   person does not re-derive it: `store::safety` is a **shim over
-//!   `crate::engine::backend::store::safety`**, so those scrubbers live in
-//!   tinycortex and relocating them is engine work rather than a contract
-//!   move. `source_scope` is a `tokio::task_local`, so hosting it in
-//!   `tinymemory-api` means adding tokio to a crate whose whole point is that
-//!   a caller can depend on it and compile almost nothing. Only
-//!   `util::redact` (136 lines over `sha2`) is the clean case, and it costs
-//!   `sha2` in the contract crate.
+//! - **Host policy reached through the engine crate** — **drained.** The
+//!   scrubbers (`store::safety::{sanitize_text, sanitize_json,
+//!   has_likely_secret}`), `util::redact::redact`, `source_scope::*` and the
+//!   Obsidian vault-registration probe (`store::content::obsidian_registry`)
+//!   all live host-side now, in `memory::safety`, `util::redact`,
+//!   `memory::source_scope` and `memory::obsidian_registry`. The route each
+//!   took is the shape to reuse, and it is **not** "move it to
+//!   `tinymemory-api`": a scrubber costs `regex` + `serde_json`,
+//!   `util::redact` costs `sha2`, and the vault probe costs `dirs` +
+//!   `serde_json`, in a crate whose whole point is that a caller can depend on
+//!   it and compile almost nothing — and `source_scope` is a
+//!   `tokio::task_local`, which would put tokio there too. None of the four is
+//!   contract vocabulary — nothing crosses the bus as a `SanitizationReport`,
+//!   a log hash or a `VaultRegistration`, and "is my content root a registered
+//!   Obsidian vault" is not a capability a second driver would answer
+//!   differently — so each is simply the host's, with the engine keeping its
+//!   own copy for its own callers. Independent copies are the design: neither
+//!   side reads the other's output.
 //! - **The re-embed queue** (~8 files) — `queue::{start, store, types,
 //!   ensure_reembed_backfill, requeue_failed_after_provider_change,
 //!   drain_until_idle, wake_workers, backfill_in_progress}`. No family.
@@ -279,51 +285,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "engine-internal ingest pipeline entry (ingest_pipeline::ingest_chat, queue::drain_until_idle); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
     ),
     (
-        "src/core/memory_cli.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init, store::MemoryClientRef, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/core/runtime/context.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/core/runtime/services.rs",
-        Verdict::NeedsWiderSeam,
-        "the re-embed queue (queue::start) has no capability family",
-    ),
-    (
-        "src/lib.rs",
-        Verdict::HostSide,
-        "crate-root re-export of the engine's store module under its historical path",
-    ),
-    (
-        "src/openhuman/agent/experience/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init, global::client_if_ready, store::UnifiedMemory::new_with_memory_dir); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/experience/store.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/harness/archivist/hook_impl.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::fts5, tinycortex::memory_config_from); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/agent/harness/archivist/lifecycle.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::events, store::fts5::EpisodicEntry, store::profile, store::segments, chat::build_chat_provider); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/agent/harness/archivist/mod.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::profile); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
         "src/openhuman/agent/harness/archivist/recap.rs",
         Verdict::NeedsWiderSeam,
         "reaches engine storage below the contract (store::fts5, store::segments::ConversationSegment, store::chunks::types::approx_token_count); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
@@ -344,69 +305,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "the engine-side chat provider seam (chat::ChatProvider); MemoryIngest has no provider-override door",
     ),
     (
-        "src/openhuman/agent/harness/artifact_offload/policy.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
         "src/openhuman/agent/harness/session/builder/factory.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/harness/session/turn/context.rs",
-        Verdict::NeedsWiderSeam,
-        "preferences namespace and loaders are engine-owned (preferences::STANDING_PREFS_LIMIT, preferences::load_general_preferences); no capability family covers them",
-    ),
-    (
-        "src/openhuman/agent/harness/session/turn/core.rs",
-        Verdict::NeedsWiderSeam,
-        "preferences namespace and loaders are engine-owned (preferences::recall_situational_preferences); no capability family covers them",
-    ),
-    (
-        "src/openhuman/agent/harness/subagent_runner/ops/runner.rs",
-        Verdict::NeedsWiderSeam,
-        "names engine-owned types (store::trees::types::TreeKind); relocating them to tinymemory-api is the ask, not a bus method",
-    ),
-    (
-        "src/openhuman/agent/harness/tool_result_artifacts/mod.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
-        "src/openhuman/agent/learning/linkedin_enrichment.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::MemoryClient, store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/learning/startup.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client_if_ready, store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/tinyagents/host/agent_memory.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::factories::create_memory, store::safety::sanitize_text); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/tools/remember_preference.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/agent/tools/save_preference.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
-        "src/openhuman/channels/controllers/ops/connect.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/channels/runtime/startup.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/channels/tests/memory.rs",
@@ -419,34 +320,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/desktop/app_state/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/flows/memory_tools.rs",
         Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety::has_likely_secret); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/flows/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::MemoryClientRef); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::has_likely_secret); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
-        "src/openhuman/hosted/orchestration/effect_executor.rs",
-        Verdict::NeedsWiderSeam,
-        "engine-internal ingest pipeline entry (ingest_pipeline::ingest_document_with_scope); the ingest family covers documents and chat, not the scope-carrying pipeline variants",
-    ),
-    (
-        "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store, store::chunks::types::SourceKind, tinycortex::HostSyncAdapter); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
         "src/openhuman/integrations/composio/ops/mod.rs",
@@ -454,69 +330,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/integrations/composio/ops/providers_ops.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/integrations/composio/schemas.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client_if_ready); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/guard/policy.rs",
-        Verdict::NeedsWiderSeam,
-        "task-local host policy living in the engine crate (source_scope::current_source_scope, store::safety::sanitize_json/sanitize_text); belongs in tinymemory-api, not a bus method",
-    ),
-    (
-        "src/openhuman/memory/ops/documents.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init, store::NamespaceRetrievalContext); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/guard.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/helpers.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client, global::client_if_ready, global::init, store::GraphRelationRecord); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::client, store::NamespaceDocumentInput); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/ops/sync.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers: engine internals (tinycortex::run_composio_connection, sync_events), tinycortex-shaped so no engine-neutral family can express them; and the in-process engine handle (global::client), which belongs to memory::binding",
-    ),
-    (
-        "src/openhuman/memory/ops/test_support.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (global::init); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/memory/read_rpc/admin.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (queue::store, queue::types, queue::wake_workers, store::chunks::store); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/chunks.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/entities.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/read_rpc/graph.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "one call left: flush_source_tree wants a live source-tree handle (tree_source::get_or_create_source_tree) to feed the host's TreeFactory label strategy and force_flush_tree, and MemoryTree is namespace-addressed (append/query_source/drill_down/seal/cascade/summary_forest/recent_leaves) with no door onto a tree object. wipe_all, clear_composio_sync_state and delete_source have left for purge_all, kv_list+kv_delete and forget_matching(Source)",
     ),
     (
         "src/openhuman/memory/read_rpc/mod.rs",
@@ -524,84 +340,14 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "reaches engine storage below the contract (store::chunks::store::with_connection, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
     ),
     (
-        "src/openhuman/memory/read_rpc/vault.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::content::obsidian_registry, util::redact::redact); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/memory/sources/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::CodingSession* request/response/status types, tinycortex::SyncAuditEntry); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/sources/schemas.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::CodingSessionIngestRequest); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/store_golden.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers: engine storage below the contract (store::chunks), where MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door; and the in-process engine handle (global::client, store::UnifiedMemory::new)",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/bus.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (events::MemoryEvent/publish, observability::report_error_or_expected, tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/providers/slack/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::load_composio_sync_state, tinycortex::run_composio_connection); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
         "src/openhuman/memory/sync/sync_status/rpc.rs",
         Verdict::NeedsWiderSeam,
         "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
     ),
     (
-        "src/openhuman/memory/tools/flavour.rs",
-        Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::memory_config_from); tinycortex-shaped, so no engine-neutral family can express it",
-    ),
-    (
-        "src/openhuman/memory/tools/forget.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/tools/recall.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/tools/store.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory, store::safety); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
-        "src/openhuman/memory/tree/retrieval/rpc.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::upsert_chunks, upsert_staged_chunks_tx, with_connection); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
         "src/openhuman/memory/tree/tree/rpc.rs",
         Verdict::NeedsWiderSeam,
         "ingest_pipeline and the chunk store's list/read helpers have no capability family; the queue reads left for the Maintenance members in tinymemory#85/#86/#89",
-    ),
-    (
-        "src/openhuman/platform/doctor/core.rs",
-        Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, store::factories::effective_embedding_settings); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
-    ),
-    (
-        "src/openhuman/security/approval/store.rs",
-        Verdict::NeedsWiderSeam,
-        "host policy reached through the engine crate (store::safety::sanitize_text); `store::safety` is itself a shim over `crate::engine::backend::store::safety`, so the scrubbers live in tinycortex — relocating them is engine work, not a contract move",
-    ),
-    (
-        "src/openhuman/security/credentials/ops.rs",
-        Verdict::NeedsWiderSeam,
-        "two blockers: the re-embed queue (queue::ensure_reembed_backfill), which has no capability family; and the in-process engine handle (global::init), which belongs to memory::binding",
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
@@ -619,16 +365,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "re-export shim for the thread-id task-local",
     ),
     (
-        "src/openhuman/inference/embeddings/provider_trait.rs",
-        Verdict::HostSide,
-        "re-export shim for TinyAgentsEmbeddingProvider, which cannot live host-side",
-    ),
-    (
-        "src/openhuman/memory/conversations/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::conversations::*",
-    ),
-    (
         "src/openhuman/memory/diff/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::diff::*",
@@ -637,11 +373,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/mod.rs",
         Verdict::HostSide,
         "the re-export block itself — twenty-five engine modules under their historical paths",
-    ),
-    (
-        "src/openhuman/memory/people/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::people::*",
     ),
     (
         "src/openhuman/memory/sources/mod.rs",
@@ -662,21 +393,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/sync/composio/providers/slack/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::sync::composio::providers::slack::*",
-    ),
-    (
-        "src/openhuman/memory/sync/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::*",
-    ),
-    (
-        "src/openhuman/memory/sync/sync_status/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::sync_status::*",
-    ),
-    (
-        "src/openhuman/memory/tool_memory/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tool_memory::*",
     ),
     (
         "src/openhuman/memory/tree/health/mod.rs",
@@ -721,11 +437,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/sync/composio/providers/context_ext.rs",
         Verdict::NeedsWiderSeam,
         "extends the engine's ProviderContext; the sync pipeline is engine-internal and has no capability family",
-    ),
-    (
-        "src/openhuman/memory/tools/diff.rs",
-        Verdict::NeedsWiderSeam,
-        "sources::{get_source, list_sources}; MemorySourceSink is accept_source_items + forget_source, with no list door",
     ),
 ];
 

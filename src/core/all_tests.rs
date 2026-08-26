@@ -1832,6 +1832,13 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             // through `as_people()`. See
             // `docs/specs/2026-08-13-memory-module-port.md` stage 2.
             Capability::People => false,
+            // New in tinymemory v1.7.0, and false for the same reason as
+            // `People`: the sync and coding-session handlers still call the
+            // engine in-process rather than through `as_source_sync()` /
+            // `as_sessions()`, so gating their controllers on these families
+            // would unregister RPC methods that work today. Both flip in the
+            // change that routes those handlers through the driver.
+            Capability::SourceSync | Capability::CodingSessions => false,
             // Same as `People`: the chunk-tier and retrieval primitives back
             // agent tools that still call the engine in-process, so nothing is
             // gated on these families yet. Both flip to reflect reality in the

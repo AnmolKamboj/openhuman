@@ -232,6 +232,44 @@ impl Agent {
             has_profile = profile.is_some(),
             "[profiles] session memory subtree selected"
         );
+        // ── The engine reference this file has left (#5560) ──────────────────
+        //
+        // `direct_engine_refs_tests::ALLOWED` still explains this entry as
+        // "boots the in-process engine handle (`global::init`)". That is stale:
+        // `global::init` is gone from here, and what remains is this one
+        // factory call — the *only* caller of
+        // `create_session_memory_with_local_ai` anywhere in the tree. The
+        // bypass allowlist's `.memory_handle(` entry for this file is stale for
+        // the same reason; the only `memory_handle` left below is in prose.
+        //
+        // A door onto the contract does exist —
+        // `experience::ops::DriverMemory::for_subtree(config, &memory_subdir)`
+        // hands back an `Arc<dyn Memory>` over exactly the binding
+        // `archivist_provider` resolves two statements down, so the swap is
+        // one line and would collapse two stores over one subtree into one.
+        // It is deliberately NOT taken here yet, for two reasons that need
+        // measuring rather than reasoning about:
+        //
+        // 1. **Embedder resolution differs.** This factory resolves the
+        //    embedding provider from `local_embedding` + `embedding_api_key` +
+        //    `embedding_routes` and applies an Ollama reachability health-gate
+        //    before falling back. The bound driver resolves its own embedder
+        //    from the boot policy config instead. Those two ladders are
+        //    *believed* to agree; nothing here proves it, and disagreeing means
+        //    vectors filed under the wrong provider signature — silent, not
+        //    loud, exactly as `memory::tools::flavour` warns about the same
+        //    class of mistake.
+        // 2. **The test build binds a different workspace.** Under
+        //    `cfg(test)`, `binding::module_provider` pins every binding to the
+        //    shared `memory::ops` test workspace and to a module that a unit
+        //    test cannot `dlopen`, so a migrated session would get a driver
+        //    that answers nothing where it gets a working store today. The
+        //    archivist tolerates that (it degrades); a session's `Arc<dyn
+        //    Memory>` is on the recall path and does not.
+        //
+        // So this is not "no contract door exists" — it is one behavioural
+        // equivalence and one test-fixture problem, both of which need the
+        // harness suite run against the change to settle.
         let session_memory = memory_store::factories::create_session_memory_with_local_ai(
             &config.memory,
             local_embedding.as_deref(),
@@ -241,19 +279,38 @@ impl Agent {
             &config.workspace_dir,
             &memory_subdir,
         )?;
-        let archivist_connection = session_memory.sqlite_connection;
+        // The archivist takes the bound driver for this session's memory
+        // subtree — the same subtree `session_memory` opened — rather than the
+        // raw SQLite handle the factory used to strip off the engine result.
+        // That handle was the #5378 `:290` blocker: a concrete connection no
+        // module or remote driver can supply. The engine's connection is now
+        // exclusively the engine's.
+        let archivist_provider = crate::openhuman::memory::binding::for_subtree(
+            &config.workspace_dir,
+            &memory_subdir,
+            &config.subsystems.memory,
+        )
+        .map(|binding| binding.provider().clone())
+        .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
         let memory: Arc<dyn Memory> = Arc::from(session_memory.memory);
         // Dedicated profiles still recall unstamped experiences written by
-        // pre-profile versions from the shared memory DB. Retain the global
-        // shared handle explicitly on the session rather than making the hot
-        // turn path reload config or reach into process-global state.
+        // pre-profile versions from the shared memory DB. Resolve that shared
+        // store once, here, and hand it to the session rather than making the
+        // hot turn path reload config.
+        //
+        // This was `global::init(workspace).memory_handle()` — booting the
+        // second, in-process engine purely to borrow its `Arc<dyn Memory>`
+        // (#5560). `DriverMemory` serves the same trait off the driver already
+        // bound for this workspace's shared `memory` subtree, so the recall
+        // reads the same rows without a second engine over the same file. Only
+        // recall goes here; writes stay on the session's own store, which is
+        // what keeps new records inside the profile subtree.
         let shared_experience_memory = if memory_subdir == "memory" {
             None
         } else {
             Some(
-                tinymemory_core::global::init(config.workspace_dir.clone())
-                    .map_err(anyhow::Error::msg)?
-                    .memory_handle(),
+                crate::openhuman::agent::experience::ops::DriverMemory::for_config(config)
+                    .map_err(anyhow::Error::msg)?,
             )
         };
 
@@ -717,7 +774,7 @@ impl Agent {
         > = if config.learning.episodic_capture_enabled {
             let hook = Arc::new(
                 crate::openhuman::agent::harness::archivist::ArchivistHook::new(
-                    archivist_connection,
+                    archivist_provider,
                     true,
                 )
                 .with_config(config.clone()),

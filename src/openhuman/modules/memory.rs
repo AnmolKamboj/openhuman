@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.10.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -64,15 +64,12 @@ const ARTIFACT_CAPABILITIES_PIN: &str = "1.3.0";
 /// lacked arrived: `People`, `Chunks`, `Retrieval` and `Profile` all have bus
 /// members there, so the under-claim that made them unreachable is over.
 ///
-/// **`Episodic` is deliberately still absent, and that is a HOST gap, not an
-/// artifact gap.** The pinned module does declare the episodic methods
-/// (`InsertTurn`, `SessionTurns`, `OpenSegment`, …), but
-/// [`ModuleMemoryProvider`] does not implement `as_episodic`, so it inherits the
-/// trait default and returns `None`. Advertising a family this host cannot
-/// reach is the same over-claim in a different coat: callers would be told the
-/// capability exists and then get "family unsupported" from the accessor.
-/// Add `Episodic` here in the same change that implements `as_episodic`, not
-/// before.
+/// **`Episodic` is here in the same change that implements `as_episodic`**, as
+/// the previous version of this comment required. The pinned module declares
+/// the episodic methods (`InsertTurn`, `SessionTurns`, `OpenSegment`, …) and
+/// [`ModuleMemoryProvider`] now forwards all of them, so the advertisement is
+/// honest in both directions — the archivist writes its turns and segments
+/// through this family.
 ///
 /// **Widen this only together with the `version` bump in
 /// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
@@ -98,6 +95,12 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Chunks,
     Capability::Retrieval,
     Capability::Profile,
+    Capability::Episodic,
+    // Arrived in v1.7.0 — the sync-execution and coding-session families that
+    // let the host stop reaching into the engine for them. Verified against the
+    // module's declared `methods` list at that tag, which serves all ten.
+    Capability::SourceSync,
+    Capability::CodingSessions,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -149,22 +152,32 @@ use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::sessions::{
+    CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
+};
+use tinymemory_api::provider::sync::{
+    RawArchiveCoverage, RawRebuildOutcome, SourceSyncState, SourceSyncStatus, SyncAuditEntry,
+    SyncRunOutcome,
+};
 use tinymemory_api::provider::types::{
-    DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
-    MaintenanceReport, QueueFailure, QueueStats, SnapshotRef, SourceItem, SourceScope, StoreStats,
+    ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ExportPage, ExportRecord,
+    FlushOutcome, ForgetOutcome, ForgetSelector, ImportOutcome, IngestItem, IngestOutcome,
+    MaintenanceReport, PurgeOutcome, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
+    SourceItem, SourceScope, StoreStats,
 };
 use tinymemory_api::provider::{
-    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
-    MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
-    MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
-    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
-    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
-    SourceRetrievalQuery, UserState,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery,
+    ConversationSegment, CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType,
+    FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore, MemoryDiff, MemoryDocuments,
+    MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance,
+    MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
+    MemorySourceSink, MemorySourceSync, MemoryToolMemory, MemoryTree, PersonHandle,
+    PersonInteraction, PersonRecord, PersonScore, ProfileFacet, RankedPerson, ResolvedPerson,
+    RetrievalHit, RetrievalResponse, SourceRetrievalQuery, SourceTotal, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::tool_memory::ToolMemoryRule;
-use tinymemory_api::tree::{IngestRequest, QueryResult, TreeStatus};
+use tinymemory_api::tree::{IngestRequest, QueryResult, SummaryForest, TreeLeaf, TreeStatus};
 use tinymemory_api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
     NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
@@ -523,6 +536,17 @@ impl MemoryProvider for ModuleMemoryProvider {
     fn as_profile(&self) -> Option<&dyn MemoryProfile> {
         artifact_serves(Capability::Profile).then_some(self as &dyn MemoryProfile)
     }
+
+    fn as_source_sync(&self) -> Option<&dyn MemorySourceSync> {
+        artifact_serves(Capability::SourceSync).then_some(self as &dyn MemorySourceSync)
+    }
+
+    fn as_coding_sessions(&self) -> Option<&dyn MemoryCodingSessions> {
+        artifact_serves(Capability::CodingSessions).then_some(self as &dyn MemoryCodingSessions)
+    }
+    fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        artifact_serves(Capability::Episodic).then_some(self as &dyn MemoryEpisodic)
+    }
 }
 
 #[async_trait]
@@ -665,6 +689,9 @@ impl MemoryIngest for ModuleMemoryProvider {
     async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
         module_call!(self, "ingest_chat", "IngestChat", (messages,))
     }
+    async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
+        module_call!(self, "ingest_email", "IngestEmail", (messages,))
+    }
 }
 
 #[async_trait]
@@ -763,6 +790,20 @@ impl MemoryTree for ModuleMemoryProvider {
     async fn cascade(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
         module_call!(self, "cascade", "Cascade", (namespace,))
     }
+    async fn summary_forest(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<SummaryForest, MemoryError> {
+        module_call!(self, "summary_forest", "SummaryForest", (limit, scope))
+    }
+    async fn recent_leaves(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<TreeLeaf>, MemoryError> {
+        module_call!(self, "recent_leaves", "RecentLeaves", (limit, scope))
+    }
 }
 
 #[async_trait]
@@ -803,6 +844,32 @@ impl MemoryEntities for ModuleMemoryProvider {
             "touch_entities",
             "TouchEntities",
             (namespace, entity_ids.to_vec())
+        )
+    }
+    async fn top_entities(
+        &self,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EntityOccurrence>, MemoryError> {
+        module_call!(self, "top_entities", "TopEntities", (kind, limit))
+    }
+    async fn chunk_entities(
+        &self,
+        chunk_ids: &[String],
+        kinds: Option<&[String]>,
+    ) -> Result<Vec<ChunkEntityOccurrence>, MemoryError> {
+        module_call!(self, "chunk_entities", "ChunkEntities", (chunk_ids, kinds))
+    }
+    async fn entity_chunk_ids(
+        &self,
+        entity_id: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, MemoryError> {
+        module_call!(
+            self,
+            "entity_chunk_ids",
+            "EntityChunkIds",
+            (entity_id, limit)
         )
     }
 }
@@ -957,6 +1024,12 @@ impl MemorySourceSink for ModuleMemoryProvider {
     async fn forget_source(&self, source_id: &str) -> Result<u64, MemoryError> {
         module_call!(self, "forget_source", "ForgetSource", (source_id,))
     }
+    async fn forget_matching(
+        &self,
+        selector: &ForgetSelector,
+    ) -> Result<ForgetOutcome, MemoryError> {
+        module_call!(self, "forget_matching", "ForgetMatching", (selector,))
+    }
 }
 
 #[async_trait]
@@ -987,6 +1060,199 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
     async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
         module_call!(self, "backfill_in_progress", "BackfillInProgress", ())
+    }
+    async fn flush_pending(&self) -> Result<FlushOutcome, MemoryError> {
+        module_call!(self, "flush_pending", "FlushPending", ())
+    }
+    async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
+        module_call!(self, "reset_derived_index", "ResetDerivedIndex", ())
+    }
+    async fn purge_all(&self) -> Result<PurgeOutcome, MemoryError> {
+        module_call!(self, "purge_all", "PurgeAll", ())
+    }
+}
+
+#[async_trait]
+impl MemorySourceSync for ModuleMemoryProvider {
+    async fn run_connection_sync(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<SyncRunOutcome, MemoryError> {
+        module_call!(
+            self,
+            "run_connection_sync",
+            "RunConnectionSync",
+            (toolkit, connection_id)
+        )
+    }
+    async fn source_sync_state(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<Option<SourceSyncState>, MemoryError> {
+        module_call!(
+            self,
+            "source_sync_state",
+            "SourceSyncState",
+            (toolkit, connection_id)
+        )
+    }
+    async fn sync_audit_log(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<SyncAuditEntry>, MemoryError> {
+        module_call!(self, "sync_audit_log", "SyncAuditLog", (limit,))
+    }
+    async fn estimate_sync_cost_usd(
+        &self,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> Result<f64, MemoryError> {
+        module_call!(
+            self,
+            "estimate_sync_cost_usd",
+            "EstimateSyncCostUsd",
+            (input_tokens, output_tokens)
+        )
+    }
+    async fn sync_statuses(&self) -> Result<Vec<SourceSyncStatus>, MemoryError> {
+        module_call!(self, "sync_statuses", "SyncStatuses", ())
+    }
+    async fn raw_archive_coverage(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawArchiveCoverage, MemoryError> {
+        module_call!(
+            self,
+            "raw_archive_coverage",
+            "RawArchiveCoverage",
+            (tree_scope, archive_source_id)
+        )
+    }
+    async fn rebuild_from_raw_archive(
+        &self,
+        tree_scope: &str,
+        archive_source_id: &str,
+    ) -> Result<RawRebuildOutcome, MemoryError> {
+        module_call!(
+            self,
+            "rebuild_from_raw_archive",
+            "RebuildFromRawArchive",
+            (tree_scope, archive_source_id)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryCodingSessions for ModuleMemoryProvider {
+    async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
+        module_call!(self, "coding_session_status", "CodingSessionStatus", ())
+    }
+    async fn ingest_coding_sessions(
+        &self,
+        request: CodingSessionIngestRequest,
+    ) -> Result<CodingSessionIngestReport, MemoryError> {
+        module_call!(
+            self,
+            "ingest_coding_sessions",
+            "IngestCodingSessions",
+            (request,)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryEpisodic for ModuleMemoryProvider {
+    async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
+        module_call!(self, "insert_turn", "InsertTurn", (turn,))
+    }
+    async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
+        module_call!(self, "session_turns", "SessionTurns", (session_id,))
+    }
+    async fn open_segment(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ConversationSegment>, MemoryError> {
+        module_call!(self, "open_segment", "OpenSegment", (session_id,))
+    }
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "trait signature; see the contract's rationale"
+    )]
+    async fn create_segment(
+        &self,
+        segment_id: &str,
+        session_id: &str,
+        namespace: &str,
+        start_episodic_id: i64,
+        start_seq: Option<u32>,
+        start_timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "create_segment",
+            "CreateSegment",
+            (
+                segment_id,
+                session_id,
+                namespace,
+                start_episodic_id,
+                start_seq,
+                start_timestamp,
+                now
+            )
+        )
+    }
+    async fn append_turn(
+        &self,
+        segment_id: &str,
+        episodic_id: i64,
+        seq: Option<u32>,
+        timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "append_turn",
+            "AppendTurn",
+            (segment_id, episodic_id, seq, timestamp, now)
+        )
+    }
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        module_call!(self, "insert_event", "InsertEvent", (event,))
+    }
+    async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {
+        module_call!(self, "close_segment", "CloseSegment", (segment_id, now))
+    }
+    async fn set_segment_summary(
+        &self,
+        segment_id: &str,
+        summary: &str,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "set_segment_summary",
+            "SetSegmentSummary",
+            (segment_id, summary, now)
+        )
+    }
+    async fn upsert_segment_embedding(
+        &self,
+        segment_id: &str,
+        model_signature: &str,
+        embedding: &[f32],
+        created_at: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "upsert_segment_embedding",
+            "UpsertSegmentEmbedding",
+            (segment_id, model_signature, embedding, created_at)
+        )
     }
 }
 
@@ -1072,6 +1338,32 @@ impl MemoryChunks for ModuleMemoryProvider {
             (chunk_ids, model_signature)
         )
     }
+    async fn count_chunks(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<u64, MemoryError> {
+        module_call!(self, "count_chunks", "CountChunks", (query, scope))
+    }
+    async fn list_chunk_details(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<ChunkListRow>, MemoryError> {
+        module_call!(
+            self,
+            "list_chunk_details",
+            "ListChunkDetails",
+            (query, scope)
+        )
+    }
+    async fn source_totals(
+        &self,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<SourceTotal>, MemoryError> {
+        module_call!(self, "source_totals", "SourceTotals", (limit, scope))
+    }
 }
 
 #[async_trait]
@@ -1128,6 +1420,18 @@ impl MemoryRetrieval for ModuleMemoryProvider {
             "retrieve_leaves",
             "RetrieveLeaves",
             (chunk_ids, scope)
+        )
+    }
+    async fn recall_namespace_recent(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        module_call!(
+            self,
+            "recall_namespace_recent",
+            "RecallNamespaceRecent",
+            (namespace, limit)
         )
     }
     async fn recall_namespace_scored(
