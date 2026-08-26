@@ -85,6 +85,12 @@ pub fn start_message_drain_supervisor() {
             // false we must NOT publish Signal keys (that mutates remote directory
             // state and makes the user discoverable) nor drain the mailbox.
             if !config.orchestration.enabled {
+                // Clear the streak while opted out. Cycles spent disabled are
+                // not failed publication attempts, so carrying the count across
+                // an opt-out would let a single failure after re-enabling trip
+                // the threshold immediately — the escalation must mean "four
+                // consecutive *attempts* failed", not "four cycles elapsed".
+                not_discoverable_cycles = 0;
                 tokio::time::sleep(std::time::Duration::from_secs(CYCLE_SLEEP_SECS as u64)).await;
                 continue;
             }

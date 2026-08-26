@@ -30,6 +30,7 @@ use crate::openhuman::tinyplace::ops::{global_state, map_err};
 use crate::openhuman::tinyplace::payment::{
     ensure_backend_mint_matches, ensure_cluster_matches, fulfill_payment, PaymentContext,
 };
+use crate::openhuman::util::redact::redact;
 
 const LOG_PREFIX: &str = "[tinyplace]";
 
@@ -3212,6 +3213,28 @@ pub(super) fn is_not_published_yet(e: &tinyplace::Error) -> bool {
     e.status() == Some(404)
 }
 
+/// Whether a relay 404 is the **benign first-run** state rather than an
+/// actionable inconsistency.
+///
+/// A 404 alone is not enough to tell the two apart, which is what the first
+/// revision of this fix got wrong (#5809 review). `signal_provision` writes the
+/// local store *before* its network calls, so:
+///
+/// - **nothing provisioned locally** → nothing was ever uploaded; the 404 is
+///   the ordinary first-run answer and belongs at `debug`;
+/// - **local keys present** → the upload never landed, or the backend lost the
+///   record. The agent believes itself ready while peers 404 on its bundle, and
+///   `ensure_signal_keys_published` derives readiness from the local store, so
+///   it stops probing and nothing else will report it. That must stay a `warn`.
+///
+/// This is the narrower of the two remedies the review offered — demote only
+/// when the remaining state confirms a genuinely unpublished identity — rather
+/// than folding remote health into the readiness decision, which would change
+/// `ensure_signal_keys_published`'s retry semantics.
+pub(super) fn is_first_run_gap(e: &tinyplace::Error, has_local_keys: bool) -> bool {
+    is_not_published_yet(e) && !has_local_keys
+}
+
 /// Local + remote key status for the current user. Remote health degrades
 /// gracefully if the backend is unreachable.
 pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) -> ControllerFuture {
@@ -3230,6 +3253,21 @@ pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) ->
             .len();
         let has_active_spk = store.active_signed_pre_key().await.is_ok();
 
+        // Has this identity ever been through provisioning locally?
+        //
+        // This is what separates the two states a relay 404 can mean, and the
+        // reason the demotion below is narrower than "any 404" (#5809 review):
+        //
+        // - **Nothing provisioned locally** → nothing was ever uploaded, so a
+        //   404 is the ordinary first-run answer. Quiet.
+        // - **Local keys exist** → `signal_provision` writes the local store
+        //   *before* its network calls, so local-without-remote means the
+        //   upload never landed, or the backend lost the record. The agent
+        //   looks ready to itself while peers 404 on its bundle, and
+        //   `ensure_signal_keys_published` will stop probing. That is an
+        //   actionable inconsistency and has to stay a warning.
+        let has_local_keys = has_active_spk || local_pre_key_count > 0;
+
         // Best-effort remote health — degrade gracefully.
         let remote = match client.keys.health(&agent_id).await {
             Ok(h) => {
@@ -3240,12 +3278,27 @@ pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) ->
                 );
                 Some(h)
             }
-            Err(e) if is_not_published_yet(&e) => {
-                // Expected on a fresh identity: no keys published yet, so the
-                // relay has no health record to return. `remote: null` is the
-                // correct answer and the supervisor's next cycle publishes.
+            Err(e) if is_first_run_gap(&e, has_local_keys) => {
+                // Expected on a fresh identity: nothing provisioned locally, so
+                // nothing was ever uploaded and the relay has no health record.
+                // `remote: null` is the correct answer and the supervisor's next
+                // cycle publishes.
                 log::debug!(
-                    "{LOG_PREFIX} signal_key_status: no remote keys yet for {agent_id} (not published)"
+                    "{LOG_PREFIX} signal_key_status: no keys provisioned yet for agent {} (first run)",
+                    redact(&agent_id)
+                );
+                None
+            }
+            Err(e) if is_not_published_yet(&e) => {
+                // Local keys exist but the relay has no health record for them:
+                // provisioning wrote the local store and the upload did not
+                // land. Peers will 404 on this agent's bundle while it believes
+                // itself ready, so this stays a warning.
+                log::warn!(
+                    "{LOG_PREFIX} signal_key_status: {local_pre_key_count} local pre-key(s) but the \
+                     relay has no key record for agent {} — provisioning did not reach the relay; \
+                     peers cannot fetch this agent's bundle",
+                    redact(&agent_id)
                 );
                 None
             }
@@ -3292,12 +3345,25 @@ pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) ->
                 log::debug!("{LOG_PREFIX} signal_key_status encryption_key_published={matches}");
                 matches
             }
-            Ok(Err(e)) if is_not_published_yet(&e) => {
-                // Expected on a fresh identity: no directory card exists yet.
+            Ok(Err(e)) if is_first_run_gap(&e, has_local_keys) => {
+                // Expected on a fresh identity: nothing provisioned locally, so
+                // registration has not run and no card exists yet.
                 // `signal_register_encryption_key` builds one on this same 404,
                 // so this is the state the next step repairs, not a failure.
                 log::debug!(
-                    "{LOG_PREFIX} signal_key_status: no directory card yet for {agent_id} (not published)"
+                    "{LOG_PREFIX} signal_key_status: no directory card yet for agent {} (first run)",
+                    redact(&agent_id)
+                );
+                false
+            }
+            Ok(Err(e)) if is_not_published_yet(&e) => {
+                // Provisioning has run locally but the card is absent —
+                // registration failed after the keys were written, or the
+                // backend lost the card. Not a first-run state.
+                log::warn!(
+                    "{LOG_PREFIX} signal_key_status: keys provisioned locally but no directory card \
+                     for agent {} — registration did not complete; this agent is not discoverable",
+                    redact(&agent_id)
                 );
                 false
             }

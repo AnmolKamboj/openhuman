@@ -613,7 +613,7 @@ mod publish_directory_card_tests {
 
 #[cfg(test)]
 mod signal_key_status_probe_classification_tests {
-    use crate::openhuman::tinyplace::manifest::is_not_published_yet;
+    use crate::openhuman::tinyplace::manifest::{is_first_run_gap, is_not_published_yet};
     use tinyplace::error::HttpError;
 
     fn http_err(status: u16, message: &str) -> tinyplace::Error {
@@ -656,6 +656,43 @@ mod signal_key_status_probe_classification_tests {
                 !is_not_published_yet(&http_err(status, "HTTP error: /keys/x/health")),
                 "HTTP {status} is not a not-yet-published state and must stay warn-worthy"
             );
+        }
+    }
+
+    /// #5809 review (Codex P2) — a 404 is only benign when **nothing** has been
+    /// provisioned locally.
+    ///
+    /// `signal_provision` writes the local store before its network calls, so
+    /// local-keys-without-remote means the upload never landed or the backend
+    /// lost the record. In that state the agent believes itself ready while
+    /// peers 404 on its bundle, and `ensure_signal_keys_published` derives
+    /// readiness from the local store alone — so it stops probing and nothing
+    /// else reports it. Demoting that to `debug` would silence the only signal.
+    #[test]
+    fn a_404_with_local_keys_present_is_not_first_run_and_must_still_warn() {
+        let not_found = http_err(404, "HTTP 404: /keys/<id>/health");
+        assert!(
+            !is_first_run_gap(&not_found, true),
+            "local keys present means provisioning ran: a 404 is an inconsistency, not first run"
+        );
+        assert!(
+            is_first_run_gap(&not_found, false),
+            "nothing provisioned locally: a 404 is the ordinary first-run state"
+        );
+    }
+
+    /// The local-key signal must not rescue a non-404. A 500 is warn-worthy
+    /// whatever the local store holds — otherwise a fresh install would silence
+    /// a broken relay.
+    #[test]
+    fn local_key_state_never_makes_a_non_404_look_like_first_run() {
+        for status in [400u16, 401, 403, 429, 500, 503] {
+            for has_local_keys in [false, true] {
+                assert!(
+                    !is_first_run_gap(&http_err(status, "relay error"), has_local_keys),
+                    "HTTP {status} is never a first-run gap (has_local_keys={has_local_keys})"
+                );
+            }
         }
     }
 
