@@ -141,7 +141,37 @@ pub async fn migrate_openclaw_memory(
 /// **unguarded** driver — the binding keeps the guarded one separately behind
 /// `binding.guard()`. So an import writes full bodies here exactly as the
 /// engine constructor did, and no policy has to be special-cased to allow it.
+///
+/// # A null driver is refused, not imported into
+///
+/// `binding` answers the null driver in two situations: `[subsystems.memory]
+/// driver = "null"` is configured, and a configured driver failed to bind and
+/// fell back. In both, every write below is discarded. An import that reports
+/// "migrated N entries" having written none is silent data loss of the worst
+/// kind — the source workspace may be deleted on the strength of that report,
+/// and the user only discovers it later, with nothing left to re-run against.
+/// So this refuses up front and names which of the two it was.
 fn target_memory_backend(config: &Config) -> Result<Arc<dyn Memory>> {
+    let binding = crate::openhuman::memory::binding::for_config(config)
+        .map_err(|e| anyhow::anyhow!("bind memory for migration import: {e}"))?;
+    if binding.class() == crate::core::subsystem::DriverClass::Null {
+        let because = binding.fallback().map_or_else(
+            || {
+                "memory is disabled by configuration ([subsystems.memory] driver = \"null\")"
+                    .to_string()
+            },
+            |fallback| {
+                format!(
+                    "driver '{}' refused to bind: {}",
+                    fallback.configured_driver, fallback.reason
+                )
+            },
+        );
+        anyhow::bail!(
+            "refusing to import OpenClaw memory into the null driver — {because}. \
+             Nothing was imported; the source workspace is untouched."
+        );
+    }
     crate::openhuman::agent::experience::ops::DriverMemory::for_config(config)
         .map_err(|e| anyhow::anyhow!("bind memory for migration import: {e}"))
 }

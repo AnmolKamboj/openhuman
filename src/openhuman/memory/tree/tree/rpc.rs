@@ -1839,13 +1839,18 @@ mod tests {
     /// Regression #3568 / CORE-2K: email payloads with RFC-3339 timestamps must
     /// be accepted.
     ///
-    /// No driver is bound: the mail arm is the one still on the in-process
-    /// pipeline, for the two reasons on [`ingest_rpc`]. When it moves, this
-    /// test needs `install_tinycortex_for_test` like its siblings — and the
-    /// header lines it does not assert are what has to be checked first.
+    /// A driver is bound, like every sibling here. The note this replaces said
+    /// the mail arm was "still on the in-process pipeline" and that the test
+    /// would need `install_tinycortex_for_test` "when it moves" — it has moved:
+    /// the `Email` arm now goes through `ingest_through_driver`, which resolves
+    /// `provider().as_ingest()` and refuses a driver that does not serve it.
+    /// Without the binding the test only passed because CI happens to set
+    /// `TINYMEMORY_TEST_MODULE` to a module that serves `Ingest`, so it would
+    /// fail on a machine that does not.
     #[tokio::test]
     async fn ingest_email_accepts_rfc3339_timestamps() {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let outcome = ingest_rpc(
             &cfg,
             IngestRequest {

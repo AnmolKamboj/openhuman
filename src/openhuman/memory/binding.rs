@@ -76,6 +76,9 @@ pub struct MemoryBinding {
     provider: Arc<dyn MemoryProvider>,
     guard: Arc<MemoryGuard>,
     driver_id: String,
+    /// The memory subtree this binding serves — `"memory"` for the shared tree,
+    /// `"memory-<id>"` for a profile that opted into dedicated memory.
+    memory_subdir: String,
     class: DriverClass,
     /// Asked **once**, at bind time, and cached here. The contract's
     /// `MemoryProvider::capabilities` doc is normative on this ("asked once at
@@ -107,6 +110,22 @@ impl MemoryBinding {
     /// not the id that was asked for (that is in [`Self::fallback`]).
     pub fn driver_id(&self) -> &str {
         &self.driver_id
+    }
+
+    /// The memory subtree this binding resolved to.
+    ///
+    /// `"memory"` is the shared tree; `"memory-<id>"` is a profile that opted
+    /// into dedicated memory, and keeping the two apart is what makes
+    /// `dedicatedMemory` isolation hold.
+    ///
+    /// Worth an accessor because the routing decision is made **here**, at bind
+    /// time, but only reaches disk lazily: a module-backed driver opens the
+    /// subtree on its first call (`OpenStore`), so nothing observes the choice
+    /// until memory is actually used. Callers that need to report or assert
+    /// which tree they were bound to — status output, and the session-builder
+    /// tests — have no other way to see it.
+    pub fn memory_subdir(&self) -> &str {
+        &self.memory_subdir
     }
 
     /// How the bound driver was reached. A host fact, never self-reported.
@@ -286,7 +305,13 @@ fn build(workspace_dir: &Path, memory_subdir: &str, cfg: &MemorySubsystemConfig)
                 } else {
                     module_provider(workspace_dir, memory_subdir)
                 };
-            let binding = bind_provider(provider, driver_id, reported_class, None);
+            let binding = bind_provider(
+                provider,
+                driver_id,
+                memory_subdir.to_string(),
+                reported_class,
+                None,
+            );
             log::info!(
                 "[memory:binding] workspace={} bound driver='{}' class={} capabilities=[{}]",
                 workspace_dir.display(),
@@ -321,6 +346,7 @@ fn build(workspace_dir: &Path, memory_subdir: &str, cfg: &MemorySubsystemConfig)
             bind_provider(
                 Arc::new(NullMemoryProvider::new()),
                 NULL_DRIVER_ID.to_string(),
+                memory_subdir.to_string(),
                 DriverClass::Null,
                 Some(fallback),
             )
@@ -395,6 +421,7 @@ fn module_provider(
 fn bind_provider(
     provider: Arc<dyn MemoryProvider>,
     driver_id: String,
+    memory_subdir: String,
     class: DriverClass,
     fallback: Option<FallbackReason>,
 ) -> MemoryBinding {
@@ -412,6 +439,7 @@ fn bind_provider(
         provider,
         guard,
         driver_id,
+        memory_subdir,
         class,
         capabilities,
         fallback,
@@ -428,7 +456,7 @@ pub(crate) fn bind_provider_for_test(
     class: DriverClass,
 ) -> MemoryBinding {
     let driver_id = provider.driver_id().to_string();
-    bind_provider(provider, driver_id, class, None)
+    bind_provider(provider, driver_id, "memory".to_string(), class, None)
 }
 
 /// Per-workspace binding cache. Same shape as

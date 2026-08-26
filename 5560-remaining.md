@@ -21,6 +21,18 @@ Two acceptance criteria:
 Criterion 1 is nearly done. **Criterion 2 is not reachable yet**, and section 4
 explains exactly what blocks it. That is the headline finding of this work.
 
+**Which count decides criterion 1.** The literal `grep` above and the 37
+references section 4 reports are not the same number, and only one of them is
+the gate. The `grep` is a raw hit count: it includes doc comments that merely
+name the crate, `#[cfg(test)]` and dev-only references, and the retained
+`pub use tinymemory_core::…` re-export shims that exist precisely so call sites
+elsewhere do not name the engine. **Criterion 1 is met when no *production*
+call site outside `modules/memory.rs` and `memory/binding.rs` reaches the engine
+directly** — shims and test-only references do not count against it, because
+neither is a caller. Section 4's table is the authoritative classification;
+`memory/direct_engine_refs_tests.rs` is the ratchet that keeps the production
+number honest. Read the table, not the raw `grep`.
+
 ---
 
 ## 2. State of play
@@ -29,12 +41,19 @@ explains exactly what blocks it. That is the headline finding of this work.
 
 | What | Where | State |
 | --- | --- | --- |
-| Host work, phase 1 | openhuman PR **#5725**, branch `feat/5560-queue-and-recall-through-the-contract` | open |
-| Host work, phase 2 | branch `feat/5560-close-the-last-six` (stacked on #5725) | **draft PR — this work** |
+| Host work, phase 1 | openhuman PR **#5725**, branch `feat/5560-queue-and-recall-through-the-contract` | **merged** |
+| Host work, phase 2 | branch `feat/5560-close-the-last-six` (was stacked on #5725) | **this work** |
 | `BootstrapConnection` | tinymemory **#105** | merged, released **v1.11.0** |
 | `IsToolkitSyncable` | tinymemory **#106** | merged, released **v1.12.0** |
 
-The host is pinned to **tinymemory v1.12.0** across all five pin sites.
+The host is pinned to **tinymemory v1.12.0** across **six** concrete locations,
+in five logical groups: the `vendor/tinymemory` gitlink, `modules/registry.rs`
+(release tag + per-platform digests), `modules/memory.rs` (the assumed
+capability set), and the three CI workflow files that install the module for
+tests (`ci-lite.yml`, `ci-full.yml`, `e2e-reusable.yml`) — which are one group
+but three files. Bump all six; missing a workflow leaves CI installing a
+different module than the host pins, and that mismatch only shows up as a
+runtime `Unsupported`.
 
 ### What phase 2 did
 
@@ -84,7 +103,15 @@ nothing; check.
   dependencies. Measured: the product build compiles **clean** without both, no
   `ctor`/`inventory`/`linkme` registration exists in either, nothing in the
   product build names them, and `binding::admit` refuses `DriverClass::Embedded`
-  outright. Either that entry gets rewritten or the deps stay — leaving two
+  outright. **That evidence is not sufficient on its own, and the entry stays
+  until a process-level smoke test says otherwise.** `admit` maps both the
+  default `tinymemory` driver and the legacy `tinycortex` alias to
+  `DriverClass::Module`, and the provider then loads the module through
+  `ops::ensure_loaded` — a `dlopen` at runtime. A clean compile and a host-side
+  source scan cannot observe that path, so they cannot prove removing the deps
+  leaves module admission working. Run a build with them dropped and drive one
+  real module-backed memory call before rewriting the entry. Either it gets
+  rewritten on that evidence or the deps stay — leaving two
   documented decisions contradicting each other is how the next person is misled.
 
 ---
@@ -93,7 +120,7 @@ nothing; check.
 
 `tinymemory-core` is reached two ways:
 
-```
+```text
 tinymemory-core
 ├── openhuman                 ← via 13 `pub use tinymemory_core::…::*` shims
 └── tinymemory-tinycortex     ← transitive
@@ -219,13 +246,21 @@ cargo clippy -p openhuman -- -D warnings
 
 # tests/ targets are NOT built by PR CI (test.yml is workflow_dispatch-only),
 # so this is the only place they get checked before a release lane sees them
-cargo check -p openhuman --features "$(bash scripts/ci/product-features.sh)" --tests
+cargo check --locked -p openhuman --features "$(bash scripts/ci/product-features.sh)" --tests
 
 cargo test -p openhuman --lib -- memory:: modules::      # multi-filter needs `-- a b`
-cargo metadata --locked                                   # and app/src-tauri: two Cargo worlds
 
-# criterion 2, the real gate
-cargo tree -i tinymemory-core --features "$(bash scripts/ci/product-features.sh)" --no-default-features -e normal
+# Two Cargo worlds, two lockfiles — the root command does NOT validate the
+# shell's. Check both, or a stale `app/src-tauri/Cargo.lock` fails the release
+# lane in "Enforce Linux TLS dependency policy" with a --locked error that
+# names neither the lockfile nor the pin that moved.
+cargo metadata --locked
+cargo metadata --locked --manifest-path app/src-tauri/Cargo.toml
+
+# criterion 2, the real gate. NOT `cargo tree -i`: it exits non-zero when the
+# crate is absent (so "gone" and "command failed" are the same signal) and
+# `-e normal` still matches a dev-dependency-only survivor.
+bash scripts/assert-shed.sh "$(bash scripts/ci/product-features.sh)" tinymemory-core
 ```
 
 macOS notes: set `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgsign
