@@ -8,6 +8,7 @@ import {
   drainCodingSessions,
   getCodingSessionStatus,
   ingestCodingSessions,
+  isIngestTimeout,
   listMemorySources,
   type MemorySourceEntry,
   removeMemorySource,
@@ -298,6 +299,52 @@ describe('memorySourcesService', () => {
     expect(mockedCall).toHaveBeenCalledTimes(1);
     expect(result.passes).toBe(1);
     expect(result.moreRemaining).toBe(true);
+  });
+
+  it('reports a deadline as still-running, not as a thrown failure', async () => {
+    // The #5802 shape: a pass completes, the next one trips a deadline. No
+    // deadline in this stack cancels the import, so the run is still going —
+    // rejecting here is what put a red "failed" banner over work that
+    // succeeded seconds later.
+    mockedCall
+      .mockResolvedValueOnce(ingestResult({ sessions_processed: 3, budget_hit: true }))
+      .mockRejectedValueOnce(
+        new Error('ingest coding sessions: call to `IngestCodingSessions` timed out after 30000ms')
+      );
+
+    const result = await drainCodingSessions();
+
+    expect(result.timedOut).toBe(true);
+    // The completed pass's work is kept: those sessions really were imported.
+    expect(result.sessionsProcessed).toBe(3);
+    expect(result.passes).toBe(1);
+  });
+
+  it('reports the core budget deadline too, which is spelled in seconds', async () => {
+    // `ingest_budget` renders "timed out after 570s". The seconds form does not
+    // match coreRpcClient's `\d+ms` timeout classifier, so a check that keyed
+    // only on CoreRpcError.kind would let this one through as a failure.
+    mockedCall.mockRejectedValueOnce(new Error('ingest coding sessions: timed out after 570s'));
+
+    const result = await drainCodingSessions();
+
+    expect(result.timedOut).toBe(true);
+    expect(result.sessionsProcessed).toBe(0);
+  });
+
+  it('still rejects a genuine ingest failure', async () => {
+    // The other half of the contract: making a deadline non-fatal must not make
+    // everything non-fatal.
+    mockedCall.mockRejectedValueOnce(new Error('persona pipeline failed'));
+
+    await expect(drainCodingSessions()).rejects.toThrow('persona pipeline failed');
+  });
+
+  it('isIngestTimeout does not treat an unrelated message as a deadline', () => {
+    expect(isIngestTimeout(new Error('the request timed out'))).toBe(false);
+    expect(isIngestTimeout(new Error('session scan failed'))).toBe(false);
+    expect(isIngestTimeout(new Error('timed out after 30000ms'))).toBe(true);
+    expect(isIngestTimeout(new Error('timed out after 570s'))).toBe(true);
   });
 
   it('stops when a budget-hit pass makes no forward progress', async () => {

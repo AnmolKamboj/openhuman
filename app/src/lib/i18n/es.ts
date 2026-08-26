@@ -6954,6 +6954,9 @@ const messages: TranslationMap = {
     '{processed} sesiones produjeron {observations} observaciones de personalidad.',
   'memorySources.codingSessions.partialFailure':
     'Fallaron {failed} sesiones mientras se procesaron {processed}. Ejecuta la ingesta de nuevo para reintentarlas.',
+  'memorySources.codingSessions.stillRunning': 'La importación sigue en curso',
+  'memorySources.codingSessions.stillRunningMessage':
+    'Se han importado {processed} sesiones hasta ahora. La importación no terminó dentro de su tiempo asignado, pero sigue ejecutándose en segundo plano; vuelve a comprobarlo en un minuto en lugar de iniciarla otra vez.',
   'memorySources.codingSessions.failed': 'Falló la ingesta de sesiones de programación',
   'flows.canvas.sidePanelToggle': 'Panel lateral',
   'flows.canvas.legendTab': 'Manual',

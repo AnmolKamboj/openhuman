@@ -6807,6 +6807,9 @@ const messages: TranslationMap = {
     '{processed} सत्रों से {observations} व्यक्तित्व अवलोकन बने।',
   'memorySources.codingSessions.partialFailure':
     '{processed} सत्र संसाधित हुए, जबकि {failed} विफल रहे। दोबारा प्रयास करने के लिए अंतर्ग्रहण फिर चलाएँ।',
+  'memorySources.codingSessions.stillRunning': 'आयात अब भी चल रहा है',
+  'memorySources.codingSessions.stillRunningMessage':
+    'अब तक {processed} सत्र आयात हुए हैं। आयात अपनी समय सीमा में पूरा नहीं हुआ, लेकिन पृष्ठभूमि में चल रहा है; इसे दोबारा शुरू करने के बजाय एक मिनट बाद देखें।',
   'memorySources.codingSessions.failed': 'कोडिंग सत्र शामिल करना विफल रहा',
   'flows.canvas.sidePanelToggle': 'साइड पैनल',
   'flows.canvas.legendTab': 'मैनुअल',

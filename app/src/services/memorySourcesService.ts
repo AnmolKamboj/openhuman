@@ -299,6 +299,50 @@ export interface CodingSessionDrainProgress {
   remaining: number;
   /** True while the backlog still reported more work after the latest pass. */
   moreRemaining: boolean;
+  /**
+   * True when a pass stopped waiting on a deadline rather than failing.
+   *
+   * The distinction is the whole point: no deadline in this stack cancels the
+   * work it bounds. The core's `ingest_budget` and tinybus' call deadline both
+   * only release the *caller* — tinybus says so in as many words: *"A timeout
+   * does not cancel the remote work."* So the import is still running, its
+   * result is simply not going to arrive on this call, and reporting it as a
+   * failure is both wrong and harmful: it invites a retry of a 35-60 s job
+   * that already succeeded (#5802).
+   */
+  timedOut: boolean;
+}
+
+/**
+ * Whether a rejected ingest pass is a deadline rather than a failure.
+ *
+ * Three shapes reach here, and all three mean "stopped waiting", not "broke":
+ *
+ * - `CoreRpcError` with `kind === 'timeout'` — the client's own
+ *   `AbortController` fired at `timeoutMs`.
+ * - `... timed out after 30000ms` — a tinybus call deadline, rendered by
+ *   `vendor/tinybus/crates/tinybus/src/error.rs`. `classifyRpcError` already
+ *   maps this to `'timeout'`, but it is matched here too so the check does not
+ *   depend on a `CoreRpcError` reaching this frame intact.
+ * - `ingest coding sessions: timed out after 570s` — the core's own
+ *   `ingest_budget` ceiling (`memory/sources/rpc.rs`). Note the unit: this one
+ *   is **seconds**, so it does not match `classifyRpcError`'s `\d+ms` arm and
+ *   is classified `'transport'`. Only the message catches it.
+ *
+ * The kind is read structurally rather than through `instanceof CoreRpcError`.
+ * A class identity is the wrong thing to hang this on: it is one bundling
+ * decision or one partially-mocked module away from silently answering `false`
+ * and putting the failure banner back — which is exactly what a unit test
+ * mocking `coreRpcClient` reproduces.
+ *
+ * A false positive here would hide a real failure, so the pattern stays
+ * anchored on the literal phrase both layers emit rather than on a bare
+ * "timeout" anywhere in the text.
+ */
+export function isIngestTimeout(cause: unknown): boolean {
+  if ((cause as { kind?: unknown } | null)?.kind === 'timeout') return true;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /timed out after \d+\s*(ms|s)\b/i.test(message);
 }
 
 export interface CodingSessionDrainOptions {
@@ -342,6 +386,7 @@ export async function drainCodingSessions(
     observations: 0,
     remaining: 0,
     moreRemaining: false,
+    timedOut: false,
   };
   log('drain_coding_sessions: entry max_per_pass=%d max_passes=%d', maxSessionsPerPass, maxPasses);
 
@@ -350,7 +395,26 @@ export async function drainCodingSessions(
       log('drain_coding_sessions: stop requested after pass=%d', progress.passes);
       break;
     }
-    const result = await ingestCodingSessions(false, maxSessionsPerPass);
+    let result: CodingSessionIngestResult;
+    try {
+      result = await ingestCodingSessions(false, maxSessionsPerPass);
+    } catch (cause) {
+      // A deadline is not a failure. Nothing in this stack cancels the import
+      // when a caller stops waiting for it, so the pass is still running and
+      // will still write its observations — it just has no report to hand back
+      // on this call. Rethrowing here is what put a red "ingestion failed"
+      // banner over a run that went on to succeed, and invited the user to
+      // redo 35-60 s of work (#5802).
+      //
+      // Returning rather than rethrowing keeps every completed pass's counts,
+      // which is the honest answer: those passes really did import what they
+      // report, and only the last one is unresolved.
+      if (!isIngestTimeout(cause)) throw cause;
+      progress.timedOut = true;
+      log('drain_coding_sessions: pass=%d timed out; work continues', progress.passes + 1);
+      onProgress?.({ ...progress });
+      break;
+    }
     progress.passes += 1;
     progress.sessionsProcessed += result.sessions_processed;
     progress.sessionsFailed = result.sessions_failed;
