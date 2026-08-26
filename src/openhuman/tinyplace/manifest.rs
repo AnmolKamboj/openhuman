@@ -3190,6 +3190,28 @@ pub(crate) fn handle_tinyplace_signal_get_bundle(params: Map<String, Value>) -> 
     })
 }
 
+/// Whether a failed relay read in [`handle_tinyplace_signal_key_status`] means
+/// "this agent has not published anything yet" rather than "the relay is unwell".
+///
+/// A 404 from `GET /keys/<id>/health` or `GET /directory/agents/<id>` is the
+/// **expected** answer for an agent whose Signal keys are not yet published —
+/// precisely the precondition [`ensure_signal_keys_published`] exists to
+/// remove, and which `handle_tinyplace_signal_register_encryption_key` repairs
+/// by building the card when the directory 404s. So a 404 here is the state the
+/// very next step fixes, not a fault.
+///
+/// This is the same classification the rest of this file already makes at six
+/// other sites (`Err(e) if e.status() == Some(404)`); the two probe arms below
+/// were the only ones that lacked it, which is why they logged at `warn` on the
+/// orchestration supervisor's 15-second timer forever (#5627).
+///
+/// Named rather than inlined so the rule is unit-testable without a relay —
+/// deliberately narrow: **only** 404. A 500 from a broken relay must stay
+/// warn-worthy, or a genuine outage becomes as quiet as a fresh install.
+pub(super) fn is_not_published_yet(e: &tinyplace::Error) -> bool {
+    e.status() == Some(404)
+}
+
 /// Local + remote key status for the current user. Remote health degrades
 /// gracefully if the backend is unreachable.
 pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) -> ControllerFuture {
@@ -3217,6 +3239,15 @@ pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) ->
                     h.low_one_time_pre_keys
                 );
                 Some(h)
+            }
+            Err(e) if is_not_published_yet(&e) => {
+                // Expected on a fresh identity: no keys published yet, so the
+                // relay has no health record to return. `remote: null` is the
+                // correct answer and the supervisor's next cycle publishes.
+                log::debug!(
+                    "{LOG_PREFIX} signal_key_status: no remote keys yet for {agent_id} (not published)"
+                );
+                None
             }
             Err(e) => {
                 log::warn!("{LOG_PREFIX} signal_key_status remote health fetch failed: {e}");
@@ -3260,6 +3291,15 @@ pub(crate) fn handle_tinyplace_signal_key_status(_params: Map<String, Value>) ->
                 }
                 log::debug!("{LOG_PREFIX} signal_key_status encryption_key_published={matches}");
                 matches
+            }
+            Ok(Err(e)) if is_not_published_yet(&e) => {
+                // Expected on a fresh identity: no directory card exists yet.
+                // `signal_register_encryption_key` builds one on this same 404,
+                // so this is the state the next step repairs, not a failure.
+                log::debug!(
+                    "{LOG_PREFIX} signal_key_status: no directory card yet for {agent_id} (not published)"
+                );
+                false
             }
             Ok(Err(e)) => {
                 log::warn!("{LOG_PREFIX} signal_key_status directory card fetch failed: {e}");

@@ -608,3 +608,71 @@ mod publish_directory_card_tests {
         );
     }
 }
+
+// ── #5627: not-yet-published probe classification ─────────────────────────────
+
+#[cfg(test)]
+mod signal_key_status_probe_classification_tests {
+    use crate::openhuman::tinyplace::manifest::is_not_published_yet;
+    use tinyplace::error::HttpError;
+
+    fn http_err(status: u16, message: &str) -> tinyplace::Error {
+        tinyplace::Error::Http(Box::new(HttpError {
+            status,
+            message: message.to_string(),
+            body: serde_json::Value::Null,
+            headers: Default::default(),
+            payment_required: None,
+        }))
+    }
+
+    /// A 404 from either probe is the **expected** answer for an agent that has
+    /// not published its Signal keys yet — the precondition
+    /// `ensure_signal_keys_published` exists to remove, and which
+    /// `signal_register_encryption_key` repairs by building the card on this
+    /// same 404. Classified as not-published, it logs at `debug`; misclassified,
+    /// it logs at `warn` on the orchestration supervisor's 15-second timer
+    /// forever, on every instance (#5627).
+    #[test]
+    fn a_404_from_either_probe_is_not_published_yet() {
+        for path in [
+            "HTTP 404: /keys/EJXoqJp6CYtme1pJ8qT94avpsa5Ji3UdMZqdCH3MnvxE/health",
+            "HTTP 404: /directory/agents/EJXoqJp6CYtme1pJ8qT94avpsa5Ji3UdMZqdCH3MnvxE",
+        ] {
+            assert!(
+                is_not_published_yet(&http_err(404, path)),
+                "a 404 is the expected not-yet-published state, not a warning: {path}"
+            );
+        }
+    }
+
+    /// The demotion must stay narrow. A relay that is genuinely unwell has to
+    /// keep reaching `warn`, or a real outage becomes as quiet as a fresh
+    /// install — which is the failure mode of over-correcting this class of bug.
+    #[test]
+    fn any_other_status_stays_warn_worthy() {
+        for status in [400u16, 401, 403, 408, 429, 500, 502, 503, 504] {
+            assert!(
+                !is_not_published_yet(&http_err(status, "HTTP error: /keys/x/health")),
+                "HTTP {status} is not a not-yet-published state and must stay warn-worthy"
+            );
+        }
+    }
+
+    /// A non-HTTP failure has no status at all — `Error::status()` returns
+    /// `None` for every variant except `Http`. `None != Some(404)`, so these
+    /// must stay warn-worthy: a signer that cannot sign is a real fault, not an
+    /// agent that has simply not published yet.
+    #[test]
+    fn a_statusless_error_stays_warn_worthy() {
+        for err in [
+            tinyplace::Error::Signing("no signer available".to_string()),
+            tinyplace::Error::InvalidArgument("empty agent id".to_string()),
+        ] {
+            assert!(
+                !is_not_published_yet(&err),
+                "a statusless error is not a not-yet-published state: {err}"
+            );
+        }
+    }
+}
