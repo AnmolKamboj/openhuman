@@ -414,3 +414,65 @@ fn the_ingest_bus_grace_is_wide_enough_to_order_the_two_timers() {
          reliably order the RPC's timeout ahead of the bus deadline"
     );
 }
+
+/// Every `MemorySourceSync` and `MemoryMaintenance` member the trait defaults
+/// must be bridged to the module rather than left to inherit the default.
+///
+/// Three of these members carry a default body that returns
+/// `Unsupported(SourceSync)`, and `diagnose` one that returns
+/// `Unsupported(Maintenance)`. A defaulted member cannot break an implementor at
+/// compile time, so when they were added to the contract `ModuleMemoryProvider`
+/// kept compiling and silently began refusing — which is #5801: the manual
+/// "Sync now" button answered `unsupported capability: source_sync` while the
+/// module's own scheduler, which never crosses this bridge, kept syncing fine.
+///
+/// The discriminator needs no module. With the host disabled, `proxy()` fails
+/// with `MemoryError::Other`, so a member that really dispatches through
+/// `module_call!` reports `Other` while one that fell through to the default
+/// reports `Unsupported`. Asserting "not Unsupported" therefore asserts the
+/// dispatch itself, which is the part that was missing.
+#[tokio::test]
+async fn the_defaulted_members_dispatch_to_the_module_instead_of_refusing() {
+    use tinymemory_api::provider::{MemoryMaintenance, MemorySourceSync};
+
+    let mut config = Config::default();
+    config.modules.enabled = false;
+    let provider = ModuleMemoryProvider::new(Arc::new(config));
+
+    let refused = |label: &str, error: MemoryError| {
+        assert!(
+            !matches!(error, MemoryError::Unsupported { .. }),
+            "{label} answered from the trait default instead of dispatching to the \
+             module — the `module_call!` arm is missing, so every caller gets \
+             `unsupported capability` however capable the artifact is. Got {error:?}"
+        );
+    };
+
+    refused(
+        "run_source_sync",
+        provider
+            .run_source_sync("src_whatever")
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "bootstrap_connection",
+        provider
+            .bootstrap_connection("gmail", "ca_whatever")
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "is_toolkit_syncable",
+        provider
+            .is_toolkit_syncable("gmail")
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "diagnose",
+        MemoryMaintenance::diagnose(&provider)
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+}

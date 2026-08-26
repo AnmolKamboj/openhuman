@@ -167,13 +167,14 @@ use tinymemory_api::provider::types::{
 };
 use tinymemory_api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery,
-    ConversationSegment, CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType,
-    FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore, MemoryDiff, MemoryDocuments,
-    MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance,
-    MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
-    MemorySourceSink, MemorySourceSync, MemoryToolMemory, MemoryTree, PersonHandle,
-    PersonInteraction, PersonRecord, PersonScore, ProfileFacet, RankedPerson, ResolvedPerson,
-    RetrievalHit, RetrievalResponse, SourceRetrievalQuery, SourceTotal, UserState,
+    ConversationSegment, CoverWindowQuery, Diagnosis, EntityMatch, EpisodicEvent, EpisodicTurn,
+    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore, MemoryDiff,
+    MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest,
+    MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider,
+    MemoryRecall, MemoryRetrieval, MemorySourceSink, MemorySourceSync, MemoryToolMemory,
+    MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore, ProfileFacet,
+    RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
+    SourceTotal, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::tool_memory::ToolMemoryRule;
@@ -1079,6 +1080,9 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     async fn purge_all(&self) -> Result<PurgeOutcome, MemoryError> {
         module_call!(self, "purge_all", "PurgeAll", ())
     }
+    async fn diagnose(&self) -> Result<Diagnosis, MemoryError> {
+        module_call!(self, "diagnose", "Diagnose", ())
+    }
 }
 
 #[async_trait]
@@ -1094,6 +1098,24 @@ impl MemorySourceSync for ModuleMemoryProvider {
             "RunConnectionSync",
             (toolkit, connection_id)
         )
+    }
+    async fn run_source_sync(&self, source_id: &str) -> Result<SyncRunOutcome, MemoryError> {
+        module_call!(self, "run_source_sync", "RunSourceSync", (source_id,))
+    }
+    async fn bootstrap_connection(
+        &self,
+        toolkit: &str,
+        connection_id: &str,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "bootstrap_connection",
+            "BootstrapConnection",
+            (toolkit, connection_id)
+        )
+    }
+    async fn is_toolkit_syncable(&self, toolkit: &str) -> Result<bool, MemoryError> {
+        module_call!(self, "is_toolkit_syncable", "IsToolkitSyncable", (toolkit,))
     }
     async fn source_sync_state(
         &self,
