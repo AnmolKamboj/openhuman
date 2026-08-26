@@ -489,6 +489,19 @@ pub async fn run_subagent(
             )
             .await
             {
+                // The fast path completes a real delegation and returns here,
+                // short-circuiting the recorder below — so record it too, or a
+                // turn whose only delegations are deterministic memory
+                // retrievals never accumulates a sample and the budget gate
+                // stays disarmed for the whole turn (#5804 review).
+                //
+                // Including it cannot weaken the gate. `observed_max` is a
+                // running **maximum**, so a short sample can only leave it
+                // where it was — an earlier revision of this comment claimed
+                // the opposite and was wrong about its own statistic. What it
+                // does buy is a correct `observed_samples` count and a gate
+                // that arms on a turn shaped entirely from fast-path work.
+                turn_dispatch_guard::record_subagent_elapsed(started.elapsed());
                 return Ok(outcome);
             }
         }
@@ -553,7 +566,8 @@ pub async fn run_subagent(
 
         // Feed this delegation's wall-clock into the turn's running maximum,
         // which is the only thing the budget gate above judges a later
-        // dispatch against (#5804).
+        // dispatch against (#5804). The deterministic fast path above records
+        // separately and returns, so it cannot reach here twice.
         //
         // Recorded on BOTH the success and the failure path, and before the
         // `?`: a delegation that ran for three minutes and then errored spent

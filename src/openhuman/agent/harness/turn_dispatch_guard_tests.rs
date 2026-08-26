@@ -263,9 +263,15 @@ async fn concurrent_same_task_dispatches_share_one_guard() {
     // this pins the consequence: concurrency does not bypass the gate, and the
     // sample one worker records is visible to the next worker's check.
     with_dispatch_guard(Some(Duration::from_millis(50)), async {
+        // Order matters, and getting it wrong here is what an earlier revision
+        // of this test did: it recorded the 60s sample *before* its own
+        // `check()`, so the first worker judged itself against a duration it
+        // had just written and the `Allow` assertion could never hold. A worker
+        // checks on the way in and records on the way out — mirror that.
         let a = async {
+            let decision = check();
             record_subagent_elapsed(Duration::from_secs(60));
-            check()
+            decision
         };
         let b = async {
             tokio::time::sleep(Duration::from_millis(60)).await;

@@ -1032,7 +1032,54 @@ async fn spawn_parallel_turn(
                     request_id_task,
                     err
                 );
+                let detailed = format!(
+                    "parallel run_chat_task failed client_id={} thread_id={} request_id={} error={}",
+                    client_id_task, thread_id_task, request_id_task, err
+                );
                 let classified = classify_inference_error(&err);
+                let classified_type = classified.error_type;
+
+                // A parallel turn runs under the same deadline wrapper as the
+                // serial one and dies the same way, but this branch reported
+                // NOTHING to Sentry — not merely the timeouts this PR
+                // un-suppresses, but every error type, since the parallel path
+                // was added. So a discarded turn was invisible here even
+                // before the suppression arm existed, and fixing only
+                // `start_chat` would have left `QueueMode::Parallel` exactly
+                // as blind as it was (#5804 review).
+                //
+                // Same policy as the serial site, deliberately sharing
+                // `sentry_suppression_reason` rather than restating it: the
+                // outer backstop stays suppressed, a harness `Timeout` reports
+                // with the ceiling that fired.
+                if let Some(reason) = sentry_suppression_reason(&detailed) {
+                    log::info!(
+                        target: "web_channel",
+                        "[web_channel.spawn_parallel_turn] suppressed Sentry emission for {} \
+                         client_id={} thread_id={} request_id={} error_type={} message={}",
+                        reason,
+                        client_id_task,
+                        thread_id_task,
+                        request_id_task,
+                        classified_type,
+                        detailed
+                    );
+                } else {
+                    crate::core::observability::report_error_or_expected(
+                        detailed.as_str(),
+                        "web_channel",
+                        "spawn_parallel_turn",
+                        &[
+                            ("channel", "web"),
+                            ("error_type", classified_type),
+                            ("thread_id", thread_id_task.as_str()),
+                            ("request_id", request_id_task.as_str()),
+                            ("queue_mode", "parallel"),
+                            ("timeout_bound", timeout_bound_tag(&detailed)),
+                        ],
+                    );
+                }
+
                 publish_web_channel_event(WebChannelEvent {
                     event: "chat_error".to_string(),
                     client_id: client_id_task.clone(),
