@@ -6811,6 +6811,9 @@ const messages: TranslationMap = {
     '{processed}টি সেশন থেকে {observations}টি পারসোনা পর্যবেক্ষণ তৈরি হয়েছে।',
   'memorySources.codingSessions.partialFailure':
     '{processed}টি সেশন প্রক্রিয়া করার সময় {failed}টি ব্যর্থ হয়েছে। আবার চেষ্টা করতে গ্রহণ পুনরায় চালান।',
+  'memorySources.codingSessions.stillRunning': 'ইম্পোর্ট এখনও চলছে',
+  'memorySources.codingSessions.stillRunningMessage':
+    'এখন পর্যন্ত ইম্পোর্ট হওয়া সেশন: {processed}টি। নির্ধারিত সময়ের মধ্যে ইম্পোর্ট শেষ হয়নি, তবে সেটি ব্যাকগ্রাউন্ডে চলছে; আবার শুরু না করে এক মিনিট পরে দেখুন।',
   'memorySources.codingSessions.failed': 'কোডিং সেশন গ্রহণ ব্যর্থ হয়েছে',
   'flows.canvas.sidePanelToggle': 'সাইড প্যানেল',
   'flows.canvas.legendTab': 'ম্যানুয়াল',

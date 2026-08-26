@@ -6937,6 +6937,9 @@ const messages: TranslationMap = {
     '{processed} sessioni hanno prodotto {observations} osservazioni della persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessioni non sono riuscite mentre {processed} sono state elaborate. Avvia di nuovo l’acquisizione per riprovare.',
+  'memorySources.codingSessions.stillRunning': 'Importazione ancora in corso',
+  'memorySources.codingSessions.stillRunningMessage':
+    "Sessioni importate finora: {processed}. L'importazione non si è conclusa entro il tempo previsto ma prosegue in background; ricontrolla tra un minuto invece di avviarla di nuovo.",
   'memorySources.codingSessions.failed':
     'Acquisizione delle sessioni di programmazione non riuscita',
   'flows.canvas.sidePanelToggle': 'Pannello laterale',

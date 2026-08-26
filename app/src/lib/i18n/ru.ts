@@ -6882,6 +6882,9 @@ const messages: TranslationMap = {
     'Обработано сеансов: {processed}; наблюдений персоны: {observations}.',
   'memorySources.codingSessions.partialFailure':
     'Не удалось обработать сеансов: {failed}; обработано: {processed}. Запустите загрузку ещё раз для повтора.',
+  'memorySources.codingSessions.stillRunning': 'Импорт всё ещё выполняется',
+  'memorySources.codingSessions.stillRunningMessage':
+    'Импортировано сессий на данный момент: {processed}. Импорт не завершился в отведённое время, но продолжает выполняться в фоновом режиме; загляните через минуту, а не запускайте его заново.',
   'memorySources.codingSessions.failed': 'Не удалось загрузить сеансы программирования',
   'flows.canvas.sidePanelToggle': 'Боковая панель',
   'flows.canvas.legendTab': 'Вручную',

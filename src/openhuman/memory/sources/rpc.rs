@@ -177,7 +177,13 @@ pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatu
 /// server budget the *tighter* of the two so it returns a clean structured
 /// timeout before the client's fetch aborts. This is a *ceiling to catch a wedged
 /// run*, not a latency target.
-fn ingest_budget(max_sessions: usize) -> std::time::Duration {
+///
+/// `pub(crate)` so the module driver can size its own bus deadline from the
+/// same formula (`modules::memory`). That call sits *inside* this one, and
+/// tinybus gives every call a 30 s default deadline if nobody sets one — 19×
+/// tighter than the smallest budget computed here, which is how a completed
+/// import came to be reported as a failure (#5802). One formula, two layers.
+pub(crate) fn ingest_budget(max_sessions: usize) -> std::time::Duration {
     /// Fixed overhead allowance (config load, discovery, process warm-up) added
     /// on top of the per-session budget.
     const BASE_SECS: u64 = 120;

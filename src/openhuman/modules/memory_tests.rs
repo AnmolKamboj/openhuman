@@ -13,7 +13,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::provider::MemoryProvider;
 
-use super::{from_bus, ModuleMemoryProvider, MODULE_ID};
+use super::{from_bus, ModuleMemoryProvider, INGEST_BUS_GRACE, MODULE_ID};
 use crate::openhuman::config::Config;
 use crate::openhuman::modules::registry;
 
@@ -367,5 +367,50 @@ fn the_ci_workflows_pin_the_same_module_digest_as_the_registry() {
         "expected at least four workflow digest sites, found {checked} — either a \
          lane stopped installing the module, or the assignment was renamed and this \
          guard silently stopped checking anything"
+    );
+}
+
+/// The bus deadline on `IngestCodingSessions` must never be the one that fires.
+///
+/// This is the defect from #5802 in test form. Before the fix the module call
+/// took tinybus' flat 30 s `DEFAULT_TIMEOUT` while the RPC around it allowed
+/// 120 s + 90 s per session, so a perfectly healthy 35 s import was abandoned
+/// by the caller, reported as a failure, and finished successfully five
+/// seconds later with nobody listening.
+///
+/// Asserted across the whole input range rather than at one point, because the
+/// budget is piecewise: it scales linearly and then clamps at `HARD_CAP_SECS`.
+/// A future edit that raises the cap, the base, or the per-session allowance
+/// without touching the grace fails here instead of in the field.
+#[test]
+fn the_ingest_bus_deadline_always_outlasts_the_rpc_budget() {
+    use crate::openhuman::memory::sources::rpc::ingest_budget;
+
+    // Below the cap, at the cap, and far past it (`max_sessions` is untrusted
+    // input from an advertised RPC, so `usize::MAX` is a reachable argument).
+    for max_sessions in [0, 1, 5, 6, 7, 100, 10_000, usize::MAX] {
+        let budget = ingest_budget(max_sessions);
+        let bus = budget + INGEST_BUS_GRACE;
+        assert!(
+            bus > budget,
+            "max_sessions={max_sessions}: the bus deadline ({bus:?}) must outlast the \
+             RPC budget ({budget:?}), or the wire member's error wins and the caller \
+             is released while the module is still working"
+        );
+    }
+}
+
+/// The grace has to be big enough to order two timers, not merely non-zero.
+///
+/// A one-millisecond grace would satisfy the assertion above and still lose the
+/// race under ordinary scheduling jitter, which would put the failure back
+/// where it started: a bus-member error surfacing instead of the RPC's
+/// structured one.
+#[test]
+fn the_ingest_bus_grace_is_wide_enough_to_order_the_two_timers() {
+    assert!(
+        INGEST_BUS_GRACE >= std::time::Duration::from_secs(5),
+        "INGEST_BUS_GRACE is {INGEST_BUS_GRACE:?}; a grace this small does not \
+         reliably order the RPC's timeout ahead of the bus deadline"
     );
 }
