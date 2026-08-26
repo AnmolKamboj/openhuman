@@ -4303,6 +4303,68 @@ async fn json_rpc_memory_sync_and_learn() {
     let wiped = post_json_rpc(&rpc_base, 7099, "openhuman.memory_tree_wipe_all", json!({})).await;
     assert_no_jsonrpc_error(&wiped, "memory_tree_wipe_all before fresh-store checks");
 
+    // ── ...and the wipe is not enough on its own ────────────────────────────
+    //
+    // `memory_tree_wipe_all` reaches the driver through
+    // `binding::for_config(config)` — *this* case's workspace. The namespace
+    // assertions below read through `active_memory_guard()`. Those are the same
+    // binding here, but they are not the same **store**: the memory module is a
+    // native module loaded once per process, and it captures the first workspace
+    // it is given. Every later binding in this binary — one per case, each with
+    // its own tempdir — is a different `MemoryBinding` over that one captured
+    // store.
+    //
+    // So a namespace another case wrote is visible to `list_namespaces` here and
+    // is not reachable by a `purge_all` scoped to this workspace: after the wipe
+    // above reports its rows deleted, a second wipe reports `rows_deleted: 0`
+    // while `namespace_list` still answers with the other case's namespace. That
+    // asymmetry is the one-workspace-per-process property, not a defect in
+    // `wipe_all`; a `purge_all` that reached across workspaces would be the real
+    // bug the day a host binds two.
+    //
+    // openhuman#5779 is what made it bite. Before it, a session agent's memory
+    // came from `create_session_memory_with_local_ai` — an engine-built store
+    // over that case's own workspace files, invisible here. #5779 routed session
+    // memory onto `DriverMemory::for_subtree` (correctly: that is the point of
+    // #5560), and the driver is the shared module — so an agent turn in an
+    // earlier case now files `conversation_raw` where this case can see it.
+    //
+    // Draining through `memory_clear_namespace` is what makes this deterministic:
+    // it takes `active_memory_guard()` + `as_documents()`, the exact path
+    // `list_namespaces` reads through, so "cleared" and "listed" cannot disagree
+    // by construction. Do not replace this with a bigger wipe — no wipe scoped to
+    // a workspace can empty a store shared by every workspace in the process.
+    async fn list_namespaces(rpc_base: &str, id: i64) -> Vec<Value> {
+        let listed =
+            post_json_rpc(rpc_base, id, "openhuman.memory_namespace_list", json!({})).await;
+        assert_no_jsonrpc_error(&listed, "memory_namespace_list");
+        listed["result"]["result"]
+            .as_array()
+            .unwrap_or_else(|| panic!("namespace_list must answer an array, got: {listed}"))
+            .clone()
+    }
+
+    let leftover = list_namespaces(&rpc_base, 7100).await;
+    for namespace in &leftover {
+        let cleared = post_json_rpc(
+            &rpc_base,
+            7101,
+            "openhuman.memory_clear_namespace",
+            json!({ "namespace": namespace }),
+        )
+        .await;
+        assert_no_jsonrpc_error(
+            &cleared,
+            "memory_clear_namespace draining a shared namespace",
+        );
+    }
+    let remaining = list_namespaces(&rpc_base, 7102).await;
+    assert!(
+        remaining.is_empty(),
+        "draining through the same family the assertions read through must empty the \
+         listing; started with {leftover:?}, still holding {remaining:?}"
+    );
+
     // ── memory_learn_all: no namespaces → zero processed (empty store) ──────
     let learn_all = post_json_rpc(&rpc_base, 7004, "openhuman.memory_learn_all", json!({})).await;
     let learn_result = assert_no_jsonrpc_error(&learn_all, "memory_learn_all");
