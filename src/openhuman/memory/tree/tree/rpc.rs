@@ -21,7 +21,6 @@ use tinycortex::memory::ingest::canonicalize::{
 use tinymemory_api::chunks::{Chunk, DataSource, SourceKind, SourceRef};
 use tinymemory_api::provider::types::{IngestItem, IngestOutcome};
 use tinymemory_api::types::MemoryTaint;
-use tinymemory_core::ingest_pipeline::{ingest_email as do_ingest_email, IngestResult};
 
 /// Unified ingest request. The `payload` shape is adapter-specific and is
 /// validated inside the dispatch based on `source_kind`.
@@ -133,6 +132,7 @@ pub fn is_invalid_ingest_payload_message(message: &str) -> bool {
 /// refusal wording exist once: the arms differ only in which member they call.
 enum DriverIngest {
     Chat(Vec<IngestItem>),
+    Email(Vec<IngestItem>),
     Document(IngestItem),
 }
 
@@ -164,6 +164,7 @@ async fn ingest_through_driver(
     };
     match call {
         DriverIngest::Chat(messages) => ingest.ingest_chat(messages).await,
+        DriverIngest::Email(messages) => ingest.ingest_email(messages).await,
         DriverIngest::Document(item) => ingest.ingest_document(item).await,
     }
     .map_err(|e| format!("ingest: {e}"))
@@ -182,6 +183,86 @@ fn chat_data_source(platform: &str) -> DataSource {
         Ok(source) if source.kind() == SourceKind::Chat => source,
         _ => DataSource::Conversation,
     }
+}
+
+/// As [`chat_data_source`], for a mail payload's `provider`.
+///
+/// `OtherEmail` is the fallback because it is the mail member that means "an
+/// email provider this enum does not name", which is the honest reading of a
+/// provider string that did not parse. Demoting to a non-mail member would put
+/// the thread under the wrong `SourceKind` entirely.
+fn email_data_source(provider: &str) -> DataSource {
+    match DataSource::parse(provider) {
+        Ok(source) if source.kind() == SourceKind::Email => source,
+        _ => DataSource::OtherEmail,
+    }
+}
+
+/// Canonicalise a mail thread into contract items.
+///
+/// **This is the exact inverse of the driver's reconstruction**, and it has to
+/// be: the driver rebuilds an `EmailThread` from these fields and then calls
+/// the same `ingest_pipeline::ingest_email` this arm used to call directly, so
+/// any field that does not round-trip changes what is stored rather than
+/// failing. Every one it reads through `unwrap_or` is therefore sent as
+/// `Some`, so no fallback on the far side can substitute a different value:
+///
+/// | driver reads | sent here |
+/// | --- | --- |
+/// | `platform.unwrap_or(source)` | `platform: Some(provider)` |
+/// | `channel_label.unwrap_or(source_id)` | `channel_label: Some(thread_subject)` |
+/// | `author.unwrap_or(owner)` | `author: Some(from)` |
+/// | `subject.unwrap_or(thread_subject)` | `subject: Some(subject)` |
+/// | `timestamp.unwrap_or(now)` | `timestamp: Some(sent_at)` |
+///
+/// `to`, `cc` and `list_unsubscribe` cross verbatim. The unsubscribe header
+/// matters more than it looks: an unsubscribe flow reads it back out of stored
+/// mail, so dropping it makes that flow impossible rather than merely poorer.
+///
+/// # Empty bodies are filtered, not refused
+///
+/// `validate_ingest_item` answers `Invalid` for empty content, and the driver
+/// validates every item before ingesting any — so one body-less message would
+/// fail the whole thread, where the in-process pipeline wrote the rest of it.
+/// A header-only message is entirely plausible in mail, so filtering first
+/// (exactly as [`chat_items`] does) keeps the old behaviour instead of turning
+/// a survivable thread into a rejected one.
+fn email_items(
+    source_id: &str,
+    owner: &str,
+    tags: &[String],
+    thread: EmailThread,
+) -> Vec<IngestItem> {
+    let EmailThread {
+        provider,
+        thread_subject,
+        messages,
+    } = thread;
+    let source = email_data_source(&provider);
+    messages
+        .into_iter()
+        .filter(|message| !message.body.trim().is_empty())
+        .map(|message| IngestItem {
+            namespace: None,
+            source,
+            source_id: source_id.to_string(),
+            owner: owner.to_string(),
+            source_ref: message.source_ref.map(SourceRef::new),
+            content: message.body,
+            mime: None,
+            timestamp: Some(message.sent_at),
+            tags: tags.to_vec(),
+            taint: MemoryTaint::Internal,
+            path_scope: None,
+            author: Some(message.from),
+            channel_label: Some(thread_subject.clone()),
+            to: message.to,
+            cc: message.cc,
+            subject: Some(message.subject),
+            list_unsubscribe: message.list_unsubscribe,
+            platform: Some(provider.clone()),
+        })
+        .collect()
 }
 
 /// As [`chat_data_source`], for a document payload's `provider`.
@@ -306,22 +387,6 @@ fn response_from_outcome(source_id: String, outcome: IngestOutcome) -> IngestRes
     }
 }
 
-/// Map the in-process pipeline's summary onto the same wire body.
-///
-/// Kept beside [`response_from_outcome`] rather than folded into it: the two
-/// carry the same six facts under different field names, and the mail arm is
-/// the only caller left on this one.
-fn response_from_engine(source_id: String, result: IngestResult) -> IngestResponse {
-    IngestResponse {
-        source_id,
-        chunks_written: result.chunks_written,
-        chunks_dropped: result.chunks_dropped,
-        chunk_ids: result.chunk_ids,
-        extract_jobs_enqueued: result.extract_jobs_enqueued,
-        already_ingested: result.already_ingested,
-    }
-}
-
 /// Unified ingest RPC handler. Dispatches on `source_kind`.
 ///
 /// Chat and document go to the bound driver's `Ingest` family. At the v1.3.0
@@ -423,14 +488,21 @@ pub async fn ingest_rpc(
                 log::warn!("[memory::rpc] invalid payload for email");
                 msg
             })?;
-            let result = do_ingest_email(config, &source_id, &owner, tags, thread)
-                .await
-                .map_err(|e| {
-                    let msg = format!("ingest: {e}");
-                    log::warn!("[memory::rpc] email ingestion failed");
-                    msg
-                })?;
-            response_from_engine(source_id.clone(), result)
+            let messages = email_items(&source_id, &owner, &tags, thread);
+            if messages.is_empty() {
+                // The chat arm's answer, for the same reason: a thread whose
+                // every message was body-less canonicalises to nothing, and
+                // "the driver returns zeros for zero items" is a behaviour of
+                // the one driver we ship rather than a contract promise.
+                response_from_outcome(source_id.clone(), IngestOutcome::default())
+            } else {
+                let outcome = ingest_through_driver(config, DriverIngest::Email(messages))
+                    .await
+                    .inspect_err(|_| {
+                        log::warn!("[memory::rpc] email ingestion failed");
+                    })?;
+                response_from_outcome(source_id.clone(), outcome)
+            }
         }
         SourceKind::Document => {
             let doc: DocumentInput = serde_json::from_value(payload).map_err(|e| {
@@ -1586,16 +1658,21 @@ mod tests {
     /// The ingest response is this crate's declaration of a wire the frontend
     /// reads, so nothing upstream keeps its keys honest any more.
     ///
-    /// Asserted against the engine summary it was lifted from rather than
-    /// against a hand-written key list, because that is the shape callers are
-    /// already parsing: a key renamed, dropped, or retyped on either side fails
-    /// here instead of silently reaching a reader. It stayed the right assertion
-    /// across the move onto the driver contract — the chat and document arms
-    /// build the body from an `IngestOutcome` now, and this is what says the
-    /// wire did not move with them.
+    /// It used to be asserted against the engine's own `IngestResult`, on the
+    /// reasoning that comparing to the upstream type beat hand-writing a key
+    /// list. That held while the engine produced the body. It does not now:
+    /// every arm builds from the contract's `IngestOutcome`, so a comparison
+    /// against the engine summary would pin a shape nothing in this path
+    /// produces — and it kept the engine linked here purely to describe a wire
+    /// this crate owns.
+    ///
+    /// So the expectation is written out. That is the honest form once this
+    /// crate is the declaring side: the keys below are what the frontend
+    /// parses, and renaming a field on `IngestResponse` fails here rather than
+    /// reaching a reader.
     #[test]
-    fn the_response_body_serialises_exactly_as_the_engine_summary() {
-        let engine = IngestResult {
+    fn the_response_body_serialises_exactly_as_the_declared_wire() {
+        let ours = IngestResponse {
             source_id: "doc-launch".into(),
             chunks_written: 3,
             chunks_dropped: 1,
@@ -1603,20 +1680,18 @@ mod tests {
             extract_jobs_enqueued: 2,
             already_ingested: true,
         };
-        let ours = IngestResponse {
-            source_id: engine.source_id.clone(),
-            chunks_written: engine.chunks_written,
-            chunks_dropped: engine.chunks_dropped,
-            chunk_ids: engine.chunk_ids.clone(),
-            extract_jobs_enqueued: engine.extract_jobs_enqueued,
-            already_ingested: engine.already_ingested,
-        };
 
         assert_eq!(
-            serde_json::to_value(&engine).unwrap(),
             serde_json::to_value(&ours).unwrap(),
-            "the ingest response must serialise key-for-key as the summary it \
-             replaced — the frontend reads these names"
+            serde_json::json!({
+                "source_id": "doc-launch",
+                "chunks_written": 3,
+                "chunks_dropped": 1,
+                "chunk_ids": ["chunk-a", "chunk-b", "chunk-c"],
+                "extract_jobs_enqueued": 2,
+                "already_ingested": true,
+            }),
+            "the ingest response wire moved — the frontend reads these names"
         );
     }
 
@@ -1764,13 +1839,18 @@ mod tests {
     /// Regression #3568 / CORE-2K: email payloads with RFC-3339 timestamps must
     /// be accepted.
     ///
-    /// No driver is bound: the mail arm is the one still on the in-process
-    /// pipeline, for the two reasons on [`ingest_rpc`]. When it moves, this
-    /// test needs `install_tinycortex_for_test` like its siblings — and the
-    /// header lines it does not assert are what has to be checked first.
+    /// A driver is bound, like every sibling here. The note this replaces said
+    /// the mail arm was "still on the in-process pipeline" and that the test
+    /// would need `install_tinycortex_for_test` "when it moves" — it has moved:
+    /// the `Email` arm now goes through `ingest_through_driver`, which resolves
+    /// `provider().as_ingest()` and refuses a driver that does not serve it.
+    /// Without the binding the test only passed because CI happens to set
+    /// `TINYMEMORY_TEST_MODULE` to a module that serves `Ingest`, so it would
+    /// fail on a machine that does not.
     #[tokio::test]
     async fn ingest_email_accepts_rfc3339_timestamps() {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let outcome = ingest_rpc(
             &cfg,
             IngestRequest {

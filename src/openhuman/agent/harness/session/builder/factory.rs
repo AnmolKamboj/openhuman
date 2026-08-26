@@ -20,7 +20,6 @@ use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::{self, Tool};
 use anyhow::Result;
 use std::sync::Arc;
-use tinymemory_core::store as memory_store;
 
 impl Agent {
     /// Constructs an `Agent` instance from a global system configuration.
@@ -203,11 +202,6 @@ impl Agent {
             config.workspace_dir.clone(),
         )?;
 
-        let local_embedding = config.workload_local_model("embeddings");
-        let embedding_api_key = crate::openhuman::inference::embeddings::resolve_api_key(
-            config,
-            &config.memory.embedding_provider,
-        );
         // Route this session's captures + recall into the active profile's memory
         // subtree so `dedicatedMemory` isolation takes effect on the ordinary
         // session path (web chat, cron), not just delegation preambles. The
@@ -232,53 +226,31 @@ impl Agent {
             has_profile = profile.is_some(),
             "[profiles] session memory subtree selected"
         );
-        // ── The engine reference this file has left (#5560) ──────────────────
+        // The session's store, through the same binding the archivist resolves
+        // two statements down — so one subtree yields one store rather than an
+        // engine handle beside a driver over the same files.
         //
-        // `direct_engine_refs_tests::ALLOWED` still explains this entry as
-        // "boots the in-process engine handle (`global::init`)". That is stale:
-        // `global::init` is gone from here, and what remains is this one
-        // factory call — the *only* caller of
-        // `create_session_memory_with_local_ai` anywhere in the tree. The
-        // bypass allowlist's `.memory_handle(` entry for this file is stale for
-        // the same reason; the only `memory_handle` left below is in prose.
-        //
-        // A door onto the contract does exist —
-        // `experience::ops::DriverMemory::for_subtree(config, &memory_subdir)`
-        // hands back an `Arc<dyn Memory>` over exactly the binding
-        // `archivist_provider` resolves two statements down, so the swap is
-        // one line and would collapse two stores over one subtree into one.
-        // It is deliberately NOT taken here yet, for two reasons that need
-        // measuring rather than reasoning about:
-        //
-        // 1. **Embedder resolution differs.** This factory resolves the
-        //    embedding provider from `local_embedding` + `embedding_api_key` +
-        //    `embedding_routes` and applies an Ollama reachability health-gate
-        //    before falling back. The bound driver resolves its own embedder
-        //    from the boot policy config instead. Those two ladders are
-        //    *believed* to agree; nothing here proves it, and disagreeing means
-        //    vectors filed under the wrong provider signature — silent, not
-        //    loud, exactly as `memory::tools::flavour` warns about the same
-        //    class of mistake.
-        // 2. **The test build binds a different workspace.** Under
-        //    `cfg(test)`, `binding::module_provider` pins every binding to the
-        //    shared `memory::ops` test workspace and to a module that a unit
-        //    test cannot `dlopen`, so a migrated session would get a driver
-        //    that answers nothing where it gets a working store today. The
-        //    archivist tolerates that (it degrades); a session's `Arc<dyn
-        //    Memory>` is on the recall path and does not.
-        //
-        // So this is not "no contract door exists" — it is one behavioural
-        // equivalence and one test-fixture problem, both of which need the
-        // harness suite run against the change to settle.
-        let session_memory = memory_store::factories::create_session_memory_with_local_ai(
-            &config.memory,
-            local_embedding.as_deref(),
-            &embedding_api_key,
-            &config.embedding_routes,
-            Some(&config.storage.provider.config),
-            &config.workspace_dir,
-            &memory_subdir,
-        )?;
+        // The two reasons this was deferred are both settled. **Embedder
+        // resolution**: the factory's ladder and the driver's are the same
+        // code reading the same field. `Config::workload_local_model` and
+        // `EngineRuntimeConfig::workload_local_model` both take
+        // `embeddings_provider`, strip `"ollama:"`, trim and reject empty, and
+        // that `Option` is the only input to `effective_embedding_settings`.
+        // The Ollama health-gate is not a difference either: it lives inside
+        // `create_unified_memory_full`, which the module runs because the
+        // module *is* the engine, and its probe address is proxied back here
+        // through `EmbeddingHost::ollama_base_url`. (`embedding_routes` never
+        // mattered — the engine's own parameter is underscore-prefixed and
+        // unused.) **The test build**: `binding::module_provider` under
+        // `cfg(test)` loads the module when `TINYMEMORY_TEST_MODULE` names it
+        // and degrades to the null driver otherwise, which is the same footing
+        // the archivist has had here all along.
+        let memory: Arc<dyn Memory> =
+            crate::openhuman::agent::experience::ops::DriverMemory::for_subtree(
+                config,
+                &memory_subdir,
+            )
+            .map_err(|e| anyhow::anyhow!("session memory binding: {e}"))?;
         // The archivist takes the bound driver for this session's memory
         // subtree — the same subtree `session_memory` opened — rather than the
         // raw SQLite handle the factory used to strip off the engine result.
@@ -292,7 +264,6 @@ impl Agent {
         )
         .map(|binding| binding.provider().clone())
         .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
-        let memory: Arc<dyn Memory> = Arc::from(session_memory.memory);
         // Dedicated profiles still recall unstamped experiences written by
         // pre-profile versions from the shared memory DB. Resolve that shared
         // store once, here, and hand it to the session rather than making the

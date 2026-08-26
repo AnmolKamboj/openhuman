@@ -28,8 +28,3 @@
 pub use tinymemory_core::sync::composio::providers::*;
 
 pub mod slack;
-
-/// Backend-tenant client access for legacy provider helpers — see the module.
-pub mod context_ext;
-
-pub use context_ext::ProviderContextExt;

@@ -518,6 +518,21 @@ impl MemoryTree for GuardedTree {
             .await
     }
 
+    /// Sealing one source's tree is a write, and it names the scope it acts on
+    /// — so unlike the reads above it is admitted against that scope rather
+    /// than `NO_NAMESPACE`. `carries_content: false`: the caller supplies a
+    /// scope label, never prose, and the seals it fires write content the
+    /// driver already holds.
+    async fn flush_source_tree(&self, source_scope: &str) -> Result<u64, MemoryError> {
+        self.policy.admit_write(
+            Capability::Tree,
+            "tree.flush_source_tree",
+            source_scope,
+            false,
+        )?;
+        self.family()?.flush_source_tree(source_scope).await
+    }
+
     /// Leaves are chunks, so this is the same disclosure as
     /// [`Self::query_source`] with a different ordering, and takes the same
     /// intersection.

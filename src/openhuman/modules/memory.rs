@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.10.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.12.0";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -796,6 +796,15 @@ impl MemoryTree for ModuleMemoryProvider {
         scope: Option<&SourceScope>,
     ) -> Result<SummaryForest, MemoryError> {
         module_call!(self, "summary_forest", "SummaryForest", (limit, scope))
+    }
+
+    async fn flush_source_tree(&self, source_scope: &str) -> Result<u64, MemoryError> {
+        module_call!(
+            self,
+            "flush_source_tree",
+            "FlushSourceTree",
+            (source_scope,)
+        )
     }
     async fn recent_leaves(
         &self,
