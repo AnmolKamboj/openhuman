@@ -2922,7 +2922,7 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
     .expect("subagent builder");
     assert!(built.contains("coverage soul"));
     assert!(built.contains("coverage profile"));
-    assert!(built.contains("Output style"));
+    assert!(built.contains("# Writing style"));
 
     let narrow = render_subagent_system_prompt(
         workspace.path(),
