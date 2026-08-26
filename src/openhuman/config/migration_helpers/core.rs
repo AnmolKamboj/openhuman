@@ -144,31 +144,45 @@ pub async fn migrate_openclaw_memory(
 ///
 /// # A null driver is refused, not imported into
 ///
-/// `binding` answers the null driver in two situations: `[subsystems.memory]
-/// driver = "null"` is configured, and a configured driver failed to bind and
-/// fell back. In both, every write below is discarded. An import that reports
+/// `binding` answers the null driver in three situations: `[subsystems.memory]
+/// driver = "null"` is configured; a configured driver failed to bind and fell
+/// back; and — the one this note used to miss — a driver was *admitted* as a
+/// module but this build has no module to bind, so `binding::module_provider`
+/// substituted the null provider under `#[cfg(not(feature = "modules"))]`.
+/// In all three, every write below is discarded. An import that reports
 /// "migrated N entries" having written none is silent data loss of the worst
 /// kind — the source workspace may be deleted on the strength of that report,
 /// and the user only discovers it later, with nothing left to re-run against.
-/// So this refuses up front and names which of the two it was.
+/// So this refuses up front and names which of the three it was.
+///
+/// The third case is the reason this reads `driver_id()` rather than only
+/// `class()`. `admit` is pure config and never saw the feature flag, so it
+/// returns the configured id — the binding then reports `driver_id =
+/// "tinymemory"` with `class = Null` and **no** `fallback`, since nothing
+/// refused. Keying the message on the class alone put that case in the
+/// configured-null arm, which told a user whose config says `driver =
+/// "tinycortex"` that they had set it to `"null"` and sent them to edit a line
+/// that already said the opposite.
 fn target_memory_backend(config: &Config) -> Result<Arc<dyn Memory>> {
     let binding = crate::openhuman::memory::binding::for_config(config)
         .map_err(|e| anyhow::anyhow!("bind memory for migration import: {e}"))?;
     if binding.class() == crate::core::subsystem::DriverClass::Null {
-        let because = binding.fallback().map_or_else(
-            || {
+        let because = match (binding.fallback(), binding.driver_id()) {
+            (Some(fallback), _) => format!(
+                "driver '{}' refused to bind: {}",
+                fallback.configured_driver, fallback.reason
+            ),
+            (None, tinymemory_api::null::NULL_DRIVER_ID) => {
                 "memory is disabled by configuration ([subsystems.memory] driver = \"null\")"
                     .to_string()
-            },
-            |fallback| {
-                format!(
-                    "driver '{}' refused to bind: {}",
-                    fallback.configured_driver, fallback.reason
-                )
-            },
-        );
+            }
+            (None, driver_id) => format!(
+                "driver '{driver_id}' is configured, but this build has no memory module \
+                 compiled in (the 'modules' feature is off), so nothing can be written"
+            ),
+        };
         anyhow::bail!(
-            "refusing to import OpenClaw memory into the null driver — {because}. \
+            "refusing to import memory into the null driver — {because}. \
              Nothing was imported; the source workspace is untouched."
         );
     }
