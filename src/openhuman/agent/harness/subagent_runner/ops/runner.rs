@@ -38,6 +38,7 @@ use crate::openhuman::agent::harness::subagent_runner::types::{
     SubagentMode, SubagentRunError, SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus,
     SubagentUsage,
 };
+use crate::openhuman::agent::harness::turn_dispatch_guard;
 use crate::openhuman::agent::harness::{
     current_spawn_depth, with_current_sandbox_mode, with_spawn_depth, MAX_SPAWN_DEPTH,
 };
@@ -306,13 +307,18 @@ async fn try_deterministic_memory_retrieval(
 /// Run a sub-agent based on its definition and a task prompt.
 ///
 /// This is the primary entry point for agent delegation. It performs the following:
-/// 1. Resolves the [`ParentExecutionContext`] task-local.
-/// 2. Generates a unique `task_id` if one wasn't provided.
-/// 3. Dispatches to `run_typed_mode`.
+/// 1. Generates a unique `task_id` if one wasn't provided.
+/// 2. Asks the turn's
+///    [dispatch guard](crate::openhuman::agent::harness::turn_dispatch_guard)
+///    whether a delegation can still succeed, and refuses before spending
+///    anything if it cannot (#5804).
+/// 3. Resolves the [`ParentExecutionContext`] task-local.
+/// 4. Dispatches to `run_typed_mode`.
 ///
 /// On success returns a [`SubagentRunOutcome`] whose `output` is the
 /// final assistant text. On failure the error is suitable for stringifying
-/// into a `tool_result` block.
+/// into a `tool_result` block — including the two dispatch refusals, whose
+/// messages tell the model to summarise rather than delegate again.
 pub async fn run_subagent(
     definition: &AgentDefinition,
     task_prompt: &str,
@@ -333,11 +339,63 @@ pub async fn run_subagent(
     // child's tinyagents drive future further chunk the child's state so
     // a single sub-agent run can't blow the stack either.
     Box::pin(async move {
-        let parent = current_parent().ok_or(SubagentRunError::NoParentContext)?;
         let task_id = options
             .task_id
             .clone()
             .unwrap_or_else(|| format!("sub-{}", uuid::Uuid::new_v4()));
+
+        // Turn-scoped dispatch gate (#5804) — deliberately the FIRST gate, for
+        // the same reason the depth gate is synchronous and pre-dispatch: a
+        // delegation we already know cannot land should cost nothing, not a
+        // config load, a hook, or a provider round-trip.
+        //
+        // Two refusals, both evidence-based and both derived from what this
+        // turn has actually observed rather than from any configured constant
+        // or task shape: a graceful pause has been requested at the model-call
+        // cap, or less wall-clock remains than this turn's slowest completed
+        // sub-agent took. Outside a turn scope the guard is absent and this is
+        // a no-op, so CLI and direct invocations are unaffected.
+        match turn_dispatch_guard::check() {
+            turn_dispatch_guard::DispatchDecision::Allow => {}
+            turn_dispatch_guard::DispatchDecision::RefusePaused {
+                completed_model_calls,
+                cap,
+            } => {
+                tracing::info!(
+                    agent_id = %definition.id,
+                    task_id = %task_id,
+                    completed_model_calls,
+                    cap,
+                    "[subagent_runner] dispatch refused — turn already requested a graceful pause"
+                );
+                return Err(SubagentRunError::PauseRequested {
+                    completed_model_calls,
+                    cap,
+                });
+            }
+            turn_dispatch_guard::DispatchDecision::RefuseBudget {
+                remaining_ms,
+                observed_max_ms,
+                observed_samples,
+            } => {
+                tracing::info!(
+                    agent_id = %definition.id,
+                    task_id = %task_id,
+                    remaining_ms,
+                    observed_max_ms,
+                    observed_samples,
+                    "[subagent_runner] dispatch refused — remaining budget is shorter than this \
+                     turn's slowest sub-agent"
+                );
+                return Err(SubagentRunError::DispatchBudgetExhausted {
+                    remaining_ms,
+                    observed_max_ms,
+                    observed_samples,
+                });
+            }
+        }
+
+        let parent = current_parent().ok_or(SubagentRunError::NoParentContext)?;
         let started = Instant::now();
         let current_depth = current_spawn_depth();
         let attempted_depth = current_depth.saturating_add(1);
@@ -471,7 +529,7 @@ pub async fn run_subagent(
                 "[subagent_runner] worktree-isolated worker: descriptor will route acting-tool CWD"
             );
         }
-        let mut outcome = with_spawn_depth(attempted_depth, async {
+        let run_result = with_spawn_depth(attempted_depth, async {
             with_file_state_agent_id(task_id.clone(), async {
                 with_current_sandbox_mode(definition.sandbox_mode, async {
                     with_parent_context(parent_for_subagent.clone(), async {
@@ -491,7 +549,26 @@ pub async fn run_subagent(
             })
             .await
         })
-        .await?;
+        .await;
+
+        // Feed this delegation's wall-clock into the turn's running maximum,
+        // which is the only thing the budget gate above judges a later
+        // dispatch against (#5804).
+        //
+        // Recorded on BOTH the success and the failure path, and before the
+        // `?`: a delegation that ran for three minutes and then errored spent
+        // exactly as much of the turn's budget as one that succeeded, and is
+        // exactly as much evidence about what a dispatch costs. Dropping
+        // failures would bias the estimate downwards, and the gate fails open,
+        // so the bias would show up as the guard not firing when it should.
+        //
+        // Measured from the outer `started` rather than `outcome.elapsed`, so
+        // the config load and the tier/hook gates are inside the figure — the
+        // question the gate asks is how long a *dispatch* takes end to end,
+        // not how long the child's own loop ran.
+        turn_dispatch_guard::record_subagent_elapsed(started.elapsed());
+
+        let mut outcome = run_result?;
 
         // #3883: offload an oversized worker result to `action_dir/outputs/`
         // BEFORE the cap below truncates it, so the parent receives a path plus
