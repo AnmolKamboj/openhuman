@@ -38,6 +38,11 @@ vi.mock('../../lib/orchestration/orchestrationClient', async importOriginal => {
   };
 });
 
+// The #5805 wallet gate runs before the identity fetch; mock it to a configured
+// wallet so these cases exercise the same path they always did.
+const fetchWalletStatusMock = vi.hoisted(() => vi.fn());
+vi.mock('../../services/walletApi', () => ({ fetchWalletStatus: fetchWalletStatusMock }));
+
 vi.mock('../../services/socketService', () => {
   return { socketService: { on: vi.fn(), off: vi.fn(), getSocket: vi.fn(() => null) } };
 });
@@ -90,6 +95,9 @@ const PINNED_SESSIONS = [
 describe('TinyPlaceOrchestrationTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to a configured wallet so every pre-existing case exercises the
+    // same path it always did; the #5805 case overrides it.
+    fetchWalletStatusMock.mockResolvedValue({ configured: true });
     sessionsListMock.mockResolvedValue({ sessions: [...PINNED_SESSIONS] });
     sessionsCreateMock.mockResolvedValue({
       session: {
@@ -198,6 +206,22 @@ describe('TinyPlaceOrchestrationTab', () => {
     expect(badge).toHaveAttribute('data-network', 'staging');
     // Identity read failed → its card must not render.
     expect(screen.queryByTestId('tinyplace-self-identity')).not.toBeInTheDocument();
+  });
+
+  // #5805 — with no wallet the identity read is skipped rather than attempted:
+  // selfIdentity() could only reject, and that rejection was reaching Sentry.
+  // The relay badge must still render, which is the property the wallet-less
+  // path shares with the locked-wallet path above.
+  it('skips the identity read entirely when no wallet is configured', async () => {
+    fetchWalletStatusMock.mockResolvedValue({ configured: false });
+
+    render(<TinyPlaceOrchestrationTab />);
+
+    const badge = await screen.findByTestId('tinyplace-relay-badge');
+    expect(badge).toHaveAttribute('data-network', 'staging');
+    expect(screen.queryByTestId('tinyplace-self-identity')).not.toBeInTheDocument();
+    // The point of the gate: not attempted, as opposed to attempted and failed.
+    expect(selfIdentityMock).not.toHaveBeenCalled();
   });
 
   it('loads and renders messages for the opened chat', async () => {

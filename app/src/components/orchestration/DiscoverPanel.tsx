@@ -8,6 +8,7 @@
  */
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
+import { resolveWalletConfigured } from '../../hooks/useWalletConfigured';
 import { apiClient } from '../../lib/agentworld/apiClient';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
@@ -32,12 +33,23 @@ export default function DiscoverPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.allSettled([
-      orchestrationClient.selfIdentity(),
-      orchestrationClient.relayInfo(),
-    ]).then(([id, rel]) => {
+    // Gate the wallet-requiring read: selfIdentity() derives a tiny.place
+    // signer from the wallet, so with none configured it can only reject with
+    // the core's wallet-not-configured error — an expected state that still
+    // travels as an Err and lands as an error-level report (#5805). Ask
+    // wallet_status, which answers the same question without erroring, and skip
+    // only on a positive `no`. relayInfo() needs no wallet and always runs.
+    // Fire the wallet-independent read FIRST so relay is never delayed by the
+    // wallet probe.
+    const relayPromise = orchestrationClient.relayInfo();
+    const identityPromise = resolveWalletConfigured().then(configured =>
+      configured === 'no' ? null : orchestrationClient.selfIdentity()
+    );
+    void Promise.allSettled([identityPromise, relayPromise]).then(([id, rel]) => {
       if (cancelled) return;
-      if (id.status === 'fulfilled') setIdentity(id.value);
+      // `null` is the skipped case — leave `identity` null, exactly as a
+      // failed fetch would, so the render path is unchanged.
+      if (id.status === 'fulfilled' && id.value !== null) setIdentity(id.value);
       if (rel.status === 'fulfilled') setRelay(rel.value);
       setIdentityLoading(false);
     });
