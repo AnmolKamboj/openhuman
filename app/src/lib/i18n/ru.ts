@@ -2894,8 +2894,10 @@ const messages: TranslationMap = {
     'Все источники активированы без ограничений. Синхронизация запущена.',
   'memorySources.allIn.failed':
     'Не удалось применить «Включить всё». Пожалуйста, попробуйте снова.',
-  'memorySources.allIn.allFailed': 'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
-  'memorySources.allIn.partial': 'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
+  'memorySources.allIn.allFailed':
+    'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
+  'memorySources.allIn.partial':
+    'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',
   'memorySources.settings.maxPrs': 'Максимум pull request',

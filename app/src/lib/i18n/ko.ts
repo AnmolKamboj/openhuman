@@ -2838,7 +2838,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': '아니오',
   'memorySources.allIn.success': '제한 없이 모든 소스가 활성화되었습니다. 동기화가 시작되었습니다.',
   'memorySources.allIn.failed': '전체 활성화를 적용하지 못했습니다. 다시 시도해 주세요.',
-  'memorySources.allIn.allFailed': '동기화를 하나도 시작할 수 없습니다. 각 소스에서 원인을 확인하세요.',
+  'memorySources.allIn.allFailed':
+    '동기화를 하나도 시작할 수 없습니다. 각 소스에서 원인을 확인하세요.',
   'memorySources.allIn.partial': '시작된 동기화: {triggered}. 시작하지 못함: {failed}.',
   'memorySources.settings.button': '설정',
   'memorySources.settings.title': '동기화 설정',

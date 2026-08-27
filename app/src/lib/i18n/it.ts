@@ -2927,7 +2927,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.success':
     'Tutte le sorgenti attivate senza limiti. Sincronizzazione avviata.',
   'memorySources.allIn.failed': 'Impossibile attivare tutto. Riprova.',
-  'memorySources.allIn.allFailed': 'Nessuna sincronizzazione è potuta partire. Controlla ogni fonte per vedere il motivo.',
+  'memorySources.allIn.allFailed':
+    'Nessuna sincronizzazione è potuta partire. Controlla ogni fonte per vedere il motivo.',
   'memorySources.allIn.partial': 'Sincronizzazioni avviate: {triggered}. Non avviabili: {failed}.',
   'memorySources.settings.button': 'Impostazioni',
   'memorySources.settings.title': 'Impostazioni di sincronizzazione',
