@@ -516,10 +516,21 @@ impl ArchivistHook {
             return;
         };
         let Some(scoring) = provider.as_scoring() else {
-            tracing::debug!(
-                "[archivist] driver does not support scoring — skipping segment embedding \
-                 segment={segment_id}"
-            );
+            use tinymemory_api::capabilities::Capability;
+            if crate::openhuman::modules::memory::ARTIFACT_CAPABILITIES
+                .contains(&Capability::Scoring)
+            {
+                tracing::warn!(
+                    "[archivist] driver does not expose scoring but the pinned artifact is \
+                     expected to serve it — check module version; \
+                     skipping segment embedding segment={segment_id}"
+                );
+            } else {
+                tracing::debug!(
+                    "[archivist] driver does not support scoring — skipping segment embedding \
+                     segment={segment_id}"
+                );
+            }
             return;
         };
         let model_signature = match scoring.embedder_slug().await {

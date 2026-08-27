@@ -269,10 +269,22 @@ async fn try_deterministic_memory_retrieval(
                 }
             },
             None => {
-                tracing::debug!(
-                    task_id = %task_id,
-                    "[subagent_runner] driver does not support scoring — skipping entity guard"
-                );
+                use tinymemory_api::capabilities::Capability;
+                if crate::openhuman::modules::memory::ARTIFACT_CAPABILITIES
+                    .contains(&Capability::Scoring)
+                {
+                    tracing::warn!(
+                        task_id = %task_id,
+                        "[subagent_runner] driver does not expose scoring but the pinned \
+                         artifact is expected to serve it — check module version; \
+                         skipping entity guard"
+                    );
+                } else {
+                    tracing::debug!(
+                        task_id = %task_id,
+                        "[subagent_runner] driver does not support scoring — skipping entity guard"
+                    );
+                }
                 false
             }
         },
