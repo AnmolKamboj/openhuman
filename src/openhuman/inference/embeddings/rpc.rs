@@ -11,6 +11,63 @@ use super::factory::{create_embedding_provider_with_config, model_supports_dimen
 
 const LOG_PREFIX: &str = "[embeddings::rpc]";
 
+/// Slug naming the embedder ingestion will actually use, resolved host-side
+/// from the `Config` fields the resolution ladder reads.
+///
+/// Mirrors `tinymemory_core::tree::score::embed::effective_embedder_slug` so
+/// `get_settings` no longer calls `tinymemory_core::` directly (#5560).
+///
+/// Resolution order (matches the engine factory's ladder):
+/// 1. Explicit Ollama override — `memory_tree.embedding_endpoint` +
+///    `memory_tree.embedding_model` both `Some` and non-empty → `"ollama"`.
+/// 2. Deliberate opt-out — `embeddings_provider` trimmed equals `"none"` → `"none"`.
+/// 3. Local Ollama via unified workload setting — `workload_local_model("embeddings")`
+///    is `Some` → `"ollama"`.
+/// 4. User OpenAI-compatible endpoint — `memory.embedding_provider` is
+///    `"openai"`, `"custom"`, or starts with `"custom:"` → `"custom"`.
+/// 5. Managed cloud session — `auth-profiles.json` exists next to the config
+///    file → `"cloud"`.
+/// 6. Nothing usable → `"unconfigured"`.
+fn effective_embedder_slug_from_config(config: &Config) -> &'static str {
+    // 1. Explicit Ollama override.
+    if let (Some(ep), Some(model)) = (
+        config.memory_tree.embedding_endpoint.as_deref(),
+        config.memory_tree.embedding_model.as_deref(),
+    ) {
+        if !ep.trim().is_empty() && !model.trim().is_empty() {
+            return "ollama";
+        }
+    }
+    // 2. Deliberate opt-out.
+    if config
+        .embeddings_provider
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|s| s == "none")
+    {
+        return "none";
+    }
+    // 3. Local Ollama via unified workload setting.
+    if config.workload_local_model("embeddings").is_some() {
+        return "ollama";
+    }
+    // 4. User OpenAI-compatible endpoint.
+    let picker = config.memory.embedding_provider.trim();
+    if picker == "openai" || picker == "custom" || picker.starts_with("custom:") {
+        return "custom";
+    }
+    // 5. Managed cloud session.
+    let session_exists = config
+        .config_path
+        .parent()
+        .map(|dir| dir.join("auth-profiles.json").exists())
+        .unwrap_or(false);
+    if session_exists {
+        return "cloud";
+    }
+    "unconfigured"
+}
+
 /// Dimension to run a Custom (OpenAI-compatible) verification probe at.
 ///
 /// The user-entered `dimensions` field is a guess: for any model outside the
@@ -100,8 +157,7 @@ pub async fn get_settings(config: &Config) -> Result<RpcOutcome<serde_json::Valu
     // without rewriting it. Additive field — callers that only need the picker
     // value are unaffected; callers asking "does this bill the managed budget?"
     // must read this one (#5402).
-    let effective_provider =
-        crate::openhuman::memory::tree::score::embed::effective_embedder_slug(config);
+    let effective_provider = effective_embedder_slug_from_config(config);
 
     let payload = serde_json::json!({
         "provider": provider,
