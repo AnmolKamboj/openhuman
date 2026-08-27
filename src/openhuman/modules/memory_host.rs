@@ -313,6 +313,17 @@ struct RuntimeCallbacks(Arc<Config>);
 #[tinybus::interface(name = "ai.tinyhumans.tinymemory.RuntimeHost")]
 impl RuntimeCallbacks {
     async fn publish_event(&self, event: MemoryEvent) -> tinybus::Result<()> {
+        // openhuman#5820: the module just renamed and rebuilt `chunks.db`;
+        // this process's own engine copy still holds a handle to the old
+        // inode, so drop it before anything in-process reads the store again.
+        if matches!(event, MemoryEvent::StoreCorruptQuarantined { .. }) {
+            let config = Arc::clone(&self.0);
+            tokio::task::spawn_blocking(move || {
+                crate::openhuman::memory::host_impls::reset_in_process_chunk_store(&config);
+            })
+            .await
+            .ok();
+        }
         if let Some(event) = into_domain_event(event) {
             BUS.publish(event);
         }
