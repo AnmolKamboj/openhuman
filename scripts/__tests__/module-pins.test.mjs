@@ -10,10 +10,13 @@ import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+// Every name below is the SHIPPED implementation from scripts/lib/module-pins.mjs
+// — the same module the two CLIs in scripts/ci/ import. Nothing in this file
+// re-implements any of it, so a regression in the lib fails these tests rather
+// than passing against a local copy.
 import {
   checkPinMapCoverage,
   classifyMove,
-  toplevelProvesSubmodule,
   classifyPin,
   parseAllList,
   parseArtifactCapabilitiesPin,
@@ -21,6 +24,7 @@ import {
   parseRecords,
   parseWorkflowMemoryBlocks,
   rewindDeclared,
+  toplevelProvesSubmodule,
 } from '../lib/module-pins.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
