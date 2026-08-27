@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.1";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.2";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,11 +56,13 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.1";
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
 ///
-/// Re-read at tag `v1.13.1` (openhuman#5820): unchanged from v1.12.0 — v1.13.0
-/// added a `MemoryEvent` variant and two additive audit fields, v1.13.1 fixed the
-/// module's source-registry path; neither touched families. `git diff v1.12.0
-/// v1.13.1 -- crates/tinymemory-api/src/capabilities.rs
-/// crates/tinymemory-module/src/lib.rs` is empty.
+/// Re-read at tag `v1.13.2` (openhuman#5820). v1.13.0 added a `MemoryEvent`
+/// variant and two additive audit fields, v1.13.1 fixed the module's
+/// source-registry path, v1.13.2 fixed the `Embed` wire order; none of those
+/// touched families. tinymemory#110 (in v1.13.2) did: it added `Scoring`
+/// (`ExtractEntities`, `EmbedText`, `EmbedderSlug`), which the artifact serves
+/// and which `as_scoring` below forwards, so it is advertised here in the same
+/// change, the way `Episodic` arrived with `as_episodic`.
 ///
 /// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
 /// within existing families (`retry_failed`, the diagnostics trio,
@@ -107,6 +109,10 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // module's declared `methods` list at that tag, which serves all ten.
     Capability::SourceSync,
     Capability::CodingSessions,
+    // Arrived in v1.13.2 (tinymemory#110): entity extraction, text embedding
+    // and embedder identification, served by the module's engine and forwarded
+    // by `MemoryScoring for ModuleMemoryProvider` below.
+    Capability::Scoring,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -177,10 +183,10 @@ use tinymemory_api::provider::{
     FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore, MemoryDiff,
     MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest,
     MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider,
-    MemoryRecall, MemoryRetrieval, MemorySourceSink, MemorySourceSync, MemoryToolMemory,
-    MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore, ProfileFacet,
-    RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
-    SourceTotal, UserState,
+    MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink, MemorySourceSync,
+    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
+    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, SourceTotal, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::tool_memory::ToolMemoryRule;
@@ -191,6 +197,7 @@ use tinymemory_api::types::{
     StoredMemoryDocument,
 };
 use tinymemory_api::wire;
+use tinymemory_bus::names::methods;
 
 use super::{host, ops, registry};
 use crate::openhuman::config::Config;
@@ -554,6 +561,9 @@ impl MemoryProvider for ModuleMemoryProvider {
     fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
         artifact_serves(Capability::Episodic).then_some(self as &dyn MemoryEpisodic)
     }
+    fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
+        artifact_serves(Capability::Scoring).then_some(self as &dyn MemoryScoring)
+    }
 }
 
 #[async_trait]
@@ -678,7 +688,7 @@ impl MemoryPortability for ModuleMemoryProvider {
 }
 
 macro_rules! module_call {
-    ($self:expr, $operation:literal, $method:literal, $args:expr) => {
+    ($self:expr, $operation:literal, $method:expr, $args:expr) => {
         $self
             .proxy($operation)
             .await?
@@ -1646,5 +1656,23 @@ impl MemoryProfile for ModuleMemoryProvider {
             .call::<bool>("WorkflowIdentityMatches", (key_pattern, canonical_value))
             .await
             .unwrap_or(false)
+    }
+}
+
+#[async_trait]
+impl MemoryScoring for ModuleMemoryProvider {
+    async fn extract_entities(&self, query: &str) -> Result<Vec<String>, MemoryError> {
+        module_call!(
+            self,
+            "extract_entities",
+            methods::EXTRACT_ENTITIES,
+            (query,)
+        )
+    }
+    async fn embed_text(&self, text: &str) -> Result<Vec<f32>, MemoryError> {
+        module_call!(self, "embed_text", methods::EMBED_TEXT, (text,))
+    }
+    async fn embedder_slug(&self) -> Result<String, MemoryError> {
+        module_call!(self, "embedder_slug", methods::EMBEDDER_SLUG, ())
     }
 }

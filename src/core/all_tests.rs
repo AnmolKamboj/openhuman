@@ -1851,6 +1851,14 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             // its only caller is the archivist post-turn hook, which runs
             // in-process on the turn path rather than answering an RPC.
             Capability::Episodic => false,
+            // New in tinymemory v1.13.2 (tinymemory#110): entity extraction and
+            // text embedding served by the module and forwarded by the driver
+            // (`as_scoring`). No controller is tagged with it yet: its callers
+            // are the scoring and query paths that still reach the engine
+            // in-process, so gating a controller on it would unregister RPC
+            // methods that work today. Flips in the change that routes those
+            // callers through the driver (#5560).
+            Capability::Scoring => false,
         };
         assert_eq!(
             gated.contains(&cap),

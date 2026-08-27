@@ -4200,6 +4200,7 @@ dependencies = [
  "tinymcp-bus",
  "tinymemory",
  "tinymemory-api",
+ "tinymemory-bus",
  "tinymemory-core",
  "tinymemory-tinycortex",
  "tinyplace",
@@ -6580,7 +6581,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.13.1"
+version = "1.13.2"
 dependencies = [
  "anyhow",
  "async-trait",
