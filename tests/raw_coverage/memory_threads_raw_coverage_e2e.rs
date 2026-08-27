@@ -1835,6 +1835,10 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
 
 #[tokio::test]
 async fn memory_read_rpc_score_index_and_summary_helpers_cover_dashboard_paths() {
+    // Serialised with every other case on the shared module store: a parallel
+    // run of this target would otherwise let another case's `wipe_shared_store`
+    // empty the rows seeded below before the reads assert on them.
+    let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let mut config = config_in(&tmp);
     use_module_workspace(&mut config);
