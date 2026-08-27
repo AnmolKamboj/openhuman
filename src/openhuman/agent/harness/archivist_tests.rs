@@ -459,25 +459,10 @@ impl tinymemory_core::chat::ChatProvider for StubChatProvider {
     }
 }
 
-/// Stub Embedder that returns a fixed unit vector without hitting Ollama.
-struct StubEmbedder;
-
-#[async_trait::async_trait]
-impl crate::openhuman::memory::tree::score::embed::Embedder for StubEmbedder {
-    fn name(&self) -> &'static str {
-        "stub-embedder-v1"
-    }
-
-    async fn embed(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
-        // Return a simple 4-dim unit vector.
-        Ok(vec![0.5_f32, 0.5, 0.5, 0.5])
-    }
-}
-
-/// Build an ArchivistHook with stub provider + embedder injected directly.
+/// Build an ArchivistHook with a stub ChatProvider injected directly.
 /// Uses the test-only `new_with_stubs` constructor to bypass `with_config`.
 fn hook_with_stubs(provider: Arc<dyn MemoryProvider>) -> ArchivistHook {
-    ArchivistHook::new_with_stubs(provider, Arc::new(StubChatProvider), Arc::new(StubEmbedder))
+    ArchivistHook::new_with_stubs(provider, Arc::new(StubChatProvider))
 }
 
 /// When a segment closes, the LLM chat provider recap is used (verified by
@@ -558,23 +543,6 @@ async fn phase1_llm_recap_and_embedding_on_segment_close() {
         "Expected summary to contain 'stub recap', got: {:?}",
         summary
     );
-
-    // Verify an embedding row was written for the closed segment.
-    let embedding =
-        seg::segment_embedding_get(&conn, &closed_seg.segment_id, "stub-embedder-v1").unwrap();
-    assert!(
-        embedding.is_some(),
-        "Expected an embedding row for segment={} model=stub-embedder-v1",
-        closed_seg.segment_id
-    );
-    let vec = embedding.unwrap();
-    assert_eq!(vec.len(), 4, "Expected 4-dim vector from stub embedder");
-    for v in &vec {
-        assert!(
-            (*v - 0.5_f32).abs() < 1e-4,
-            "Expected vector components ≈ 0.5, got {v}"
-        );
-    }
 }
 
 /// `flush_open_segment` must force-close the trailing open segment and
@@ -629,13 +597,6 @@ async fn phase1_flush_open_segment_finalizes_trailing_segment() {
         flushed.is_some(),
         "Expected flushed segment to have a non-empty summary"
     );
-
-    let seg_id = &flushed.unwrap().segment_id;
-    let embedding = seg::segment_embedding_get(&conn, seg_id, "stub-embedder-v1").unwrap();
-    assert!(
-        embedding.is_some(),
-        "Expected embedding row for flushed segment={seg_id}"
-    );
 }
 
 // ── Phase 2: segment-granularity tree ingest ─────────────────────────────────
@@ -686,12 +647,7 @@ fn hook_with_stubs_and_tree_config(
     provider: Arc<dyn MemoryProvider>,
     cfg: Config,
 ) -> ArchivistHook {
-    ArchivistHook::new_with_stubs_and_config(
-        provider,
-        Arc::new(StubChatProvider),
-        Arc::new(StubEmbedder),
-        cfg,
-    )
+    ArchivistHook::new_with_stubs_and_config(provider, Arc::new(StubChatProvider), cfg)
 }
 
 /// After a single turn (no segment boundary), the tree must have ZERO chunks —
@@ -1045,132 +1001,85 @@ async fn phase2_flush_also_triggers_tree_ingest_inner() {
 // `embed_segment_recap` directly to lock the guard against future
 // regressions where `summarize_entries` could return `""`.
 
-/// Embedder stub that panics if `embed` is invoked. Used to prove that
-/// the empty-summary guard short-circuits BEFORE the upstream provider
-/// is contacted (the very fault the #13021 fix prevents).
-struct PanicOnEmbedEmbedder;
-
-#[async_trait::async_trait]
-impl crate::openhuman::memory::tree::score::embed::Embedder for PanicOnEmbedEmbedder {
-    fn name(&self) -> &'static str {
-        "panic-embedder-v1"
-    }
-
-    async fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>> {
-        panic!(
-            "embed_segment_recap must not call Embedder::embed for empty/whitespace recap (got {text:?})"
-        );
-    }
-}
-
-fn hook_with_panic_embedder(provider: Arc<dyn MemoryProvider>) -> ArchivistHook {
-    ArchivistHook::new_with_stubs(
-        provider,
-        Arc::new(StubChatProvider),
-        Arc::new(PanicOnEmbedEmbedder),
-    )
-}
-
-/// An empty recap must short-circuit before calling `Embedder::embed`, and
-/// must not write a row to `segment_embeddings`. The segment row itself
-/// remains intact (this helper does not touch segment status).
+/// An empty recap must short-circuit before any scoring call.
+///
+/// Uses `RecordingProvider` so we can assert that `scoring.embed_text` is
+/// absent — confirming the guard fired before the scoring path, not merely
+/// that no row landed in a DB queried with the wrong model_signature key.
 #[tokio::test]
 async fn embed_segment_recap_skips_empty_summary() {
-    let (_tmp, client, provider) = setup_provider();
-    let conn = client.profile_conn();
-    let hook = hook_with_panic_embedder(provider.clone());
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-empty-recap";
-    seg::segment_create(
-        &conn,
-        segment_id,
-        "session-x",
-        "global",
-        1,
-        Some(0),
-        1.0,
-        1.0,
-    )
-    .unwrap();
-    seg::segment_close(&conn, segment_id, 2.0).unwrap();
+    hook.embed_segment_recap("seg-empty-recap", "", 3.0).await;
 
-    // PanicOnEmbedEmbedder would panic if Embedder::embed were invoked;
-    // reaching this point proves the guard short-circuited.
-    hook.embed_segment_recap(segment_id, "", 3.0).await;
-
-    let row = seg::segment_embedding_get(&conn, segment_id, "panic-embedder-v1").unwrap();
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
     assert!(
-        row.is_none(),
-        "No embedding row should exist for an empty-recap segment"
+        !methods.contains(&"scoring.embed_text"),
+        "scoring.embed_text must not be called for an empty recap; got {methods:?}"
     );
 }
 
 /// Whitespace-only recaps (newlines, tabs, spaces) must also short-circuit
 /// — the upstream provider rejects whitespace inputs the same way it
 /// rejects empty inputs (#13021).
+///
+/// Uses `RecordingProvider` so we can assert that `scoring.embed_text` is
+/// absent — confirming the guard fired before the scoring path, not merely
+/// that no row landed in a DB queried with the wrong model_signature key.
 #[tokio::test]
 async fn embed_segment_recap_skips_whitespace_summary() {
-    let (_tmp, client, provider) = setup_provider();
-    let conn = client.profile_conn();
-    let hook = hook_with_panic_embedder(provider.clone());
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-ws-recap";
-    seg::segment_create(
-        &conn,
-        segment_id,
-        "session-y",
-        "global",
-        1,
-        Some(0),
-        1.0,
-        1.0,
-    )
-    .unwrap();
-    seg::segment_close(&conn, segment_id, 2.0).unwrap();
+    hook.embed_segment_recap("seg-ws-recap", "   \n\t  ", 3.0)
+        .await;
 
-    hook.embed_segment_recap(segment_id, "   \n\t  ", 3.0).await;
-
-    let row = seg::segment_embedding_get(&conn, segment_id, "panic-embedder-v1").unwrap();
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
     assert!(
-        row.is_none(),
-        "No embedding row should exist for a whitespace-only recap segment"
+        !methods.contains(&"scoring.embed_text"),
+        "scoring.embed_text must not be called for a whitespace-only recap; got {methods:?}"
     );
 }
 
-/// Positive control: a non-empty recap is embedded and the row IS written.
-/// Without this, the empty/whitespace tests above would pass even if the
-/// guard erroneously skipped every recap.
+/// Positive control: a non-empty recap must reach `embedder_slug` then
+/// `embed_text` on the scoring family, in that order, and pass the recap text
+/// verbatim to `embed_text`.
 #[tokio::test]
-async fn embed_segment_recap_writes_row_for_non_empty_summary() {
-    let (_tmp, client, provider) = setup_provider();
-    let conn = client.profile_conn();
-    let hook = hook_with_stubs(provider.clone());
+async fn embed_segment_recap_reaches_scoring_for_non_empty_summary() {
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-ok-recap";
-    seg::segment_create(
-        &conn,
-        segment_id,
-        "session-z",
-        "global",
-        1,
-        Some(0),
-        1.0,
-        1.0,
-    )
-    .unwrap();
-    seg::segment_close(&conn, segment_id, 2.0).unwrap();
-
-    hook.embed_segment_recap(segment_id, "real recap text", 3.0)
+    hook.embed_segment_recap("seg-ok-recap", "real recap text", 3.0)
         .await;
 
-    let row = seg::segment_embedding_get(&conn, segment_id, "stub-embedder-v1").unwrap();
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
+
+    let slug_pos = methods
+        .iter()
+        .position(|&m| m == "scoring.embedder_slug")
+        .unwrap_or_else(|| panic!("scoring.embedder_slug must be called; got {methods:?}"));
+    let embed_pos = methods
+        .iter()
+        .position(|&m| m == "scoring.embed_text")
+        .expect("scoring.embed_text must be called for a non-empty recap");
+
     assert!(
-        row.is_some(),
-        "Embedding row should exist when recap is non-empty"
+        slug_pos < embed_pos,
+        "scoring.embedder_slug ({slug_pos}) must be called before scoring.embed_text ({embed_pos})"
     );
     assert_eq!(
-        row.unwrap().len(),
-        4,
-        "Expected 4-dim vector from stub embedder"
+        calls[embed_pos].content.as_deref(),
+        Some("real recap text"),
+        "embed_text must receive the recap text verbatim"
     );
 }

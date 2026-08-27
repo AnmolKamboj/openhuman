@@ -251,10 +251,44 @@ async fn try_deterministic_memory_retrieval(
     // extraction here is deterministic and cheap (regex, or one spaCy call);
     // `fast_retrieve` repeats it internally, which is the same work its first
     // model-driven tool call would have done.
-    if crate::openhuman::memory::tree::nlp::extract_query_entities(config, query)
-        .await
-        .is_empty()
-    {
+    //
+    // Extraction goes through the provider's scoring family so the host no longer
+    // calls `tinymemory_core::` directly. Any failure (binding unavailable,
+    // scoring not exposed, extraction error) is fail-safe: treat as entities_empty
+    // = true so the fast path is skipped and the model-driven walk runs instead.
+    // This preserves the pre-scoring behavior where an unavailable extractor
+    // returned empty entities, keeping the guard conservative.
+    let entities_empty = match crate::openhuman::memory::binding::for_config(config) {
+        Ok(binding) => match binding.provider().as_scoring() {
+            Some(scoring) => match scoring.extract_entities(query).await {
+                Ok(entities) => entities.is_empty(),
+                Err(e) => {
+                    tracing::debug!(
+                        task_id = %task_id,
+                        error = %e,
+                        "[subagent_runner] scoring extract_entities failed (non-fatal) — deferring to model walk (#4677)"
+                    );
+                    true
+                }
+            },
+            None => {
+                tracing::debug!(
+                    task_id = %task_id,
+                    "[subagent_runner] driver does not expose scoring (module not loaded or policy excluded) — deferring to model walk (#4677)"
+                );
+                true
+            }
+        },
+        Err(e) => {
+            tracing::debug!(
+                task_id = %task_id,
+                error = %e,
+                "[subagent_runner] memory binding unavailable (non-fatal) — deferring to model walk (#4677)"
+            );
+            true
+        }
+    };
+    if entities_empty {
         tracing::debug!(
             task_id = %task_id,
             "[subagent_runner] agent_memory fast-path skipped — ungrounded query (no entities/topics); deferring to model walk (#4677)"

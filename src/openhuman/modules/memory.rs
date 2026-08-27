@@ -82,7 +82,7 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.2";
 /// **Widen this only together with the `version` bump in
 /// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
 /// fails if the two drift.
-const ARTIFACT_CAPABILITIES: &[Capability] = &[
+pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Core,
     Capability::Recall,
     Capability::Ingest,
