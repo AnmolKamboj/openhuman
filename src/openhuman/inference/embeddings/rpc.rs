@@ -17,6 +17,15 @@ const LOG_PREFIX: &str = "[embeddings::rpc]";
 /// Mirrors `tinymemory_core::tree::score::embed::effective_embedder_slug` so
 /// `get_settings` no longer calls `tinymemory_core::` directly (#5560).
 ///
+/// `MemoryScoring::embedder_slug()` is not used here for two reasons:
+/// (1) `get_settings` is a synchronous config-reading RPC handler and cannot
+/// await an async bus call; (2) this function answers "what slug will ingestion
+/// use?" — a config-derived prediction that must work even when the module is
+/// not loaded. The bus call would give the same answer when the module is
+/// running, but would fail gracefully when it is not, offering no benefit over
+/// reading the config directly. Keep both implementations in sync whenever the
+/// engine's resolution ladder changes.
+///
 /// Resolution order (matches the engine factory's ladder):
 /// 1. Explicit Ollama override — `memory_tree.embedding_endpoint` +
 ///    `memory_tree.embedding_model` both `Some` and non-empty → `"ollama"`.

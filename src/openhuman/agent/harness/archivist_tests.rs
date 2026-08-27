@@ -1001,66 +1001,49 @@ async fn phase2_flush_also_triggers_tree_ingest_inner() {
 // `embed_segment_recap` directly to lock the guard against future
 // regressions where `summarize_entries` could return `""`.
 
-/// An empty recap must short-circuit before any scoring call, and must not
-/// write a row to `segment_embeddings`. The segment row itself remains intact.
+/// An empty recap must short-circuit before any scoring call.
+///
+/// Uses `RecordingProvider` so we can assert that `scoring.embed_text` is
+/// absent — confirming the guard fired before the scoring path, not merely
+/// that no row landed in a DB queried with the wrong model_signature key.
 #[tokio::test]
 async fn embed_segment_recap_skips_empty_summary() {
-    let (_tmp, client, provider) = setup_provider();
-    let conn = client.profile_conn();
-    let hook = hook_with_stubs(provider.clone());
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-empty-recap";
-    seg::segment_create(
-        &conn,
-        segment_id,
-        "session-x",
-        "global",
-        1,
-        Some(0),
-        1.0,
-        1.0,
-    )
-    .unwrap();
-    seg::segment_close(&conn, segment_id, 2.0).unwrap();
+    hook.embed_segment_recap("seg-empty-recap", "", 3.0).await;
 
-    hook.embed_segment_recap(segment_id, "", 3.0).await;
-
-    let row = seg::segment_embedding_get(&conn, segment_id, "any-model").unwrap();
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
     assert!(
-        row.is_none(),
-        "No embedding row should exist for an empty-recap segment"
+        !methods.contains(&"scoring.embed_text"),
+        "scoring.embed_text must not be called for an empty recap; got {methods:?}"
     );
 }
 
 /// Whitespace-only recaps (newlines, tabs, spaces) must also short-circuit
 /// — the upstream provider rejects whitespace inputs the same way it
 /// rejects empty inputs (#13021).
+///
+/// Uses `RecordingProvider` so we can assert that `scoring.embed_text` is
+/// absent — confirming the guard fired before the scoring path, not merely
+/// that no row landed in a DB queried with the wrong model_signature key.
 #[tokio::test]
 async fn embed_segment_recap_skips_whitespace_summary() {
-    let (_tmp, client, provider) = setup_provider();
-    let conn = client.profile_conn();
-    let hook = hook_with_stubs(provider.clone());
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-ws-recap";
-    seg::segment_create(
-        &conn,
-        segment_id,
-        "session-y",
-        "global",
-        1,
-        Some(0),
-        1.0,
-        1.0,
-    )
-    .unwrap();
-    seg::segment_close(&conn, segment_id, 2.0).unwrap();
+    hook.embed_segment_recap("seg-ws-recap", "   \n\t  ", 3.0).await;
 
-    hook.embed_segment_recap(segment_id, "   \n\t  ", 3.0).await;
-
-    let row = seg::segment_embedding_get(&conn, segment_id, "any-model").unwrap();
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
     assert!(
-        row.is_none(),
-        "No embedding row should exist for a whitespace-only recap segment"
+        !methods.contains(&"scoring.embed_text"),
+        "scoring.embed_text must not be called for a whitespace-only recap; got {methods:?}"
     );
 }
 
@@ -1083,7 +1066,7 @@ async fn embed_segment_recap_reaches_scoring_for_non_empty_summary() {
     let slug_pos = methods
         .iter()
         .position(|&m| m == "scoring.embedder_slug")
-        .expect("scoring.embedder_slug must be called; got {methods:?}");
+        .unwrap_or_else(|| panic!("scoring.embedder_slug must be called; got {methods:?}"));
     let embed_pos = methods
         .iter()
         .position(|&m| m == "scoring.embed_text")

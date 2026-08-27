@@ -253,8 +253,11 @@ async fn try_deterministic_memory_retrieval(
     // model-driven tool call would have done.
     //
     // Extraction goes through the provider's scoring family so the host no longer
-    // calls `tinymemory_core::` directly. If the driver does not support scoring
-    // the guard is skipped (fail-open) and the fast path runs regardless.
+    // calls `tinymemory_core::` directly. Any failure (binding unavailable,
+    // scoring not exposed, extraction error) is fail-safe: treat as entities_empty
+    // = true so the fast path is skipped and the model-driven walk runs instead.
+    // This preserves the pre-scoring behavior where an unavailable extractor
+    // returned empty entities, keeping the guard conservative.
     let entities_empty = match crate::openhuman::memory::binding::for_config(config) {
         Ok(binding) => match binding.provider().as_scoring() {
             Some(scoring) => match scoring.extract_entities(query).await {
@@ -263,38 +266,26 @@ async fn try_deterministic_memory_retrieval(
                     tracing::debug!(
                         task_id = %task_id,
                         error = %e,
-                        "[subagent_runner] scoring extract_entities failed (non-fatal) — skipping entity guard"
+                        "[subagent_runner] scoring extract_entities failed (non-fatal) — deferring to model walk (#4677)"
                     );
-                    false
+                    true
                 }
             },
             None => {
-                use tinymemory_api::capabilities::Capability;
-                if crate::openhuman::modules::memory::ARTIFACT_CAPABILITIES
-                    .contains(&Capability::Scoring)
-                {
-                    tracing::warn!(
-                        task_id = %task_id,
-                        "[subagent_runner] driver does not expose scoring but the pinned \
-                         artifact is expected to serve it — check module version; \
-                         skipping entity guard"
-                    );
-                } else {
-                    tracing::debug!(
-                        task_id = %task_id,
-                        "[subagent_runner] driver does not support scoring — skipping entity guard"
-                    );
-                }
-                false
+                tracing::debug!(
+                    task_id = %task_id,
+                    "[subagent_runner] driver does not expose scoring (module not loaded or policy excluded) — deferring to model walk (#4677)"
+                );
+                true
             }
         },
         Err(e) => {
             tracing::debug!(
                 task_id = %task_id,
                 error = %e,
-                "[subagent_runner] memory binding unavailable (non-fatal) — skipping entity guard"
+                "[subagent_runner] memory binding unavailable (non-fatal) — deferring to model walk (#4677)"
             );
-            false
+            true
         }
     };
     if entities_empty {
