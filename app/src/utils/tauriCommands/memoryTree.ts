@@ -894,7 +894,7 @@ export interface MemoryTreeQuarantine {
   quarantined_at_ms: number;
   /** Local path of the preserved damaged database. */
   quarantined_path: string;
-  /** A chunk landed after the quarantine: the rebuilt store is repopulating. */
+  /** The rebuilt (initially empty) store holds a chunk again: the user re-synced. */
   resynced: boolean;
 }
 

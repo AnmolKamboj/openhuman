@@ -902,8 +902,7 @@ pub struct PipelineStatusResponse {
     /// workspace, derived from disk (`memory_tree/chunks.db.corrupt-<ts>`),
     /// so it survives restarts and reaches a renderer that was not connected
     /// when the quarantine happened. `None` when nothing was ever quarantined.
-    /// Reported until a sync lands after the quarantine (`resynced`), which
-    /// is when the rebuilt store stops being empty.
+    /// Reported until the rebuilt store holds a chunk again (`resynced`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quarantine: Option<QuarantineStatus>,
 }
@@ -919,8 +918,11 @@ pub struct QuarantineStatus {
     /// The preserved copy of the damaged database. Local to this machine and
     /// shown only to its own user, so the user can hand it to recovery tooling.
     pub quarantined_path: String,
-    /// Whether a chunk has been written since the quarantine — the rebuilt
-    /// store is being repopulated, so the notice can retire.
+    /// Whether the rebuilt store holds any chunk again. The quarantine leaves
+    /// an empty schema, so a non-empty store means the user has re-synced
+    /// and the notice can retire. Deliberately not a timestamp comparison:
+    /// chunk timestamps are *content* time (a mail's `sent_at`, a file's
+    /// `modified_at`), so restored history predates the quarantine forever.
     pub resynced: bool,
 }
 
@@ -932,7 +934,7 @@ pub struct QuarantineStatus {
 /// Side-file quarantines (`chunks.db-wal.corrupt-…`) do not match the prefix.
 fn latest_quarantine(
     workspace_dir: &std::path::Path,
-    most_recent_chunk_ms: i64,
+    total_chunks: u64,
 ) -> Option<QuarantineStatus> {
     const PREFIX: &str = "chunks.db.corrupt-";
     let dir = workspace_dir.join("memory_tree");
@@ -950,7 +952,7 @@ fn latest_quarantine(
     Some(QuarantineStatus {
         quarantined_at_ms,
         quarantined_path: path.display().to_string(),
-        resynced: most_recent_chunk_ms > quarantined_at_ms,
+        resynced: total_chunks > 0,
     })
 }
 
@@ -1077,10 +1079,9 @@ pub async fn pipeline_status_rpc(
     // back to the active degradation cause, then `None` when healthy.
     let first_blocking_cause = latest_failure.or_else(|| degraded.cause.clone());
 
-    // openhuman#5820: disk-derived so it is durable and replayable; computed
-    // from the same `store` observation as `last_sync_ms` so "resynced" and
-    // the tile agree.
-    let quarantine = latest_quarantine(config.workspace_dir.as_path(), last_sync_ms);
+    // openhuman#5820: disk-derived so it is durable and replayable; "resynced"
+    // reads the same `store` observation as the chunk tile, so the two agree.
+    let quarantine = latest_quarantine(config.workspace_dir.as_path(), total_chunks);
     if let Some(q) = &quarantine {
         log::debug!(
             "[memory-tree][rpc] pipeline_status: quarantine at={} resynced={} path={}",
@@ -2191,16 +2192,18 @@ mod tests {
             .and_utc()
             .timestamp_millis();
 
-        // A chunk written before the quarantine: the rebuilt store is still empty.
-        let pending = latest_quarantine(tmp.path(), at - 1).expect("newest quarantine");
+        // The rebuilt store is still empty: the notice stands.
+        let pending = latest_quarantine(tmp.path(), 0).expect("newest quarantine");
         assert_eq!(pending.quarantined_at_ms, at);
         assert!(pending
             .quarantined_path
             .ends_with("chunks.db.corrupt-20260827T070304Z"));
         assert!(!pending.resynced);
 
-        // A chunk written after it: the user re-synced, the notice can retire.
-        let done = latest_quarantine(tmp.path(), at + 1).expect("newest quarantine");
+        // Any chunk in the rebuilt store: the user re-synced, the notice retires.
+        // Chunk *content* time is irrelevant here: restored history predates the
+        // quarantine forever, which is exactly why this is not a timestamp test.
+        let done = latest_quarantine(tmp.path(), 1).expect("newest quarantine");
         assert!(done.resynced);
     }
 

@@ -31,10 +31,17 @@ export function useMemoryQuarantinePoll(): void {
   useEffect(() => {
     if (!isAuthenticated) return;
     let cancelled = false;
+    // A slow response must not overwrite a newer one: a delayed
+    // `resynced: false` landing after a fresh `resynced: true` would re-open
+    // a notice the user has already earned the retirement of.
+    let latestRequest = 0;
     const tick = async () => {
+      const request = ++latestRequest;
       try {
         const status = await memoryTreePipelineStatus();
-        if (!cancelled) reportMemoryQuarantine(dispatch, status.quarantine);
+        if (!cancelled && request === latestRequest) {
+          reportMemoryQuarantine(dispatch, status.quarantine);
+        }
       } catch (err) {
         // Signed out mid-poll, core restarting: nothing to report, try again
         // next tick.
