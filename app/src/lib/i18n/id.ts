@@ -574,6 +574,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} hr lalu',
   'sync.status.success': 'Berhasil',
   'sync.status.failed': 'Gagal',
+  'sync.status.partial': 'Terambil, gagal masuk ke memori',
   'common.error': 'Kesalahan',
   'common.success': 'Berhasil',
   'common.back': 'Kembali',
@@ -2883,6 +2884,9 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Tidak',
   'memorySources.allIn.success': 'Semua sumber diaktifkan tanpa batas. Sinkronisasi dimulai.',
   'memorySources.allIn.failed': 'Gagal mengaktifkan semua. Silakan coba lagi.',
+  'memorySources.allIn.allFailed':
+    'Tidak ada sinkronisasi yang bisa dimulai. Periksa setiap sumber untuk melihat alasannya.',
+  'memorySources.allIn.partial': 'Sinkronisasi dimulai: {triggered}. Tidak bisa dimulai: {failed}.',
   'memorySources.settings.button': 'Pengaturan',
   'memorySources.settings.title': 'Pengaturan sinkronisasi',
   'memorySources.settings.maxPrs': 'Maksimal pull request',
@@ -6776,6 +6780,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Model lokal tidak tersedia',
   'userErrors.localModelUnavailable.body':
     'Ollama tidak dapat dijangkau di endpoint yang dikonfigurasi, atau model yang dibutuhkan belum terpasang di sana. Jalankan Ollama dan unduh modelnya di endpoint tersebut, atau alihkan pekerjaan ini ke penyedia cloud.',
+  'userErrors.memoryStoreCorrupt.title': 'Indeks memori rusak',
+  'userErrors.memoryStoreCorrupt.body':
+    'Basis data pohon memori mengalami kerusakan. Berkas yang rusak disimpan di samping data memori Anda, dan indeks kosong telah dibangun ulang. Sinkronkan ulang sumber memori untuk mengisinya kembali.',
+  'userErrors.action.openMemorySync': 'Sinkronkan ulang memori',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
   'userErrors.scope.workspace': 'Ruang kerja',

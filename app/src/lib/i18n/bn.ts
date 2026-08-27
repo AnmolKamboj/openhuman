@@ -570,6 +570,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} দি. আগে',
   'sync.status.success': 'সফল',
   'sync.status.failed': 'ব্যর্থ',
+  'sync.status.partial': 'আনা হয়েছে, মেমোরিতে যুক্ত হয়নি',
   'common.error': 'ত্রুটি',
   'common.success': 'সফল',
   'common.back': 'পেছনে',
@@ -2873,6 +2874,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'না',
   'memorySources.allIn.success': 'সব উৎস সীমা ছাড়া সক্রিয় হয়েছে। সিঙ্ক শুরু হয়েছে।',
   'memorySources.allIn.failed': 'সব চালু করা সম্ভব হয়নি। আবার চেষ্টা করুন।',
+  'memorySources.allIn.allFailed': 'কোনো সিঙ্ক শুরু করা যায়নি। কারণ জানতে প্রতিটি উৎস দেখুন।',
+  'memorySources.allIn.partial': 'শুরু হওয়া সিঙ্ক: {triggered}। শুরু করা যায়নি: {failed}।',
   'memorySources.settings.button': 'সেটিংস',
   'memorySources.settings.title': 'সিঙ্ক সেটিংস',
   'memorySources.settings.maxPrs': 'সর্বোচ্চ পুল রিকোয়েস্ট',
@@ -6744,6 +6747,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'লোকাল মডেল অনুপলব্ধ',
   'userErrors.localModelUnavailable.body':
     'কনফিগার করা এন্ডপয়েন্টে Ollama-তে পৌঁছানো যাচ্ছে না, অথবা সেখানে প্রয়োজনীয় মডেলটি ইনস্টল করা নেই। Ollama চালু করে সেই এন্ডপয়েন্টে মডেলটি পুল করুন, অথবা এই কাজটি কোনো ক্লাউড প্রোভাইডারে সরিয়ে নিন।',
+  'userErrors.memoryStoreCorrupt.title': 'মেমোরি ইনডেক্স নষ্ট হয়ে গেছে',
+  'userErrors.memoryStoreCorrupt.body':
+    'আপনার মেমোরি ট্রির ডেটাবেস নষ্ট হয়ে গিয়েছিল। নষ্ট ফাইলটি মেমোরি ডেটার পাশে সংরক্ষিত আছে এবং একটি খালি ইনডেক্স নতুন করে তৈরি হয়েছে। আবার পূরণ করতে মেমোরি উৎসগুলি পুনরায় সিঙ্ক করুন।',
+  'userErrors.action.openMemorySync': 'মেমোরি আবার সিঙ্ক করুন',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
   'userErrors.scope.workspace': 'ওয়ার্কস্পেস',

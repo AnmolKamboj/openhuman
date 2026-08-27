@@ -202,6 +202,18 @@ async fn memory_read_rpc_filters_graphs_scores_reset_and_wipe_seeded_rows() {
     let _env_lock = __shared_env_lock();
     let tmp = TempDir::new().unwrap();
     let cfg = config_in(&tmp);
+    // The `read_rpc` listings below go through the bound memory driver, which
+    // under the `modules` gate is the loaded tinymemory artifact. That driver
+    // resolves its config from the process-wide boot policy, so a test binary
+    // has to publish one the way boot does. The policy is first-call-wins and
+    // the module takes its `workspace_dir` at load time, so it is built from
+    // THIS test's `cfg`: the rows seeded in-process below and the rows the
+    // module lists must name the same store. No other case in this aggregated
+    // binary routes through the module, so nothing contends for the slot.
+    #[cfg(feature = "modules")]
+    openhuman_core::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(
+        cfg.clone(),
+    ));
     let ts0 = Utc.with_ymd_and_hms(2026, 5, 20, 9, 0, 0).unwrap();
     let chunks = vec![
         test_chunk(

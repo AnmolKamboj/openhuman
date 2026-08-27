@@ -749,8 +749,8 @@ jobs:
           # and leave a stale digest that only fails after the download. Both values
           # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
           # which is the authoritative pin — copy them from there, never recompute.
-          memory_version="1.12.0"
-          memory_sha256="2900252b86975ac749bb91cb7dad98cfd357c0011c6c51b2c05b20efdc5d428f"
+          memory_version="1.13.2"
+          memory_sha256="5e536a6f93c5ae0e36f1cd14fa00321e3c1d2557108f8ca25b46b13359aa598a"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"

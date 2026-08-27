@@ -476,3 +476,18 @@ async fn the_defaulted_members_dispatch_to_the_module_instead_of_refusing() {
             .expect_err("a disabled host cannot succeed"),
     );
 }
+
+#[test]
+fn scoring_is_advertised_and_has_a_host_accessor() {
+    // tinymemory v1.13.2 (tinymemory#110) added the family; advertising it and
+    // forwarding it must land together, or the driver claims a family whose
+    // accessor answers `None` — the #5598 over-claim in miniature.
+    let mut config = Config::default();
+    config.modules.enabled = false;
+    let provider = ModuleMemoryProvider::new(Arc::new(config));
+    assert!(super::capabilities_for(false).contains(Capability::Scoring));
+    assert!(
+        provider.as_scoring().is_some(),
+        "Scoring is advertised, so the accessor must be wired"
+    );
+}

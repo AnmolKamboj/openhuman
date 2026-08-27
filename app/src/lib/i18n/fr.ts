@@ -589,6 +589,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': 'il y a {n} j',
   'sync.status.success': 'Réussi',
   'sync.status.failed': 'Échec',
+  'sync.status.partial': 'Récupéré, échec d’indexation mémoire',
   'common.error': 'Erreur',
   'common.success': 'Succès',
   'common.back': 'Retour',
@@ -2950,6 +2951,10 @@ const messages: TranslationMap = {
   'memorySources.allIn.success': 'Toutes les sources activées sans limite. Synchronisation lancée.',
   'memorySources.allIn.failed': "Impossible d'appliquer tout activer. Veuillez réessayer.",
   'memorySources.settings.button': 'Paramètres',
+  'memorySources.allIn.allFailed':
+    'Aucune synchronisation n’a pu démarrer. Vérifiez chaque source pour connaître la raison.',
+  'memorySources.allIn.partial':
+    'Synchronisations lancées : {triggered}. Impossibles à lancer : {failed}.',
   'memorySources.settings.title': 'Paramètres de synchronisation',
   'memorySources.settings.maxPrs': 'Nombre maximal de pull requests',
   'memorySources.settings.maxIssues': "Nombre maximal d'issues",
@@ -6914,6 +6919,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.body':
     "Ollama n'est pas joignable sur le point de terminaison configuré, ou le modèle requis n'y est pas installé. Lancez Ollama et téléchargez le modèle sur ce point de terminaison, ou basculez cette charge de travail vers un fournisseur cloud.",
   'userErrors.scope.chat': 'Chat',
+  'userErrors.memoryStoreCorrupt.title': 'L’index mémoire a été corrompu',
+  'userErrors.memoryStoreCorrupt.body':
+    'La base de données de l’arbre mémoire était endommagée. Le fichier endommagé a été conservé à côté de vos données mémoire et un index vide a été reconstruit. Resynchronisez vos sources mémoire pour le remplir à nouveau.',
+  'userErrors.action.openMemorySync': 'Resynchroniser la mémoire',
   'userErrors.scope.cron': 'Tâche planifiée',
   'userErrors.scope.workspace': 'Espace de travail',
   'userErrors.memoryBudgetExhausted.title': 'La mémoire a cessé de grandir',

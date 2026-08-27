@@ -271,6 +271,11 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
     }
     serde_json::json!({
         "workspace_dir": config.workspace_dir,
+        // The registry file the host writes `[[memory_sources]]` into. The
+        // module used to derive `workspace_dir/config.toml`, a file that does
+        // not exist, and answered `NotFound` for every host-registered source
+        // on sync (openhuman#5820). Additive: an older module ignores it.
+        "config_path": config.config_path,
         "memory": config.memory,
         "memory_tree": config.memory_tree,
         "scheduler_gate": config.scheduler_gate,
@@ -284,9 +289,20 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
         "embedding_routes": config.embedding_routes,
         "storage_provider": config.storage.provider.config,
         "ollama_base_url": crate::openhuman::inference::local::ollama_base_url_from_config(config),
-        "cloud_embedding_model": config.memory.embedding_model,
-        "cloud_embedding_dimensions": config.memory.embedding_dimensions,
-        "models_supporting_dimensions": [],
+        // The module's `EmbeddingHost::default_cloud_embedding_model`: what the
+        // engine switches to when the opted-in local model is unreachable
+        // (`store::factories`). That is the host's managed-cloud default, the
+        // same constant the in-process `OpenHumanEmbeddingHost` answers with.
+        // It is NOT `config.memory.embedding_model`, which is the user's
+        // intended model and is usually the local one; sending that here made
+        // the cloud fallback ask the managed embedder for `nomic-embed-text`
+        // (openhuman#5820).
+        "cloud_embedding_model":
+            crate::openhuman::inference::embeddings::DEFAULT_CLOUD_EMBEDDING_MODEL,
+        "cloud_embedding_dimensions":
+            crate::openhuman::inference::embeddings::DEFAULT_CLOUD_EMBEDDING_DIMENSIONS,
+        "models_supporting_dimensions":
+            crate::openhuman::inference::embeddings::MODELS_SUPPORTING_DIMENSIONS,
         // The periodic composio and workspace-source sync loops run INSIDE the
         // module now (tinymemory#100), and these three are what let them run at
         // all. Without the cadence the module answers manual-only and skips

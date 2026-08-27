@@ -574,6 +574,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} дн назад',
   'sync.status.success': 'Успешно',
   'sync.status.failed': 'Сбой',
+  'sync.status.partial': 'Получено, но не записано в память',
   'common.error': 'Ошибка',
   'common.success': 'Готово',
   'common.back': 'Назад',
@@ -2893,6 +2894,10 @@ const messages: TranslationMap = {
     'Все источники активированы без ограничений. Синхронизация запущена.',
   'memorySources.allIn.failed':
     'Не удалось применить «Включить всё». Пожалуйста, попробуйте снова.',
+  'memorySources.allIn.allFailed':
+    'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
+  'memorySources.allIn.partial':
+    'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',
   'memorySources.settings.maxPrs': 'Максимум pull request',
@@ -6815,6 +6820,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Локальная модель недоступна',
   'userErrors.localModelUnavailable.body':
     'Ollama недоступен по настроенному адресу, либо нужная модель там не установлена. Запустите Ollama и загрузите модель по этому адресу или переведите эту работу на облачного провайдера.',
+  'userErrors.memoryStoreCorrupt.title': 'Индекс памяти был повреждён',
+  'userErrors.memoryStoreCorrupt.body':
+    'База данных дерева памяти была повреждена. Повреждённый файл сохранён рядом с данными памяти, а пустой индекс создан заново. Заново синхронизируйте источники памяти, чтобы заполнить его.',
+  'userErrors.action.openMemorySync': 'Пересинхронизировать память',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
   'userErrors.scope.workspace': 'Рабочая область',

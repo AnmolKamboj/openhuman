@@ -47,3 +47,55 @@ fn the_null_driver_serves_neither_family() {
     assert!(provider.as_source_sync().is_none());
     assert!(provider.as_coding_sessions().is_none());
 }
+
+/// openhuman#5820: the all-in sweep must aggregate per-source trigger
+/// failures into the response instead of laundering them — in the incident
+/// every source failed `no memory source registered` and the RPC still
+/// answered a clean success with `sync_triggered: 0` and nothing else.
+#[tokio::test]
+async fn trigger_sweep_aggregates_failures_instead_of_laundering_them() {
+    fn entry(id: &str, enabled: bool) -> MemorySourceEntry {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "kind": "folder",
+            "label": "Test",
+            "enabled": enabled,
+            "path": ".",
+        }))
+        .expect("a valid folder source entry")
+    }
+
+    let sources = vec![
+        entry("ok_1", true),
+        entry("src_gone", true),
+        entry("disabled", false),
+        entry("src_also_gone", true),
+    ];
+
+    // Succeeds for ids starting `ok`, refuses everything else the way the
+    // incident did.
+    let (triggered, errors) = trigger_enabled_syncs(&sources, |source_id| async move {
+        if source_id.starts_with("ok") {
+            Ok(())
+        } else {
+            Err(format!(
+                "not found: no memory source registered as {source_id}"
+            ))
+        }
+    })
+    .await;
+
+    assert_eq!(triggered, 1, "only the healthy enabled source triggers");
+    assert_eq!(errors.len(), 2, "each failed enabled source is reported");
+    assert!(errors[0].starts_with("src_gone: "), "got: {}", errors[0]);
+    assert!(
+        errors[0].contains("no memory source registered"),
+        "the caller must see the real reason, got: {}",
+        errors[0]
+    );
+    assert!(
+        errors[1].starts_with("src_also_gone: "),
+        "got: {}",
+        errors[1]
+    );
+}

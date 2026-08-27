@@ -592,6 +592,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': 'vor {n} T.',
   'sync.status.success': 'Erfolg',
   'sync.status.failed': 'Fehlgeschlagen',
+  'sync.status.partial': 'Abgerufen, Speicherung im Gedächtnis fehlgeschlagen',
   'common.error': 'Fehler',
   'common.success': 'Erfolg',
   'common.back': 'Zurück',
@@ -2951,6 +2952,10 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Nein',
   'memorySources.allIn.success': 'Alle Quellen ohne Limits aktiviert. Synchronisierung gestartet.',
   'memorySources.allIn.failed': 'Konnte „Alles aktivieren" nicht anwenden. Bitte erneut versuchen.',
+  'memorySources.allIn.allFailed':
+    'Keine Synchronisierung konnte gestartet werden. Prüfe jede Quelle, um den Grund zu sehen.',
+  'memorySources.allIn.partial':
+    'Gestartete Synchronisierungen: {triggered}. Nicht startbar: {failed}.',
   'memorySources.settings.button': 'Einstellungen',
   'memorySources.settings.title': 'Synchronisierungseinstellungen',
   'memorySources.settings.maxPrs': 'Maximale Pull-Requests',
@@ -6928,6 +6933,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Lokales Modell nicht verfügbar',
   'userErrors.localModelUnavailable.body':
     'Ollama ist unter dem konfigurierten Endpunkt nicht erreichbar, oder das benötigte Modell ist dort nicht installiert. Starte Ollama und lade das Modell auf diesem Endpunkt, oder verlagere diese Arbeit auf einen Cloud-Anbieter.',
+  'userErrors.memoryStoreCorrupt.title': 'Gedächtnisindex war beschädigt',
+  'userErrors.memoryStoreCorrupt.body':
+    'Die Datenbank des Gedächtnisbaums war beschädigt. Die beschädigte Datei wurde neben deinen Gedächtnisdaten aufbewahrt und ein leerer Index neu aufgebaut. Synchronisiere deine Gedächtnisquellen erneut, um ihn wieder zu füllen.',
+  'userErrors.action.openMemorySync': 'Gedächtnis neu synchronisieren',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
   'userErrors.scope.workspace': 'Arbeitsbereich',

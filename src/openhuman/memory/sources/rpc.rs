@@ -577,6 +577,16 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
             binding.driver_id()
         )
     })?;
+    // The enabled gate is not the driver's. `run_source_sync` runs whatever id
+    // it is handed; it is `sources::sync::sync_source` and the periodic loop
+    // that refuse a disabled entry, and this RPC is the third caller, the one
+    // behind the user's Sync button. Same words as `sync_source` so the UI
+    // reads one message (#5820).
+    if let Some(entry) = super::registry::get_source_in(&config, &req.source_id)? {
+        if !entry.enabled {
+            return Err(format!("source '{}' is disabled", entry.id));
+        }
+    }
     sync.run_source_sync(&req.source_id)
         .await
         .map_err(|error| error.to_string())?;
@@ -1018,6 +1028,64 @@ pub struct AllInResponse {
     pub sources: Vec<MemorySourceEntry>,
     /// Number of sync tasks spawned (one per enabled source).
     pub sync_triggered: u32,
+    /// Number of enabled sources whose sync trigger FAILED (openhuman#5820).
+    ///
+    /// Additive: an older caller reading only `sync_triggered` behaves as
+    /// before, but a total failure no longer looks like a quiet 200 — in the
+    /// incident, every source failed `no memory source registered` and the
+    /// response still read as success with `sync_triggered: 0`.
+    #[serde(default)]
+    pub sync_failed: u32,
+    /// One `"<source_id>: <error>"` line per failed trigger, in sweep order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sync_errors: Vec<String>,
+}
+
+/// The sweep half of [`apply_all_in_rpc`]: trigger a sync for every enabled
+/// source, aggregating failures instead of laundering them (openhuman#5820 —
+/// in the incident every trigger failed `no memory source registered` and the
+/// RPC still answered a clean success).
+///
+/// Takes the trigger as a closure rather than the driver trait object so the
+/// aggregation is unit-testable without a full `MemorySourceSync` stub; the
+/// RPC owns config/binding resolution and the response shape.
+async fn trigger_enabled_syncs<F, Fut>(
+    sources: &[MemorySourceEntry],
+    mut trigger: F,
+) -> (u32, Vec<String>)
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    let mut sync_triggered: u32 = 0;
+    let mut sync_errors: Vec<String> = Vec::new();
+    for source in sources {
+        if !source.enabled {
+            continue;
+        }
+        tracing::debug!(
+            source_id = %source.id,
+            kind = %source.kind.as_str(),
+            "[memory_sources] apply_all_in_rpc: triggering sync"
+        );
+        match trigger(source.id.clone()).await {
+            Ok(()) => {
+                sync_triggered += 1;
+            }
+            Err(e) => {
+                // Per-source failure stays non-fatal for the sweep, but it is
+                // AGGREGATED into the response rather than laundered into a
+                // clean 200.
+                tracing::warn!(
+                    source_id = %source.id,
+                    error = %e,
+                    "[memory_sources] apply_all_in_rpc: sync trigger failed for source"
+                );
+                sync_errors.push(format!("{}: {e}", source.id));
+            }
+        }
+    }
+    (sync_triggered, sync_errors)
 }
 
 /// Enable ALL memory sources, clear all caps, and trigger a sync for
@@ -1046,39 +1114,30 @@ pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
         )
     })?;
 
-    let mut sync_triggered: u32 = 0;
-
-    for source in &sources {
-        if !source.enabled {
-            continue;
-        }
-        tracing::debug!(
-            source_id = %source.id,
-            kind = %source.kind.as_str(),
-            "[memory_sources] apply_all_in_rpc: triggering sync"
-        );
-        match sync
-            .run_source_sync(&source.id)
+    let (sync_triggered, sync_errors) = trigger_enabled_syncs(&sources, |source_id| async move {
+        sync.run_source_sync(&source_id)
             .await
+            .map(|_| ())
             .map_err(|error| error.to_string())
-        {
-            Ok(_) => {
-                sync_triggered += 1;
-            }
-            Err(e) => {
-                // Non-fatal: log and continue — best-effort sync trigger.
-                tracing::warn!(
-                    source_id = %source.id,
-                    error = %e,
-                    "[memory_sources] apply_all_in_rpc: sync trigger failed for source"
-                );
-            }
-        }
+    })
+    .await;
+
+    let sync_failed = sync_errors.len() as u32;
+    if sync_failed > 0 && sync_triggered == 0 {
+        // Every enabled source failed to trigger — that is a broken sweep,
+        // not a best-effort one. Log at ERROR so it cannot hide at warn among
+        // the per-source lines.
+        tracing::error!(
+            sources = sources.len(),
+            sync_failed,
+            "[memory_sources] apply_all_in_rpc: every sync trigger failed"
+        );
     }
 
     tracing::info!(
         sources = sources.len(),
         sync_triggered,
+        sync_failed,
         "[memory_sources] apply_all_in_rpc: complete"
     );
 
@@ -1086,6 +1145,8 @@ pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
         AllInResponse {
             sources,
             sync_triggered,
+            sync_failed,
+            sync_errors,
         },
         vec![],
     ))
@@ -1366,6 +1427,8 @@ mod monthly_summary_tests {
             duration_ms: 10,
             success: true,
             error: None,
+            tree_ingest_failures: 0,
+            tree_error: None,
         }
     }
 

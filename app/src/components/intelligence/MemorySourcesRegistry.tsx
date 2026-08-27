@@ -437,7 +437,28 @@ export function MemorySourcesRegistry({
     try {
       const result = await applyAllIn();
       setSources(result.sources);
-      onToast?.({ type: 'success', title: t('memorySources.allIn.success') });
+      // openhuman#5820: the RPC resolves even when triggers failed, so the
+      // verdict comes from the counts, not from "the call did not throw".
+      // Every trigger failing (the incident: `no memory source registered`
+      // x4) is an error; a partial start is a warning that names both
+      // counts. Only a clean sweep is a success.
+      if (result.sync_failed > 0 && result.sync_triggered === 0) {
+        onToast?.({
+          type: 'error',
+          title: t('memorySources.allIn.allFailed'),
+          message: result.sync_errors[0],
+        });
+      } else if (result.sync_failed > 0) {
+        onToast?.({
+          type: 'warning',
+          title: t('memorySources.allIn.partial')
+            .replace('{triggered}', String(result.sync_triggered))
+            .replace('{failed}', String(result.sync_failed)),
+          message: result.sync_errors[0],
+        });
+      } else {
+        onToast?.({ type: 'success', title: t('memorySources.allIn.success') });
+      }
     } catch (err) {
       onToast?.({
         type: 'error',

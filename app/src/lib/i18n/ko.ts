@@ -563,6 +563,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n}일 전',
   'sync.status.success': '성공',
   'sync.status.failed': '실패',
+  'sync.status.partial': '가져왔지만 메모리 기록 실패',
   'common.error': '오류',
   'common.success': '성공',
   'common.back': '뒤로',
@@ -2837,6 +2838,9 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': '아니오',
   'memorySources.allIn.success': '제한 없이 모든 소스가 활성화되었습니다. 동기화가 시작되었습니다.',
   'memorySources.allIn.failed': '전체 활성화를 적용하지 못했습니다. 다시 시도해 주세요.',
+  'memorySources.allIn.allFailed':
+    '동기화를 하나도 시작할 수 없습니다. 각 소스에서 원인을 확인하세요.',
+  'memorySources.allIn.partial': '시작된 동기화: {triggered}. 시작하지 못함: {failed}.',
   'memorySources.settings.button': '설정',
   'memorySources.settings.title': '동기화 설정',
   'memorySources.settings.maxPrs': '최대 풀 리퀘스트 수',
@@ -6666,6 +6670,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': '로컬 모델을 사용할 수 없음',
   'userErrors.localModelUnavailable.body':
     '구성된 엔드포인트에서 Ollama에 연결할 수 없거나 필요한 모델이 그곳에 설치되어 있지 않습니다. Ollama를 실행하고 해당 엔드포인트에 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
+  'userErrors.memoryStoreCorrupt.title': '메모리 인덱스가 손상되었습니다',
+  'userErrors.memoryStoreCorrupt.body':
+    '메모리 트리의 데이터베이스가 손상되었습니다. 손상된 파일은 메모리 데이터 옆에 보존되었고 빈 인덱스가 다시 생성되었습니다. 메모리 소스를 다시 동기화하여 채워 주세요.',
+  'userErrors.action.openMemorySync': '메모리 다시 동기화',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
   'userErrors.scope.workspace': '작업 공간',
