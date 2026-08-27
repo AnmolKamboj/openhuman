@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.1";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,9 +56,10 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.0";
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
 ///
-/// Re-read at tag `v1.13.0` (openhuman#5820): unchanged from v1.12.0 — that
-/// release added a `MemoryEvent` variant and two additive audit fields, not
-/// families; `git diff v1.12.0 v1.13.0 -- crates/tinymemory-api/src/capabilities.rs
+/// Re-read at tag `v1.13.1` (openhuman#5820): unchanged from v1.12.0 — v1.13.0
+/// added a `MemoryEvent` variant and two additive audit fields, v1.13.1 fixed the
+/// module's source-registry path; neither touched families. `git diff v1.12.0
+/// v1.13.1 -- crates/tinymemory-api/src/capabilities.rs
 /// crates/tinymemory-module/src/lib.rs` is empty.
 ///
 /// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
