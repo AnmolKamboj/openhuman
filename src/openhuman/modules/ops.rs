@@ -271,6 +271,11 @@ fn module_config(config: &Config, id: &str) -> serde_json::Value {
     }
     serde_json::json!({
         "workspace_dir": config.workspace_dir,
+        // The registry file the host writes `[[memory_sources]]` into. The
+        // module used to derive `workspace_dir/config.toml`, a file that does
+        // not exist, and answered `NotFound` for every host-registered source
+        // on sync (openhuman#5820). Additive: an older module ignores it.
+        "config_path": config.config_path,
         "memory": config.memory,
         "memory_tree": config.memory_tree,
         "scheduler_gate": config.scheduler_gate,
