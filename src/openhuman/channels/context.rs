@@ -1,0 +1,368 @@
+//! Shared channel runtime state and memory helpers.
+
+use crate::openhuman::agent::messages::ChatMessage;
+use crate::openhuman::agent::tinyagents::TurnModelSource;
+use crate::openhuman::tools::Tool;
+use crate::openhuman::util::truncate_with_ellipsis;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+pub(crate) use tinychannels::context::{
+    effective_channel_message_timeout_secs, should_skip_memory_context_entry,
+    ChannelRouteSelection, CHANNEL_HISTORY_COMPACT_CONTENT_CHARS,
+    CHANNEL_HISTORY_COMPACT_KEEP_MESSAGES, CHANNEL_MESSAGE_TIMEOUT_SECS,
+    CHANNEL_TYPING_REFRESH_INTERVAL_SECS, DEFAULT_CHANNEL_INITIAL_BACKOFF_SECS,
+    DEFAULT_CHANNEL_MAX_BACKOFF_SECS, MAX_CHANNEL_HISTORY, MEMORY_CONTEXT_ENTRY_MAX_CHARS,
+    MEMORY_CONTEXT_MAX_CHARS, MEMORY_CONTEXT_MAX_ENTRIES,
+};
+
+#[cfg(test)]
+pub(crate) use tinychannels::context::MIN_CHANNEL_MESSAGE_TIMEOUT_SECS;
+
+/// Per-sender conversation history for channel messages.
+pub(crate) type ConversationHistoryMap = Arc<Mutex<HashMap<String, Vec<ChatMessage>>>>;
+
+pub(crate) type TurnModelSourceCacheMap = Arc<Mutex<HashMap<String, TurnModelSource>>>;
+pub(crate) type RouteSelectionMap = Arc<Mutex<HashMap<String, ChannelRouteSelection>>>;
+
+#[derive(Clone)]
+pub(crate) struct ChannelRuntimeContext {
+    pub(crate) channels_by_name: Arc<HashMap<String, Arc<dyn super::Channel>>>,
+    /// Injected model source used only by tests and bespoke channel hosts.
+    /// Production contexts carry `config` and construct crate-native sources.
+    pub(crate) turn_model_source: Option<TurnModelSource>,
+    pub(crate) default_provider: Arc<String>,
+    pub(crate) memory: Arc<crate::openhuman::memory::guard::MemoryGuard>,
+    pub(crate) tools_registry: Arc<Vec<Box<dyn Tool>>>,
+    pub(crate) system_prompt: Arc<String>,
+    pub(crate) model: Arc<String>,
+    pub(crate) temperature: f64,
+    pub(crate) auto_save_memory: bool,
+    pub(crate) max_tool_iterations: usize,
+    pub(crate) min_relevance_score: f64,
+    pub(crate) conversation_histories: ConversationHistoryMap,
+    pub(crate) turn_model_source_cache: TurnModelSourceCacheMap,
+    pub(crate) route_overrides: RouteSelectionMap,
+    pub(crate) api_url: Option<String>,
+    pub(crate) inference_url: Option<String>,
+    pub(crate) reliability: Arc<crate::openhuman::config::ReliabilityConfig>,
+    pub(crate) provider_runtime_options:
+        crate::openhuman::inference::provider::ProviderRuntimeOptions,
+    pub(crate) workspace_dir: Arc<PathBuf>,
+    pub(crate) message_timeout_secs: u64,
+    pub(crate) multimodal: crate::openhuman::config::MultimodalConfig,
+    pub(crate) multimodal_files: crate::openhuman::config::MultimodalFileConfig,
+    /// Full config for building crate-native turn models (Phase 3 P3-B). `Some` in
+    /// production; `None` lets tests inject a model source directly.
+    pub(crate) config: Option<Arc<crate::openhuman::config::Config>>,
+}
+
+pub(crate) fn conversation_memory_key(msg: &super::traits::ChannelMessage) -> String {
+    tinychannels::context::conversation_memory_key(msg)
+}
+
+pub(crate) fn conversation_history_key(msg: &super::traits::ChannelMessage) -> String {
+    tinychannels::context::conversation_history_key(msg)
+}
+
+pub(crate) fn clear_sender_history(ctx: &ChannelRuntimeContext, sender_key: &str) {
+    ctx.conversation_histories
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(sender_key);
+}
+
+pub(crate) fn compact_sender_history(ctx: &ChannelRuntimeContext, sender_key: &str) -> bool {
+    let mut histories = ctx
+        .conversation_histories
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let Some(turns) = histories.get_mut(sender_key) else {
+        return false;
+    };
+
+    if turns.is_empty() {
+        return false;
+    }
+
+    let keep_from = turns
+        .len()
+        .saturating_sub(CHANNEL_HISTORY_COMPACT_KEEP_MESSAGES);
+    let mut compacted = turns[keep_from..].to_vec();
+
+    for turn in &mut compacted {
+        if turn.content.chars().count() > CHANNEL_HISTORY_COMPACT_CONTENT_CHARS {
+            turn.content =
+                truncate_with_ellipsis(&turn.content, CHANNEL_HISTORY_COMPACT_CONTENT_CHARS);
+        }
+    }
+
+    *turns = compacted;
+    true
+}
+
+pub(crate) fn is_context_window_overflow_error(err: &anyhow::Error) -> bool {
+    tinychannels::context::is_context_window_overflow_message(&err.to_string())
+}
+
+use tinymemory_api::provider::MemoryRecall as _;
+
+pub(crate) async fn build_memory_context(
+    mem: &crate::openhuman::memory::guard::MemoryGuard,
+    user_msg: &str,
+    min_relevance_score: f64,
+) -> String {
+    let mut context = String::new();
+
+    if let Ok(entries) = mem
+        .recall(
+            user_msg,
+            5,
+            &tinymemory_api::recall::OwnedRecallOpts::default(),
+            // Unrestricted: a channel turn carries no ambient source scope, and
+            // the guard narrows against its own allowlist regardless.
+            None,
+        )
+        .await
+    {
+        let mut included = 0usize;
+        let mut used_chars = 0usize;
+
+        for entry in entries.iter().filter(|e| match e.score {
+            Some(score) => score >= min_relevance_score,
+            None => true, // keep entries without a score (e.g. non-vector backends)
+        }) {
+            if included >= MEMORY_CONTEXT_MAX_ENTRIES {
+                break;
+            }
+
+            if should_skip_memory_context_entry(&entry.key, &entry.content) {
+                continue;
+            }
+
+            let content = if entry.content.chars().count() > MEMORY_CONTEXT_ENTRY_MAX_CHARS {
+                truncate_with_ellipsis(&entry.content, MEMORY_CONTEXT_ENTRY_MAX_CHARS)
+            } else {
+                entry.content.clone()
+            };
+
+            let line = format!("- {}: {}\n", entry.key, content);
+            let line_chars = line.chars().count();
+            if used_chars + line_chars > MEMORY_CONTEXT_MAX_CHARS {
+                break;
+            }
+
+            if included == 0 {
+                context.push_str("[Memory context]\n");
+            }
+
+            context.push_str(&line);
+            used_chars += line_chars;
+            included += 1;
+        }
+
+        if included > 0 {
+            context.push('\n');
+        }
+    }
+
+    context
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::openhuman::channels::traits;
+    use crate::openhuman::tools::{Tool, ToolResult};
+    use async_trait::async_trait;
+    use tinymemory_api::types::{MemoryCategory, MemoryEntry};
+
+    struct DummyTool;
+
+    #[async_trait]
+    impl Tool for DummyTool {
+        fn name(&self) -> &str {
+            "dummy"
+        }
+
+        fn description(&self) -> &str {
+            "dummy"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+
+        async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult::success("ok"))
+        }
+    }
+
+    fn memory_entry(key: &str, content: &str, score: Option<f64>) -> MemoryEntry {
+        MemoryEntry {
+            id: key.into(),
+            key: key.into(),
+            content: content.into(),
+            namespace: None,
+            category: MemoryCategory::Conversation,
+            timestamp: "now".into(),
+            session_id: None,
+            score,
+            taint: Default::default(),
+        }
+    }
+
+    fn runtime_context() -> ChannelRuntimeContext {
+        let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
+            Arc::new(tinyagents::harness::testkit::ScriptedModel::replies(vec![
+                "ok",
+            ]));
+        ChannelRuntimeContext {
+            channels_by_name: Arc::new(HashMap::new()),
+            turn_model_source: Some(
+                crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
+            ),
+            default_provider: Arc::new("default".into()),
+            memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(
+                Vec::new(),
+            ),
+            tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),
+            system_prompt: Arc::new("prompt".into()),
+            model: Arc::new("model".into()),
+            temperature: 0.0,
+            auto_save_memory: false,
+            max_tool_iterations: 1,
+            min_relevance_score: 0.4,
+            conversation_histories: Arc::new(Mutex::new(HashMap::new())),
+            turn_model_source_cache: Arc::new(Mutex::new(HashMap::new())),
+            route_overrides: Arc::new(Mutex::new(HashMap::new())),
+            api_url: None,
+            inference_url: None,
+            reliability: Arc::new(crate::openhuman::config::ReliabilityConfig::default()),
+            provider_runtime_options:
+                crate::openhuman::inference::provider::ProviderRuntimeOptions::default(),
+            workspace_dir: Arc::new(PathBuf::from("/tmp")),
+            message_timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
+            multimodal: crate::openhuman::config::MultimodalConfig::default(),
+            multimodal_files: crate::openhuman::config::MultimodalFileConfig::default(),
+            config: None,
+        }
+    }
+
+    fn channel_message(channel: &str) -> traits::ChannelMessage {
+        traits::ChannelMessage {
+            channel: channel.into(),
+            sender: "alice".into(),
+            content: "hello".into(),
+            id: "m1".into(),
+            reply_target: "reply".into(),
+            thread_ts: Some("thread-1".into()),
+            timestamp: 0,
+        }
+    }
+
+    #[test]
+    fn timeout_and_history_keys_respect_channel_rules() {
+        assert_eq!(
+            effective_channel_message_timeout_secs(10),
+            MIN_CHANNEL_MESSAGE_TIMEOUT_SECS
+        );
+        assert_eq!(effective_channel_message_timeout_secs(120), 120);
+
+        let telegram = channel_message("telegram");
+        let discord = channel_message("discord");
+        assert_eq!(conversation_memory_key(&telegram), "telegram_alice_m1");
+        assert_eq!(conversation_history_key(&telegram), "telegram_alice_reply");
+        assert_eq!(
+            conversation_history_key(&discord),
+            "discord_alice_reply_thread:thread-1"
+        );
+    }
+
+    #[test]
+    fn clear_and_compact_sender_history_update_cached_messages() {
+        let ctx = runtime_context();
+        let sender = "discord_alice_reply_thread:thread-1";
+        let mut history = Vec::new();
+        history.push(crate::openhuman::agent::messages::ChatMessage::user(
+            "short",
+        ));
+        history.extend((0..20).map(|idx| {
+            crate::openhuman::agent::messages::ChatMessage::assistant("x".repeat(700 + idx))
+        }));
+        ctx.conversation_histories
+            .lock()
+            .unwrap()
+            .insert(sender.into(), history);
+
+        assert!(compact_sender_history(&ctx, sender));
+        {
+            let compacted = ctx.conversation_histories.lock().unwrap();
+            let compacted = compacted.get(sender).unwrap();
+            assert_eq!(compacted.len(), CHANNEL_HISTORY_COMPACT_KEEP_MESSAGES);
+            assert!(compacted.iter().all(|msg| {
+                msg.content.chars().count() <= CHANNEL_HISTORY_COMPACT_CONTENT_CHARS + 3
+            }));
+        }
+
+        clear_sender_history(&ctx, sender);
+        assert!(!ctx
+            .conversation_histories
+            .lock()
+            .unwrap()
+            .contains_key(sender));
+    }
+
+    #[test]
+    fn skip_and_overflow_detection_cover_edge_cases() {
+        assert!(should_skip_memory_context_entry("note_history", "short"));
+        assert!(should_skip_memory_context_entry(
+            "note",
+            &"x".repeat(MEMORY_CONTEXT_MAX_CHARS + 1)
+        ));
+        assert!(!should_skip_memory_context_entry("note", "short"));
+
+        assert!(is_context_window_overflow_error(&anyhow::anyhow!(
+            "Maximum context length exceeded"
+        )));
+        assert!(!is_context_window_overflow_error(&anyhow::anyhow!(
+            "network timeout"
+        )));
+    }
+
+    #[tokio::test]
+    async fn build_memory_context_filters_entries_and_truncates_content() {
+        let mem = crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(vec![
+            memory_entry("keep", "v", Some(0.9)),
+            memory_entry("drop_history", "ignored", Some(0.9)),
+            memory_entry("low", "too low", Some(0.1)),
+            memory_entry(
+                "long",
+                &"x".repeat(MEMORY_CONTEXT_ENTRY_MAX_CHARS + 50),
+                Some(0.9),
+            ),
+        ]);
+
+        let rendered = build_memory_context(&mem, "hello", 0.4).await;
+        assert!(rendered.starts_with("[Memory context]\n"));
+        assert!(rendered.contains("- keep: v"));
+        assert!(!rendered.contains("drop_history"));
+        assert!(!rendered.contains("too low"));
+        assert!(rendered.contains("- long: "));
+        assert!(rendered.contains("..."));
+    }
+
+    #[tokio::test]
+    async fn build_memory_context_honors_total_budget_and_entry_limit() {
+        let entries = (0..10)
+            .map(|idx| memory_entry(&format!("k{idx}"), &"x".repeat(700), Some(0.9)))
+            .collect();
+        let mem = crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(entries);
+
+        let rendered = build_memory_context(&mem, "hello", 0.4).await;
+        assert!(rendered.chars().count() <= MEMORY_CONTEXT_MAX_CHARS + 32);
+        assert!(rendered.matches("- k").count() <= MEMORY_CONTEXT_MAX_ENTRIES);
+    }
+}

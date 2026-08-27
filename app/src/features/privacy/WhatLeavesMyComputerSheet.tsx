@@ -1,0 +1,76 @@
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+
+import Button from '../../components/ui/Button';
+import { useT } from '../../lib/i18n/I18nContext';
+import { WHAT_LEAVES_HEADLINE, WHAT_LEAVES_ITEMS, WHAT_LEAVES_SUBHEAD } from './whatLeavesItems';
+
+interface WhatLeavesMyComputerSheetProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const WhatLeavesMyComputerSheet = ({ open, onClose }: WhatLeavesMyComputerSheetProps) => {
+  const { t } = useT();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    dialogRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+      role="presentation">
+      <button
+        type="button"
+        aria-label={t('common.close')}
+        onClick={onClose}
+        className="absolute inset-0 bg-neutral-900/40 backdrop-blur-sm cursor-default"
+      />
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="what-leaves-title"
+        className="relative w-full max-w-lg bg-surface rounded-2xl shadow-large border border-line p-6 animate-fade-up outline-hidden">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 id="what-leaves-title" className="font-title text-2xl text-content leading-tight">
+              {WHAT_LEAVES_HEADLINE}
+            </h2>
+          </div>
+        </div>
+        <p className="text-sm text-content-secondary mb-5 max-w-md">{WHAT_LEAVES_SUBHEAD}</p>
+
+        <ul className="space-y-3 mb-6">
+          {WHAT_LEAVES_ITEMS.map(item => (
+            <li key={item.id} className="rounded-xl border border-line bg-surface-muted p-4">
+              <p className="text-sm font-medium text-content">{item.title}</p>
+              <p className="text-sm text-content-secondary mt-1 leading-relaxed">{item.body}</p>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-content-muted">{t('privacy.description')}</p>
+          <Button variant="primary" size="md" onClick={onClose}>
+            {t('common.ok')}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+export default WhatLeavesMyComputerSheet;
