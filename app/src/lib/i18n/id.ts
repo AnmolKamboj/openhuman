@@ -2884,6 +2884,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Tidak',
   'memorySources.allIn.success': 'Semua sumber diaktifkan tanpa batas. Sinkronisasi dimulai.',
   'memorySources.allIn.failed': 'Gagal mengaktifkan semua. Silakan coba lagi.',
+  'memorySources.allIn.allFailed': 'Tidak ada sinkronisasi yang bisa dimulai. Periksa setiap sumber untuk melihat alasannya.',
+  'memorySources.allIn.partial': 'Sinkronisasi dimulai: {triggered}. Tidak bisa dimulai: {failed}.',
   'memorySources.settings.button': 'Pengaturan',
   'memorySources.settings.title': 'Pengaturan sinkronisasi',
   'memorySources.settings.maxPrs': 'Maksimal pull request',

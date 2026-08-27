@@ -2952,6 +2952,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Nein',
   'memorySources.allIn.success': 'Alle Quellen ohne Limits aktiviert. Synchronisierung gestartet.',
   'memorySources.allIn.failed': 'Konnte „Alles aktivieren" nicht anwenden. Bitte erneut versuchen.',
+  'memorySources.allIn.allFailed': 'Keine Synchronisierung konnte gestartet werden. Prüfe jede Quelle, um den Grund zu sehen.',
+  'memorySources.allIn.partial': 'Gestartete Synchronisierungen: {triggered}. Nicht startbar: {failed}.',
   'memorySources.settings.button': 'Einstellungen',
   'memorySources.settings.title': 'Synchronisierungseinstellungen',
   'memorySources.settings.maxPrs': 'Maximale Pull-Requests',

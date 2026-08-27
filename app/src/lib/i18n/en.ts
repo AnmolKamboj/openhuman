@@ -3122,6 +3122,8 @@ const en: TranslationMap = {
   'memorySources.allIn.cancel': 'No',
   'memorySources.allIn.success': 'All sources enabled with no limits. Syncing started.',
   'memorySources.allIn.failed': 'Could not apply All In. Please try again.',
+  'memorySources.allIn.allFailed': 'No sync could start. Check each source for the reason.',
+  'memorySources.allIn.partial': 'Syncs started: {triggered}. Could not start: {failed}.',
   'memorySources.settings.button': 'Settings',
   'memorySources.settings.title': 'Sync settings',
   'memorySources.settings.maxPrs': 'Max pull requests',

@@ -148,6 +148,24 @@ describe('memorySourcesService', () => {
     expect(result.sources[0].id).toBe('src_1');
   });
 
+  it('applyAllIn normalises the #5820 failure fields for cores that omit them', async () => {
+    mockedCall.mockResolvedValueOnce({
+      result: { sources: [], sync_triggered: 0 },
+      logs: [],
+    } as never);
+    const legacy = await applyAllIn();
+    expect(legacy.sync_failed).toBe(0);
+    expect(legacy.sync_errors).toEqual([]);
+
+    mockedCall.mockResolvedValueOnce({
+      result: { sources: [], sync_triggered: 0, sync_failed: 2, sync_errors: ['a: x', 'b: y'] },
+      logs: [],
+    } as never);
+    const failed = await applyAllIn();
+    expect(failed.sync_failed).toBe(2);
+    expect(failed.sync_errors).toEqual(['a: x', 'b: y']);
+  });
+
   it('applyAllIn handles envelope-wrapped response', async () => {
     mockedCall.mockResolvedValue({ result: { sources: [], sync_triggered: 0 }, logs: [] } as never);
 

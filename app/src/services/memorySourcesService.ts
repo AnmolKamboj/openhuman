@@ -185,6 +185,15 @@ export async function getSupportedToolkits(): Promise<string[]> {
 export interface ApplyAllInResult {
   sources: MemorySourceEntry[];
   sync_triggered: number;
+  /**
+   * Enabled sources whose sync trigger failed (openhuman#5820). Older cores
+   * omit it; the service normalises absence to `0`, so a caller can always
+   * read it. `sync_triggered === 0 && sync_failed > 0` is the "nothing
+   * started" outcome the toast must not report as success.
+   */
+  sync_failed: number;
+  /** One `<source_id>: <error>` line per failed trigger. */
+  sync_errors: string[];
 }
 
 /**
@@ -198,7 +207,12 @@ export async function applyAllIn(): Promise<ApplyAllInResult> {
     method: 'openhuman.memory_sources_apply_all_in',
   });
   const data = unwrap<ApplyAllInResult>(resp);
-  return { sources: data.sources ?? [], sync_triggered: data.sync_triggered ?? 0 };
+  return {
+    sources: data.sources ?? [],
+    sync_triggered: data.sync_triggered ?? 0,
+    sync_failed: data.sync_failed ?? 0,
+    sync_errors: data.sync_errors ?? [],
+  };
 }
 
 export interface CodingSessionSourceStatus {

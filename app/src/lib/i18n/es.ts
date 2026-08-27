@@ -2928,6 +2928,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.success':
     'Todas las fuentes activadas sin límites. Sincronización iniciada.',
   'memorySources.allIn.failed': 'No se pudo aplicar todo activo. Por favor, inténtelo de nuevo.',
+  'memorySources.allIn.allFailed': 'No se pudo iniciar ninguna sincronización. Revisa cada fuente para ver el motivo.',
+  'memorySources.allIn.partial': 'Sincronizaciones iniciadas: {triggered}. No se pudieron iniciar: {failed}.',
   'memorySources.settings.button': 'Configuración',
   'memorySources.settings.title': 'Configuración de sincronización',
   'memorySources.settings.maxPrs': 'Máximo de pull requests',

@@ -2951,6 +2951,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.success': 'Toutes les sources activées sans limite. Synchronisation lancée.',
   'memorySources.allIn.failed': "Impossible d'appliquer tout activer. Veuillez réessayer.",
   'memorySources.settings.button': 'Paramètres',
+  'memorySources.allIn.allFailed': 'Aucune synchronisation n’a pu démarrer. Vérifiez chaque source pour connaître la raison.',
+  'memorySources.allIn.partial': 'Synchronisations lancées : {triggered}. Impossibles à lancer : {failed}.',
   'memorySources.settings.title': 'Paramètres de synchronisation',
   'memorySources.settings.maxPrs': 'Nombre maximal de pull requests',
   'memorySources.settings.maxIssues': "Nombre maximal d'issues",

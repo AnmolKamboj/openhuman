@@ -2872,6 +2872,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'नहीं',
   'memorySources.allIn.success': 'सभी स्रोत बिना सीमा के सक्रिय हुए। सिंक शुरू हो गई।',
   'memorySources.allIn.failed': 'सब चालू नहीं किया जा सका। कृपया पुनः प्रयास करें।',
+  'memorySources.allIn.allFailed': 'कोई भी सिंक शुरू नहीं हो सका। कारण जानने के लिए हर स्रोत को जाँचें।',
+  'memorySources.allIn.partial': 'शुरू हुए सिंक: {triggered}। शुरू नहीं हो सके: {failed}।',
   'memorySources.settings.button': 'सेटिंग',
   'memorySources.settings.title': 'सिंक सेटिंग',
   'memorySources.settings.maxPrs': 'अधिकतम पुल रिक्वेस्ट',

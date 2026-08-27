@@ -2874,6 +2874,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'না',
   'memorySources.allIn.success': 'সব উৎস সীমা ছাড়া সক্রিয় হয়েছে। সিঙ্ক শুরু হয়েছে।',
   'memorySources.allIn.failed': 'সব চালু করা সম্ভব হয়নি। আবার চেষ্টা করুন।',
+  'memorySources.allIn.allFailed': 'কোনো সিঙ্ক শুরু করা যায়নি। কারণ জানতে প্রতিটি উৎস দেখুন।',
+  'memorySources.allIn.partial': 'শুরু হওয়া সিঙ্ক: {triggered}। শুরু করা যায়নি: {failed}।',
   'memorySources.settings.button': 'সেটিংস',
   'memorySources.settings.title': 'সিঙ্ক সেটিংস',
   'memorySources.settings.maxPrs': 'সর্বোচ্চ পুল রিকোয়েস্ট',

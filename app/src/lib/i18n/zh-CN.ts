@@ -2720,6 +2720,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': '否',
   'memorySources.allIn.success': '所有来源已无限制启用。同步已开始。',
   'memorySources.allIn.failed': '无法应用全部启用。请重试。',
+  'memorySources.allIn.allFailed': '没有任何同步能够开始。请检查每个来源以了解原因。',
+  'memorySources.allIn.partial': '已开始同步：{triggered}。无法开始：{failed}。',
   'memorySources.settings.button': '设置',
   'memorySources.settings.title': '同步设置',
   'memorySources.settings.maxPrs': '最大拉取请求数',

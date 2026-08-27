@@ -2808,6 +2808,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'لا',
   'memorySources.allIn.success': 'تم تمكين جميع المصادر بدون قيود. بدأت المزامنة.',
   'memorySources.allIn.failed': 'تعذّر تطبيق خيار الكل. يرجى المحاولة مرة أخرى.',
+  'memorySources.allIn.allFailed': 'تعذّر بدء أي مزامنة. تحقق من كل مصدر لمعرفة السبب.',
+  'memorySources.allIn.partial': 'المزامنات التي بدأت: {triggered}. التي تعذّر بدؤها: {failed}.',
   'memorySources.settings.button': 'الإعدادات',
   'memorySources.settings.title': 'إعدادات المزامنة',
   'memorySources.settings.maxPrs': 'أقصى عدد لطلبات السحب',
