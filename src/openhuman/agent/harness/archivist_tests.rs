@@ -1079,16 +1079,22 @@ async fn embed_segment_recap_reaches_scoring_for_non_empty_summary() {
 
     let calls = recording.calls();
     let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
-    assert!(
-        methods.contains(&"scoring.embedder_slug"),
-        "expected scoring.embedder_slug to be called; got {methods:?}"
-    );
-    let embed_call = calls
+
+    let slug_pos = methods
         .iter()
-        .find(|c| c.method == "scoring.embed_text")
+        .position(|&m| m == "scoring.embedder_slug")
+        .expect("scoring.embedder_slug must be called; got {methods:?}");
+    let embed_pos = methods
+        .iter()
+        .position(|&m| m == "scoring.embed_text")
         .expect("scoring.embed_text must be called for a non-empty recap");
+
+    assert!(
+        slug_pos < embed_pos,
+        "scoring.embedder_slug ({slug_pos}) must be called before scoring.embed_text ({embed_pos})"
+    );
     assert_eq!(
-        embed_call.content.as_deref(),
+        calls[embed_pos].content.as_deref(),
         Some("real recap text"),
         "embed_text must receive the recap text verbatim"
     );
