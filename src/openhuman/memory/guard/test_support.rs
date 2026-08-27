@@ -32,9 +32,9 @@ use crate::openhuman::memory::api::provider::{
     EpisodicEvent, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore,
     MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph,
     MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile,
-    MemoryProvider, MemoryRecall, MemoryRetrieval, MemorySourceSink, MemorySourceSync,
-    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
-    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    MemoryProvider, MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink,
+    MemorySourceSync, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
+    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
     SourceRetrievalQuery, UserState,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
@@ -740,6 +740,9 @@ impl MemoryProvider for RecordingProvider {
     fn as_coding_sessions(&self) -> Option<&dyn MemoryCodingSessions> {
         Some(self)
     }
+    fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
+        Some(self)
+    }
 }
 
 // The two families tinymemory v1.7.0 added. `capabilities()` above answers
@@ -1186,5 +1189,33 @@ impl MemoryPeople for RecordingProvider {
     async fn seed_from_address_book(&self) -> Result<AddressBookSeedOutcome, MemoryError> {
         self.record(Call::plain("people.seed_from_address_book"));
         Ok(AddressBookSeedOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryScoring for RecordingProvider {
+    async fn extract_entities(&self, query: &str) -> Result<Vec<String>, MemoryError> {
+        self.record(Call {
+            method: "scoring.extract_entities".into(),
+            content: Some(query.to_string()),
+            taint: None,
+            scoped: None,
+        });
+        Ok(Vec::new())
+    }
+
+    async fn embed_text(&self, text: &str) -> Result<Vec<f32>, MemoryError> {
+        self.record(Call {
+            method: "scoring.embed_text".into(),
+            content: Some(text.to_string()),
+            taint: None,
+            scoped: None,
+        });
+        Ok(Vec::new())
+    }
+
+    async fn embedder_slug(&self) -> Result<String, MemoryError> {
+        self.record(Call::plain("scoring.embedder_slug"));
+        Ok(String::new())
     }
 }

@@ -577,6 +577,16 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
             binding.driver_id()
         )
     })?;
+    // The enabled gate is not the driver's. `run_source_sync` runs whatever id
+    // it is handed; it is `sources::sync::sync_source` and the periodic loop
+    // that refuse a disabled entry, and this RPC is the third caller, the one
+    // behind the user's Sync button. Same words as `sync_source` so the UI
+    // reads one message (#5820).
+    if let Some(entry) = super::registry::get_source_in(&config, &req.source_id)? {
+        if !entry.enabled {
+            return Err(format!("source '{}' is disabled", entry.id));
+        }
+    }
     sync.run_source_sync(&req.source_id)
         .await
         .map_err(|error| error.to_string())?;
