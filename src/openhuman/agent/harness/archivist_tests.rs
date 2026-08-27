@@ -1037,7 +1037,8 @@ async fn embed_segment_recap_skips_whitespace_summary() {
     let provider: Arc<dyn MemoryProvider> = recording.clone();
     let hook = hook_with_stubs(provider);
 
-    hook.embed_segment_recap("seg-ws-recap", "   \n\t  ", 3.0).await;
+    hook.embed_segment_recap("seg-ws-recap", "   \n\t  ", 3.0)
+        .await;
 
     let calls = recording.calls();
     let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
