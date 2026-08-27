@@ -543,7 +543,6 @@ async fn phase1_llm_recap_and_embedding_on_segment_close() {
         "Expected summary to contain 'stub recap', got: {:?}",
         summary
     );
-
 }
 
 /// `flush_open_segment` must force-close the trailing open segment and
@@ -598,7 +597,6 @@ async fn phase1_flush_open_segment_finalizes_trailing_segment() {
         flushed.is_some(),
         "Expected flushed segment to have a non-empty summary"
     );
-
 }
 
 // ── Phase 2: segment-granularity tree ingest ─────────────────────────────────
@@ -1003,7 +1001,6 @@ async fn phase2_flush_also_triggers_tree_ingest_inner() {
 // `embed_segment_recap` directly to lock the guard against future
 // regressions where `summarize_entries` could return `""`.
 
-
 /// An empty recap must short-circuit before any scoring call, and must not
 /// write a row to `segment_embeddings`. The segment row itself remains intact.
 #[tokio::test]
@@ -1067,18 +1064,32 @@ async fn embed_segment_recap_skips_whitespace_summary() {
     );
 }
 
-/// Positive control: a non-empty recap must pass the guard and attempt the
-/// scoring path without panic. Embedding succeeds or fails non-fatally
-/// depending on the provider's configured embedder.
+/// Positive control: a non-empty recap must reach `embedder_slug` then
+/// `embed_text` on the scoring family, in that order, and pass the recap text
+/// verbatim to `embed_text`.
 #[tokio::test]
 async fn embed_segment_recap_reaches_scoring_for_non_empty_summary() {
-    let (_tmp, _client, provider) = setup_provider();
-    let hook = hook_with_stubs(provider.clone());
+    use crate::openhuman::memory::guard::test_support::RecordingProvider;
+    let recording = Arc::new(RecordingProvider::new());
+    let provider: Arc<dyn MemoryProvider> = recording.clone();
+    let hook = hook_with_stubs(provider);
 
-    let segment_id = "seg-ok-recap";
-
-    // The function must complete without panic regardless of whether the
-    // provider's embedder is configured. Failing non-fatally is the contract.
-    hook.embed_segment_recap(segment_id, "real recap text", 3.0)
+    hook.embed_segment_recap("seg-ok-recap", "real recap text", 3.0)
         .await;
+
+    let calls = recording.calls();
+    let methods: Vec<&str> = calls.iter().map(|c| c.method.as_str()).collect();
+    assert!(
+        methods.contains(&"scoring.embedder_slug"),
+        "expected scoring.embedder_slug to be called; got {methods:?}"
+    );
+    let embed_call = calls
+        .iter()
+        .find(|c| c.method == "scoring.embed_text")
+        .expect("scoring.embed_text must be called for a non-empty recap");
+    assert_eq!(
+        embed_call.content.as_deref(),
+        Some("real recap text"),
+        "embed_text must receive the recap text verbatim"
+    );
 }
