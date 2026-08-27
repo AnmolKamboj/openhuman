@@ -35,6 +35,32 @@ export interface RuntimeErrorSignal {
 }
 
 /**
+ * The durable form of the corrupt-store notice (openhuman#5820).
+ *
+ * Same kind, scope and therefore the same descriptor id as the live
+ * `memory_store_corrupt` socket broadcast, so the two paths collapse into
+ * one NoticeCenter entry: the socket reaches a connected renderer instantly,
+ * and the status poll replays it for a renderer that was not connected when
+ * the quarantine happened (a boot-time integrity check). `null` once the
+ * user has re-synced — the caller resolves the entry then.
+ */
+export function classifyMemoryQuarantine(
+  quarantine: { resynced: boolean } | null | undefined
+): UserErrorDescriptor | null {
+  if (!quarantine || quarantine.resynced) return null;
+  return {
+    id: userErrorId('memory_store_corrupt', 'memory'),
+    kind: 'memory_store_corrupt',
+    severity: 'error',
+    scope: 'memory',
+    sourceDomain: 'memory',
+    titleKey: 'userErrors.memoryStoreCorrupt.title',
+    bodyKey: 'userErrors.memoryStoreCorrupt.body',
+    action: 'open_memory_sync',
+  };
+}
+
+/**
  * #5324: the memory pipeline's typed `budget_exhausted` cause, promoted to a
  * first-class user-actionable error.
  *

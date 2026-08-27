@@ -898,10 +898,62 @@ pub struct PipelineStatusResponse {
     /// (`#[serde(default)]` → `None` for older clients).
     #[serde(default)]
     pub extraction_coverage: Option<f32>,
+    /// openhuman#5820: the most recent corrupt-store quarantine in this
+    /// workspace, derived from disk (`memory_tree/chunks.db.corrupt-<ts>`),
+    /// so it survives restarts and reaches a renderer that was not connected
+    /// when the quarantine happened. `None` when nothing was ever quarantined.
+    /// Reported until a sync lands after the quarantine (`resynced`), which
+    /// is when the rebuilt store stops being empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantine: Option<QuarantineStatus>,
 }
 
 /// `memory_tree_pipeline_status` RPC handler (#1856 Part 1).
 ///
+/// A corrupt-store quarantine as the status surface reports it (openhuman#5820).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuarantineStatus {
+    /// Epoch milliseconds of the quarantine, parsed from the file name's UTC
+    /// timestamp (`chunks.db.corrupt-%Y%m%dT%H%M%SZ`).
+    pub quarantined_at_ms: i64,
+    /// The preserved copy of the damaged database. Local to this machine and
+    /// shown only to its own user, so the user can hand it to recovery tooling.
+    pub quarantined_path: String,
+    /// Whether a chunk has been written since the quarantine — the rebuilt
+    /// store is being repopulated, so the notice can retire.
+    pub resynced: bool,
+}
+
+/// Newest `chunks.db.corrupt-<ts>` under `<workspace>/memory_tree`, if any.
+///
+/// Disk is the durable record: the engine's quarantine renames the damaged
+/// file beside the store and never deletes it, so a status read after a
+/// restart — or from a renderer that missed the live event — still finds it.
+/// Side-file quarantines (`chunks.db-wal.corrupt-…`) do not match the prefix.
+fn latest_quarantine(
+    workspace_dir: &std::path::Path,
+    most_recent_chunk_ms: i64,
+) -> Option<QuarantineStatus> {
+    const PREFIX: &str = "chunks.db.corrupt-";
+    let dir = workspace_dir.join("memory_tree");
+    let newest = std::fs::read_dir(&dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let name = entry.file_name().to_str()?.to_owned();
+            let stamp = name.strip_prefix(PREFIX)?.to_owned();
+            let at = chrono::NaiveDateTime::parse_from_str(&stamp, "%Y%m%dT%H%M%SZ").ok()?;
+            Some((at.and_utc().timestamp_millis(), entry.path()))
+        })
+        .max_by_key(|(at, _)| *at)?;
+    let (quarantined_at_ms, path) = newest;
+    Some(QuarantineStatus {
+        quarantined_at_ms,
+        quarantined_path: path.display().to_string(),
+        resynced: most_recent_chunk_ms > quarantined_at_ms,
+    })
+}
+
 /// Aggregates `list_sources` + `count_by_status` + a recursive disk-size
 /// probe into the [`PipelineStatusResponse`] the UI status panel renders.
 /// All blocking work is dispatched onto `spawn_blocking` so the async
@@ -1025,6 +1077,19 @@ pub async fn pipeline_status_rpc(
     // back to the active degradation cause, then `None` when healthy.
     let first_blocking_cause = latest_failure.or_else(|| degraded.cause.clone());
 
+    // openhuman#5820: disk-derived so it is durable and replayable; computed
+    // from the same `store` observation as `last_sync_ms` so "resynced" and
+    // the tile agree.
+    let quarantine = latest_quarantine(config.workspace_dir.as_path(), last_sync_ms);
+    if let Some(q) = &quarantine {
+        log::debug!(
+            "[memory-tree][rpc] pipeline_status: quarantine at={} resynced={} path={}",
+            q.quarantined_at_ms,
+            q.resynced,
+            q.quarantined_path
+        );
+    }
+
     let payload = PipelineStatusResponse {
         status: status.clone(),
         reason: reason.clone(),
@@ -1037,6 +1102,7 @@ pub async fn pipeline_status_rpc(
         degraded,
         first_blocking_cause,
         extraction_coverage,
+        quarantine,
     };
 
     log::debug!(
@@ -2103,6 +2169,41 @@ mod tests {
     /// `derive_pipeline_status` precedence is locked in here so the UI can
     /// rely on the wire status string without re-deriving it from the raw
     /// counters.
+    #[test]
+    fn latest_quarantine_reads_the_newest_copy_and_derives_resynced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("memory_tree");
+        std::fs::create_dir_all(&dir).unwrap();
+        // No quarantine file: nothing to report.
+        assert!(latest_quarantine(tmp.path(), 0).is_none());
+
+        std::fs::write(dir.join("chunks.db.corrupt-20260101T000000Z"), b"old").unwrap();
+        std::fs::write(dir.join("chunks.db.corrupt-20260827T070304Z"), b"new").unwrap();
+        // Side files never match the main-file prefix.
+        std::fs::write(dir.join("chunks.db-wal.corrupt-20261231T235959Z"), b"wal").unwrap();
+        // Garbage that starts with the prefix but has no parsable stamp is ignored.
+        std::fs::write(dir.join("chunks.db.corrupt-notastamp"), b"x").unwrap();
+
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 8, 27)
+            .unwrap()
+            .and_hms_opt(7, 3, 4)
+            .unwrap()
+            .and_utc()
+            .timestamp_millis();
+
+        // A chunk written before the quarantine: the rebuilt store is still empty.
+        let pending = latest_quarantine(tmp.path(), at - 1).expect("newest quarantine");
+        assert_eq!(pending.quarantined_at_ms, at);
+        assert!(pending
+            .quarantined_path
+            .ends_with("chunks.db.corrupt-20260827T070304Z"));
+        assert!(!pending.resynced);
+
+        // A chunk written after it: the user re-synced, the notice can retire.
+        let done = latest_quarantine(tmp.path(), at + 1).expect("newest quarantine");
+        assert!(done.resynced);
+    }
+
     #[test]
     fn derive_pipeline_status_precedence_matches_spec() {
         use crate::openhuman::memory::tree::health::{DegradedState, FailureCode, PipelineFailure};

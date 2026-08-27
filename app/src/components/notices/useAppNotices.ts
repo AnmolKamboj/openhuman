@@ -32,6 +32,7 @@ import type { UserActionableError, UserErrorAction } from '../../types/userError
 import { PRICING_URL } from '../../utils/links';
 import { openUrl } from '../../utils/openUrl';
 import { dismissBanner, shouldShowBanner } from '../upsell/upsellDismissState';
+import { useMemoryQuarantinePoll } from './useMemoryQuarantinePoll';
 
 export type NoticeSeverity = 'error' | 'warning' | 'info';
 
@@ -119,6 +120,8 @@ export function useAppNotices(): AppNotice[] {
   const navigate = useNavigate();
   const active = useAppSelector(selectActiveUserErrors);
   const { level: budgetLevel, pct: budgetPct } = useEmbeddingBudgetState();
+  // openhuman#5820: durable, app-wide replay of a corrupt-store quarantine.
+  useMemoryQuarantinePoll();
   const {
     teamUsage,
     isLoading: usageLoading,

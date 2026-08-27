@@ -880,6 +880,22 @@ export interface MemoryTreePipelineStatus {
    * structure ("empty-but-built wiki"). Optional for back-compat.
    */
   extraction_coverage?: number | null;
+  /**
+   * openhuman#5820: the most recent corrupt-store quarantine, derived from
+   * disk by the core so it survives restarts and reaches a renderer that was
+   * not connected when it happened. Absent when nothing was quarantined.
+   */
+  quarantine?: MemoryTreeQuarantine | null;
+}
+
+/** A corrupt-store quarantine as `memory_tree_pipeline_status` reports it. */
+export interface MemoryTreeQuarantine {
+  /** Epoch ms of the quarantine (from the `.corrupt-<ts>` file name). */
+  quarantined_at_ms: number;
+  /** Local path of the preserved damaged database. */
+  quarantined_path: string;
+  /** A chunk landed after the quarantine: the rebuilt store is repopulating. */
+  resynced: boolean;
 }
 
 /**

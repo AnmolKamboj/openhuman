@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   classifyMemoryPipelineFailure,
+  classifyMemoryQuarantine,
   classifyUserActionableError,
   userErrorId,
 } from '../classify';
@@ -157,6 +158,26 @@ describe('classifyUserActionableError', () => {
 });
 
 // ── #5324: memory pipeline budget exhaustion ────────────────────────────────
+
+describe('classifyMemoryQuarantine', () => {
+  it('reports an outstanding quarantine under the same id as the socket path', () => {
+    const fromPoll = classifyMemoryQuarantine({ resynced: false });
+    const fromSocket = classifyUserActionableError({
+      errorType: 'memory_store_corrupt',
+      scope: 'memory',
+      sourceDomain: 'memory',
+    });
+    expect(fromPoll?.kind).toBe('memory_store_corrupt');
+    expect(fromPoll?.action).toBe('open_memory_sync');
+    expect(fromPoll?.id).toBe(fromSocket?.id);
+  });
+
+  it('is null once the store has been re-synced, and for no quarantine at all', () => {
+    expect(classifyMemoryQuarantine({ resynced: true })).toBeNull();
+    expect(classifyMemoryQuarantine(null)).toBeNull();
+    expect(classifyMemoryQuarantine(undefined)).toBeNull();
+  });
+});
 
 describe('classifyMemoryPipelineFailure', () => {
   it('promotes a budget-exhausted memory pipeline to a user-actionable error', () => {
