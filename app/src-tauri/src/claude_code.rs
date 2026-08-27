@@ -28,6 +28,10 @@ fn login_command_line() -> String {
 }
 
 /// Argv for `cmd /c start "" cmd /k <login command>`.
+/// Compiled when testing on any host too, so a Linux CI run still checks the
+/// Windows argv; otherwise only where it is actually spawned. Same for the
+/// macOS and Linux helpers below.
+#[cfg(any(test, target_os = "windows"))]
 fn windows_launch_args() -> Vec<String> {
     // `start ""` opens a new console window; the empty quoted title
     // prevents cmd from interpreting the first arg as a title.
@@ -44,6 +48,7 @@ fn windows_launch_args() -> Vec<String> {
 }
 
 /// The AppleScript handed to `osascript`.
+#[cfg(any(test, target_os = "macos"))]
 fn macos_launch_script() -> String {
     format!(
         r#"tell application "Terminal"
@@ -55,6 +60,7 @@ end tell"#,
 }
 
 /// Linux terminal emulators to try, in order, with the args each one needs.
+#[cfg(any(test, target_os = "linux"))]
 fn linux_launch_candidates() -> Vec<(&'static str, Vec<String>)> {
     let argv: Vec<String> = CLAUDE_LOGIN_ARGV.iter().map(|s| (*s).to_string()).collect();
     let line = login_command_line();
