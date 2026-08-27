@@ -159,11 +159,25 @@ export async function memorySourcesStatusList(): Promise<SourceStatus[]> {
   return data.statuses ?? [];
 }
 
+/**
+ * Per-call budget for the RPCs that run a whole source sync before answering
+ * (`memory_sources_sync`, `memory_sources_apply_all_in`).
+ *
+ * The client's default per-call timeout is 30 s and one Gmail page alone takes
+ * ~31 s end to end, so the default aborted the fetch while the core kept
+ * syncing: the row flipped to "failed" for work that then completed, and the
+ * run never showed as done (#5820). This is the client's own clamp ceiling
+ * (`PER_CALL_TIMEOUT_MAX_MS`); the core's bus deadline is sized to outlast it
+ * so this abort, with its clean message, is the one that fires if a run wedges.
+ */
+export const MEMORY_SYNC_RPC_TIMEOUT_MS = 10 * 60 * 1_000;
+
 export async function syncMemorySource(sourceId: string): Promise<void> {
   log('sync source_id=%s', sourceId);
   await callCoreRpc<{ requested: boolean }>({
     method: 'openhuman.memory_sources_sync',
     params: { source_id: sourceId },
+    timeoutMs: MEMORY_SYNC_RPC_TIMEOUT_MS,
   });
 }
 
@@ -203,8 +217,11 @@ export interface ApplyAllInResult {
  */
 export async function applyAllIn(): Promise<ApplyAllInResult> {
   log('apply_all_in');
+  // All In runs every enabled source's sync to completion, one after another,
+  // before it answers; the budget has to cover the whole sweep.
   const resp = await callCoreRpc<ApplyAllInResult>({
     method: 'openhuman.memory_sources_apply_all_in',
+    timeoutMs: MEMORY_SYNC_RPC_TIMEOUT_MS,
   });
   const data = unwrap<ApplyAllInResult>(resp);
   return {

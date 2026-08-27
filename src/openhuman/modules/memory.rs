@@ -1091,6 +1091,26 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
 }
 
+/// Bus deadline for the three calls that run a whole source sync inside the
+/// module: `RunConnectionSync`, `RunSourceSync` and `BootstrapConnection`.
+///
+/// tinybus gives every call a 30 s default deadline if nobody sets one, and a
+/// sync is routinely longer than that: one Gmail page is ~31 s end to end, an
+/// initial bootstrap of a connection is minutes. With the default, the caller
+/// was released with "call to `RunSourceSync` timed out after 30000ms" while
+/// the module kept fetching and ingesting, and finished; the UI reported a
+/// failure for work that succeeded (openhuman#5820). Same failure class, same
+/// fix as `IngestCodingSessions` above: the deadline here is the wedged-forever
+/// backstop tinybus requires, not a ceiling anyone is meant to hit.
+///
+/// Sized from the frontend's clamp, `PER_CALL_TIMEOUT_MAX_MS = 600 s`
+/// (`app/src/services/coreRpcClient.ts`): that is the longest wait any RPC
+/// caller can observe, so the bus must outlast it, plus [`INGEST_BUS_GRACE`]
+/// so the client's own abort, with its clean message, is the one that fires
+/// first when a run really does wedge.
+const SOURCE_SYNC_BUS_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(600).saturating_add(INGEST_BUS_GRACE);
+
 #[async_trait]
 impl MemorySourceSync for ModuleMemoryProvider {
     async fn run_connection_sync(
@@ -1098,27 +1118,32 @@ impl MemorySourceSync for ModuleMemoryProvider {
         toolkit: &str,
         connection_id: &str,
     ) -> Result<SyncRunOutcome, MemoryError> {
-        module_call!(
-            self,
-            "run_connection_sync",
-            "RunConnectionSync",
-            (toolkit, connection_id)
-        )
+        self.proxy("run_connection_sync")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("RunConnectionSync", (toolkit, connection_id))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn run_source_sync(&self, source_id: &str) -> Result<SyncRunOutcome, MemoryError> {
-        module_call!(self, "run_source_sync", "RunSourceSync", (source_id,))
+        self.proxy("run_source_sync")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("RunSourceSync", (source_id,))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn bootstrap_connection(
         &self,
         toolkit: &str,
         connection_id: &str,
     ) -> Result<(), MemoryError> {
-        module_call!(
-            self,
-            "bootstrap_connection",
-            "BootstrapConnection",
-            (toolkit, connection_id)
-        )
+        self.proxy("bootstrap_connection")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("BootstrapConnection", (toolkit, connection_id))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn is_toolkit_syncable(&self, toolkit: &str) -> Result<bool, MemoryError> {
         module_call!(self, "is_toolkit_syncable", "IsToolkitSyncable", (toolkit,))

@@ -10,6 +10,7 @@ import {
   ingestCodingSessions,
   isIngestTimeout,
   listMemorySources,
+  MEMORY_SYNC_RPC_TIMEOUT_MS,
   type MemorySourceEntry,
   removeMemorySource,
   SOURCE_KIND_ICONS,
@@ -142,7 +143,10 @@ describe('memorySourcesService', () => {
 
     const result = await applyAllIn();
 
-    expect(mockedCall).toHaveBeenCalledWith({ method: 'openhuman.memory_sources_apply_all_in' });
+    expect(mockedCall).toHaveBeenCalledWith({
+      method: 'openhuman.memory_sources_apply_all_in',
+      timeoutMs: MEMORY_SYNC_RPC_TIMEOUT_MS,
+    });
     expect(result.sync_triggered).toBe(1);
     expect(result.sources).toHaveLength(1);
     expect(result.sources[0].id).toBe('src_1');
