@@ -4,14 +4,26 @@
 // git tree; the two CLIs in scripts/ci/ own the git calls and the process exit.
 // See scripts/ci/check-module-pins.mjs for what the gate is for.
 
-/** The record names listed in `pub const ALL`, in order. */
+/**
+ * The record names listed in `pub const ALL`, in order.
+ *
+ * Line comments are stripped BEFORE splitting on commas, not filtered out after.
+ * Splitting first puts a standalone `// …` line and the record beneath it in the
+ * SAME token, so filtering tokens that begin with `//` discarded the record with
+ * the comment. `ALL` carries no comments today, so this was latent rather than
+ * live — but the records it lists are heavily commented individually, the list is
+ * where a "why is this one eager" note would naturally go, and a dropped record
+ * reads downstream as "missing from PIN_MAP": the gate would fail CI while
+ * pointing at the wrong thing entirely. Raised by CodeRabbit on #5812.
+ */
 export function parseAllList(src) {
   const block = src.match(/pub const ALL: &\[ModuleRecord\] = &\[([\s\S]*?)\];/);
   if (!block) throw new Error('registry.rs: could not find `pub const ALL`');
   return block[1]
+    .replace(/\/\/[^\n]*/g, '')
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith('//'));
+    .filter((s) => s.length > 0);
 }
 
 /** Every `const NAME: ModuleRecord = ModuleRecord { … };`, keyed by NAME. */
@@ -150,4 +162,43 @@ export function parseGitlinks(lsTreeOutput) {
 /** A deliberate rewind is declared on the branch that does it. */
 export function rewindDeclared(text) {
   return /\[pin-rewind\]/i.test(text ?? '');
+}
+
+/**
+ * Classify a submodule pin move from BOTH ancestry answers.
+ *
+ * "Not an ancestor" is not the same as "forward". When the new commit and the
+ * base commit are siblings — a side branch, or a submodule whose history was
+ * rebased — neither is an ancestor of the other, and a check that asks only
+ * `is-ancestor head base` sees its single query fail and calls the move forward.
+ *
+ * A divergent pin drops whatever the base branch had just as surely as a rewind
+ * does; it simply does it sideways. Since the whole point of this gate is that a
+ * pin must not silently lose commits, treating divergence as forward would
+ * defeat it: a rewind onto a sibling — 14a23b994's shape, one rebase away —
+ * would walk straight through.
+ *
+ * So both directions are asked and only a genuine descendant is forward.
+ */
+export function classifyMove({ headIsAncestorOfBase, baseIsAncestorOfHead }) {
+  if (headIsAncestorOfBase) return 'rewind';
+  if (baseIsAncestorOfHead) return 'forward';
+  return 'divergent';
+}
+
+/**
+ * Does `toplevel` prove that `path` is a checked-out submodule?
+ *
+ * `git -C <path> rev-parse --git-dir` cannot answer this: git walks UPWARD, so
+ * from an uninitialised or merely empty `vendor/<x>` it answers the
+ * SUPERPROJECT's `.git` and exits 0 — reporting "present" having checked
+ * nothing. `--show-toplevel` answers the root of whichever repository owns the
+ * directory, and only when that root IS the directory is it a real checkout.
+ *
+ * Both sides must already be realpath-resolved by the caller: macOS resolves
+ * `/tmp/...` to `/private/tmp/...`, and comparing one resolved path against one
+ * unresolved path is its own quiet false negative.
+ */
+export function toplevelProvesSubmodule(resolvedToplevel, resolvedPath) {
+  return Boolean(resolvedToplevel) && resolvedToplevel === resolvedPath;
 }

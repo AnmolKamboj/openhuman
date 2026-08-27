@@ -37,7 +37,7 @@
 //   Defaults: origin/$GITHUB_BASE_REF (or origin/main) .. HEAD
 import { execFileSync } from 'node:child_process';
 
-import { parseGitlinks, rewindDeclared } from '../lib/module-pins.mjs';
+import { classifyMove, parseGitlinks, rewindDeclared } from '../lib/module-pins.mjs';
 
 // Any throw below is a check that could not be COMPLETED, which is not the same
 // as a check that passed. Report it as a failure with a legible message rather
@@ -146,24 +146,43 @@ for (const { path, baseSha, headSha } of moved) {
   }
   if (!haveBoth) continue;
 
-  let backwards = false;
-  try {
-    execFileSync('git', ['merge-base', '--is-ancestor', headSha, baseSha], { cwd: path, stdio: 'ignore' });
-    backwards = true;
-  } catch (error) {
-    // Exit 1 is the honest "not an ancestor". Anything else is a broken query.
-    if (error.status !== 1) {
-      failures.push(`${path}: ancestry query failed (exit ${error.status}) — treating as unverified.`);
-      continue;
+  /** `merge-base --is-ancestor` answers 0 (yes) or 1 (no); anything else is broken. */
+  const isAncestor = (a, b) => {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: path, stdio: 'ignore' });
+      return true;
+    } catch (error) {
+      if (error.status === 1) return false;
+      throw new Error(`ancestry query failed (exit ${error.status})`);
     }
+  };
+
+  // BOTH directions. Asking only "is head an ancestor of base?" and reading a
+  // failed query as forward mistakes a DIVERGENT pin — head and base on sibling
+  // branches, or a rebased submodule history — for a fast-forward. Divergence
+  // loses the base's commits exactly as a rewind does, so it is not forward.
+  let move;
+  try {
+    move = classifyMove({
+      headIsAncestorOfBase: isAncestor(headSha, baseSha),
+      baseIsAncestorOfHead: isAncestor(baseSha, headSha),
+    });
+  } catch (error) {
+    failures.push(`${path}: ${error.message} — treating as unverified, not as forward.`);
+    continue;
   }
 
-  if (backwards) {
+  if (move === 'rewind' || move === 'divergent') {
     const oldSubject = (() => { try { return run(['log', '--format=%h %ad %s', '--date=short', '-1', baseSha], path); } catch { return baseSha.slice(0, 9); } })();
     const newSubject = (() => { try { return run(['log', '--format=%h %ad %s', '--date=short', '-1', headSha], path); } catch { return headSha.slice(0, 9); } })();
     const behind = (() => { try { return run(['rev-list', '--count', `${headSha}..${baseSha}`], path); } catch { return '?'; } })();
+    const headline =
+      move === 'rewind'
+        ? `${path} moved BACKWARDS by ${behind} commit(s).`
+        : `${path} moved SIDEWAYS — the new pin and the base pin have diverged, and ` +
+          `${behind} commit(s) on the base side are not reachable from it.`;
     failures.push(
-      `${path} moved BACKWARDS by ${behind} commit(s).\n` +
+      `${headline}\n` +
         `    base : ${oldSubject}\n` +
         `    head : ${newSubject}\n` +
         `    The new pin is an ancestor of the one on the base branch, so everything\n` +
@@ -180,8 +199,9 @@ for (const { path, baseSha, headSha } of moved) {
 }
 
 if (failures.length > 0 && declaredRewind) {
-  const rewinds = failures.filter((f) => f.includes('moved BACKWARDS'));
-  const other = failures.filter((f) => !f.includes('moved BACKWARDS'));
+  const isMove = (f) => f.includes('moved BACKWARDS') || f.includes('moved SIDEWAYS');
+  const rewinds = failures.filter(isMove);
+  const other = failures.filter((f) => !isMove(f));
   if (other.length === 0) {
     console.log('Submodule monotonicity check OK — backwards move(s) declared with [pin-rewind]:\n');
     for (const r of rewinds) console.log(`  ~ ${r.split('\n')[0]}`);

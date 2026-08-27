@@ -4,7 +4,7 @@
 // the real tree, including the two commits that actually shipped a regression.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   checkPinMapCoverage,
+  classifyMove,
+  toplevelProvesSubmodule,
   classifyPin,
   parseAllList,
   parseArtifactCapabilitiesPin,
@@ -32,11 +34,29 @@ const run = (cli, args = [], env = {}) =>
     env: { ...process.env, ...env },
   });
 
-/** Is `path` a checked-out submodule? Several cases need one and must skip, not lie. */
+/**
+ * Is `vendor/tinymemory` really a checked-out submodule?
+ *
+ * NOT `rev-parse --git-dir`: git walks UPWARD, so from an uninitialised — or
+ * merely empty — `vendor/tinymemory` that command happily answers the
+ * SUPERPROJECT's `.git` and exits 0. The probe reported "present" having checked
+ * nothing, enabling a case whose CLI then failed for precisely the reason the
+ * probe was meant to detect. That is the fail-open shape this whole gate exists
+ * to prevent, reproduced inside its own test helper. Raised by Codex on #5812.
+ *
+ * `--show-toplevel` is the honest question: it answers the root of whichever
+ * repository owns that directory. Only when that root IS the submodule path is
+ * the submodule genuinely checked out. Compared through `realpathSync` because
+ * macOS resolves `/tmp/...` to `/private/tmp/...`.
+ */
 function submodulesPresent() {
+  const path = join(REPO_ROOT, 'vendor/tinymemory');
   try {
-    execFileSync('git', ['rev-parse', '--git-dir'], { cwd: join(REPO_ROOT, 'vendor/tinymemory'), stdio: 'ignore' });
-    return true;
+    const top = execFileSync('git', ['-C', path, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return toplevelProvesSubmodule(realpathSync(top), realpathSync(path));
   } catch {
     return false;
   }
@@ -285,6 +305,74 @@ test('the monotonicity gate fails when run outside a git repo rather than passin
     });
     assert.notEqual(r.status, 0, 'no git repo must FAIL, not pass');
     assert.doesNotMatch(r.stdout, /check OK/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── Review findings from #5812 ────────────────────────────────────────────────
+
+test('a comment inside ALL does not swallow the record beneath it', () => {
+  // CodeRabbit on #5812: splitting on commas before stripping comments puts the
+  // comment and the next record in one token, and filtering tokens beginning
+  // with `//` dropped both. A dropped record reads downstream as "missing from
+  // PIN_MAP" — CI fails while pointing at the wrong thing.
+  const src = [
+    'pub const ALL: &[ModuleRecord] = &[',
+    '    // the codecs',
+    '    TINYDOCS,',
+    '    TINYWALLET, // lazy',
+    '    // Eager, unlike the two codecs above.',
+    '    TINYMEMORY,',
+    '];',
+  ].join('\n');
+  assert.deepEqual(parseAllList(src), ['TINYDOCS', 'TINYWALLET', 'TINYMEMORY']);
+});
+
+test('a divergent pin is not forward', () => {
+  // Codex on #5812: asking only "is head an ancestor of base?" reads the single
+  // failed query as forward, so siblings — a side branch, or a rebased submodule
+  // history — sail through. Divergence loses the base's commits exactly as a
+  // rewind does, and a rewind onto a sibling is one rebase away from 14a23b994.
+  assert.equal(classifyMove({ headIsAncestorOfBase: true, baseIsAncestorOfHead: false }), 'rewind');
+  assert.equal(classifyMove({ headIsAncestorOfBase: false, baseIsAncestorOfHead: true }), 'forward');
+  assert.equal(classifyMove({ headIsAncestorOfBase: false, baseIsAncestorOfHead: false }), 'divergent');
+});
+
+test('the submodule probe is not fooled by the superproject above it', () => {
+  // Codex on #5812. `rev-parse --git-dir` walks upward and succeeds from any
+  // directory inside a repository, submodule or not — so it cannot answer this.
+  const root = mkdtempSync(join(tmpdir(), 'module-pins-super-'));
+  try {
+    execFileSync('git', ['init', '-q', root], { stdio: 'ignore' });
+    const notASubmodule = join(root, 'vendor', 'tinymemory');
+    mkdirSync(notASubmodule, { recursive: true });
+
+    // The old probe: succeeds, answering the SUPERPROJECT's git dir.
+    const walked = execFileSync('git', ['-C', notASubmodule, 'rev-parse', '--git-dir'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    assert.ok(walked.length > 0, 'precondition: --git-dir does walk up, which is why it cannot be used');
+
+    // The probe actually used: the toplevel is the superproject, not the path,
+    // so this correctly reports "not a checked-out submodule".
+    const top = execFileSync('git', ['-C', notASubmodule, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    assert.equal(
+      toplevelProvesSubmodule(realpathSync(top), realpathSync(notASubmodule)),
+      false,
+      'a directory that merely sits inside a repo must not read as a checked-out submodule',
+    );
+
+    // ...and the positive case: the superproject root IS its own toplevel.
+    const superTop = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    assert.equal(toplevelProvesSubmodule(realpathSync(superTop), realpathSync(root)), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
