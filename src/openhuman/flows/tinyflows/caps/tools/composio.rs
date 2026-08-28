@@ -76,6 +76,8 @@ impl ToolBackend for ComposioToolBackend {
         super::super::preflight_composio_args(config, slug, args).await
     }
 
+    /// Executes a curated Composio action after account resolution and all
+    /// workflow security gates have succeeded.
     async fn invoke(
         &self,
         ctx: &ToolCallCtx<'_>,
