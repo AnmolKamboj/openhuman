@@ -424,6 +424,10 @@ async fn execute_tool_returns_cost_and_success_flags() {
         "/agent-integrations/composio/execute",
         post(|Json(body): Json<Value>| async move {
             let tool = body["tool"].as_str().unwrap_or("").to_string();
+            assert!(
+                body.get("connectionId").is_none(),
+                "ambient execute_tool calls must omit per-account scoping"
+            );
             Json(json!({
                 "success": true,
                 "data": {
