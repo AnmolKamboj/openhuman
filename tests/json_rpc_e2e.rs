@@ -4614,6 +4614,16 @@ async fn json_rpc_memory_tree_end_to_end() {
 /// later snapshot), mark_read, and cross-source checkpoints. This is the
 /// turn-to-turn world-diff assertion. (Per-item add/remove/modify detection
 /// and text diffs are covered exhaustively by the ops unit tests.)
+///
+/// Gated on `memory-git`: the `memory_diff` controllers only register when the
+/// git-backed diff domain is compiled in, so without the gate every call here
+/// answers `unknown method`. This is a `#[cfg]` on the one symbol rather than a
+/// `required-features` line on the target, deliberately — `json_rpc_e2e` is
+/// otherwise gate-free, and gating the whole target would silently skip its
+/// other ~100 tests in every lane that does not enable `memory-git`. That is
+/// the distinction the `required-features` comment in `Cargo.toml` draws, and
+/// the per-symbol `#[cfg]` cleanup tracked in #5021.
+#[cfg(feature = "memory-git")]
 #[tokio::test]
 async fn json_rpc_memory_diff_snapshot_diff_and_read_marker_lifecycle() {
     let _env_lock = json_rpc_e2e_env_lock();
