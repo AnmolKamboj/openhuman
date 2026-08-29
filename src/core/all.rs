@@ -849,13 +849,6 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         Some(Capability::Sources),
         crate::openhuman::memory::sources::all_memory_sources_registered_controllers(),
     );
-    // Memory diff — snapshot-based change tracking for memory sources
-    push_cap(
-        &mut controllers,
-        DomainGroup::Memory,
-        Some(Capability::Diff),
-        crate::openhuman::memory::diff::all_memory_diff_registered_controllers(),
-    );
     // Referral and growth tracking
     push(
         &mut controllers,
@@ -1168,9 +1161,6 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         ),
         "memory_sources" => Some(
             "User-configured data connectors (Composio, folders, GitHub repos, RSS, web pages) that feed memory.",
-        ),
-        "memory_diff" => Some(
-            "Snapshot-based change tracking for memory sources — capture state, compute diffs, and surface changes to agents.",
         ),
         "referral" => Some("Referral codes, stats, and apply flows via the hosted backend API."),
         "run_ledger" => Some(

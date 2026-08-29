@@ -691,15 +691,6 @@ pub fn all_tools_with_runtime(
          memory_hybrid_search, memory_store_raw_search, memory_store_raw_chunks, memory_store_kinds"
     );
 
-    // Memory diff — structured "what changed in the agent's world since a
-    // checkpoint/last sync". Drives the subconscious tick's first stage and is
-    // available to any agent that lists it. Unit struct, no runtime deps.
-    // Absent rather than erroring when `memory-git` is off: a registered tool
-    // that always fails is worse than no tool, because the model keeps
-    // choosing it and reporting the failure back to the user.
-    #[cfg(feature = "memory-git")]
-    tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
-
     // Presentation generation (#2778). Native-Rust engine (ppt-rs
     // backed) as of the #2780-follow-up rust-engine refactor — no
     // managed Python venv, no first-call install latency. Always
