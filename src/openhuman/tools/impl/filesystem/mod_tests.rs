@@ -5,6 +5,7 @@
 //! `#[path = "mod_tests.rs"] mod tests;` so `super::*` resolves to the
 //! `filesystem` module.
 
+use tinyagents::harness::tool::ToolExecutionContext;
 use super::*;
 use crate::openhuman::security::policy::TrustedAccess;
 use std::path::Path;
