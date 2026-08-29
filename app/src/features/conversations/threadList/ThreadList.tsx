@@ -52,29 +52,19 @@ export function ThreadList({
   return (
     // Card background / rounded corners come from TwoPanelLayout's pane styling.
     <div className="h-full flex flex-col">
-      {/* Section header: a muted group label with the "new" affordance docked on
-          the right, replacing the old full-width centered button. Mirrors the
-          grouped-nav idiom the settings sidebar already uses.
+      {/* Section header: a muted group label alone. It used to dock the "new
+          conversation" affordance on its right as a 20px icon square; that is a
+          row in the list below now, in the same shape as every other row, so
+          the header is purely a group label — the same idiom the settings
+          sidebar's group headings use.
 
           `pt-0`, not `pt-4`: projected into the app sidebar this list sits under
           a separator that already owns the gap, and a top pad here stacked on
           top of it. Spacing above this list belongs to whatever precedes it. */}
-      <div className="flex shrink-0 items-center justify-between px-3 pb-1.5 pt-0">
+      <div className="flex shrink-0 items-center px-3 pb-1.5 pt-0">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
           {t('chat.conversationsHeading')}
         </span>
-        <button
-          type="button"
-          data-testid="new-thread-button"
-          data-analytics-id="chat-sidebar-new-thread"
-          onClick={onCreateThread}
-          title={t('chat.newThreadShortcut')}
-          aria-label={t('chat.newConversation')}
-          className="flex h-5 w-5 flex-none items-center justify-center rounded text-content-faint transition-colors hover:bg-surface/40 hover:text-content-secondary">
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
       </div>
       {/* Rows carry no padding gutter of their own — a thread pill spans the
           full width the scroll container gives it, so its hover/selected fill
@@ -113,6 +103,39 @@ export function ThreadList({
           margin also lands after the last row and pads the scroll floor
           unevenly against `pb-3`. */}
       <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3 [scrollbar-gutter:stable_both-edges] [scrollbar-width:thin]">
+        {/* "New conversation" as a row, not a header icon. It is the same
+            affordance as a thread row — pick a conversation to work in — so it
+            takes the same shape: `h-8` pill, same radius, same hover fill, same
+            14px label, sitting in the same column. As a 20px icon docked in the
+            header it was both the smallest hit target in the sidebar and the
+            only control there that did not look like the thing it produced.
+
+            A `<button>` rather than a `div[role=button]` like the thread rows:
+            those rows carry nested action buttons (rename, delete) and cannot
+            legally nest a button inside a button, which is why they hand-roll
+            the role and key handling. This row has no children, so it can be
+            the real element and get Enter/Space, focus and semantics for free.
+
+            `text-content-muted` matches an unselected thread row rather than
+            asserting itself — the list's emphasis belongs to whichever
+            conversation is selected. */}
+        <button
+          type="button"
+          data-testid="new-thread-button"
+          data-analytics-id="chat-sidebar-new-thread"
+          onClick={onCreateThread}
+          title={t('chat.newThreadShortcut')}
+          className="group flex h-8 w-full flex-none cursor-pointer items-center gap-1.5 rounded-md px-3 text-left text-[14px] text-content-muted transition-colors hover:bg-surface/40 hover:text-content-secondary dark:hover:bg-surface/60">
+          <svg
+            className="h-3.5 w-3.5 flex-none"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <span className="truncate">{t('chat.newConversation')}</span>
+        </button>
         {threads.length === 0 ? (
           <p className="px-4 py-6 text-xs text-content-faint text-center">{t('chat.noThreads')}</p>
         ) : (
