@@ -7064,6 +7064,125 @@ const messages: TranslationMap = {
   'devOptions.gateway': 'Ort',
   'devOptions.provisionedCore': 'Von dieser App gestarteter Kern',
   'devOptions.gatewayId': 'Ort',
+  // S9 i18n audit fixes (hardcoded English in files that already hold useT()).
+  'settings.ai.picker.title': 'Anbieter und Modell wählen',
+  'settings.ai.picker.subtitle': 'Konfigurierte Anbieter und verfügbare Modelle durchsuchen.',
+  'settings.ai.picker.useThisModel': 'Dieses Modell verwenden',
+  'settings.ai.picker.searchPlaceholder': 'Anbieter und Modelle suchen',
+  'settings.ai.picker.providersLabel': 'Anbieter',
+  'settings.ai.picker.modelIdPlaceholder': 'Modell-ID eingeben',
+  'settings.ai.picker.claudeCodeHint':
+    'Verwende einen Claude-Code-Modellalias oder eine Modell-ID.',
+  'settings.ai.loops.memoryTreeWorkers.name': 'Speicherbaum-Worker',
+  'settings.ai.loops.cadence.queue': 'Warteschlange',
+  'settings.ai.loops.memoryTreeWorkers.work':
+    'Extrahiert Abschnitte, versiegelt Zweige, erstellt tägliche Zusammenfassungen und ordnet Themen zu.',
+  'settings.ai.loops.memoryTreeWorkers.risk':
+    '{workers} Worker fragen alle {seconds}s ab; das LLM wird nur aufgerufen, wenn die Warteschlange Extrahier-, Versiegel-, Zusammenfassungs- oder Themenaufgaben enthält.',
+  'settings.ai.loops.reflectionRebuild.name': 'Reflexions-Neuaufbau',
+  'settings.ai.loops.cadence.thirtyMin': '30 Min.',
+  'settings.ai.loops.reflectionRebuild.work':
+    'Aktualisiert den Reflexionsstatus nach Speicheraktivität.',
+  'settings.ai.loops.reflectionRebuild.risk':
+    '{count} Aufwachvorgänge/Woche; das LLM arbeitet nur, wenn der Neuaufbau Reflexion benötigt.',
+  'settings.ai.loops.composioSync.name': 'Composio-Synchronisierung',
+  'settings.ai.loops.cadence.twentyMin': '20 Min.',
+  'settings.ai.loops.composioSync.route': 'Integrations-APIs',
+  'settings.ai.loops.composioSync.work':
+    'Fragt verbundene Tools ab, wenn eine Anbieter-Synchronisierung fällig ist.',
+  'settings.ai.loops.composioSync.risk':
+    '{count} Aufwachvorgänge/Woche; durchsucht {active} aktive Verbindung(en).',
+  'common.notAvailable': 'n/a',
+  'settings.ai.resetsAt': 'wird zurückgesetzt am {time}',
+  'settings.ai.usedAmount': '{amount} verbraucht',
+  'settings.ai.inferenceIntegrationsBreakdown':
+    'Inferenz {inference} + Integrationen {integrations}',
+  'settings.ai.recentSpendRowsCount': '{count} aktuelle Ausgabenzeilen',
+  'settings.ai.perWeek': '{count}/Woche',
+  'settings.ai.perWeekMax': '{count}/Woche max.',
+  'settings.ai.perHour': '{amount}/Std.',
+  'settings.ai.plannerSyncBreakdown': '{planner} Planer + {sync} Synchronisierung',
+  'settings.ai.memoryPollsDetail': '{count} Speicherabfragen',
+  'settings.ai.rowsLeftFormula': 'verbleibend / durchschnittliche Zeile = {remaining} / {avgRow}',
+  'settings.ai.needSpendRowsToEstimate':
+    'Für eine Schätzung werden aktuelle Ausgabenzeilen benötigt.',
+  'settings.ai.rowsPerBudgetFormula':
+    'Zyklusbudget / durchschnittliche Zeile = {budget} / {avgRow}',
+  'settings.ai.burnRateSampleDetail': '{rows} Zeilen/Std. über eine Stichprobe von {hours}h',
+  'settings.ai.needTimestampsForBurnRate':
+    'Es werden Zeitstempel von mindestens zwei Ausgabenzeilen benötigt.',
+  'settings.ai.projectedEmptyDetail':
+    '{hours}h nach der letzten Ausgabe bei aktueller Verbrauchsrate',
+  'settings.ai.noProjectionWithoutSpend': 'Keine Prognose ohne aktuelle stündliche Ausgaben.',
+  'settings.ai.readsPerDollar': '{count} Abfragen/$',
+  'settings.ai.apiReadsFormula':
+    'API-Hintergrundabfragen/Woche / verbleibend = {reads} / {remaining}',
+  'settings.ai.needUsageToEstimate': 'Für eine Schätzung wird die Nutzungsantwort benötigt.',
+  'settings.ai.composioSyncScansDetail':
+    '{count} aktive Integrationsverbindung(en), alle 20 Min. gescannt',
+  'settings.ai.totalApiReadBudgetDetail':
+    'Kalenderplaner-Abfragen + regelmäßige Integrationsscans; schließt vom Nutzer gestartete Chat-Tools aus',
+  'settings.ai.memoryWorkerPollsDetail':
+    '4 Worker fragen alle 5s ab; das LLM wird nur für Aufgaben in der Warteschlange aufgerufen',
+  'settings.mcpServer.tools.listTools': 'Listet alle verfügbaren MCP-Tools auf',
+  'settings.mcpServer.tools.toolInstructions': 'Ruft die Nutzungshinweise für ein Tool ab',
+  'settings.mcpServer.tools.listSubagents': 'Listet verfügbare Subagenten auf',
+  'settings.mcpServer.tools.runSubagent':
+    'Führt einen Subagenten mit einer Eingabeaufforderung aus',
+  'settings.mcpServer.tools.memorySearch': 'Durchsucht den Speicher per semantischer Abfrage',
+  'settings.mcpServer.tools.memoryRecall': 'Ruft bestimmte Erinnerungen anhand der ID ab',
+  'settings.mcpServer.tools.treeReadChunk': 'Liest einen Abschnitt des Speicherbaums',
+  'settings.mcpServer.tools.treeBrowse': 'Durchsucht die Struktur des Speicherbaums',
+  'settings.mcpServer.tools.treeTopEntities':
+    'Ruft die wichtigsten Entitäten aus dem Speicherbaum ab',
+  'settings.mcpServer.tools.treeListSources': 'Listet die Quellen des Speicherbaums auf',
+  'settings.notifications.category.messages.title': 'Nachrichten',
+  'settings.notifications.category.messages.desc':
+    'Neue Nachrichten von eingebetteten Webview-Konten (Slack, WhatsApp, …).',
+  'settings.notifications.category.agents.title': 'Agentenaktivität',
+  'settings.notifications.category.agents.desc':
+    'Abgeschlossene Agentenaufgaben und lang laufende Antworten.',
+  'settings.notifications.category.skills.title': 'Skills',
+  'settings.notifications.category.skills.desc':
+    'Skill-Synchronisierungsereignisse und OAuth-Statusänderungen.',
+  'settings.notifications.category.system.title': 'System',
+  'settings.notifications.category.system.desc':
+    'Verbindungsprobleme, Fehler im Hintergrundprozess, Aktualisierungen.',
+  'settings.notifications.category.meetings.title': 'Meetings',
+  'settings.notifications.category.meetings.desc':
+    'Anstehende Meetings und vom Heartbeat erkannte Kalenderereignisse.',
+  'settings.notifications.category.reminders.title': 'Erinnerungen',
+  'settings.notifications.category.reminders.desc':
+    'Anstehende Erinnerungen und geplante Aufgaben aus Cron-Jobs.',
+  'settings.notifications.category.important.title': 'Wichtige Ereignisse',
+  'settings.notifications.category.important.desc':
+    'Dringende oder zeitkritische Ereignisse aus verbundenen Quellen.',
+  'settings.notifications.categoryToggleAria':
+    'Benachrichtigungen für {name} ein- oder ausschalten',
+  'settings.cron.jobs.runFinishedAt': '{status} um {time}',
+  'settings.cron.jobs.scheduleAt': 'um {time}',
+  'settings.cron.jobs.scheduleEvery': 'alle {ms}ms',
+  'skills.category.all': 'Alle',
+  'skills.category.builtIn': 'Integriert',
+  'skills.category.channels': 'Kanäle',
+  'skills.category.productivity': 'Produktivität',
+  'skills.category.chat': 'Chat',
+  'skills.category.toolsAutomation': 'Tools und Automatisierung',
+  'skills.category.social': 'Sozial',
+  'skills.category.platform': 'Plattform',
+  'skills.category.other': 'Sonstiges',
+  'workspace.wipeSuccessTitle': 'Speicher gelöscht',
+  'workspace.wipeSuccessMessage':
+    '{rows} Zeile(n) und {dirs} Ordner entfernt; {cursors} Sync-Status-Cursor gelöscht. Klicke bei einer verbundenen Quelle auf Synchronisieren, um neu zu befüllen.',
+  'workspace.wipeFailedTitle': 'Zurücksetzen fehlgeschlagen',
+  'workspace.resetTreeSuccessTitle': 'Speicherbaum wird neu aufgebaut',
+  'workspace.resetTreeSuccessMessage':
+    '{treeRows} Baumzeile(n) gelöscht; {chunks} Abschnitt(e) neu eingereiht ({jobs} Extraktionsaufgaben). Der Graph füllt sich, sobald der Worker fertig ist.',
+  'workspace.resetTreeFailedTitle': 'Speicherbaum konnte nicht zurückgesetzt werden',
+  'workspace.buildTreesFailedTitle': 'Zusammenfassungsbäume konnten nicht erstellt werden',
+  'invites.redeemHeading': 'Hast du einen Empfehlungscode?',
+  'invites.redeemPlaceholder': 'Empfehlungscode',
+  'invites.redeemSubmit': 'Einlösen',
 };
 
 export default messages;

@@ -18,6 +18,7 @@ import {
 } from '../../lib/orchestration/orchestrationClient';
 import { usePairing } from '../../lib/orchestration/usePairing';
 import { contactAddress, extractHandle } from '../intelligence/orchestrationTabHelpers';
+import { CenteredLoadingState } from '../ui';
 import Button from '../ui/Button';
 import TextField from '../ui/TextField';
 import { SectionCard } from './primitives';
@@ -108,9 +109,7 @@ export default function DiscoverPanel() {
       {/* Own identity / discoverability. */}
       <SectionCard title={t('orchPage.discover.identityTitle')} testId="orch-discover-identity">
         {identityLoading ? (
-          <p className="text-sm text-content-muted">
-            {t('tinyplaceOrchestration.identity.loading')}
-          </p>
+          <CenteredLoadingState label={t('tinyplaceOrchestration.identity.loading')} />
         ) : identity ? (
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
@@ -183,7 +182,7 @@ export default function DiscoverPanel() {
         title={t('tinyplaceOrchestration.pairing.requests')}
         testId="orch-discover-requests">
         {state.status === 'loading' ? (
-          <p className="text-sm text-content-muted">{t('tinyplaceOrchestration.loading')}</p>
+          <CenteredLoadingState label={t('tinyplaceOrchestration.loading')} />
         ) : incoming.length === 0 ? (
           <p className="py-2 text-sm text-content-muted" data-testid="orch-discover-no-requests">
             {t('orchPage.discover.noRequests')}

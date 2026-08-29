@@ -32,6 +32,7 @@ import {
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
 } from '../../utils/tauriCommands/memoryTree';
+import { Card } from '../ui';
 import Button from '../ui/Button';
 import { AddMemorySourceDialog } from './AddMemorySourceDialog';
 import { ConfirmationModal } from './ConfirmationModal';
@@ -496,7 +497,7 @@ export function MemorySourcesRegistry({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-4" data-testid="memory-sources">
+    <Card padded divided={false} data-testid="memory-sources">
       <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-content-secondary">{t('memorySources.title')}</h3>
         <div className="flex items-center gap-2">
@@ -572,6 +573,6 @@ export function MemorySourcesRegistry({
       {allInModalOpen && (
         <ConfirmationModal modal={allInModal} onClose={() => setAllInModalOpen(false)} />
       )}
-    </section>
+    </Card>
   );
 }

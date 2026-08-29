@@ -34,13 +34,13 @@ const AddAccountModal = ({ open, onClose, onPick, connectedProviders }: AddAccou
   return (
     <div
       data-testid="add-account-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/40 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-account-modal-title"
       onClick={onClose}>
       <div
-        className="w-[420px] max-w-[90vw] rounded-2xl bg-surface p-6 shadow-strong"
+        className="w-[420px] max-w-[90vw] rounded-2xl bg-surface p-6 shadow-large"
         onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 id="add-account-modal-title" className="text-lg font-semibold text-content">

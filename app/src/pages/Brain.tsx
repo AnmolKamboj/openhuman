@@ -21,6 +21,7 @@ import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import TwoPaneNav from '../components/layout/TwoPaneNav';
 import OrchestrationView from '../components/orchestration/OrchestrationView';
 import SettingsTabbedPage from '../components/settings/layout/SettingsTabbedPage';
+import { Alert, AlertDescription, Card } from '../components/ui';
 import { useTinyPlaceIdentity } from '../hooks/useTinyPlaceIdentity';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
@@ -173,8 +174,6 @@ export default function Brain() {
     // on the Orchestration sub-tab (and re-runs it when returning to a
     // graph-bearing tab).
   }, [mode, refreshKey, authUserId, activeTab]);
-
-  const cardClass = 'rounded-lg border border-line bg-surface p-4';
 
   if (shouldRedirectFromOrchestration) {
     return <Navigate to="/brain" replace />;
@@ -331,11 +330,9 @@ export default function Brain() {
                           emptyHint={t('brain.empty')}
                         />
                       ) : error ? (
-                        <div
-                          className={`${cardClass} text-sm text-coral-600 dark:text-coral-400`}
-                          role="alert">
-                          {t('brain.error')}
-                        </div>
+                        <Alert variant="destructive">
+                          <AlertDescription>{t('brain.error')}</AlertDescription>
+                        </Alert>
                       ) : null}
                     </div>
                   )}
@@ -351,17 +348,17 @@ export default function Brain() {
 
                   {activeTab === 'sync' && (
                     <div className="space-y-5 animate-fade-up">
-                      <div className={cardClass}>
+                      <Card padded divided={false}>
                         <MemoryTreeStatusPanel onToast={addToast} />
-                      </div>
+                      </Card>
                       {/* Sync history relocated from the Memory Inspection panel so
                       the Sync tab is the single sync surface. */}
-                      <div className={cardClass} data-testid="brain-sync-history">
+                      <Card padded divided={false} data-testid="brain-sync-history">
                         <h3 className="mb-2 text-sm font-medium text-content-secondary">
                           {t('sync.auditTitle', 'Sync History')}
                         </h3>
                         <SyncAuditPanel />
-                      </div>
+                      </Card>
                     </div>
                   )}
                 </div>

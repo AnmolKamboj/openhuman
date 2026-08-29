@@ -8,6 +8,7 @@ import {
   getCodingSessionStatus,
 } from '../../services/memorySourcesService';
 import type { ToastNotification } from '../../types/intelligence';
+import { Card } from '../ui';
 import Button from '../ui/Button';
 
 interface CodingSessionsCardProps {
@@ -142,9 +143,7 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
   }, []);
 
   return (
-    <section
-      className="rounded-lg border border-line bg-surface p-4"
-      data-testid="coding-sessions-card">
+    <Card padded divided={false} data-testid="coding-sessions-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-content">
@@ -203,7 +202,7 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
         {sources.map(source => (
           <div
             key={source.kind}
-            className="rounded-md border border-line-subtle bg-surface-secondary px-3 py-2"
+            className="rounded-md border border-line-subtle bg-surface-muted px-3 py-2"
             data-testid={`coding-session-source-${source.kind}`}>
             <div className="text-xs font-medium text-content">
               {t(SOURCE_LABEL_KEYS[source.kind])}
@@ -234,6 +233,6 @@ export function CodingSessionsCard({ onToast }: CodingSessionsCardProps) {
           {error}
         </p>
       )}
-    </section>
+    </Card>
   );
 }

@@ -19,6 +19,7 @@ import {
 import { useT } from '../../lib/i18n/I18nContext';
 import { ORCHESTRATOR_TASKS_THREAD_ID, todosApi } from '../../services/api/todosApi';
 import type { TaskBoard, TaskBoardCard, TaskBoardCardStatus } from '../../types/turnState';
+import { Alert, AlertDescription } from '../ui';
 import Button from '../ui/Button';
 import TextField from '../ui/TextField';
 
@@ -140,19 +141,17 @@ export default function OrchestratorTaskBoard() {
   );
 
   return (
+    // No heading here: the only host (`OrchestrationView`) renders a
+    // `PageSectionHeader` with these exact two keys directly above this board,
+    // so an h2 of its own stacked the same title twice.
     <div className="space-y-4" data-testid="orch-task-board">
-      <div>
-        <h2 className="text-xl font-bold text-content">{t('orchPage.tasks.nav')}</h2>
-        <p className="mt-1 text-sm text-content-muted">{t('orchPage.tasks.subtitle')}</p>
-      </div>
-
       {error ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-          <span className="min-w-0 truncate">{error}</span>
+        <Alert variant="destructive" density="compact" className="items-center justify-between">
+          <AlertDescription className="min-w-0 truncate">{error}</AlertDescription>
           <Button variant="secondary" size="sm" onClick={() => void load()}>
             {t('common.retry')}
           </Button>
-        </div>
+        </Alert>
       ) : null}
 
       <form

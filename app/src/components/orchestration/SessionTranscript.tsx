@@ -109,7 +109,7 @@ function UserBubble({ message }: { message: ChatMessage }): ReactElement {
         <div className="overflow-hidden wrap-break-word rounded-2xl rounded-br-md bg-primary-500 px-4 py-2.5 text-content-inverted">
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>
         </div>
-        <span className="px-1 text-[10px] text-white/60">{formatTime(message.timestamp)}</span>
+        <span className="px-1 text-[10px] text-content-faint">{formatTime(message.timestamp)}</span>
       </div>
     </div>
   );
@@ -210,7 +210,7 @@ function ApprovalRow({
       <div
         className={`w-full max-w-[85%] rounded-xl border px-3 py-2.5 ${
           decided
-            ? 'border-line bg-surface/60 dark:bg-black/20'
+            ? 'border-line bg-surface/60 dark:bg-surface-canvas/20'
             : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
         }`}>
         <div className="flex items-center gap-2">
@@ -234,7 +234,7 @@ function ApprovalRow({
           // Resolved in place — no more actions, just the outcome.
           <div
             className={`mt-2.5 flex items-center gap-1.5 text-xs font-semibold ${
-              denied ? 'text-danger' : 'text-sage-600 dark:text-sage-400'
+              denied ? 'text-coral-600 dark:text-coral-400' : 'text-sage-600 dark:text-sage-400'
             }`}
             data-testid="approval-resolved">
             <span>{denied ? '✕' : '✓'}</span>
@@ -246,7 +246,7 @@ function ApprovalRow({
               variant="primary"
               size="xs"
               onClick={() => onDecide(message, 'approve')}
-              className="rounded-lg bg-amber-500 px-3 font-semibold text-white hover:bg-amber-600 active:bg-amber-700 focus-visible:ring-amber-500/25 dark:hover:bg-amber-600 dark:active:bg-amber-600">
+              className="rounded-lg bg-amber-500 px-3 font-semibold text-content-inverted hover:bg-amber-600 active:bg-amber-700 focus-visible:ring-amber-500/25 dark:hover:bg-amber-600 dark:active:bg-amber-600">
               {t('chat.approval.approve')}
             </Button>
             <Button

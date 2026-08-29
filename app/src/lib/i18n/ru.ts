@@ -6949,6 +6949,115 @@ const messages: TranslationMap = {
   'devOptions.gateway': 'Размещение',
   'devOptions.provisionedCore': 'Ядро, запущенное этим приложением',
   'devOptions.gatewayId': 'Размещение',
+  // S9 i18n audit fixes (hardcoded English in files that already hold useT()).
+  'settings.ai.picker.title': 'Выбор провайдера и модели',
+  'settings.ai.picker.subtitle': 'Поиск среди настроенных провайдеров и доступных моделей.',
+  'settings.ai.picker.useThisModel': 'Использовать эту модель',
+  'settings.ai.picker.searchPlaceholder': 'Поиск провайдеров и моделей',
+  'settings.ai.picker.providersLabel': 'Провайдеры',
+  'settings.ai.picker.modelIdPlaceholder': 'Введите ID модели',
+  'settings.ai.picker.claudeCodeHint': 'Используйте псевдоним модели Claude Code или ID модели.',
+  'settings.ai.loops.memoryTreeWorkers.name': 'Воркеры дерева памяти',
+  'settings.ai.loops.cadence.queue': 'очередь',
+  'settings.ai.loops.memoryTreeWorkers.work':
+    'Извлекает фрагменты, запечатывает ветви, формирует ежедневные сводки, направляет темы.',
+  'settings.ai.loops.memoryTreeWorkers.risk':
+    '{workers} воркеров опрашивают очередь каждые {seconds}с; LLM вызывается только когда в очереди есть задачи извлечения, запечатывания, сводки или темы.',
+  'settings.ai.loops.reflectionRebuild.name': 'Перестроение рефлексии',
+  'settings.ai.loops.cadence.thirtyMin': '30 мин',
+  'settings.ai.loops.reflectionRebuild.work':
+    'Обновляет состояние рефлексии после активности памяти.',
+  'settings.ai.loops.reflectionRebuild.risk':
+    '{count} пробуждений/неделю; LLM работает только когда перестроение требует рефлексии.',
+  'settings.ai.loops.composioSync.name': 'Синхронизация Composio',
+  'settings.ai.loops.cadence.twentyMin': '20 мин',
+  'settings.ai.loops.composioSync.route': 'API интеграций',
+  'settings.ai.loops.composioSync.work':
+    'Опрашивает подключённые инструменты, когда наступает срок синхронизации с провайдером.',
+  'settings.ai.loops.composioSync.risk':
+    '{count} пробуждений/неделю; сканирует {active} активных соединений.',
+  'common.notAvailable': 'н/д',
+  'settings.ai.resetsAt': 'сброс {time}',
+  'settings.ai.usedAmount': '{amount} использовано',
+  'settings.ai.inferenceIntegrationsBreakdown': 'инференс {inference} + интеграции {integrations}',
+  'settings.ai.recentSpendRowsCount': '{count} недавних строк расходов',
+  'settings.ai.perWeek': '{count}/нед.',
+  'settings.ai.perWeekMax': '{count}/нед. макс.',
+  'settings.ai.perHour': '{amount}/ч',
+  'settings.ai.plannerSyncBreakdown': '{planner} планировщик + {sync} синхронизация',
+  'settings.ai.memoryPollsDetail': '{count} опросов памяти',
+  'settings.ai.rowsLeftFormula': 'остаток / средняя строка = {remaining} / {avgRow}',
+  'settings.ai.needSpendRowsToEstimate': 'Для оценки нужны недавние строки расходов.',
+  'settings.ai.rowsPerBudgetFormula': 'бюджет цикла / средняя строка = {budget} / {avgRow}',
+  'settings.ai.burnRateSampleDetail': '{rows} строк/ч на выборке за {hours}ч',
+  'settings.ai.needTimestampsForBurnRate': 'Нужны временные метки как минимум двух строк расходов.',
+  'settings.ai.projectedEmptyDetail':
+    '{hours}ч после последнего расхода при текущем темпе потребления',
+  'settings.ai.noProjectionWithoutSpend': 'Без недавних почасовых расходов прогноз недоступен.',
+  'settings.ai.readsPerDollar': '{count} чтений/$',
+  'settings.ai.apiReadsFormula': 'фоновые обращения к API/неделю / остаток = {reads} / {remaining}',
+  'settings.ai.needUsageToEstimate': 'Для оценки нужен ответ об использовании.',
+  'settings.ai.composioSyncScansDetail':
+    '{count} активных интеграционных соединений, сканируются каждые 20 мин',
+  'settings.ai.totalApiReadBudgetDetail':
+    'обращения планировщика календаря + периодическое сканирование интеграций; не включает инструменты чата, запущенные пользователем',
+  'settings.ai.memoryWorkerPollsDetail':
+    '4 воркера опрашивают каждые 5с; LLM вызывается только для задач в очереди',
+  'settings.mcpServer.tools.listTools': 'Выводит список всех доступных инструментов MCP',
+  'settings.mcpServer.tools.toolInstructions': 'Получает инструкции по использованию инструмента',
+  'settings.mcpServer.tools.listSubagents': 'Выводит список доступных субагентов',
+  'settings.mcpServer.tools.runSubagent': 'Запускает субагента с промптом',
+  'settings.mcpServer.tools.memorySearch': 'Выполняет семантический поиск по памяти',
+  'settings.mcpServer.tools.memoryRecall': 'Извлекает конкретные воспоминания по ID',
+  'settings.mcpServer.tools.treeReadChunk': 'Читает фрагмент дерева памяти',
+  'settings.mcpServer.tools.treeBrowse': 'Просматривает структуру дерева памяти',
+  'settings.mcpServer.tools.treeTopEntities': 'Получает главные сущности из дерева памяти',
+  'settings.mcpServer.tools.treeListSources': 'Выводит список источников дерева памяти',
+  'settings.notifications.category.messages.title': 'Сообщения',
+  'settings.notifications.category.messages.desc':
+    'Новые сообщения из встроенных webview-аккаунтов (Slack, WhatsApp, …).',
+  'settings.notifications.category.agents.title': 'Активность агентов',
+  'settings.notifications.category.agents.desc': 'Завершённые задачи агентов и длительные ответы.',
+  'settings.notifications.category.skills.title': 'Навыки',
+  'settings.notifications.category.skills.desc':
+    'События синхронизации навыков и изменения статуса OAuth.',
+  'settings.notifications.category.system.title': 'Система',
+  'settings.notifications.category.system.desc':
+    'Проблемы соединения, ошибки фонового процесса, обновления.',
+  'settings.notifications.category.meetings.title': 'Встречи',
+  'settings.notifications.category.meetings.desc':
+    'Предстоящие встречи и события календаря, обнаруженные heartbeat.',
+  'settings.notifications.category.reminders.title': 'Напоминания',
+  'settings.notifications.category.reminders.desc':
+    'Предстоящие напоминания и запланированные задачи из cron-заданий.',
+  'settings.notifications.category.important.title': 'Важные события',
+  'settings.notifications.category.important.desc':
+    'Срочные или чувствительные ко времени события из подключённых источников.',
+  'settings.notifications.categoryToggleAria': 'Включить или выключить уведомления {name}',
+  'settings.cron.jobs.runFinishedAt': '{status} в {time}',
+  'settings.cron.jobs.scheduleAt': 'в {time}',
+  'settings.cron.jobs.scheduleEvery': 'каждые {ms}мс',
+  'skills.category.all': 'Все',
+  'skills.category.builtIn': 'Встроенные',
+  'skills.category.channels': 'Каналы',
+  'skills.category.productivity': 'Продуктивность',
+  'skills.category.chat': 'Чат',
+  'skills.category.toolsAutomation': 'Инструменты и автоматизация',
+  'skills.category.social': 'Социальные',
+  'skills.category.platform': 'Платформа',
+  'skills.category.other': 'Прочее',
+  'workspace.wipeSuccessTitle': 'Память очищена',
+  'workspace.wipeSuccessMessage':
+    'Удалено строк: {rows}, папок: {dirs}; очищено курсоров состояния синхронизации: {cursors}. Нажмите «Синхронизировать» у подключённого источника, чтобы заполнить заново.',
+  'workspace.wipeFailedTitle': 'Сброс не удался',
+  'workspace.resetTreeSuccessTitle': 'Дерево памяти перестраивается',
+  'workspace.resetTreeSuccessMessage':
+    'Удалено строк дерева: {treeRows}; поставлено в очередь заново фрагментов: {chunks} (задач извлечения: {jobs}). Граф заполнится по мере работы воркера.',
+  'workspace.resetTreeFailedTitle': 'Не удалось сбросить дерево памяти',
+  'workspace.buildTreesFailedTitle': 'Не удалось построить деревья сводок',
+  'invites.redeemHeading': 'Есть реферальный код?',
+  'invites.redeemPlaceholder': 'Реферальный код',
+  'invites.redeemSubmit': 'Применить',
 };
 
 export default messages;

@@ -15,6 +15,7 @@ import { apiClient } from '../../lib/agentworld/apiClient';
 import { useT } from '../../lib/i18n/I18nContext';
 import { type CreditBalance, creditsApi, type TeamUsage } from '../../services/api/creditsApi';
 import { getTokenjuiceSavings, type SavingsStats } from '../../utils/tauriCommands/tokenjuice';
+import { CenteredLoadingState } from '../ui';
 import { StatTile } from './primitives';
 
 const debug = debugFactory('orchestration:usage');
@@ -77,9 +78,9 @@ export default function UsagePanel() {
 
   if (loading) {
     return (
-      <p className="py-8 text-center text-sm text-content-muted" data-testid="orch-usage-loading">
-        {t('tinyplaceOrchestration.loading')}
-      </p>
+      <div data-testid="orch-usage-loading">
+        <CenteredLoadingState label={t('tinyplaceOrchestration.loading')} />
+      </div>
     );
   }
 

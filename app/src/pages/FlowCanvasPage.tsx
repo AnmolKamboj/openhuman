@@ -38,10 +38,17 @@ import {
 } from '../components/flows/workflowCopilotThreads';
 import { ToastContainer } from '../components/intelligence/Toast';
 import PanelPage from '../components/layout/PanelPage';
-import Button from '../components/ui/Button';
-import UiInput from '../components/ui/Input';
-import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
-import { ToggleGroupItem, ToggleGroupRoot } from '../components/ui/ToggleGroup';
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  CenteredLoadingState,
+  ErrorBanner,
+  ToggleGroupItem,
+  ToggleGroupRoot,
+  Input as UiInput,
+} from '../components/ui';
 import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { asFlowCanvasDraftState } from '../lib/flows/canvasDraft';
 import {
@@ -1089,11 +1096,9 @@ function FlowEditor({
   const saveActions = (
     <div className="flex items-center gap-1.5">
       {saveMeta.dirty && (
-        <span
-          className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-          data-testid="flow-editor-dirty">
+        <Badge variant="warning" className="rounded-full" data-testid="flow-editor-dirty">
           {t('flows.editor.unsaved')}
-        </span>
+        </Badge>
       )}
       <Button
         type="button"
@@ -1208,13 +1213,14 @@ function FlowEditor({
               className={`pointer-events-none absolute left-3 top-14 z-20 flex justify-center ${
                 sidePanel === 'legend' ? 'right-56' : 'right-3'
               }`}>
-              <div
-                role="alert"
+              <Alert
+                variant="destructive"
+                density="compact"
                 data-testid="flow-canvas-run-error"
-                className="pointer-events-auto flex w-full max-w-md items-start gap-2 rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-                <span className="flex-1">
+                className="pointer-events-auto w-full max-w-md items-start gap-2">
+                <AlertDescription className="flex-1">
                   {t('flows.editor.runFailed')}: {formatRunError(runError)}
-                </span>
+                </AlertDescription>
                 <Button
                   type="button"
                   variant="tertiary"
@@ -1238,7 +1244,7 @@ function FlowEditor({
                     />
                   </svg>
                 </Button>
-              </div>
+              </Alert>
             </div>
           )}
 

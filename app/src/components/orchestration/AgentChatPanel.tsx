@@ -43,6 +43,13 @@ import {
 import ChatComposer from '../chat/ChatComposer';
 import ChatNewWindowHero from '../chat/ChatNewWindowHero';
 import { DetachedComposerRuntime } from '../chat/composer/DetachedComposerRuntime';
+import {
+  Alert,
+  AlertDescription,
+  CenteredLoadingState,
+  ToggleGroupItem,
+  ToggleGroupRoot,
+} from '../ui';
 import Button from '../ui/Button';
 import SessionTranscript from './SessionTranscript';
 
@@ -114,7 +121,7 @@ function ChatPageScaffold({
   }, [hasFooter]);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-surface/70 dark:bg-black/40">
+    <div className="relative flex h-full flex-col overflow-hidden bg-surface/70 dark:bg-surface-canvas/40">
       {header}
       <div
         ref={scrollRef}
@@ -313,7 +320,7 @@ function SessionChatView({ session }: { session: SessionSummary }) {
       scrollRef={scrollRef}
       header={
         // Agent metadata, centered to the same width-capped column as the chat.
-        <div className="border-b border-line bg-surface/60 dark:bg-black/30">
+        <div className="border-b border-line bg-surface/60 dark:bg-surface-canvas/30">
           <div className="mx-auto w-full max-w-195 px-5 py-3" data-testid="orch-session-header">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-content">{sessionLabel(session)}</p>
@@ -355,11 +362,15 @@ function SessionChatView({ session }: { session: SessionSummary }) {
       footer={
         <>
           {sendError ? (
-            <p
+            <Alert
+              variant="destructive"
+              density="compact"
               data-testid="orch-session-reply-error"
-              className="mb-2 rounded-md bg-coral-50 px-2 py-1 text-xs text-coral-700 dark:bg-coral-500/10 dark:text-coral-300">
-              {t('tinyplaceOrchestration.composer.sendFailed')}: {sendError}
-            </p>
+              className="mb-2">
+              <AlertDescription>
+                {t('tinyplaceOrchestration.composer.sendFailed')}: {sendError}
+              </AlertDescription>
+            </Alert>
           ) : null}
           <AgentComposer
             value={body}
@@ -372,9 +383,7 @@ function SessionChatView({ session }: { session: SessionSummary }) {
       }>
       <div className="mx-auto w-full max-w-195 space-y-3 px-5 pt-4">
         {state.status === 'loading' ? (
-          <p className="py-10 text-center text-sm text-content-muted">
-            {t('tinyplaceOrchestration.loading')}
-          </p>
+          <CenteredLoadingState label={t('tinyplaceOrchestration.loading')} className="py-10" />
         ) : state.status === 'error' ? (
           <p className="py-10 text-center text-sm text-coral-600 dark:text-coral-300">
             {t('tinyplaceOrchestration.failedToLoad')}: {state.message}
@@ -485,41 +494,47 @@ export default function AgentChatPanel({
   const errored = sessionsState.status === 'error' || messagesState.status === 'error';
 
   // The Conscious/Subconscious toggle sits in the composer footer.
+  // `ToggleGroupRoot type="single"` is the app's segmented-selection primitive:
+  // it emits the same `role="radiogroup"` / `role="radio"` / `aria-checked` this
+  // hand-rolled before, and adds the one thing it was missing — a single roving
+  // tab stop, so Tab reaches the control once and the arrow keys move between
+  // the two modes instead of Tab stopping on every chip. The on-state comes from
+  // `toggleVariants` rather than a hand-picked pair of fills.
   const modeToggle = (
-    <div
-      className="inline-flex h-7 items-center rounded-full border border-line bg-surface-subtle p-0.5"
-      role="radiogroup"
+    <ToggleGroupRoot
+      type="single"
+      size="xs"
+      variant="tertiary"
+      value={selectedId ?? undefined}
+      // Radix allows a single-type group to deselect (value becomes ''); this
+      // control always has exactly one mode active, so an empty value is
+      // ignored rather than clearing the selection.
+      onValueChange={value => {
+        if (value) selectChat(value);
+      }}
+      className="inline-flex h-7 items-center gap-0 rounded-full border border-line bg-surface-subtle p-0.5"
       aria-label={t('orchPage.agent.modeLabel')}>
       {rail.map(chat => {
-        const active = selectedId === chat.id;
         const label =
           chat.id === SUBCONSCIOUS_CHAT_KEY
             ? t('orchPage.agent.subconsciousTab')
             : t('orchPage.agent.consciousTab');
         return (
-          <Button
+          <ToggleGroupItem
             key={chat.id}
-            variant="tertiary"
-            size="xs"
-            role="radio"
-            aria-checked={active}
+            value={chat.id}
             data-testid={`orch-agent-tab-${chat.id}`}
-            onClick={() => selectChat(chat.id)}
-            className={`h-auto gap-1.5 rounded-full px-3 py-0.5 text-xs font-medium ${
-              active
-                ? 'bg-surface text-content shadow-xs hover:bg-surface'
-                : 'text-content-muted hover:bg-transparent hover:text-content-secondary'
-            }`}>
+            className="h-auto gap-1.5 rounded-full px-3 py-0.5 text-xs font-medium data-[state=on]:shadow-xs">
             {label}
             {chat.unread > 0 ? (
               <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold text-content-inverted">
                 {chat.unread}
               </span>
             ) : null}
-          </Button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
+    </ToggleGroupRoot>
   );
 
   const showComposer = isMasterSelected && sessionsState.status === 'ok';
@@ -535,9 +550,11 @@ export default function AgentChatPanel({
           {showComposer ? (
             <>
               {masterError ? (
-                <p className="rounded-md bg-coral-50 px-2 py-1 text-xs text-coral-700 dark:bg-coral-500/10 dark:text-coral-300">
-                  {t('tinyplaceOrchestration.composer.sendFailed')}: {masterError}
-                </p>
+                <Alert variant="destructive" density="compact">
+                  <AlertDescription>
+                    {t('tinyplaceOrchestration.composer.sendFailed')}: {masterError}
+                  </AlertDescription>
+                </Alert>
               ) : null}
               <AgentComposer
                 value={composerBody}
@@ -615,7 +632,7 @@ export default function AgentChatPanel({
                     {t('orchPage.connections.status.needsYou')}
                   </span>
                 </span>
-                <span className="flex-none rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white">
+                <span className="flex-none rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-semibold text-content-inverted">
                   {t('orchPage.agent.viewSession')}
                 </span>
               </Button>

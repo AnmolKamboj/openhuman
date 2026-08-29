@@ -7005,6 +7005,117 @@ const messages: TranslationMap = {
   'devOptions.gateway': 'Posizione',
   'devOptions.provisionedCore': 'Core avviato da questa app',
   'devOptions.gatewayId': 'ID della posizione',
+  // S9 i18n audit fixes (hardcoded English in files that already hold useT()).
+  'settings.ai.picker.title': 'Scegli provider e modello',
+  'settings.ai.picker.subtitle': 'Cerca tra i provider configurati e i modelli disponibili.',
+  'settings.ai.picker.useThisModel': 'Usa questo modello',
+  'settings.ai.picker.searchPlaceholder': 'Cerca provider e modelli',
+  'settings.ai.picker.providersLabel': 'Provider',
+  'settings.ai.picker.modelIdPlaceholder': "Inserisci l'ID del modello",
+  'settings.ai.picker.claudeCodeHint': 'Usa un alias di modello Claude Code o un ID modello.',
+  'settings.ai.loops.memoryTreeWorkers.name': "Worker dell'albero di memoria",
+  'settings.ai.loops.cadence.queue': 'coda',
+  'settings.ai.loops.memoryTreeWorkers.work':
+    'Estrae blocchi, sigilla i rami, genera digest giornalieri e instrada gli argomenti.',
+  'settings.ai.loops.memoryTreeWorkers.risk':
+    "{workers} worker interrogano la coda ogni {seconds}s; l'LLM viene chiamato solo quando la coda contiene attività di estrazione/sigillo/digest/argomento.",
+  'settings.ai.loops.reflectionRebuild.name': 'Ricostruzione della riflessione',
+  'settings.ai.loops.cadence.thirtyMin': '30 min',
+  'settings.ai.loops.reflectionRebuild.work':
+    "Aggiorna lo stato di riflessione dopo l'attività di memoria.",
+  'settings.ai.loops.reflectionRebuild.risk':
+    "{count} risvegli/settimana; l'LLM lavora solo quando la ricostruzione richiede riflessione.",
+  'settings.ai.loops.composioSync.name': 'Sincronizzazione Composio',
+  'settings.ai.loops.cadence.twentyMin': '20 min',
+  'settings.ai.loops.composioSync.route': 'API di integrazione',
+  'settings.ai.loops.composioSync.work':
+    'Interroga gli strumenti connessi quando è dovuta una sincronizzazione con il provider.',
+  'settings.ai.loops.composioSync.risk':
+    '{count} risvegli/settimana; esamina {active} connessione/i attiva/e.',
+  'common.notAvailable': 'n/d',
+  'settings.ai.resetsAt': 'si azzera il {time}',
+  'settings.ai.usedAmount': '{amount} usato',
+  'settings.ai.inferenceIntegrationsBreakdown':
+    'inferenza {inference} + integrazioni {integrations}',
+  'settings.ai.recentSpendRowsCount': '{count} righe di spesa recenti',
+  'settings.ai.perWeek': '{count}/settimana',
+  'settings.ai.perWeekMax': '{count}/settimana massimo',
+  'settings.ai.perHour': '{amount}/h',
+  'settings.ai.plannerSyncBreakdown': '{planner} pianificatore + {sync} sincronizzazione',
+  'settings.ai.memoryPollsDetail': '{count} interrogazioni di memoria',
+  'settings.ai.rowsLeftFormula': 'residuo / riga media = {remaining} / {avgRow}',
+  'settings.ai.needSpendRowsToEstimate': 'Servono righe di spesa recenti per stimare.',
+  'settings.ai.rowsPerBudgetFormula': 'budget del ciclo / riga media = {budget} / {avgRow}',
+  'settings.ai.burnRateSampleDetail': '{rows} righe/h su un campione di {hours}h',
+  'settings.ai.needTimestampsForBurnRate': 'Servono timestamp di almeno due righe di spesa.',
+  'settings.ai.projectedEmptyDetail': "{hours}h dopo l'ultima spesa al ritmo di consumo recente",
+  'settings.ai.noProjectionWithoutSpend': 'Nessuna proiezione senza spesa oraria recente.',
+  'settings.ai.readsPerDollar': '{count} letture/$',
+  'settings.ai.apiReadsFormula':
+    'letture API in background/settimana / residuo = {reads} / {remaining}',
+  'settings.ai.needUsageToEstimate': 'Serve la risposta di utilizzo per stimare.',
+  'settings.ai.composioSyncScansDetail':
+    '{count} connessione/i di integrazione attiva/e, scansionata/e ogni 20 min',
+  'settings.ai.totalApiReadBudgetDetail':
+    "letture del pianificatore di calendario + scansioni periodiche delle integrazioni; esclude gli strumenti di chat avviati dall'utente",
+  'settings.ai.memoryWorkerPollsDetail':
+    "4 worker interrogano ogni 5s; l'LLM viene chiamato solo per le attività in coda",
+  'settings.mcpServer.tools.listTools': 'Elenca tutti gli strumenti MCP disponibili',
+  'settings.mcpServer.tools.toolInstructions': "Ottiene le istruzioni d'uso di uno strumento",
+  'settings.mcpServer.tools.listSubagents': 'Elenca i sotto-agenti disponibili',
+  'settings.mcpServer.tools.runSubagent': 'Esegue un sotto-agente con un prompt',
+  'settings.mcpServer.tools.memorySearch': 'Cerca nella memoria tramite query semantica',
+  'settings.mcpServer.tools.memoryRecall': 'Recupera ricordi specifici tramite ID',
+  'settings.mcpServer.tools.treeReadChunk': "Legge un blocco dell'albero di memoria",
+  'settings.mcpServer.tools.treeBrowse': "Esplora la struttura dell'albero di memoria",
+  'settings.mcpServer.tools.treeTopEntities': "Ottiene le entità principali dell'albero di memoria",
+  'settings.mcpServer.tools.treeListSources': "Elenca le fonti dell'albero di memoria",
+  'settings.notifications.category.messages.title': 'Messaggi',
+  'settings.notifications.category.messages.desc':
+    'Nuovi messaggi da account webview integrati (Slack, WhatsApp, …).',
+  'settings.notifications.category.agents.title': 'Attività degli agenti',
+  'settings.notifications.category.agents.desc':
+    'Completamento delle attività degli agenti e risposte di lunga durata.',
+  'settings.notifications.category.skills.title': 'Skill',
+  'settings.notifications.category.skills.desc':
+    'Eventi di sincronizzazione delle skill e cambi di stato OAuth.',
+  'settings.notifications.category.system.title': 'Sistema',
+  'settings.notifications.category.system.desc':
+    'Problemi di connessione, errori del processo in background, aggiornamenti.',
+  'settings.notifications.category.meetings.title': 'Riunioni',
+  'settings.notifications.category.meetings.desc':
+    "Riunioni imminenti ed eventi di calendario rilevati dall'heartbeat.",
+  'settings.notifications.category.reminders.title': 'Promemoria',
+  'settings.notifications.category.reminders.desc':
+    'Promemoria imminenti e attività pianificate dai job cron.',
+  'settings.notifications.category.important.title': 'Eventi importanti',
+  'settings.notifications.category.important.desc':
+    'Eventi urgenti o sensibili al tempo provenienti da fonti connesse.',
+  'settings.notifications.categoryToggleAria': 'Attiva o disattiva le notifiche di {name}',
+  'settings.cron.jobs.runFinishedAt': '{status} alle {time}',
+  'settings.cron.jobs.scheduleAt': 'alle {time}',
+  'settings.cron.jobs.scheduleEvery': 'ogni {ms}ms',
+  'skills.category.all': 'Tutte',
+  'skills.category.builtIn': 'Integrate',
+  'skills.category.channels': 'Canali',
+  'skills.category.productivity': 'Produttività',
+  'skills.category.chat': 'Chat',
+  'skills.category.toolsAutomation': 'Strumenti e automazione',
+  'skills.category.social': 'Social',
+  'skills.category.platform': 'Piattaforma',
+  'skills.category.other': 'Altro',
+  'workspace.wipeSuccessTitle': 'Memoria cancellata',
+  'workspace.wipeSuccessMessage':
+    'Rimosse {rows} riga/e e {dirs} cartella/e; cancellati {cursors} cursore/i di stato sincronizzazione. Fai clic su Sincronizza su una fonte connessa per ripopolare.',
+  'workspace.wipeFailedTitle': 'Reset non riuscito',
+  'workspace.resetTreeSuccessTitle': "Ricostruzione dell'albero di memoria",
+  'workspace.resetTreeSuccessMessage':
+    "Cancellate {treeRows} riga/e dell'albero; rimessi in coda {chunks} blocco/chi ({jobs} attività di estrazione). Il grafo si riempirà man mano che il worker procede.",
+  'workspace.resetTreeFailedTitle': "Impossibile reimpostare l'albero di memoria",
+  'workspace.buildTreesFailedTitle': 'Impossibile generare gli alberi di riepilogo',
+  'invites.redeemHeading': 'Hai un codice referral?',
+  'invites.redeemPlaceholder': 'Codice referral',
+  'invites.redeemSubmit': 'Riscatta',
 };
 
 export default messages;

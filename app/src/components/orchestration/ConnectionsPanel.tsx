@@ -26,6 +26,7 @@ import {
 } from '../../lib/orchestration/useOrchestrationSessions';
 import { usePairing } from '../../lib/orchestration/usePairing';
 import { contactAddress, extractHandle } from '../intelligence/orchestrationTabHelpers';
+import { Alert, AlertDescription, CenteredLoadingState } from '../ui';
 import Button from '../ui/Button';
 import TextField from '../ui/TextField';
 import { SectionCard, StatTile } from './primitives';
@@ -183,9 +184,7 @@ function SessionView({
             : undefined
         }>
         {state.status === 'loading' ? (
-          <p className="py-6 text-center text-sm text-content-muted">
-            {t('tinyplaceOrchestration.loading')}
-          </p>
+          <CenteredLoadingState label={t('tinyplaceOrchestration.loading')} className="py-6" />
         ) : state.status === 'error' ? (
           <p className="py-6 text-center text-sm text-coral-600 dark:text-coral-300">
             {t('tinyplaceOrchestration.failedToLoad')}: {state.message}
@@ -201,11 +200,15 @@ function SessionView({
           />
         )}
         {sendError ? (
-          <p
+          <Alert
+            variant="destructive"
+            density="compact"
             data-testid="orch-session-reply-error"
-            className="mt-3 rounded-md bg-coral-50 px-2 py-1 text-xs text-coral-700 dark:bg-coral-500/10 dark:text-coral-300">
-            {t('tinyplaceOrchestration.composer.sendFailed')}: {sendError}
-          </p>
+            className="mt-3">
+            <AlertDescription>
+              {t('tinyplaceOrchestration.composer.sendFailed')}: {sendError}
+            </AlertDescription>
+          </Alert>
         ) : null}
         <form className="mt-3 flex gap-2 border-t border-line pt-3" onSubmit={submit}>
           <TextField
@@ -409,11 +412,9 @@ export default function ConnectionsPanel({
 
   if (state.status === 'loading') {
     return (
-      <p
-        className="py-8 text-center text-sm text-content-muted"
-        data-testid="orch-connections-loading">
-        {t('tinyplaceOrchestration.loading')}
-      </p>
+      <div data-testid="orch-connections-loading">
+        <CenteredLoadingState label={t('tinyplaceOrchestration.loading')} />
+      </div>
     );
   }
   if (state.status === 'payment_required') {
@@ -469,9 +470,9 @@ export default function ConnectionsPanel({
       </div>
 
       {actionError && (
-        <p className="rounded-md bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:bg-coral-500/10 dark:text-coral-300">
-          {actionError}
-        </p>
+        <Alert variant="destructive" density="compact">
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
       )}
 
       {incoming.length > 0 ? (

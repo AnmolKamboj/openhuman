@@ -174,20 +174,24 @@ const FeedbackPanel = () => {
               )}
             </h2>
 
-            <div className="inline-flex rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong">
+            {/* A sort control, not a tab set: `aria-pressed` toggles are the
+                right semantics here, and `ChipTabs as="tab"` would emit a
+                `role="tablist"` with no tabpanel behind it. Each option is a
+                `<Button>` so it picks up the shared focus ring — the raw
+                `<button>`s this replaced had no focus treatment at all. */}
+            <div className="inline-flex gap-0.5 rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong">
               {SORTS.map(option => (
-                <button
+                <Button
                   key={option}
                   type="button"
+                  variant={sort === option ? 'primary' : 'tertiary'}
+                  size="xs"
+                  analyticsId="feedback-sort"
                   onClick={() => setSort(option)}
                   aria-pressed={sort === option}
-                  className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                    sort === option
-                      ? 'bg-surface text-content shadow-xs'
-                      : 'text-content-muted hover:text-content-secondary dark:hover:text-content-secondary'
-                  }`}>
+                  className="h-auto rounded-lg px-3 py-1 text-xs">
                   {t(SORT_LABEL_KEYS[option])}
-                </button>
+                </Button>
               ))}
             </div>
           </div>

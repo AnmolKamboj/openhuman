@@ -7050,6 +7050,123 @@ const messages: TranslationMap = {
   'devOptions.gateway': 'Emplacement',
   'devOptions.provisionedCore': 'Cœur démarré par cette application',
   'devOptions.gatewayId': 'Emplacement',
+  // S9 i18n audit fixes (hardcoded English in files that already hold useT()).
+  'settings.ai.picker.title': 'Choisir un fournisseur et un modèle',
+  'settings.ai.picker.subtitle':
+    'Recherchez parmi les fournisseurs configurés et les modèles disponibles.',
+  'settings.ai.picker.useThisModel': 'Utiliser ce modèle',
+  'settings.ai.picker.searchPlaceholder': 'Rechercher des fournisseurs et des modèles',
+  'settings.ai.picker.providersLabel': 'Fournisseurs',
+  'settings.ai.picker.modelIdPlaceholder': "Saisissez l'ID du modèle",
+  'settings.ai.picker.claudeCodeHint':
+    'Utilisez un alias de modèle Claude Code ou un ID de modèle.',
+  'settings.ai.loops.memoryTreeWorkers.name': "Workers de l'arbre de mémoire",
+  'settings.ai.loops.cadence.queue': "file d'attente",
+  'settings.ai.loops.memoryTreeWorkers.work':
+    'Extrait des fragments, scelle des branches, génère des synthèses quotidiennes et route les sujets.',
+  'settings.ai.loops.memoryTreeWorkers.risk':
+    "{workers} workers interrogent la file toutes les {seconds}s ; le LLM n'est appelé que lorsqu'elle contient des tâches d'extraction, de scellement, de synthèse ou de sujet.",
+  'settings.ai.loops.reflectionRebuild.name': 'Reconstruction de réflexion',
+  'settings.ai.loops.cadence.thirtyMin': '30 min',
+  'settings.ai.loops.reflectionRebuild.work':
+    "Actualise l'état de réflexion après une activité de mémoire.",
+  'settings.ai.loops.reflectionRebuild.risk':
+    '{count} réveils/semaine ; le LLM ne travaille que lorsque la reconstruction a besoin de réflexion.',
+  'settings.ai.loops.composioSync.name': 'Synchronisation Composio',
+  'settings.ai.loops.cadence.twentyMin': '20 min',
+  'settings.ai.loops.composioSync.route': "API d'intégration",
+  'settings.ai.loops.composioSync.work':
+    "Interroge les outils connectés lorsqu'une synchronisation avec le fournisseur est due.",
+  'settings.ai.loops.composioSync.risk':
+    '{count} réveils/semaine ; explore {active} connexion(s) active(s).',
+  'common.notAvailable': 'n/a',
+  'settings.ai.resetsAt': 'réinitialisation le {time}',
+  'settings.ai.usedAmount': '{amount} utilisé',
+  'settings.ai.inferenceIntegrationsBreakdown':
+    'inférence {inference} + intégrations {integrations}',
+  'settings.ai.recentSpendRowsCount': '{count} lignes de dépenses récentes',
+  'settings.ai.perWeek': '{count}/semaine',
+  'settings.ai.perWeekMax': '{count}/semaine max',
+  'settings.ai.perHour': '{amount}/h',
+  'settings.ai.plannerSyncBreakdown': '{planner} planificateur + {sync} synchronisation',
+  'settings.ai.memoryPollsDetail': '{count} interrogations de mémoire',
+  'settings.ai.rowsLeftFormula': 'restant / ligne moyenne = {remaining} / {avgRow}',
+  'settings.ai.needSpendRowsToEstimate':
+    'Des lignes de dépenses récentes sont nécessaires pour estimer.',
+  'settings.ai.rowsPerBudgetFormula': 'budget du cycle / ligne moyenne = {budget} / {avgRow}',
+  'settings.ai.burnRateSampleDetail': '{rows} lignes/h sur un échantillon de {hours}h',
+  'settings.ai.needTimestampsForBurnRate':
+    "Des horodatages d'au moins deux lignes de dépenses sont nécessaires.",
+  'settings.ai.projectedEmptyDetail':
+    '{hours}h après la dernière dépense, au rythme de consommation récent',
+  'settings.ai.noProjectionWithoutSpend': 'Aucune projection sans dépense horaire récente.',
+  'settings.ai.readsPerDollar': '{count} lectures/$',
+  'settings.ai.apiReadsFormula':
+    'lectures API en arrière-plan/semaine / restant = {reads} / {remaining}',
+  'settings.ai.needUsageToEstimate': "La réponse d'utilisation est nécessaire pour estimer.",
+  'settings.ai.composioSyncScansDetail':
+    "{count} connexion(s) d'intégration active(s), analysée(s) toutes les 20 min",
+  'settings.ai.totalApiReadBudgetDetail':
+    "lectures du planificateur de calendrier + analyses périodiques d'intégrations ; exclut les outils de chat lancés par l'utilisateur",
+  'settings.ai.memoryWorkerPollsDetail':
+    "4 workers interrogent toutes les 5s ; le LLM n'est appelé que pour les tâches en file",
+  'settings.mcpServer.tools.listTools': 'Liste tous les outils MCP disponibles',
+  'settings.mcpServer.tools.toolInstructions': "Obtient les instructions d'utilisation d'un outil",
+  'settings.mcpServer.tools.listSubagents': 'Liste les sous-agents disponibles',
+  'settings.mcpServer.tools.runSubagent': 'Exécute un sous-agent avec une consigne',
+  'settings.mcpServer.tools.memorySearch': 'Recherche dans la mémoire par requête sémantique',
+  'settings.mcpServer.tools.memoryRecall': 'Récupère des souvenirs spécifiques par ID',
+  'settings.mcpServer.tools.treeReadChunk': "Lit un fragment de l'arbre de mémoire",
+  'settings.mcpServer.tools.treeBrowse': "Parcourt la structure de l'arbre de mémoire",
+  'settings.mcpServer.tools.treeTopEntities':
+    "Obtient les principales entités de l'arbre de mémoire",
+  'settings.mcpServer.tools.treeListSources': "Liste les sources de l'arbre de mémoire",
+  'settings.notifications.category.messages.title': 'Messages',
+  'settings.notifications.category.messages.desc':
+    'Nouveaux messages provenant des comptes webview intégrés (Slack, WhatsApp, …).',
+  'settings.notifications.category.agents.title': 'Activité des agents',
+  'settings.notifications.category.agents.desc':
+    "Tâches d'agent terminées et réponses de longue durée.",
+  'settings.notifications.category.skills.title': 'Compétences',
+  'settings.notifications.category.skills.desc':
+    'Événements de synchronisation des compétences et changements de statut OAuth.',
+  'settings.notifications.category.system.title': 'Système',
+  'settings.notifications.category.system.desc':
+    'Problèmes de connexion, erreurs de processus en arrière-plan, mises à jour.',
+  'settings.notifications.category.meetings.title': 'Réunions',
+  'settings.notifications.category.meetings.desc':
+    'Réunions à venir et événements de calendrier détectés par le heartbeat.',
+  'settings.notifications.category.reminders.title': 'Rappels',
+  'settings.notifications.category.reminders.desc':
+    'Rappels à venir et tâches planifiées issues des tâches cron.',
+  'settings.notifications.category.important.title': 'Événements importants',
+  'settings.notifications.category.important.desc':
+    'Événements urgents ou sensibles au temps provenant de sources connectées.',
+  'settings.notifications.categoryToggleAria': 'Activer ou désactiver les notifications de {name}',
+  'settings.cron.jobs.runFinishedAt': '{status} à {time}',
+  'settings.cron.jobs.scheduleAt': 'à {time}',
+  'settings.cron.jobs.scheduleEvery': 'toutes les {ms}ms',
+  'skills.category.all': 'Tout',
+  'skills.category.builtIn': 'Intégré',
+  'skills.category.channels': 'Canaux',
+  'skills.category.productivity': 'Productivité',
+  'skills.category.chat': 'Chat',
+  'skills.category.toolsAutomation': 'Outils et automatisation',
+  'skills.category.social': 'Social',
+  'skills.category.platform': 'Plateforme',
+  'skills.category.other': 'Autre',
+  'workspace.wipeSuccessTitle': 'Mémoire effacée',
+  'workspace.wipeSuccessMessage':
+    "{rows} ligne(s) et {dirs} dossier(s) supprimés ; {cursors} curseur(s) d'état de synchronisation effacés. Cliquez sur Synchroniser sur une source connectée pour repeupler.",
+  'workspace.wipeFailedTitle': 'Échec de la réinitialisation',
+  'workspace.resetTreeSuccessTitle': "Reconstruction de l'arbre de mémoire",
+  'workspace.resetTreeSuccessMessage':
+    "{treeRows} ligne(s) d'arbre supprimées ; {chunks} fragment(s) remis en file ({jobs} tâches d'extraction). Le graphe se remplira au fur et à mesure que le worker avance.",
+  'workspace.resetTreeFailedTitle': "Impossible de réinitialiser l'arbre de mémoire",
+  'workspace.buildTreesFailedTitle': 'Impossible de générer les arbres de synthèse',
+  'invites.redeemHeading': 'Vous avez un code de parrainage ?',
+  'invites.redeemPlaceholder': 'Code de parrainage',
+  'invites.redeemSubmit': 'Utiliser',
 };
 
 export default messages;

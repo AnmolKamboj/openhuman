@@ -72,22 +72,24 @@ function isCatalogEntryInstalled(entry: CatalogEntry, installedKeys: Set<string>
   return catalogInstallKeys(entry).some(key => installedKeys.has(key));
 }
 
+/**
+ * Source tone table. Six sources, four themeable ramps — so the hue encodes the
+ * distinction a reader acts on (where does this skill come from: shipped with
+ * the app, or fetched from a remote catalogue) rather than naming each
+ * catalogue twice. The badge already prints the catalogue's name, so the four
+ * remote rows fall through to the shared neutral tone instead of reaching for
+ * unthemeable ramps. See `gitbooks/developing/theming.md`.
+ */
+const BADGE_NEUTRAL_TONE = 'bg-surface-muted text-content-secondary border-line';
+
 function SourceBadge({ source }: { source: string }) {
   const SOURCE_COLORS: Record<string, string> = {
     'built-in':
-      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30',
+      'bg-sage-50 text-sage-700 border-sage-200 dark:bg-sage-500/10 dark:text-sage-300 dark:border-sage-500/30',
     optional:
-      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30',
-    ClawHub:
-      'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/30',
-    'skills.sh':
-      'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/30',
-    LobeHub:
-      'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-500/10 dark:text-pink-300 dark:border-pink-500/30',
-    'browse.sh':
-      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30',
+      'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-500/10 dark:text-primary-300 dark:border-primary-500/30',
   };
-  const colors = SOURCE_COLORS[source] ?? 'bg-surface-muted text-content-secondary border-line';
+  const colors = SOURCE_COLORS[source] ?? BADGE_NEUTRAL_TONE;
   return (
     <span
       className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${colors}`}>
@@ -96,38 +98,33 @@ function SourceBadge({ source }: { source: string }) {
   );
 }
 
+/**
+ * Format tone table. Three distinct tones for five formats, so it fits inside
+ * the four themeable ramps with no collision and every distinction survives:
+ * the Hermes family on `primary`, the ClawHub family on `sage`, and `legacy`
+ * on `amber` because it is the one row that means "deprecated".
+ */
+const FORMAT_TONE = {
+  hermes:
+    'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-500/10 dark:text-primary-300 dark:border-primary-500/30',
+  clawhub:
+    'bg-sage-50 text-sage-700 border-sage-200 dark:bg-sage-500/10 dark:text-sage-300 dark:border-sage-500/30',
+  legacy:
+    'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30',
+} as const;
+
 function SkillFormatBadge({ format }: { format: string }) {
   const lower = format.toLowerCase();
   const FORMAT_MAP: Record<string, { label: string; colors: string }> = {
-    hermes: {
-      label: 'Hermes',
-      colors:
-        'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/30',
-    },
-    agentskills: {
-      label: 'AgentSkills',
-      colors:
-        'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/30',
-    },
-    openclaw: {
-      label: 'OpenClaw',
-      colors:
-        'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/30',
-    },
-    clawhub: {
-      label: 'ClawHub',
-      colors:
-        'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/30',
-    },
-    legacy: {
-      label: 'Legacy',
-      colors:
-        'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30',
-    },
+    hermes: { label: 'Hermes', colors: FORMAT_TONE.hermes },
+    agentskills: { label: 'AgentSkills', colors: FORMAT_TONE.hermes },
+    openclaw: { label: 'OpenClaw', colors: FORMAT_TONE.clawhub },
+    clawhub: { label: 'ClawHub', colors: FORMAT_TONE.clawhub },
+    legacy: { label: 'Legacy', colors: FORMAT_TONE.legacy },
   };
   const entry = FORMAT_MAP[lower] ?? {
     label: format || 'Skill',
-    colors: 'bg-surface-muted text-content-secondary border-line',
+    colors: BADGE_NEUTRAL_TONE,
   };
   return (
     <span

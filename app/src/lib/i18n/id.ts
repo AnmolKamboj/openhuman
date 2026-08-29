@@ -6907,6 +6907,119 @@ const messages: TranslationMap = {
   'devOptions.gateway': 'Lokasi',
   'devOptions.provisionedCore': 'Core yang dijalankan aplikasi ini',
   'devOptions.gatewayId': 'Lokasi',
+  // S9 i18n audit fixes (hardcoded English in files that already hold useT()).
+  'settings.ai.picker.title': 'Pilih penyedia dan model',
+  'settings.ai.picker.subtitle':
+    'Cari di antara penyedia yang dikonfigurasi dan model yang tersedia.',
+  'settings.ai.picker.useThisModel': 'Gunakan model ini',
+  'settings.ai.picker.searchPlaceholder': 'Cari penyedia dan model',
+  'settings.ai.picker.providersLabel': 'Penyedia',
+  'settings.ai.picker.modelIdPlaceholder': 'Masukkan ID model',
+  'settings.ai.picker.claudeCodeHint': 'Gunakan alias model Claude Code atau ID model.',
+  'settings.ai.loops.memoryTreeWorkers.name': 'Worker pohon memori',
+  'settings.ai.loops.cadence.queue': 'antrean',
+  'settings.ai.loops.memoryTreeWorkers.work':
+    'Mengekstrak potongan, menyegel cabang, menjalankan ringkasan harian, dan merutekan topik.',
+  'settings.ai.loops.memoryTreeWorkers.risk':
+    '{workers} worker memeriksa antrean setiap {seconds}dtk; LLM hanya dipanggil saat antrean memiliki tugas ekstrak/segel/ringkasan/topik.',
+  'settings.ai.loops.reflectionRebuild.name': 'Pembangunan ulang refleksi',
+  'settings.ai.loops.cadence.thirtyMin': '30 mnt',
+  'settings.ai.loops.reflectionRebuild.work':
+    'Menyegarkan status refleksi setelah aktivitas memori.',
+  'settings.ai.loops.reflectionRebuild.risk':
+    '{count} aktivasi/minggu; LLM hanya bekerja saat pembangunan ulang membutuhkan refleksi.',
+  'settings.ai.loops.composioSync.name': 'Sinkronisasi Composio',
+  'settings.ai.loops.cadence.twentyMin': '20 mnt',
+  'settings.ai.loops.composioSync.route': 'API integrasi',
+  'settings.ai.loops.composioSync.work':
+    'Memeriksa alat yang terhubung saat sinkronisasi penyedia sudah waktunya.',
+  'settings.ai.loops.composioSync.risk':
+    '{count} aktivasi/minggu; memindai {active} koneksi aktif.',
+  'common.notAvailable': 't/a',
+  'settings.ai.resetsAt': 'diatur ulang {time}',
+  'settings.ai.usedAmount': '{amount} terpakai',
+  'settings.ai.inferenceIntegrationsBreakdown': 'inferensi {inference} + integrasi {integrations}',
+  'settings.ai.recentSpendRowsCount': '{count} baris pengeluaran terbaru',
+  'settings.ai.perWeek': '{count}/minggu',
+  'settings.ai.perWeekMax': '{count}/minggu maksimum',
+  'settings.ai.perHour': '{amount}/jam',
+  'settings.ai.plannerSyncBreakdown': '{planner} perencana + {sync} sinkronisasi',
+  'settings.ai.memoryPollsDetail': '{count} pemeriksaan memori',
+  'settings.ai.rowsLeftFormula': 'sisa / rata-rata baris = {remaining} / {avgRow}',
+  'settings.ai.needSpendRowsToEstimate':
+    'Baris pengeluaran terbaru diperlukan untuk memperkirakan.',
+  'settings.ai.rowsPerBudgetFormula': 'anggaran siklus / rata-rata baris = {budget} / {avgRow}',
+  'settings.ai.burnRateSampleDetail': '{rows} baris/jam dari sampel {hours}jam',
+  'settings.ai.needTimestampsForBurnRate':
+    'Diperlukan stempel waktu dari setidaknya dua baris pengeluaran.',
+  'settings.ai.projectedEmptyDetail':
+    '{hours}jam setelah pengeluaran terakhir pada laju konsumsi terbaru',
+  'settings.ai.noProjectionWithoutSpend': 'Tidak ada proyeksi tanpa pengeluaran per jam terbaru.',
+  'settings.ai.readsPerDollar': '{count} pembacaan/$',
+  'settings.ai.apiReadsFormula':
+    'pembacaan API latar belakang/minggu / sisa = {reads} / {remaining}',
+  'settings.ai.needUsageToEstimate': 'Respons penggunaan diperlukan untuk memperkirakan.',
+  'settings.ai.composioSyncScansDetail': '{count} koneksi integrasi aktif, dipindai setiap 20 mnt',
+  'settings.ai.totalApiReadBudgetDetail':
+    'pembacaan perencana kalender + pemindaian integrasi berkala; tidak termasuk alat chat yang dimulai pengguna',
+  'settings.ai.memoryWorkerPollsDetail':
+    '4 worker memeriksa setiap 5dtk; LLM hanya dipanggil untuk tugas dalam antrean',
+  'settings.mcpServer.tools.listTools': 'Mencantumkan semua alat MCP yang tersedia',
+  'settings.mcpServer.tools.toolInstructions': 'Mendapatkan petunjuk penggunaan untuk sebuah alat',
+  'settings.mcpServer.tools.listSubagents': 'Mencantumkan subagen yang tersedia',
+  'settings.mcpServer.tools.runSubagent': 'Menjalankan subagen dengan sebuah prompt',
+  'settings.mcpServer.tools.memorySearch': 'Mencari memori berdasarkan kueri semantik',
+  'settings.mcpServer.tools.memoryRecall': 'Mengambil memori tertentu berdasarkan ID',
+  'settings.mcpServer.tools.treeReadChunk': 'Membaca potongan pohon memori',
+  'settings.mcpServer.tools.treeBrowse': 'Menjelajahi struktur pohon memori',
+  'settings.mcpServer.tools.treeTopEntities': 'Mendapatkan entitas teratas dari pohon memori',
+  'settings.mcpServer.tools.treeListSources': 'Mencantumkan sumber pohon memori',
+  'settings.notifications.category.messages.title': 'Pesan',
+  'settings.notifications.category.messages.desc':
+    'Pesan baru dari akun webview tersemat (Slack, WhatsApp, …).',
+  'settings.notifications.category.agents.title': 'Aktivitas agen',
+  'settings.notifications.category.agents.desc':
+    'Penyelesaian tugas agen dan respons yang berjalan lama.',
+  'settings.notifications.category.skills.title': 'Skill',
+  'settings.notifications.category.skills.desc':
+    'Peristiwa sinkronisasi skill dan perubahan status OAuth.',
+  'settings.notifications.category.system.title': 'Sistem',
+  'settings.notifications.category.system.desc':
+    'Masalah koneksi, kesalahan proses latar belakang, pembaruan.',
+  'settings.notifications.category.meetings.title': 'Rapat',
+  'settings.notifications.category.meetings.desc':
+    'Rapat mendatang dan acara kalender yang terdeteksi oleh heartbeat.',
+  'settings.notifications.category.reminders.title': 'Pengingat',
+  'settings.notifications.category.reminders.desc':
+    'Pengingat mendatang dan tugas terjadwal dari job cron.',
+  'settings.notifications.category.important.title': 'Peristiwa penting',
+  'settings.notifications.category.important.desc':
+    'Peristiwa mendesak atau sensitif waktu dari sumber yang terhubung.',
+  'settings.notifications.categoryToggleAria': 'Aktifkan atau nonaktifkan notifikasi {name}',
+  'settings.cron.jobs.runFinishedAt': '{status} pada {time}',
+  'settings.cron.jobs.scheduleAt': 'pada {time}',
+  'settings.cron.jobs.scheduleEvery': 'setiap {ms}md',
+  'skills.category.all': 'Semua',
+  'skills.category.builtIn': 'Bawaan',
+  'skills.category.channels': 'Saluran',
+  'skills.category.productivity': 'Produktivitas',
+  'skills.category.chat': 'Obrolan',
+  'skills.category.toolsAutomation': 'Alat & Otomasi',
+  'skills.category.social': 'Sosial',
+  'skills.category.platform': 'Platform',
+  'skills.category.other': 'Lainnya',
+  'workspace.wipeSuccessTitle': 'Memori dihapus',
+  'workspace.wipeSuccessMessage':
+    'Menghapus {rows} baris dan {dirs} folder; membersihkan {cursors} kursor status sinkronisasi. Klik Sinkronkan pada sumber yang terhubung untuk mengisi ulang.',
+  'workspace.wipeFailedTitle': 'Reset gagal',
+  'workspace.resetTreeSuccessTitle': 'Pohon memori sedang dibangun ulang',
+  'workspace.resetTreeSuccessMessage':
+    'Menghapus {treeRows} baris pohon; mengantrekan ulang {chunks} potongan ({jobs} tugas ekstraksi). Grafik akan terisi kembali seiring worker berjalan.',
+  'workspace.resetTreeFailedTitle': 'Tidak dapat mengatur ulang pohon memori',
+  'workspace.buildTreesFailedTitle': 'Tidak dapat membuat pohon ringkasan',
+  'invites.redeemHeading': 'Punya kode referral?',
+  'invites.redeemPlaceholder': 'Kode referral',
+  'invites.redeemSubmit': 'Tukarkan',
 };
 
 export default messages;

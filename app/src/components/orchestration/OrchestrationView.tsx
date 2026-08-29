@@ -193,54 +193,53 @@ export default function OrchestrationView() {
         ) : activeTab === 'tasks' ? (
           // One global Kanban board owned by the orchestrator (not per-thread).
           // Tasks predate Medulla access and must remain usable without it.
-          <div className="mx-auto h-full w-full max-w-3xl">
-            <PanelPage contentClassName="p-4">
-              <div className="animate-fade-up space-y-4">
-                <PageSectionHeader
-                  title={t('orchPage.tasks.nav')}
-                  description={t('orchPage.tasks.subtitle')}
-                />
-                <OrchestratorTaskBoard />
-              </div>
-            </PanelPage>
-          </div>
+          // `width="lg"` is the contentWidth scale's max-w-3xl: the scaffold
+          // owns the centred column now, so there is no hand-picked cap here.
+          <PanelPage width="lg" contentClassName="p-4">
+            <div className="animate-fade-up space-y-4">
+              <PageSectionHeader
+                title={t('orchPage.tasks.nav')}
+                description={t('orchPage.tasks.subtitle')}
+              />
+              <OrchestratorTaskBoard />
+            </div>
+          </PanelPage>
         ) : hasMedullaAccess ? (
-          <div className="mx-auto h-full w-full max-w-3xl">
-            {/* Network: one page with a Brain-style chip sub-nav (flush pills, no
-                header background) over connections/discover/usage, aligned to the
-                same content column. */}
-            <PanelPage contentClassName="p-4">
-              <div className="mx-auto max-w-3xl space-y-5 animate-fade-up">
-                <PageSectionHeader
-                  title={t('orchPage.group.network')}
-                  description={t('orchPage.network.desc')}
-                  tabs={
-                    <ChipTabs<NetworkSub>
-                      as="tab"
-                      ariaLabel={t('orchPage.group.network')}
-                      testIdPrefix="orch-network"
-                      className="inline-flex flex-wrap items-center gap-1.5"
-                      items={[
-                        { id: 'connections', label: t('orchPage.connections.nav') },
-                        { id: 'discover', label: t('orchPage.discover.nav') },
-                        { id: 'usage', label: t('orchPage.usage.nav') },
-                      ]}
-                      value={networkSub}
-                      onChange={setNetworkSub}
-                    />
-                  }
-                />
-                {networkSub === 'connections' && (
-                  <ConnectionsPanel
-                    onDiscover={() => setNetworkSub('discover')}
-                    onInitializeAgent={() => setActiveTab('agent')}
+          /* Network: one page with a Brain-style chip sub-nav (flush pills, no
+             header background) over connections/discover/usage, aligned to the
+             same content column. `width="lg"` supplies that column — it used to
+             be a hand-picked `max-w-3xl` nested inside an identical one. */
+          <PanelPage width="lg" contentClassName="p-4">
+            <div className="space-y-5 animate-fade-up">
+              <PageSectionHeader
+                title={t('orchPage.group.network')}
+                description={t('orchPage.network.desc')}
+                tabs={
+                  <ChipTabs<NetworkSub>
+                    as="tab"
+                    ariaLabel={t('orchPage.group.network')}
+                    testIdPrefix="orch-network"
+                    className="inline-flex flex-wrap items-center gap-1.5"
+                    items={[
+                      { id: 'connections', label: t('orchPage.connections.nav') },
+                      { id: 'discover', label: t('orchPage.discover.nav') },
+                      { id: 'usage', label: t('orchPage.usage.nav') },
+                    ]}
+                    value={networkSub}
+                    onChange={setNetworkSub}
                   />
-                )}
-                {networkSub === 'discover' && <DiscoverPanel />}
-                {networkSub === 'usage' && <UsagePanel />}
-              </div>
-            </PanelPage>
-          </div>
+                }
+              />
+              {networkSub === 'connections' && (
+                <ConnectionsPanel
+                  onDiscover={() => setNetworkSub('discover')}
+                  onInitializeAgent={() => setActiveTab('agent')}
+                />
+              )}
+              {networkSub === 'discover' && <DiscoverPanel />}
+              {networkSub === 'usage' && <UsagePanel />}
+            </div>
+          </PanelPage>
         ) : (
           // Scale showcase: fake peer-agent mesh with the preview banner.
           <MedullaDemoNetwork />
