@@ -1558,7 +1558,7 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
     assert!(!default_tool.is_concurrency_safe(&json!({})));
     assert!(!default_tool.external_effect());
     assert!(!default_tool.external_effect_with_args(&json!({})));
-    assert!(openhuman::openhuman::tools::traits::generated_runtime_context(
+    assert!(openhuman_core::openhuman::tools::traits::generated_runtime_context(
         &default_tool,
         &json!({})
     )
