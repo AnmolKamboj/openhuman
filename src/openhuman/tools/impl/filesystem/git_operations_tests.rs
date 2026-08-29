@@ -1,7 +1,7 @@
-use tinyagents::harness::tool::ToolExecutionContext;
 use super::*;
 use crate::openhuman::security::SecurityPolicy;
 use tempfile::TempDir;
+use tinyagents::harness::tool::ToolExecutionContext;
 
 fn test_tool(dir: &std::path::Path) -> GitOperationsTool {
     let security = Arc::new(SecurityPolicy {

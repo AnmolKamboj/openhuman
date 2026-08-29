@@ -16,8 +16,8 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, To
 use async_trait::async_trait;
 use serde_json::json;
 use tinyagents::harness::tool::ToolExecutionContext;
-use tinytools::ToolRunContext;
 use tinycortex::memory::conversations;
+use tinytools::ToolRunContext;
 
 /// Spawns a sub-agent in a dedicated worker thread.
 pub struct SpawnWorkerThreadTool;

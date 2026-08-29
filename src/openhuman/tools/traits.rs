@@ -20,8 +20,8 @@
 //! [`policy`]: crate::openhuman::tools::policy
 
 pub use tinytools::{
-    PermissionLevel, Tool, ToolCallOptions, ToolCategory, ToolContent, ToolResult, ToolRunContext,
-    ToolScope, ToolSpec, ToolTimeout, context_detail_from_args, humanize_tool_name,
+    context_detail_from_args, humanize_tool_name, PermissionLevel, Tool, ToolCallOptions,
+    ToolCategory, ToolContent, ToolResult, ToolRunContext, ToolScope, ToolSpec, ToolTimeout,
 };
 
 use crate::openhuman::agent::tool_policy::GeneratedToolRuntimeContext;

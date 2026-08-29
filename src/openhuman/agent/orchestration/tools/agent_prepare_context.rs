@@ -27,8 +27,8 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::fmt::Write as _;
 use tinyagents::harness::tool::ToolExecutionContext;
-use tinytools::ToolRunContext;
 use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinytools::ToolRunContext;
 
 /// The sub-agent archetype this tool drives.
 const SCOUT_AGENT_ID: &str = "context_scout";
