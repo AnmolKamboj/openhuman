@@ -38,11 +38,17 @@ import {
 } from '../components/flows/workflowCopilotThreads';
 import { ToastContainer } from '../components/intelligence/Toast';
 import PanelPage from '../components/layout/PanelPage';
-import { Alert, AlertDescription, Badge } from '../components/ui';
-import Button from '../components/ui/Button';
-import UiInput from '../components/ui/Input';
-import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
-import { ToggleGroupItem, ToggleGroupRoot } from '../components/ui/ToggleGroup';
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  CenteredLoadingState,
+  ErrorBanner,
+  Input as UiInput,
+  ToggleGroupItem,
+  ToggleGroupRoot,
+} from '../components/ui';
 import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { asFlowCanvasDraftState } from '../lib/flows/canvasDraft';
 import {
