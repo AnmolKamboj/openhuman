@@ -1,0 +1,205 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { callCoreRpc } from '../../../services/coreRpcClient';
+import { transcribeCloud, transcribeWithFactory } from './sttClient';
+
+vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc: vi.fn() }));
+
+describe('transcribeCloud', () => {
+  beforeEach(() => {
+    (callCoreRpc as ReturnType<typeof vi.fn>).mockReset();
+  });
+  it('routes through openhuman.voice_cloud_transcribe with base64 + mime', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'hello there' });
+    const blob = new Blob([new Uint8Array([1, 2, 3, 4, 5])], { type: 'audio/webm;codecs=opus' });
+
+    const text = await transcribeCloud(blob);
+
+    expect(text).toBe('hello there');
+    expect(mock).toHaveBeenCalledTimes(1);
+    const call = mock.mock.calls[0][0] as {
+      method: string;
+      params: { audio_base64: string; mime_type: string; file_name: string };
+    };
+    expect(call.method).toBe('openhuman.voice_cloud_transcribe');
+    // `audio/webm;codecs=opus` should collapse to the bare type the backend
+    // allow-list accepts.
+    expect(call.params.mime_type).toBe('audio/webm');
+    expect(call.params.file_name).toBe('audio.webm');
+    expect(call.params.audio_base64).toBe(btoa('\x01\x02\x03\x04\x05'));
+  });
+
+  it('rejects empty blobs without hitting the core', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    const blob = new Blob([], { type: 'audio/webm' });
+    await expect(transcribeCloud(blob)).rejects.toThrow(/empty/);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('forwards the optional model + language hints', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'hi' });
+    const blob = new Blob([new Uint8Array([9])], { type: 'audio/webm' });
+
+    await transcribeCloud(blob, { model: 'scribe_v1', language: 'en' });
+    const params = mock.mock.calls[0][0].params as Record<string, unknown>;
+    expect(params.model).toBe('scribe_v1');
+    expect(params.language).toBe('en');
+  });
+
+  it('trims whitespace off the returned transcript', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: '  spacey  ' });
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    expect(await transcribeCloud(blob)).toBe('spacey');
+  });
+
+  // Per-mime extension heuristic — the upstream STT provider sniffs the file
+  // extension when the container isn't unambiguous, so each branch matters.
+  it.each([
+    ['audio/webm', 'audio.webm'],
+    ['video/webm', 'audio.webm'],
+    ['audio/ogg', 'audio.ogg'],
+    ['audio/mpeg', 'audio.mp3'],
+    ['audio/wav', 'audio.wav'],
+    ['audio/x-wav', 'audio.wav'],
+    ['audio/mp4', 'audio.m4a'],
+    ['audio/x-m4a', 'audio.m4a'],
+    ['audio/flac', 'audio.flac'],
+    ['application/octet-stream', 'audio.webm'],
+  ])('derives file_name for mime %s -> %s', async (mime, expected) => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'ok' });
+    const blob = new Blob([new Uint8Array([1])], { type: mime });
+    await transcribeCloud(blob);
+    const params = mock.mock.calls[0][0].params as Record<string, unknown>;
+    expect(params.file_name).toBe(expected);
+  });
+
+  it('honors an explicit fileName override', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'ok' });
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await transcribeCloud(blob, { fileName: 'custom-clip.webm', mimeType: 'audio/webm' });
+    const params = mock.mock.calls[0][0].params as Record<string, unknown>;
+    expect(params.file_name).toBe('custom-clip.webm');
+  });
+
+  it('returns empty string when backend response has no text field', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({});
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    expect(await transcribeCloud(blob)).toBe('');
+  });
+
+  // #4901: a core built without the `voice` feature never registers the
+  // `openhuman.voice_*` controllers, so they answer "unknown method". That is a
+  // compile-time property of the binary, so the message must NOT tell users to
+  // restart (the pre-#4901 copy did, which could never work).
+  it('rewrites "unknown method" errors to a not-compiled-in message', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('unknown method: openhuman.voice_cloud_transcribe'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeCloud(blob)).rejects.toThrow(/not compiled into the app/i);
+  });
+
+  it('does not advise restarting for a compile-time voice gate', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('unknown method: openhuman.voice_cloud_transcribe'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeCloud(blob)).rejects.not.toThrow(/restart the openhuman desktop app/i);
+  });
+
+  // `MicComposer`'s PERMANENT_ERROR_PATTERNS matches this substring to skip the
+  // retry/backoff loop — a compile-time gate can never succeed on retry.
+  it('keeps the "unavailable in this build" substring for retry suppression', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('unknown method: openhuman.voice_cloud_transcribe'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeCloud(blob)).rejects.toThrow(/unavailable in this build/i);
+  });
+
+  it('passes through non-unknown-method errors verbatim', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('upstream STT failed: 502'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeCloud(blob)).rejects.toThrow(/upstream STT failed/);
+  });
+});
+
+describe('transcribeWithFactory', () => {
+  beforeEach(() => {
+    (callCoreRpc as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it('routes through openhuman.voice_stt_dispatch and returns text', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'hello via factory', provider: 'cloud' });
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' });
+
+    const text = await transcribeWithFactory(blob);
+    expect(text).toBe('hello via factory');
+    const call = mock.mock.calls[0][0] as { method: string; params: Record<string, unknown> };
+    expect(call.method).toBe('openhuman.voice_stt_dispatch');
+    expect(call.params.mime_type).toBe('audio/webm');
+    expect(call.params.file_name).toBe('audio.webm');
+    // No provider override unless caller pins one.
+    expect(call.params.provider).toBeUndefined();
+  });
+
+  it('forwards an explicit provider override', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: 'scribe hi', provider: 'elevenlabs' });
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await transcribeWithFactory(blob, { provider: 'elevenlabs', model: 'scribe_v1' });
+    const params = mock.mock.calls[0][0].params as Record<string, unknown>;
+    expect(params.provider).toBe('elevenlabs');
+    expect(params.model).toBe('scribe_v1');
+  });
+
+  it('rejects empty blobs without hitting the core', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    const blob = new Blob([], { type: 'audio/webm' });
+    await expect(transcribeWithFactory(blob)).rejects.toThrow(/empty/);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  // #4901 — same compile-time gate as the cloud path above.
+  it('rewrites "unknown method" errors to a not-compiled-in message', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('unknown method: openhuman.voice_stt_dispatch'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeWithFactory(blob)).rejects.toThrow(/not compiled into the app/i);
+  });
+
+  it('does not advise restarting for a compile-time voice gate', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('unknown method: openhuman.voice_stt_dispatch'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeWithFactory(blob)).rejects.not.toThrow(
+      /restart the openhuman desktop app/i
+    );
+  });
+
+  it('passes through non-unknown-method errors verbatim', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('external STT error 401: invalid api key'));
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    await expect(transcribeWithFactory(blob)).rejects.toThrow(/external STT error 401/);
+  });
+
+  it('trims whitespace off the returned transcript', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ text: '  padded  ', provider: 'elevenlabs' });
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    expect(await transcribeWithFactory(blob)).toBe('padded');
+  });
+
+  it('returns empty string when provider yields no text', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ provider: 'elevenlabs' });
+    const blob = new Blob([new Uint8Array([1])], { type: 'audio/webm' });
+    expect(await transcribeWithFactory(blob)).toBe('');
+  });
+});
