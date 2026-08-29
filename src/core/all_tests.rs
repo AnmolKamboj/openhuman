@@ -1652,8 +1652,6 @@ const MEMORY_NAMESPACE_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("slack_memory", Some(Capability::Sources)),
     ("memory_sync", Some(Capability::Sources)),
     ("memory_sources", Some(Capability::Sources)),
-    #[cfg(feature = "memory-git")]
-    ("memory_diff", Some(Capability::Diff)),
 ];
 
 /// The `memory` namespace, function by function. Core and recall share the
@@ -1762,11 +1760,6 @@ fn memory_capability_map_has_no_stale_entries() {
         .collect();
 
     for (ns, _) in MEMORY_NAMESPACE_CAPABILITY {
-        // `memory_diff` only registers when `memory-git` is compiled in; no CI
-        // lane enables it, so it would otherwise read as a stale table entry.
-        if *ns == "memory_diff" && !cfg!(feature = "memory-git") {
-            continue;
-        }
         assert!(
             live.iter().any(|(n, _)| n == ns),
             "MEMORY_NAMESPACE_CAPABILITY names `{ns}`, which registers no Memory controller"
@@ -1806,9 +1799,10 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             | Capability::Goals
             | Capability::ToolMemory
             | Capability::Sources => true,
-            #[cfg(feature = "memory-git")]
-            Capability::Diff => true,
-            #[cfg(not(feature = "memory-git"))]
+            // The `memory_diff` controllers were deleted with the
+            // `memory-git` gate, so this capability owns no RPC surface. The
+            // bus contract still defines the variant, and a driver may still
+            // advertise it — there is simply nothing here to register.
             Capability::Diff => false,
             // `Core` gates the combined core + recall controller partition so
             // a null driver removes the entire driver-backed surface. Recall
@@ -1986,13 +1980,6 @@ async fn memory_families_registered_when_capabilities_advertised() {
         assert!(
             ns.contains(present),
             "`{present}` must be present under a full-capability driver"
-        );
-    }
-    // `memory_diff` only registers when `memory-git` is compiled in.
-    if cfg!(feature = "memory-git") {
-        assert!(
-            ns.contains("memory_diff"),
-            "`memory_diff` must be present under a full-capability driver when `memory-git` is on"
         );
     }
     for present in [
@@ -2430,11 +2417,6 @@ fn sole_capability_for_namespace_reports_a_single_family_namespace() {
         sole_capability_for_namespace("memory_tree"),
         Some(Capability::Tree)
     );
-    #[cfg(feature = "memory-git")]
-    assert_eq!(
-        sole_capability_for_namespace("memory_diff"),
-        Some(Capability::Diff)
-    );
 }
 
 #[test]
@@ -2476,46 +2458,28 @@ fn javascript_controllers_absent_when_feature_off() {
     );
 }
 
-// ---- memory-git gate -------------------------------------------------------
+// ---- memory_diff removal ---------------------------------------------------
 
-/// `memory-git` ON: the git-backed diff surface is registered.
-#[cfg(feature = "memory-git")]
-#[test]
-fn memory_diff_controllers_registered_when_feature_on() {
-    let namespaces: Vec<&str> = all_controller_schemas()
-        .iter()
-        .map(|s| s.namespace)
-        .collect();
-    assert!(
-        namespaces.contains(&"memory_diff"),
-        "with the `memory-git` feature ON the `memory_diff` controllers must be registered"
-    );
-}
-
-/// `memory-git` OFF: `memory_diff` leaves no trace in the registry, while the
-/// rest of the memory surface stays.
+/// The `memory_diff` controllers were deleted along with the `memory-git`
+/// feature, and must stay gone — while the rest of the memory surface stays.
 ///
-/// This is the half that proves the gate does something. The stub's schema
-/// aggregators return empty vecs rather than always-erroring handlers, so the
-/// namespace must be genuinely unknown-method — not present-but-broken, which
-/// would still advertise itself on `/schema`.
-///
-/// `memory` is asserted present in the same test on purpose: the gate is
-/// supposed to remove the git ledger, not the memory domain. Splitting that
-/// into a separate test would let one pass while the other silently regressed.
-#[cfg(not(feature = "memory-git"))]
+/// `memory` is asserted present in the same test on purpose: the removal took
+/// the git ledger, not the memory domain. Splitting that into a separate test
+/// would let one pass while the other silently regressed. This replaces the
+/// `{registered_when_feature_on,absent_when_feature_off}` pair that pinned the
+/// gate while it existed.
 #[test]
-fn memory_diff_controllers_absent_when_feature_off() {
+fn memory_diff_controllers_are_gone_and_memory_survives() {
     let namespaces: Vec<&str> = all_controller_schemas()
         .iter()
         .map(|s| s.namespace)
         .collect();
     assert!(
         !namespaces.contains(&"memory_diff"),
-        "with `memory-git` OFF the `memory_diff` controllers must not be registered, got: {namespaces:?}"
+        "`memory_diff` was removed and must not be registered, got: {namespaces:?}"
     );
     assert!(
         namespaces.contains(&"memory"),
-        "the `memory-git` gate must remove the git ledger, not the memory domain"
+        "removing the git ledger must not remove the memory domain"
     );
 }
