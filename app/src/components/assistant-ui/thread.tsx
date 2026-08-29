@@ -378,10 +378,22 @@ const Composer: FC<{
             // The shadow is an explicit near-black pair rather than
             // `shadow-soft`/`shadow-medium`. Those tokens are black at 0.08
             // alpha, which is a diffuse haze — on the themed chrome behind this
-            // composer it reads as a smudge rather than a cast shadow. 0.28 on
-            // a tight 10px blur plus 0.22 on a wider 24px gives an actual
-            // shadow: a defined near edge, and a soft far one that still lifts
-            // the composer off the transcript.
+            // composer it reads as a smudge rather than a cast shadow.
+            //
+            // Both layers are pushed DOWN rather than spread evenly, because an
+            // even shadow reads as a glow: it implies light from everywhere,
+            // which is no light at all, and the composer ends up looking fuzzy
+            // instead of raised. The offsets (6px, 22px) exceed each layer's
+            // negative spread (-4px, -16px), so the cast clears the box on the
+            // bottom edge and is pulled in at the top — the asymmetry is what
+            // says "lit from above".
+            //
+            //   0 6px  12px -4px  / 0.34  — contact: tight, near the edge
+            //   0 22px 44px -16px / 0.48  — cast: far, wide, and the stronger
+            //
+            // The far layer carrying more alpha than the near one is
+            // deliberate and is what gives depth; the usual instinct is the
+            // reverse, which flattens it back out.
             //
             // Focus is now carried entirely by the border — 0.35 → 0.90 on the
             // same token, so the edge sharpens rather than changing colour —
@@ -394,7 +406,7 @@ const Composer: FC<{
             //
             // `border-ring` on drag is untouched — that state is meant to break
             // the pattern.
-            className="border-content-faint/35 focus-within:border-content-faint/90 data-[dragging=true]:border-ring shadow-[0_2px_10px_-2px_rgb(0_0_0/0.28),0_8px_24px_-8px_rgb(0_0_0/0.22)] flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
+            className="border-content-faint/35 focus-within:border-content-faint/90 data-[dragging=true]:border-ring shadow-[0_6px_12px_-4px_rgb(0_0_0/0.34),0_22px_44px_-16px_rgb(0_0_0/0.48)] flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
             {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
