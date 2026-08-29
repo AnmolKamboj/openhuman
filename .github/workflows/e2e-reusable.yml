@@ -1,0 +1,1104 @@
+---
+# Reusable E2E workflow — single source of truth for the desktop E2E recipe.
+#
+# Callers:
+#   - `.github/workflows/e2e.yml`     — PR/push, all-OS selected-spec gate.
+#   - `.github/workflows/release-staging.yml`    — pretest gate, all 3 OS, full suite.
+#   - `.github/workflows/release-production.yml` — pretest gate, all 3 OS, full suite.
+#
+# Recipe (see e2e-run-session.sh):
+#   1. Build the app via `pnpm --filter openhuman-app test:e2e:build`.
+#   2. Run `app/scripts/e2e-run-session.sh` which:
+#        - starts tauri-driver and waits for its /status endpoint,
+#        - runs WDIO against `wdio.conf.ts`.
+#
+# Linux runs inside the project CI container under Xvfb (no native display).
+# The Appium Chromium-driver backend used on macOS / Windows attached over
+# CEF's remote-debugging port and was removed in #5478 — CDP does not exist
+# under the Wry runtime. Those jobs cannot pass and need a native driver
+# (Appium Mac2 / WinAppDriver) before they are re-enabled. Tracked in #5485:
+# until it lands, macOS and Windows have no desktop E2E coverage at all.
+#
+# Caching: pnpm store, Swatinem rust-cache, and CEF runtime download
+# (~400MB) are cached on every job. The CEF cache key matches what
+# build-desktop.yml uses so cross-workflow hits are possible.
+name: E2E (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (tag or SHA) to test. Release workflows pass the
+          freshly-pushed staging/production tag here so pretest validates
+          the exact commit the build matrix will check out, not main HEAD
+          at workflow_dispatch time. Defaults to empty (checkout uses its
+          own default, i.e. the workflow's triggering ref).
+        type: string
+        default: ""
+      run_linux:
+        description: Run the Linux (Xvfb / container) E2E job.
+        type: boolean
+        default: true
+      run_macos:
+        description: Run the macOS E2E job.
+        type: boolean
+        default: false
+      run_windows:
+        description: Run the Windows E2E job.
+        type: boolean
+        default: false
+      full:
+        description:
+          When true, run the entire spec suite via `e2e-run-session.sh` (no
+          spec arg). When false, run the selected desktop spec. Releases set
+          this to true.
+        type: boolean
+        default: false
+      spec_path:
+        description: Spec path to run when full is false.
+        type: string
+        default: test/e2e/specs/mega-flow.spec.ts
+      spec_label:
+        description: Log label for the selected spec when full is false.
+        type: string
+        default: mega-flow
+
+permissions:
+  # `actions: read` lets scripts/ci-cancel-aware.sh poll the run status so
+  # cancelled builds inside container jobs stop themselves (docker exec
+  # swallows the runner's signals).
+  actions: read
+  contents: read
+  packages: read
+
+env:
+  # Consumed by scripts/ci-cancel-aware.sh's cancellation watchdog.
+  GH_TOKEN: ${{ github.token }}
+  # Desktop E2E exercises the shipped app and does not execute skills. Avoid
+  # asynchronously provisioning the optional managed Node runtime during core
+  # startup, which can delay the ready signal past the harness timeout.
+  OPENHUMAN_NODE_ENABLED: "0"
+
+jobs:
+  # Selected-spec gate for PR/push (full=false). The full-suite path lives in
+  # `e2e-linux-full` below, which fans out across 4 parallel shards via
+  # `e2e-run-all-flows.sh --suite=<list>`. Splitting the two prevents the
+  # smoke job from paying matrix overhead for a 2-spec run.
+  e2e-linux:
+    if: inputs.run_linux && !inputs.full
+    name: E2E (Linux / Appium Chromium)
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Cache pnpm store
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-linux-unified
+
+      # CEF runtime download cache — matches the key shape used by
+      # build-desktop.yml so a release build and an E2E run on the same
+      # commit can share a single download.
+      - name: Cache CEF binary distribution
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/tauri-cef
+          key: cef-x86_64-unknown-linux-gnu-${{ hashFiles('app/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            cef-x86_64-unknown-linux-gnu-
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+            /usr/local/lib/node_modules/appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Install Appium and chromium driver
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          # appium-chromium-driver is loaded from ~/.appium and imports the
+          # appium package from that tree at runtime.
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          # `appium driver list --installed` can miss cached installs on some
+          # Appium builds; install idempotently and ignore "already installed".
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Install checksum-pinned TinyMemory test module
+        run: |
+          # Keep memory E2E independent of the GitHub release-metadata API.
+          # tinybus validates every directory ancestor, so the fixture must
+          # live outside the runner-owned checkout in this root-run container.
+          # Version and digest are ONE decision and live on adjacent lines for that
+          # reason: the archive name, the release tag and the checksum each used to
+          # carry the version independently, so a bump could update two of the three
+          # and leave a stale digest that only fails after the download. Both values
+          # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
+          # which is the authoritative pin — copy them from there, never recompute.
+          memory_version="1.12.0"
+          memory_sha256="2900252b86975ac749bb91cb7dad98cfd357c0011c6c51b2c05b20efdc5d428f"
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          memory_dir="$module_root/tinymemory"
+          memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$memory_dir"
+          mkdir -p "$memory_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
+            --output "$memory_archive"
+          echo "${memory_sha256}  $memory_archive" \
+            | sha256sum --check
+          tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
+          echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
+            >> "$GITHUB_ENV"
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      - name: Run E2E (${{ inputs.spec_label }})
+        if: ${{ !inputs.full }}
+        run: |
+          bash scripts/ci-cancel-aware.sh \
+            xvfb-run -a --server-args="-screen 0 1280x960x24" \
+            bash app/scripts/e2e-run-session.sh "${{ inputs.spec_path }}" "${{ inputs.spec_label }}"
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-logs-${{ runner.os }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/openhuman-e2e-app-*.log
+            /tmp/openhuman-e2e-app-*.log
+            app/test/e2e/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## E2E Results (${{ runner.os }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/e2e-summary.txt ]; then
+            cat /tmp/e2e-summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary file found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Full-suite Linux is now build-once-then-fanout: one `build-linux-full`
+  # job produces the binary + frontend dist + CEF runtime as a single
+  # workflow artifact, and the 4 shard test jobs `needs:` that build and
+  # download the artifact. This eliminates the parallel-shard cache race
+  # (only the first shard would otherwise populate the binary/CEF caches,
+  # the others would lose the race and rebuild) and guarantees the binary
+  # and its libcef.so are always packaged together.
+  build-linux-full:
+    if: inputs.run_linux && inputs.full
+    name: Build (Linux full)
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    # Cold platform caches can take longer than 30 minutes to compile and
+    # package the unified app before the fanout shards start.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Cache pnpm store
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-linux-unified
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      - name: Package build artifact
+        run: |
+          # Stage everything the test shards need at the layout they expect
+          # under a single directory, so the consumer can extract straight
+          # into the workspace.
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/repo/app/src-tauri/target/debug"
+          mkdir -p "$STAGE/repo/app/dist"
+          cp -a app/src-tauri/target/debug/OpenHuman "$STAGE/repo/app/src-tauri/target/debug/"
+          cp -a app/dist/. "$STAGE/repo/app/dist/"
+          tar -czf e2e-build-linux.tar.gz -C "$STAGE" repo
+          ls -lh e2e-build-linux.tar.gz
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-build-linux-${{ github.run_id }}
+          path: e2e-build-linux.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e-linux-full:
+    if: inputs.run_linux && inputs.full
+    needs: build-linux-full
+    name: E2E (Linux full / ${{ matrix.shard.name }})
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: foundation, suites: "auth,navigation,system" }
+          - { name: chat, suites: "chat,skills,journeys" }
+          - { name: providers, suites: "providers,notifications" }
+          - { name: provider-web, suites: "provider-web" }
+          - { name: webhooks, suites: "webhooks" }
+          - { name: connectors, suites: "connectors" }
+          - { name: payments, suites: "payments" }
+          - { name: settings, suites: "settings" }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Cache pnpm store
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+            /usr/local/lib/node_modules/appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies (for test harness only)
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Install Appium and chromium driver
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-build-linux-${{ github.run_id }}
+          path: .
+
+      - name: Restore build artifact into workspace
+        run: |
+          tar -xzf e2e-build-linux.tar.gz
+          # The artifact contains: repo/{app/src-tauri/target/debug/OpenHuman, app/dist/...}.
+          mkdir -p app/src-tauri/target/debug app/dist
+          cp -a repo/app/src-tauri/target/debug/OpenHuman app/src-tauri/target/debug/
+          cp -a repo/app/dist/. app/dist/
+          rm -rf repo e2e-build-linux.tar.gz
+          chmod +x app/src-tauri/target/debug/OpenHuman
+          ls -la app/src-tauri/target/debug/OpenHuman app/dist | head
+
+      - name: Install checksum-pinned TinyMemory test module
+        if: matrix.shard.name == 'providers'
+        run: |
+          # memory-roundtrip runs in this shard. Supply the native module
+          # directly so the packaged app never depends on GitHub's release
+          # metadata API while the test is running.
+          # Version and digest are ONE decision and live on adjacent lines for that
+          # reason: the archive name, the release tag and the checksum each used to
+          # carry the version independently, so a bump could update two of the three
+          # and leave a stale digest that only fails after the download. Both values
+          # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
+          # which is the authoritative pin — copy them from there, never recompute.
+          memory_version="1.12.0"
+          memory_sha256="2900252b86975ac749bb91cb7dad98cfd357c0011c6c51b2c05b20efdc5d428f"
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          memory_dir="$module_root/tinymemory"
+          memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$memory_dir"
+          mkdir -p "$memory_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
+            --output "$memory_archive"
+          echo "${memory_sha256}  $memory_archive" \
+            | sha256sum --check
+          tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
+          echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
+            >> "$GITHUB_ENV"
+
+      - name: Run E2E shard (${{ matrix.shard.name }} — suites=${{ matrix.shard.suites }})
+        env:
+          E2E_BAIL_ON_FAILURE: ${{ vars.E2E_BAIL_ON_FAILURE || '' }}
+          E2E_USE_TAURI_DRIVER: "1"
+        run: |
+          BAIL_FLAG=""
+          if [[ "${E2E_BAIL_ON_FAILURE:-}" == "1" ]]; then
+            BAIL_FLAG="--bail"
+          fi
+          bash scripts/ci-cancel-aware.sh \
+            xvfb-run -a --server-args="-screen 0 1280x960x24" \
+            bash app/scripts/e2e-run-all-flows.sh --skip-preflight \
+              --suite=${{ matrix.shard.suites }} $BAIL_FLAG
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-logs-${{ runner.os }}-${{ matrix.shard.name }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/openhuman-e2e-app-*.log
+            /tmp/openhuman-e2e-app-*.log
+            app/test/e2e/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## E2E Results (${{ runner.os }} / ${{ matrix.shard.name }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/e2e-summary.txt ]; then
+            cat /tmp/e2e-summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary file found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Rust-side E2E counterpart to the Tauri runs above. Same Linux-only
+  # scope (CI does not run this on macOS or Windows — the Rust core is
+  # platform-independent, so one OS is enough signal). Boots the same
+  # `scripts/mock-api-server.mjs` the Tauri specs hit, then runs every
+  # `tests/*_e2e.rs` suite against it.
+  rust-e2e-linux:
+    if: inputs.run_linux
+    name: E2E (Linux / Rust integration suite)
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Cache pnpm store
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          cache-on-failure: true
+          key: rust-e2e-linux
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for tests
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Run Rust E2E suite (tests/*_e2e.rs vs mock backend)
+        run: bash scripts/ci-cancel-aware.sh pnpm test:rust:e2e
+
+      # No artifact uploads here either — same release-workflow reuse
+      # concern as the Tauri job above. Mock-backend log lives at
+      # /tmp/openhuman-rust-e2e-mock.log for local docker repro.
+
+  e2e-macos:
+    if: inputs.run_macos && !inputs.full
+    name: E2E (macOS / Appium Chromium)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install Rust (rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@1.96.1
+        with:
+          # macos-latest is arm64, but the vendored tauri-cli's build.rs
+          # compiles a CEF helper for x86_64-apple-darwin (universal binary),
+          # so the x86_64 libstd must be installed too.
+          targets: x86_64-apple-darwin
+
+      - name: Verify cargo resolves to real toolchain
+        run: |
+          rustup default 1.96.1 || true
+          which cargo
+          # `cargo --version` in the repo root materializes the
+          # rust-toolchain.toml override toolchain. The action pin and
+          # rust-toolchain.toml agree today (scripts/ci/check-toolchain-image.mjs
+          # enforces that), so the action's `targets:` input lands on the same
+          # toolchain — but re-adding the target against the *active* toolchain
+          # keeps this step correct if the two ever diverge again, which used to
+          # fail the CEF universal-helper cross-compile with E0463
+          # "can't find crate for `core`".
+          cargo --version
+          rustup target add x86_64-apple-darwin
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-macos-unified-v2
+
+      - name: Cache CEF binary distribution
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/tauri-cef
+          key: cef-aarch64-apple-darwin-${{ hashFiles('app/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            cef-aarch64-apple-darwin-
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Install Appium and chromium driver
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          # appium-chromium-driver is loaded from ~/.appium and imports the
+          # appium package from that tree at runtime.
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          # `appium driver list --installed` can miss cached installs on some
+          # Appium builds; install idempotently and ignore "already installed".
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      # macOS rejects dynamic-framework loads from unsigned bundles — adhoc
+      # signing satisfies the loader without a real developer-ID cert.
+      - name: Adhoc-sign the .app bundle
+        run: |
+          codesign --force --deep --sign - \
+            app/src-tauri/target/debug/bundle/macos/OpenHuman.app
+          codesign --verify --deep --verbose=2 \
+            app/src-tauri/target/debug/bundle/macos/OpenHuman.app
+
+      - name: Run E2E (${{ inputs.spec_label }})
+        run: |
+          bash scripts/ci-cancel-aware.sh bash app/scripts/e2e-run-session.sh "${{ inputs.spec_path }}" "${{ inputs.spec_label }}"
+
+      # Artifact uploads intentionally omitted — see e2e-linux for the
+      # reusable-workflow-is-also-used-by-releases rationale.
+
+  e2e-windows:
+    if: inputs.run_windows && !inputs.full
+    name: E2E (Windows / Appium Chromium)
+    # Pin to 2022 for the CEF/Appium harness. As of June 2026,
+    # windows-latest resolves to Windows Server 2025 / VS 2026, where
+    # whisper-rs-sys' CMake build exits with 0xc0000142 before the harness can
+    # launch.
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install Rust (rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@1.96.1
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-windows-unified
+
+      - name: Cache CEF binary distribution
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/tauri-cef
+          key: cef-x86_64-pc-windows-msvc-${{ hashFiles('app/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            cef-x86_64-pc-windows-msvc-
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        shell: bash
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Install Appium and chromium driver
+        shell: bash
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          # appium-chromium-driver is loaded from ~/.appium and imports the
+          # appium package from that tree at runtime.
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          # `appium driver list --installed` can miss cached installs on some
+          # Appium builds; install idempotently and ignore "already installed".
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      - name: Run E2E (${{ inputs.spec_label }})
+        shell: bash
+        run: |
+          bash scripts/ci-cancel-aware.sh bash app/scripts/e2e-run-session.sh "${{ inputs.spec_path }}" "${{ inputs.spec_label }}"
+
+      # Artifact uploads intentionally omitted — see e2e-linux for the
+      # reusable-workflow-is-also-used-by-releases rationale.
+
+  # ---------------------------------------------------------------------------
+  # Full-suite macOS — build-once-then-fanout, mirroring build-linux-full.
+  #
+  # Previously e2e-macos-full was a 6-shard matrix where each shard restored an
+  # `actions/cache` of the .app bundle and rebuilt the full Tauri app on a cold
+  # cache. On a cold cache that means up to 6 parallel full Tauri builds (only
+  # the first shard to finish would populate the cache; the rest lose the race).
+  # `build-macos-full` now builds the .app once and uploads it as a per-run
+  # workflow artifact; the shards `needs:` it, download, adhoc-sign, and run.
+  # ---------------------------------------------------------------------------
+  build-macos-full:
+    if: inputs.run_macos && inputs.full
+    name: Build (macOS full)
+    runs-on: macos-latest
+    # A cold macOS build regularly reaches the final app link after the old
+    # 30-minute ceiling; allow the build-once job to finish for its shards.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install Rust (rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@1.96.1
+        with:
+          # macos-latest is arm64, but the vendored tauri-cli's build.rs
+          # compiles a CEF helper for x86_64-apple-darwin (universal binary),
+          # so the x86_64 libstd must be installed too. Without this the
+          # build fails with E0463 "can't find crate for `core`".
+          targets: x86_64-apple-darwin
+
+      - name: Verify cargo resolves to real toolchain
+        run: |
+          rustup default 1.96.1 || true
+          which cargo
+          # `cargo --version` in the repo root materializes the
+          # rust-toolchain.toml override toolchain. The action pin and
+          # rust-toolchain.toml agree today (scripts/ci/check-toolchain-image.mjs
+          # enforces that), so the action's `targets:` input lands on the same
+          # toolchain — but re-adding the target against the *active* toolchain
+          # keeps this step correct if the two ever diverge again, which used to
+          # fail the CEF universal-helper cross-compile with E0463
+          # "can't find crate for `core`".
+          cargo --version
+          rustup target add x86_64-apple-darwin
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-macos-unified-v2
+
+      - name: Cache CEF binary distribution
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/tauri-cef
+          key: cef-aarch64-apple-darwin-${{ hashFiles('app/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            cef-aarch64-apple-darwin-
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      - name: Clippy (macOS-gated Rust)
+        run: bash scripts/ci-cancel-aware.sh pnpm rust:clippy
+
+      - name: Package build artifact
+        run: |
+          # Stage the same runner-visible layout Linux/Windows use. The .app is
+          # self-contained for runtime, but e2e-run-session.sh also validates the
+          # built frontend bundle before launching so shards need app/dist too.
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/repo/app/src-tauri/target/debug/bundle/macos"
+          mkdir -p "$STAGE/repo/app/dist"
+          cp -a app/src-tauri/target/debug/bundle/macos/OpenHuman.app \
+            "$STAGE/repo/app/src-tauri/target/debug/bundle/macos/"
+          cp -a app/dist/. "$STAGE/repo/app/dist/"
+          tar -czf e2e-build-macos.tar.gz -C "$STAGE" repo
+          ls -lh e2e-build-macos.tar.gz
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-build-macos-${{ github.run_id }}
+          path: e2e-build-macos.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e-macos-full:
+    if: inputs.run_macos && inputs.full
+    needs: build-macos-full
+    name: E2E (macOS full / ${{ matrix.shard.name }})
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: foundation, suites: "auth,navigation,system" }
+          - { name: chat, suites: "chat,skills,journeys" }
+          - { name: providers, suites: "providers,notifications" }
+          - { name: provider-web, suites: "provider-web" }
+          - { name: webhooks, suites: "webhooks" }
+          - { name: connectors, suites: "connectors" }
+          - { name: payments, suites: "payments" }
+          - { name: settings, suites: "settings" }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies (for test harness only)
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Install Appium and chromium driver
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-build-macos-${{ github.run_id }}
+          path: .
+
+      - name: Restore .app bundle into workspace
+        run: |
+          tar -xzf e2e-build-macos.tar.gz
+          mkdir -p app/src-tauri/target/debug/bundle/macos
+          mkdir -p app/dist
+          cp -a repo/app/src-tauri/target/debug/bundle/macos/OpenHuman.app \
+            app/src-tauri/target/debug/bundle/macos/
+          cp -a repo/app/dist/. app/dist/
+          rm -rf repo e2e-build-macos.tar.gz
+          ls -la app/src-tauri/target/debug/bundle/macos/OpenHuman.app | head
+          ls -la app/dist | head
+
+      # macOS rejects dynamic-framework loads from unsigned bundles — adhoc
+      # signing satisfies the loader without a real developer-ID cert. A
+      # bundle restored from the build artifact also needs (re-)signing on this
+      # runner; codesign is idempotent.
+      - name: Adhoc-sign the .app bundle
+        run: |
+          codesign --force --deep --sign - \
+            app/src-tauri/target/debug/bundle/macos/OpenHuman.app
+          codesign --verify --deep --verbose=2 \
+            app/src-tauri/target/debug/bundle/macos/OpenHuman.app
+
+      - name: Run E2E shard (${{ matrix.shard.name }} — suites=${{ matrix.shard.suites }})
+        env:
+          E2E_BAIL_ON_FAILURE: ${{ vars.E2E_BAIL_ON_FAILURE || '' }}
+        run: |
+          BAIL_FLAG=""
+          if [[ "${E2E_BAIL_ON_FAILURE:-}" == "1" ]]; then
+            BAIL_FLAG="--bail"
+          fi
+          bash scripts/ci-cancel-aware.sh bash app/scripts/e2e-run-all-flows.sh --skip-preflight \
+            --suite=${{ matrix.shard.suites }} $BAIL_FLAG
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-logs-${{ runner.os }}-${{ matrix.shard.name }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/openhuman-e2e-app-*.log
+            /tmp/openhuman-e2e-app-*.log
+            app/test/e2e/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## E2E Results (${{ runner.os }} / ${{ matrix.shard.name }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/e2e-summary.txt ]; then
+            cat /tmp/e2e-summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary file found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Full-suite Windows — build-once-then-fanout, mirroring build-linux-full.
+  # `build-windows-full` builds the .exe + frontend dist + CEF runtime once and
+  # uploads them as a per-run workflow artifact; the shards `needs:` it and
+  # download, instead of each shard rebuilding on a cold binary cache.
+  # ---------------------------------------------------------------------------
+  build-windows-full:
+    if: inputs.run_windows && inputs.full
+    name: Build (Windows full)
+    # Keep the full-suite build on the same stable image as the smoke lane.
+    runs-on: windows-2022
+    # Match the macOS cold-cache allowance. The build is shared by every
+    # Windows shard, so timing it out discards all downstream E2E coverage.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install Rust (rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@1.96.1
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            app/src-tauri -> target
+          cache-on-failure: true
+          key: e2e-windows-unified
+
+      - name: Install JS dependencies
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Ensure .env exists for E2E build
+        shell: bash
+        run: |
+          touch .env
+          touch app/.env
+
+      - name: Build E2E app
+        run: bash scripts/ci-cancel-aware.sh pnpm --filter openhuman-app test:e2e:build
+
+      - name: Package build artifact
+        shell: bash
+        run: |
+          # Windows shards need the .exe and frontend dist at the layout they
+          # restore into.
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/repo/app/src-tauri/target/debug"
+          mkdir -p "$STAGE/repo/app/dist"
+          cp -a app/src-tauri/target/debug/OpenHuman.exe "$STAGE/repo/app/src-tauri/target/debug/"
+          cp -a app/dist/. "$STAGE/repo/app/dist/"
+          tar -czf e2e-build-windows.tar.gz -C "$STAGE" repo
+          ls -lh e2e-build-windows.tar.gz
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-build-windows-${{ github.run_id }}
+          path: e2e-build-windows.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e-windows-full:
+    if: inputs.run_windows && inputs.full
+    needs: build-windows-full
+    name: E2E (Windows full / ${{ matrix.shard.name }})
+    # Keep full-suite shards on the same stable image as the build job.
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: foundation, suites: "auth,navigation,system" }
+          - { name: chat, suites: "chat,skills,journeys" }
+          - { name: providers, suites: "providers,notifications" }
+          - { name: provider-web, suites: "provider-web" }
+          - { name: webhooks, suites: "webhooks" }
+          - { name: connectors, suites: "connectors" }
+          - { name: payments, suites: "payments" }
+          - { name: settings, suites: "settings" }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Cache Appium global install
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.appium
+          key: appium3-chromium-${{ runner.os }}-v2
+
+      - name: Install JS dependencies (for test harness only)
+        run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
+
+      - name: Install Appium and chromium driver
+        shell: bash
+        run: |
+          if ! command -v appium >/dev/null 2>&1; then
+            bash scripts/ci-cancel-aware.sh npm install -g appium@3
+          fi
+          bash scripts/ci-cancel-aware.sh npm install --prefix "$HOME/.appium" appium@3
+          bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-build-windows-${{ github.run_id }}
+          path: .
+
+      - name: Restore build artifact into workspace
+        shell: bash
+        run: |
+          tar -xzf e2e-build-windows.tar.gz
+          mkdir -p app/src-tauri/target/debug app/dist
+          cp -a repo/app/src-tauri/target/debug/OpenHuman.exe app/src-tauri/target/debug/
+          cp -a repo/app/dist/. app/dist/
+          rm -rf repo e2e-build-windows.tar.gz
+          ls -la app/src-tauri/target/debug/OpenHuman.exe app/dist | head
+
+      - name: Run E2E shard (${{ matrix.shard.name }} — suites=${{ matrix.shard.suites }})
+        shell: bash
+        env:
+          E2E_BAIL_ON_FAILURE: ${{ vars.E2E_BAIL_ON_FAILURE || '' }}
+        run: |
+          BAIL_FLAG=""
+          if [[ "${E2E_BAIL_ON_FAILURE:-}" == "1" ]]; then
+            BAIL_FLAG="--bail"
+          fi
+          bash scripts/ci-cancel-aware.sh bash app/scripts/e2e-run-all-flows.sh --skip-preflight \
+            --suite=${{ matrix.shard.suites }} $BAIL_FLAG
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure-logs-${{ runner.os }}-${{ matrix.shard.name }}-${{ github.run_id }}
+          # e2e-run-session.sh writes its app log to `${RUNNER_TEMP:-${TMPDIR:-/tmp}}`.
+          # On Windows runners RUNNER_TEMP resolves to D:\a\_temp, not /tmp.
+          path: |
+            ${{ runner.temp }}/openhuman-e2e-app-*.log
+            app/test/e2e/artifacts/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Write job summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## E2E Results (${{ runner.os }} / ${{ matrix.shard.name }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/e2e-summary.txt ]; then
+            cat /tmp/e2e-summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary file found." >> $GITHUB_STEP_SUMMARY
+          fi
