@@ -985,8 +985,11 @@ mod tests {
     /// at `root`, mirroring what the tinyagents harness threads into every tool
     /// call of a worktree-isolated worker (`RunContext::with_workspace` →
     /// `ToolExecutionContext::from_run_context`).
-    fn tool_context_with_workspace(root: &std::path::Path) -> ToolExecutionContext {
+    fn tool_context_with_workspace(
+        root: &std::path::Path,
+    ) -> tinyagents::harness::tool::ToolExecutionContext {
         use tinyagents::harness::context::{RunConfig, RunContext};
+        use tinyagents::harness::tool::ToolExecutionContext;
         use tinyagents::harness::workspace::WorkspaceDescriptor;
         let ws = WorkspaceDescriptor::new(root.to_path_buf()).with_policy_id("test-worktree");
         let ctx: RunContext = RunContext::new(RunConfig::new("test-run"), ()).with_workspace(ws);
