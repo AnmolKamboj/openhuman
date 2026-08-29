@@ -27,10 +27,13 @@ import PageWelcome from '../components/layout/PageWelcome';
 import PanelPage from '../components/layout/PanelPage';
 import { usePageWelcomeView } from '../components/layout/usePageWelcomeView';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
-import BetaBanner from '../components/ui/BetaBanner';
-import Button from '../components/ui/Button';
-import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
-import { ModalShell } from '../components/ui/ModalShell';
+import {
+  BetaBanner,
+  Button,
+  CenteredLoadingState,
+  ErrorBanner,
+  ModalShell,
+} from '../components/ui';
 import { useFlowChanged } from '../hooks/useFlowChanged';
 import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { useFlowRunFinished } from '../hooks/useFlowRunFinished';
