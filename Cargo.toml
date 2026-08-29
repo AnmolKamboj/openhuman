@@ -92,13 +92,6 @@ path = "tests/observability_smoke.rs"
 required-features = ["crash-reporting"]
 
 [[test]]
-name = "memory_artifacts_e2e"
-path = "tests/memory_artifacts_e2e.rs"
-# Opens the wiki ledger with `tinycortex::git2::Repository::open` and asserts on
-# `content::wiki_git` artifacts — both of which exist only behind this gate.
-required-features = ["memory-git"]
-
-[[test]]
 name = "x402_twit_sh_live"
 path = "tests/x402_twit_sh_live.rs"
 # `x402::tools::X402RequestTool` — the x402 domain is part of the web3 family.
@@ -788,7 +781,6 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # `None`; and the three `ops` entry points always-on code calls return a
 # build-fact error, so a post-sync snapshot or a subconscious diff is logged and
 # skipped rather than silently reported as "nothing changed".
-memory-git = ["tinycortex/git-diff", "tinycortex/wiki-git", "tinymemory-core/memory-git"]
 http-server = ["dep:axum", "dep:socketioxide"]
 # Local audio-device access: the `cpal` capture stack behind voice recording
 # and the accessibility microphone-permission probe. Default-ON. Slim /
