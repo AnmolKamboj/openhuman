@@ -168,7 +168,7 @@ No `UserProvider`/`AIProvider`/`SkillProvider` — auth lives in `CoreStateProvi
 
 **State** (`store/`): Redux Toolkit slices — `accounts`, `agentProfile`, `announcement`, `channelConnections`, `chatRuntime`, `connectivity`, `coreMode`, `deepLinkAuth`, `layout`, `locale`, `mascot`, `notification`, `persona`, `providerSurface`, `ptt`, `socket`, `theme`, `thread`, `userErrors` (authoritative list: `store/index.ts`; persistence via `userScopedStorage`). Prefer Redux over ad-hoc `localStorage`.
 
-**Services** (`services/`): `apiClient`, `socketService`, `coreRpcClient`, `coreCommandClient`, `chatService`, `analytics`, `notificationService`, `webviewAccountService`, `daemonHealthService`, plus domain `api/*` clients. Always use `coreRpcClient` (which invokes the `relay_http_rpc` Tauri command) for core RPC.
+**Services** (`services/`): `apiClient`, `socketService`, `coreRpcClient`, `coreCommandClient`, `chatService`, `analytics`, `notificationService`, `daemonHealthService`, plus domain `api/*` clients. Always use `coreRpcClient` (which invokes the `relay_http_rpc` Tauri command) for core RPC.
 
 **Analytics**: use `Button analyticsId="stable-content-free-id"` for shared button interactions, `AnalyticsPageTracker` once inside the router, and `trackAnalyticsEvent` from `components/analytics` for successful domain outcomes (messages, automation runs, connections, etc.). Native controls and links may use `data-analytics-id` directly. Use privacy-safe dimensions only; never send user-authored text, entity IDs, filenames, credentials, or error messages. `services/analytics.ts` is the consent/provider implementation, not the feature-code API.
 
@@ -180,7 +180,7 @@ No `UserProvider`/`AIProvider`/`SkillProvider` — auth lives in `CoreStateProvi
 
 ## Tauri shell (`app/src-tauri/`)
 
-Thin desktop host. Key modules: `core_process`, `core_rpc`, `cdp`, `dictation_hotkeys`, `file_logging`, `mascot_native_window`, `window_state`, `imessage_scanner`, `webview_apis`.
+Thin desktop host. Key modules: `core_process`, `core_rpc`, `dictation_hotkeys`, `file_logging`, `mascot_native_window`, `window_state`, `imessage_scanner`.
 
 The CDP-driven provider scanners (`discord_scanner`, `slack_scanner`, `telegram_scanner`, `whatsapp_scanner`, `wechat_scanner`, `gmessages_scanner`), the `webview_accounts` surface they ran inside, and the in-app Meet call window (`meet_call`, `meet_audio`, `meet_video`, `meet_scanner`, `fake_camera`) were removed in #5478 — CDP only exists under a Chromium engine, and the app moved to Wry in #5456. `imessage_scanner` is unaffected: it reads `chat.db` natively and never used CDP. Meet has since been removed from the product entirely (see below), so the `src/openhuman/meet/` and `backend_bot` paths those notes referred to are gone.
 

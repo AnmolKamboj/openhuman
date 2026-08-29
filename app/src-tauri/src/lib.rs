@@ -65,7 +65,6 @@ mod mcp_commands;
 mod native_notifications;
 #[cfg(target_os = "macos")]
 mod notch_window;
-mod notification_settings;
 mod process_kill;
 mod process_recovery;
 mod ptt_hotkeys;
@@ -73,7 +72,6 @@ mod ptt_overlay;
 #[cfg(target_os = "windows")]
 mod reset_reboot_schedule;
 mod stderr_panic_hook;
-mod webview_apis;
 mod whatsapp_data;
 mod window_state;
 mod workspace_paths;
@@ -1723,8 +1721,6 @@ fn perform_early_teardown_sync(app_handle: &AppHandle<AppRuntime>) {
     #[cfg(feature = "gateways")]
     tauri::async_runtime::block_on(gateway::registry::shutdown());
 
-    webview_apis::server::stop();
-
     if let Some(core) = app_handle.try_state::<core_process::CoreProcessHandle>() {
         let core = core.inner().clone();
         // Aborts the embedded server task. Synchronous and safe on
@@ -1761,8 +1757,6 @@ async fn perform_early_teardown_async(app_handle: &AppHandle<AppRuntime>) {
     // `block_on` inside an async fn runs a runtime inside a runtime.
     #[cfg(feature = "gateways")]
     gateway::registry::shutdown().await;
-
-    webview_apis::server::stop();
 
     if let Some(core) = app_handle.try_state::<core_process::CoreProcessHandle>() {
         let core = core.inner().clone();
@@ -2942,7 +2936,6 @@ pub fn run() {
             std::sync::Mutex::new(Vec::new()),
         ))
         .manage(ptt_hotkeys::PttHotkeyState::new())
-        .manage(notification_settings::NotificationSettingsState::new())
         .manage(PendingAppUpdateState::default());
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
     builder
@@ -3034,32 +3027,6 @@ pub fn run() {
                 // before setup() ran (issue #2359). Also installs the live
                 // handler so URLs arriving after setup() are emitted directly.
                 deep_link_ipc::drain_pending_urls(app.app_handle());
-            }
-
-            // Start the webview_apis WebSocket bridge BEFORE spawning core —
-            // core reads OPENHUMAN_WEBVIEW_APIS_PORT on first connect, and
-            // connects lazily, so the env var must be set before the spawn.
-            //
-            // If the bridge fails to bind we clear any inherited port env so
-            // the core child can't accidentally connect to whichever loopback
-            // process already owns that port, then abort setup — the bridge
-            // is load-bearing for every webview_apis RPC method.
-            let bridge_ok = tauri::async_runtime::block_on(async {
-                match webview_apis::start().await {
-                    Ok(port) => {
-                        std::env::set_var(webview_apis::server::PORT_ENV, port.to_string());
-                        log::info!("[webview_apis] bridge ready on port {port}");
-                        true
-                    }
-                    Err(err) => {
-                        log::error!("[webview_apis] failed to start bridge: {err}");
-                        std::env::remove_var(webview_apis::server::PORT_ENV);
-                        false
-                    }
-                }
-            });
-            if !bridge_ok {
-                return Err("webview_apis bridge failed to start — aborting setup".into());
             }
 
             // Purge stray LaunchAgent left over from a prior worktree's
@@ -3394,8 +3361,6 @@ pub fn run() {
             register_ptt_hotkey,
             unregister_ptt_hotkey,
             ptt_overlay::show_ptt_overlay,
-            notification_settings::notification_settings_get,
-            notification_settings::notification_settings_set,
             native_notifications::notification_permission_state,
             native_notifications::notification_permission_request,
             activate_main_window,
@@ -3533,23 +3498,9 @@ pub fn run() {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     window_state::save_main(&window);
                 }
-                // Run our cleanup BEFORE CEF's own Exit handler does
-                // `close_all_windows() → cef::shutdown()`. Doing this in
-                // RunEvent::Exit instead races CEF's teardown and the
-                // `browser_count == 0` CHECK in `cef::shutdown` panics on
-                // macOS Cmd+Q (issue #920). The order matters:
-                //   1. close our child webviews so CEF processes the
-                //      close requests during the Exit-phase message pump
-                //      (gives them time to settle before cef::shutdown).
-                //   2. abort our long-lived tokio tasks so they're not
-                //      driving CDP traffic against CEF as it tears down.
-                //   3. stop the webview_apis WS listener so its accept
-                //      loop releases the loopback port.
-                //   4. SIGTERM the core sidecar (non-blocking). Tauri
-                //      spawned the child so we own its lifecycle, but we
-                //      do not wait — that would block the main thread
-                //      and starve CEF's UI loop. The kernel reaps the
-                //      child after Tauri exits.
+                // Run cleanup during ExitRequested so the embedded core and
+                // long-lived scanner tasks stop before the runtime exits.
+                // Teardown stays non-blocking on the main thread.
                 perform_early_teardown_sync_once(app_handle, "exit_requested");
             }
             RunEvent::Exit => {
