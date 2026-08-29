@@ -188,7 +188,7 @@ Frontend: **`app/src/services/gatewayService.ts`**, surfaced in Settings → Cor
 
 ### Notifications
 
-`native_notifications::notification_permission_state` / `notification_permission_request` / `show_native_notification` provide the OS-level notification surface.
+`notification_permission_state` / `notification_permission_request` / `show_native_notification` provide the OS-level notification surface. They are implemented in `native_notifications`.
 
 ### Window management
 
