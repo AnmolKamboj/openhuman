@@ -14,7 +14,7 @@ import FeedbackFilterSelect from '../../feedback/FeedbackFilterSelect';
 import FeedbackItemRow from '../../feedback/FeedbackItemRow';
 import FeedbackSubmitForm from '../../feedback/FeedbackSubmitForm';
 import Button from '../../ui/Button';
-import SettingsTabbedPage from '../layout/SettingsTabbedPage';
+import SettingsPanel from '../layout/SettingsPanel';
 
 const log = debugFactory('feedback:panel');
 
@@ -141,134 +141,141 @@ const FeedbackPanel = () => {
   const hasMore = items.length < total;
 
   return (
-    // No `h-full p-4` wrapper any more. This was a standalone routed page and
-    // needed one: the content surface is `overflow-hidden`, so it had to claim
-    // the height and scroll itself or the board fell below an unreachable fold.
-    // As a settings panel it is mounted through `wrapSettingsPage`, which is
-    // that scroll container (`h-full min-h-0 overflow-y-auto`) — keeping the
-    // wrapper would have nested a second scroller inside it. Every other panel
-    // renders `SettingsTabbedPage` bare for the same reason.
-    <div data-testid="feedback-page">
-      <SettingsTabbedPage
-        title={t('feedback.header.title')}
-        description={t('feedback.header.desc')}>
-        <div className="animate-fade-up space-y-5">
-          <FeedbackSubmitForm onAccepted={handleAccepted} />
+    // `SettingsPanel`, the template every routed settings page uses — NOT
+    // `SettingsTabbedPage` directly, and not a hand-rolled wrapper.
+    //
+    // Both mistakes were made moving this page in. As a standalone route it was
+    // `<div className="h-full p-4">` around `SettingsTabbedPage`; the wrapper
+    // was dropped because `wrapSettingsPage` already scrolls, and dropping it
+    // took the `p-4` with it. That gutter is load-bearing: `SettingsTabbedPage`
+    // draws its header divider with `-mx-4` to bleed it to the page edge, so
+    // without a 4-unit host padding the divider bleeds *past* the page and the
+    // body sits flush against the edge. Its own docs say the host must supply
+    // it.
+    //
+    // `SettingsPanel` supplies that gutter and the rest of the conventions —
+    // the route-derived title, the back button that hides itself in the
+    // two-pane shell, and the sibling sub-nav — so this panel now matches every
+    // other one instead of approximating them. The title comes from the
+    // `feedback` registry entry rather than being passed here, which is what
+    // keeps the sidebar row and the page heading from drifting apart.
+    <SettingsPanel description={t('feedback.header.desc')} testId="feedback-page">
+      <div className="animate-fade-up space-y-5">
+        <FeedbackSubmitForm onAccepted={handleAccepted} />
 
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-              <h2 className="flex items-center gap-2 font-title text-base font-semibold text-content">
-                {t('feedback.board')}
-                {total > 0 && (
-                  <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs font-medium tabular-nums text-content-muted dark:bg-white/10">
-                    {total}
-                  </span>
-                )}
-              </h2>
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <h2 className="flex items-center gap-2 font-title text-base font-semibold text-content">
+              {t('feedback.board')}
+              {total > 0 && (
+                <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs font-medium tabular-nums text-content-muted dark:bg-white/10">
+                  {total}
+                </span>
+              )}
+            </h2>
 
-              <div className="inline-flex rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong dark:bg-white/3">
-                {SORTS.map(option => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSort(option)}
-                    aria-pressed={sort === option}
-                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                      sort === option
-                        ? 'bg-surface text-content shadow-xs'
-                        : 'text-content-muted hover:text-content-secondary dark:hover:text-content-secondary'
-                    }`}>
-                    {t(SORT_LABEL_KEYS[option])}
-                  </button>
-                ))}
-              </div>
+            <div className="inline-flex rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong dark:bg-white/3">
+              {SORTS.map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setSort(option)}
+                  aria-pressed={sort === option}
+                  className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                    sort === option
+                      ? 'bg-surface text-content shadow-xs'
+                      : 'text-content-muted hover:text-content-secondary dark:hover:text-content-secondary'
+                  }`}>
+                  {t(SORT_LABEL_KEYS[option])}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="flex flex-wrap gap-2 px-1">
-              <FeedbackFilterSelect
-                ariaLabel={t('feedback.filter.allTypes')}
-                value={typeFilter}
-                onChange={v => setTypeFilter(v as FeedbackType | 'all')}
-                options={[
-                  { value: 'all', label: t('feedback.filter.allTypes') },
-                  { value: 'feature', label: t('feedback.type.feature') },
-                  { value: 'bug', label: t('feedback.type.bug') },
-                ]}
-              />
-              <FeedbackFilterSelect
-                ariaLabel={t('feedback.filter.allStatuses')}
-                value={statusFilter}
-                onChange={v => setStatusFilter(v as FeedbackStatus | 'all')}
-                options={[
-                  { value: 'all', label: t('feedback.filter.allStatuses') },
-                  { value: 'open', label: t('feedback.status.open') },
-                  { value: 'planned', label: t('feedback.status.planned') },
-                  { value: 'completed', label: t('feedback.status.completed') },
-                ]}
-              />
+          <div className="flex flex-wrap gap-2 px-1">
+            <FeedbackFilterSelect
+              ariaLabel={t('feedback.filter.allTypes')}
+              value={typeFilter}
+              onChange={v => setTypeFilter(v as FeedbackType | 'all')}
+              options={[
+                { value: 'all', label: t('feedback.filter.allTypes') },
+                { value: 'feature', label: t('feedback.type.feature') },
+                { value: 'bug', label: t('feedback.type.bug') },
+              ]}
+            />
+            <FeedbackFilterSelect
+              ariaLabel={t('feedback.filter.allStatuses')}
+              value={statusFilter}
+              onChange={v => setStatusFilter(v as FeedbackStatus | 'all')}
+              options={[
+                { value: 'all', label: t('feedback.filter.allStatuses') },
+                { value: 'open', label: t('feedback.status.open') },
+                { value: 'planned', label: t('feedback.status.planned') },
+                { value: 'completed', label: t('feedback.status.completed') },
+              ]}
+            />
+          </div>
+
+          {loadError && (
+            <p className="rounded-xl bg-coral-500/10 px-4 py-3 text-center text-xs text-coral-600 dark:text-coral-400">
+              {loadError}
+            </p>
+          )}
+
+          {isLoading && items.length === 0 ? (
+            <div className="space-y-2.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-2xl border border-line bg-surface-subtle dark:bg-white/5"
+                />
+              ))}
             </div>
-
-            {loadError && (
-              <p className="rounded-xl bg-coral-500/10 px-4 py-3 text-center text-xs text-coral-600 dark:text-coral-400">
-                {loadError}
-              </p>
-            )}
-
-            {isLoading && items.length === 0 ? (
-              <div className="space-y-2.5">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-28 animate-pulse rounded-2xl border border-line bg-surface-subtle dark:bg-white/5"
+          ) : items.length > 0 ? (
+            <div className="space-y-2.5">
+              {items.map(item => (
+                <FeedbackItemRow
+                  key={item.id}
+                  item={item}
+                  isAdmin={isAdmin}
+                  onChange={handleItemChange}
+                  onCommentAdded={handleCommentAdded}
+                />
+              ))}
+            </div>
+          ) : loadError ? null : (
+            <div className="rounded-2xl border border-dashed border-line py-12 text-center">
+              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-subtle dark:bg-white/5">
+                <svg
+                  className="h-5 w-5 text-content-faint"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
                   />
-                ))}
+                </svg>
               </div>
-            ) : items.length > 0 ? (
-              <div className="space-y-2.5">
-                {items.map(item => (
-                  <FeedbackItemRow
-                    key={item.id}
-                    item={item}
-                    isAdmin={isAdmin}
-                    onChange={handleItemChange}
-                    onCommentAdded={handleCommentAdded}
-                  />
-                ))}
-              </div>
-            ) : loadError ? null : (
-              <div className="rounded-2xl border border-dashed border-line py-12 text-center">
-                <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-subtle dark:bg-white/5">
-                  <svg
-                    className="h-5 w-5 text-content-faint"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.8}
-                      d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-sm text-content-muted">{t('feedback.empty')}</p>
-              </div>
-            )}
+              <p className="text-sm text-content-muted">{t('feedback.empty')}</p>
+            </div>
+          )}
 
-            {hasMore && (
-              <div className="flex justify-center pt-1">
-                <Button
-                  variant="secondary"
-                  onClick={() => void load(pageRef.current + 1, true)}
-                  disabled={isLoading}>
-                  {isLoading ? '...' : t('feedback.loadMore')}
-                </Button>
-              </div>
-            )}
-          </section>
-        </div>
-      </SettingsTabbedPage>
-    </div>
+          {hasMore && (
+            <div className="flex justify-center pt-1">
+              <Button
+                variant="secondary"
+                onClick={() => void load(pageRef.current + 1, true)}
+                disabled={isLoading}>
+                {isLoading ? '...' : t('feedback.loadMore')}
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+    </SettingsPanel>
   );
 };
 
