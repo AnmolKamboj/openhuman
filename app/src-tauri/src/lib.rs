@@ -33,8 +33,8 @@ const _: () = assert!(
 );
 
 mod app_update;
-// Artifact export commands (#2779, #3162) — both cross-platform
-// (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
+// Artifact export command (#2779) — cross-platform Downloads copy. The `rfd`
+// Save-As dialog that used to sit in front of it was removed with the crate.
 mod artifact_commands;
 mod claude_code;
 mod core_process;
