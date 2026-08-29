@@ -9,8 +9,7 @@ import {
 import { useT } from '../../lib/i18n/I18nContext';
 import { SettingsStatusLine } from '../settings/controls';
 import SettingsPanel from '../settings/layout/SettingsPanel';
-import { Alert, AlertDescription, Card } from '../ui';
-import Button from '../ui/Button';
+import { Alert, AlertDescription, Button, Card } from '../ui';
 import BudgetSummary from './BudgetSummary';
 import CostBarChart from './CostBarChart';
 import DashboardSkeleton from './DashboardSkeleton';
