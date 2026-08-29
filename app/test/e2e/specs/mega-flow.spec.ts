@@ -113,28 +113,6 @@ async function resetEverything(label: string): Promise<void> {
   clearRequestLog();
 }
 
-async function invokeTauri<T = unknown>(
-  command: string,
-  payload: Record<string, unknown> = {}
-): Promise<{ __ok?: T; __error?: string }> {
-  return (await browser.executeAsync(
-    (cmd, args, done) => {
-      const invoke = (window as any).__TAURI_INTERNALS__?.invoke;
-      if (typeof invoke !== 'function') {
-        done({ __error: 'window.__TAURI_INTERNALS__.invoke not available' });
-        return;
-      }
-      invoke(cmd, args)
-        .then((result: unknown) => done({ __ok: result }))
-        .catch((err: unknown) =>
-          done({ __error: err instanceof Error ? err.message : String(err) })
-        );
-    },
-    command,
-    payload
-  )) as { __ok?: T; __error?: string };
-}
-
 describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
   before(async function beforeSuite() {
     this.timeout(90_000);
