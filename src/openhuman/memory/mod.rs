@@ -76,7 +76,6 @@ pub mod tools;
 // plus the handler/schema modules that name `RpcOutcome` and
 // `ControllerSchema`. See the module docs on each for the split.
 pub mod conversations;
-pub mod diff;
 pub mod goals;
 pub mod people;
 pub mod schema;
