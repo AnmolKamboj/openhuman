@@ -62,7 +62,7 @@ import { PALETTE_ENTRIES, type PaletteEntry } from '../../../lib/flows/nodeKindM
 import type { NodeKind, WorkflowGraph } from '../../../lib/flows/types';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { type FlowConnection, listFlowConnections } from '../../../services/api/flowsApi';
-import Button from '../../ui/Button';
+import { Button } from '../../ui';
 import { type CanvasActions, CanvasActionsContext } from './canvasActions';
 import './flowCanvasStyles.css';
 import FlowNodeComponent from './FlowNodeComponent';
