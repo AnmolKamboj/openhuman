@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 
 use super::registry;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
+use tinytools::ToolRunContext;
 
 pub const LOAD_SKILL: &str = "load_skill";
 pub const USE_SKILL: &str = "use_skill";

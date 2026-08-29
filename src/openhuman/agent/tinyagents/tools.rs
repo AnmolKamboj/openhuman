@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use tinyagents::harness::steering::{SteeringCommand, SteeringHandle};
 use tinyagents::harness::tool::{
+use tinytools::ToolRunContext;
     SandboxMode, Tool, ToolAccess, ToolCall as TaToolCall, ToolExecutionContext, ToolPolicy,
     ToolResult as TaToolResult, ToolRuntime, ToolSchema, ToolSideEffects,
     ToolTimeout as TaToolTimeout, WorkspaceAccess,
