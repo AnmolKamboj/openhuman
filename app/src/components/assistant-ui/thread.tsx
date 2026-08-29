@@ -372,24 +372,29 @@ const Composer: FC<{
             // than either at full — a hard 0.65 line under a shadow reads as
             // two competing edges.
             //
-            // Focus moves the same token to 0.75 instead of swapping colour, so
-            // the cue is this edge asserting itself, and lifts the shadow
-            // `soft` → `medium` at the same time: the border and the elevation
-            // are one gesture rather than two, which is why `transition` names
-            // box-shadow alongside border-color — otherwise the border would
-            // cross-fade against a shadow that snapped.
+            // Two roles, kept apart: the SHADOW is constant and the BORDER is
+            // what moves.
             //
-            // `duration-200 ease-out` is the animation. Both tokens are defined
-            // (`index.css`) as two-layer shadows with matching structure, so the
-            // browser interpolates them layer-for-layer instead of falling back
-            // to a hard swap; a step up to `large` or `float` would read as the
-            // composer jumping rather than settling. `motion-reduce` drops it
-            // for anyone who has asked the OS for less motion — the focus cue
-            // still lands, just instantly.
+            // The shadow is an explicit near-black pair rather than
+            // `shadow-soft`/`shadow-medium`. Those tokens are black at 0.08
+            // alpha, which is a diffuse haze — on the themed chrome behind this
+            // composer it reads as a smudge rather than a cast shadow. 0.28 on
+            // a tight 10px blur plus 0.22 on a wider 24px gives an actual
+            // shadow: a defined near edge, and a soft far one that still lifts
+            // the composer off the transcript.
+            //
+            // Focus is now carried entirely by the border — 0.35 → 0.90 on the
+            // same token, so the edge sharpens rather than changing colour —
+            // and `transition` names border-color alone. Animating the shadow
+            // as well meant two things moving at once for a single event; with
+            // the elevation fixed, the composer stays put and only its outline
+            // responds. `duration-200 ease-out` is the settle, and
+            // `motion-reduce` drops it for anyone who asked the OS for less
+            // motion — the cue still lands, just instantly.
             //
             // `border-ring` on drag is untouched — that state is meant to break
             // the pattern.
-            className="border-content-faint/40 focus-within:border-content-faint/75 data-[dragging=true]:border-ring shadow-soft focus-within:shadow-medium flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color,box-shadow] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
+            className="border-content-faint/35 focus-within:border-content-faint/90 data-[dragging=true]:border-ring shadow-[0_2px_10px_-2px_rgb(0_0_0/0.28),0_8px_24px_-8px_rgb(0_0_0/0.22)] flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
             {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
