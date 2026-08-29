@@ -141,6 +141,66 @@ export default [
     },
   },
 
+  // Barrel-import enforcement (S10). `src/components/ui` is documented as
+  // the only sanctioned import path for shared UI primitives (see its
+  // `index.ts` doc comment) and `src/components/settings/controls` is the
+  // same shape for settings controls — reaching past either barrel into a
+  // specific primitive file is exactly the drift this rule exists to stop
+  // from regrowing once a directory has been migrated onto it.
+  //
+  // `**/assistant-ui/ui/*` is excluded: that is a different, barrel-less
+  // vendored primitive set (shadcn-style, one file per component, no
+  // `index.ts`) and deep-importing it is the intended, only way to use it.
+  //
+  // NOT YET GLOBAL. `settings/controls` has no outstanding deep imports
+  // (confirmed via `rg "from '.*settings/controls/[A-Za-z]"`), so that half
+  // is enforced everywhere. `components/ui` still has ~336 pre-existing deep
+  // imports across the directories listed in `ignores` below — discovered
+  // only once this rule went in, well past the 48 the S10 audit itself
+  // flagged (`components/flows`, `components/layout`, `components/dashboard`,
+  // `components/approvals`, `pages/FlowsPage.tsx`, `pages/FlowCanvasPage.tsx`
+  // — all clean, all NOT in `ignores`). Migrating the rest is a separate,
+  // per-directory pass; shrink `ignores` as each one lands rather than
+  // widening it, so the net only ever tightens.
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: [
+      'src/components/ui/**',
+      'src/components/accounts/**',
+      'src/components/BootCheckGate/**',
+      'src/components/channels/**',
+      'src/components/chat/**',
+      'src/components/feedback/**',
+      'src/components/InitProgressScreen/**',
+      'src/components/intelligence/**',
+      'src/components/notifications/**',
+      'src/components/orchestration/**',
+      'src/components/rewards/**',
+      'src/components/settings/**',
+      'src/components/shortcuts/**',
+      'src/components/skills/**',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/ui/*', '!**/assistant-ui/ui/*', '!**/ui/index'],
+              message:
+                "Import UI primitives from the 'components/ui' barrel (src/components/ui) instead of a deep path into the primitive file.",
+            },
+            {
+              group: ['**/settings/controls/*', '!**/settings/controls/index'],
+              message:
+                "Import settings controls from the 'settings/controls' barrel instead of a deep path into the control file.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // React files configuration
   {
     files: ['src/**/*.jsx', 'src/**/*.tsx'],
