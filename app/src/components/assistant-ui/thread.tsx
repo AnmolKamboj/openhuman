@@ -549,13 +549,28 @@ const ComposerAction: FC<{
           {showIdleAction ? (
             <ComposerIdleAction />
           ) : hasComposerAttachments && composerText.trim().length === 0 ? (
+            {/* Pinned to `primary-500` rather than left on `variant="default"`.
+                That variant paints `bg-primary`, which `styles/shadcn-tokens.css`
+                aliases to `primary-500` in light but `primary-400` in DARK — a
+                pale sky blue. Its label is `--content-inverted`, which is white
+                in both themes (not actually inverted per theme), so in dark the
+                send button was white-on-pale-blue: washed out, and about 2.4:1,
+                which is below AA for a control. `primary-500` under white is
+                ~4.6:1 and reads as the accent in both themes.
+
+                Overriding here rather than repointing the dark `--primary`
+                alias: that token backs every `variant="default"` button in the
+                app, and dark-mode-lightens-the-accent is a defensible palette
+                choice to make deliberately, not as a side effect of fixing one
+                button. `cn` is tailwind-merge, so the later `bg-primary-500`
+                replaces the variant's `bg-primary` cleanly. */}
             <TooltipIconButton
               tooltip="Send message"
               side="bottom"
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send size-7 rounded-full"
+              className="aui-composer-send size-7 rounded-full bg-primary-500 text-content-inverted hover:bg-primary-600"
               data-testid="send-message-button"
               aria-label="Send message"
               onClick={() => {
@@ -572,7 +587,7 @@ const ComposerAction: FC<{
                 type="button"
                 variant="default"
                 size="icon"
-                className="aui-composer-send size-7 rounded-full"
+                className="aui-composer-send size-7 rounded-full bg-primary-500 text-content-inverted hover:bg-primary-600"
                 data-testid="send-message-button"
                 aria-label="Send message">
                 <ArrowUpIcon className="aui-composer-send-icon size-4" />
