@@ -48,7 +48,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.2";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.3";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -56,10 +56,11 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.2";
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
 ///
-/// Re-read at tag `v1.13.2` (openhuman#5820). v1.13.0 added a `MemoryEvent`
-/// variant and two additive audit fields, v1.13.1 fixed the module's
-/// source-registry path, v1.13.2 fixed the `Embed` wire order; none of those
-/// touched families. tinymemory#110 (in v1.13.2) did: it added `Scoring`
+/// Re-read at tag `v1.13.3`. v1.13.0 added a `MemoryEvent` variant and two
+/// additive audit fields, v1.13.1 fixed the module's source-registry path,
+/// v1.13.2 fixed the `Embed` wire order, and v1.13.3 fixed folder-source path
+/// resolution; none of those touched families. tinymemory#110 (in v1.13.2)
+/// did add `Scoring`
 /// (`ExtractEntities`, `EmbedText`, `EmbedderSlug`), which the artifact serves
 /// and which `as_scoring` below forwards, so it is advertised here in the same
 /// change, the way `Episodic` arrived with `as_episodic`.
