@@ -2471,8 +2471,6 @@ const MEMORY_TOOL_CAPABILITIES: &[(&str, tinymemory_api::capabilities::Capabilit
         ("memory_tree", C::Tree),
         ("memory_flavour", C::Tree),
         ("memory_store_raw_search", C::Entities),
-        #[cfg(feature = "memory-git")]
-        ("memory_diff", C::Diff),
         ("memory_doctor", C::Maintenance),
         ("tool_stats", C::ToolMemory),
         ("goals_list", C::Goals),
@@ -2559,9 +2557,8 @@ fn memory_capability_table_names_are_real() {
         .chain(MEMORY_TOOLS_NOT_DRIVER_BACKED.iter().copied())
         // `tool_stats` is registered only when `learning.tool_tracking_enabled`,
         // so it is config-dependent and asserted by the function-level guard
-        // above instead. `memory_diff` is registered only when the
-        // `memory-git` feature is compiled in; no CI lane enables it.
-        .filter(|n| *n != "tool_stats" && (*n != "memory_diff" || cfg!(feature = "memory-git")))
+        // above instead.
+        .filter(|n| *n != "tool_stats")
     {
         assert!(
             names.iter().any(|n| n == name),
@@ -2596,11 +2593,6 @@ fn null_driver_memory_cfg() -> crate::openhuman::config::schema::MemorySubsystem
 /// The optional-family tools that must vanish under a driver advertising
 /// nothing optional.
 ///
-/// `memory_diff` is deliberately NOT in this list even though it is one of
-/// these optional-family tools: it only registers at all when the
-/// `memory-git` feature is compiled in (no CI lane enables it), so its
-/// presence is asserted separately, conditioned on that feature, rather than
-/// unconditionally here.
 const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
     "memory_tree",
     "memory_flavour",
@@ -2631,12 +2623,6 @@ fn memory_tools_all_present_with_no_ambient_context() {
             "`{name}` must be present with no ambient context; got: {names:?}"
         );
     }
-    if cfg!(feature = "memory-git") {
-        assert!(
-            names.iter().any(|n| n == "memory_diff"),
-            "`memory_diff` must be present with no ambient context when `memory-git` is on; got: {names:?}"
-        );
-    }
 }
 
 /// Under the default binding the TinyMemory module
@@ -2663,24 +2649,17 @@ async fn memory_tools_all_present_under_the_module_driver() {
             "`{name}` must survive the module driver; got: {names:?}"
         );
     }
-    if cfg!(feature = "memory-git") {
-        assert!(
-            names.iter().any(|n| n == "memory_diff"),
-            "`memory_diff` must survive the module driver when `memory-git` is on; got: {names:?}"
-        );
-    }
 }
 
-/// The git-backed diff tool must not advertise an implementation that cannot
-/// run when the `memory-git` feature is compiled out.
-#[cfg(not(feature = "memory-git"))]
+/// The git-backed diff tool was deleted along with the `memory-git` gate.
+/// This pins that it stays gone in every build, not merely unregistered.
 #[test]
-fn memory_diff_tool_is_absent_when_memory_git_is_disabled() {
+fn memory_diff_tool_is_absent_in_every_build() {
     let tmp = TempDir::new().unwrap();
     let names = tool_names(&expansion_tools_for(&tmp));
     assert!(
         !names.iter().any(|name| name == "memory_diff"),
-        "memory_diff must be absent when the memory-git feature is disabled; got: {names:?}"
+        "memory_diff was removed with the memory-git gate; got: {names:?}"
     );
 }
 
@@ -2704,8 +2683,7 @@ async fn optional_family_memory_tools_absent_under_the_null_driver() {
             "`{absent}` must be ABSENT under the null driver; got: {names:?}"
         );
     }
-    // Absent either way: the null driver disables it (when `memory-git` is
-    // on) or the feature gate already dropped it entirely (when it's off).
+    // Removed outright with the `memory-git` gate.
     assert!(
         !names.iter().any(|n| n == "memory_diff"),
         "`memory_diff` must be ABSENT under the null driver; got: {names:?}"
