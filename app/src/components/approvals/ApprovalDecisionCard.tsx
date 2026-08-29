@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { cn } from '../../lib/cn';
-import Button from '../ui/Button';
+import { Button } from '../ui';
 
 export interface ApprovalDecisionAction {
   id: string;
