@@ -219,10 +219,14 @@ prioritization.
    into its own sub-gate would reclaim most of that 12.7 MiB while keeping the
    flows graph engine. Currently all-or-nothing.
 
-3. **`git2` (vendored libgit2).** Always-on native dependency of the `memory_diff`
-   change-ledger (git-backed snapshots/checkpoints/diffs). A large vendored C lib.
-   If a library host does not need git-backed memory diffs, this is a candidate for
-   a future gate.
+3. ~~**`git2` (vendored libgit2).**~~ — **no longer applicable.** This entry
+   proposed gating the git-backed `memory_diff` change ledger. That went further:
+   the `memory-git` gate, the `memory::diff` RPC surface and the `memory_diff`
+   agent tool were deleted outright, so `git2` — with `libgit2-sys` and
+   `libz-sys` — is absent from every profile rather than merely gateable.
+   `cargo tree -i git2` finds no package. tinycortex still owns the only libgit2
+   code in the stack and keeps its `git-diff` / `wiki-git` features; nothing in
+   this repository enables them.
 
 4. **`reqwest` dual TLS backends.** The root `reqwest` enables both `rustls-tls`
    **and** `native-tls` — two full TLS stacks linked simultaneously. A headless
