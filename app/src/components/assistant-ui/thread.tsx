@@ -395,9 +395,11 @@ const Composer: FC<{
             // deliberate and is what gives depth; the usual instinct is the
             // reverse, which flattens it back out.
             //
-            // `animate-composer-shadow` then drifts those offsets sideways on a
-            // slow loop (`composerShadowDrift`, `index.css`), as though the
-            // light above the composer moves. The static `shadow-[…]` above is
+            // `animate-composer-shadow` then orbits those offsets clockwise on
+            // a slow loop (`composerShadowOrbit`, `index.css`), as though the
+            // light above the composer circles the room. The static values here
+            // are the orbit's 25% stop, so the animation starts from roughly
+            // where the unanimated composer sits rather than jumping on load. The static `shadow-[…]` above is
             // not redundant: it is what `motion-reduce:animate-none` falls back
             // to, so the composer keeps its elevation when the OS asks for less
             // motion and merely stops moving. Keyframes override the utility
