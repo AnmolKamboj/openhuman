@@ -32,6 +32,10 @@ pub use traits::{Channel, ChannelSendExt, SendMessage};
 #[cfg(feature = "channels")]
 pub mod bus;
 #[cfg(feature = "channels")]
+mod commands;
+#[cfg(feature = "channels")]
+pub(crate) mod context;
+#[cfg(feature = "channels")]
 pub mod controllers;
 #[cfg(feature = "channels")]
 pub mod host;
@@ -41,10 +45,6 @@ pub mod proactive;
 pub mod providers;
 #[cfg(feature = "channels")]
 pub(crate) mod relay_runtime;
-#[cfg(feature = "channels")]
-mod commands;
-#[cfg(feature = "channels")]
-pub(crate) mod context;
 #[cfg(feature = "channels")]
 mod routes;
 #[cfg(feature = "channels")]
