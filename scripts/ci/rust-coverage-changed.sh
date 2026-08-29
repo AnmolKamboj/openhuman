@@ -127,8 +127,64 @@ raw_coverage_modules() {
     sort
 }
 
+# `required-features` of each `[[test]]` target in Cargo.toml, as
+# "<name><TAB><comma-separated gates>". Targets without the key are omitted.
+#
+# Parsed from Cargo.toml rather than `cargo metadata` so this stays a
+# dependency-free awk/bash script (no jq, no python) on bash 3.2 and 5.x alike.
+test_target_required_features() {
+  awk '
+    /^\[\[test\]\]/ { if (name != "" && req != "") print name "\t" req; name=""; req=""; inblk=1; next }
+    /^\[/              { if (name != "" && req != "") print name "\t" req; name=""; req=""; inblk=0 }
+    inblk && /^name[ \t]*=/ {
+      line=$0; sub(/^name[ \t]*=[ \t]*"/, "", line); sub(/".*$/, "", line); name=line; next
+    }
+    inblk && /^required-features[ \t]*=/ {
+      line=$0
+      sub(/^required-features[ \t]*=[ \t]*\[/, "", line); sub(/\].*$/, "", line)
+      gsub(/[" ]/, "", line); req=line; next
+    }
+    END { if (name != "" && req != "") print name "\t" req }
+  ' Cargo.toml
+}
+
+TEST_TARGET_REQS="$(test_target_required_features)"
+
+# True when every `required-features` gate of ${1} is enabled in PRODUCT_FEATURES.
+#
+# **Why this guard exists.** `cargo` only SKIPS a target for unsatisfied
+# `required-features` when the target is selected IMPLICITLY (a bare
+# `cargo test`). Every call site here names the target explicitly
+# (`--test <name>`), and naming an unsatisfiable target is a hard ERROR:
+#
+#     error: target `memory_artifacts_e2e` in package `openhuman`
+#            requires the features: `memory-git`
+#
+# That never fired while every `required-features` gate happened to be in the
+# product set. Dropping `memory-git` from the product set made
+# `memory_artifacts_e2e` the first unsatisfiable one and took this whole lane
+# down — on a PR that had nothing wrong with it. Skipping here restores the
+# behaviour the `required-features` line was written to express, and keeps the
+# next gate removal from breaking the lane the same way.
+target_features_satisfied() {
+  local target="$1" req f
+  req="$(printf '%s\n' "${TEST_TARGET_REQS}" | awk -F'\t' -v t="${target}" '$1 == t { print $2 }')"
+  [ -n "${req}" ] || return 0
+  for f in $(printf '%s' "${req}" | tr ',' ' '); do
+    case ",${PRODUCT_FEATURES}," in
+      *",${f},"*) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+
 run_integration_target() {
   local target="$1"
+  if ! target_features_satisfied "${target}"; then
+    log "skipping ${target}: required-features not in the product set"
+    return 0
+  fi
   if [ "${target}" = "raw_coverage_all" ]; then
     # These suites used to be separate integration-test binaries. Aggregating
     # them removes repeated full-crate links, but many still exercise process
