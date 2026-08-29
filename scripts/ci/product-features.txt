@@ -90,17 +90,19 @@ contacts
 # its static liblzma C build.
 runtime-node
 
-# NOTE: `memory-git` was REMOVED from the product set. It was the last gate
-# carrying a native C build the product could shed: `git2` brings `libgit2-sys`
-# and `libz-sys`, which were 2 of the 4 native builds in this profile (now 2 —
-# `libsqlite3-sys` and `ring`, both load-bearing). Only 3 crates, but two C
-# toolchain builds is disproportionate build time for a surface nothing in the
-# desktop UI calls: `memory_diff` had no frontend caller. What the product
-# loses: the `memory_diff` RPC namespace becomes unknown-method, the
-# `memory_diff` agent tool is absent, the embedded driver stops advertising
-# `Capability::Diff`, and summary nodes are still written to disk but no longer
-# mirrored into git. Re-add this line (and the shell's forwarding entry) to
-# bring it back.
+# NOTE: `memory-git` no longer exists. The gate, the `memory::diff` RPC surface
+# and schemas, the `memory_diff` agent tool and the `memory_artifacts_e2e`
+# target were all deleted — not merely un-shipped — so there is nothing here to
+# re-enable. It carried `git2`, which brought `libgit2-sys` and `libz-sys`: 2 of
+# the 4 native C builds in this profile, now down to `libsqlite3-sys` and `ring`,
+# both load-bearing. `git2` is absent from the resolved graph entirely
+# (`cargo tree -i git2` finds no package), so the shed holds by construction
+# rather than by a flag someone can flip.
+#
+# tinycortex still owns the only libgit2 code in the stack and keeps its
+# `git-diff` / `wiki-git` features; nothing in this repository enables them.
+# `Capability::Diff` remains in the TinyMemory bus contract and a driver may
+# still advertise it — there is simply no RPC surface here behind it.
 
 # The `hosting_*` agent tools: put a workspace on a real hosting provider and
 # manage its sites, databases, environment, domains and deployments over the
