@@ -104,13 +104,13 @@ describe('FlowRunsSidebar', () => {
     expect(screen.getByTestId('flow-run-inspector-drawer-stub')).toHaveTextContent('run-1');
   });
 
-  it('uses an important padding override for the compact status badge', async () => {
+  it('overrides the default badge padding for the compact status badge', async () => {
     listFlowRuns.mockResolvedValue([makeRun()]);
     renderSidebar();
 
     const badge = await screen.findByText('Failed');
-    expect(badge).toHaveClass('px-1.5!');
-    expect(badge).not.toHaveClass('px-1.5');
+    expect(badge).toHaveClass('px-1.5');
+    expect(badge).not.toHaveClass('px-2');
   });
 
   it('falls back to a humanized label instead of "undefined" for an unrecognized status (F-m8)', async () => {
