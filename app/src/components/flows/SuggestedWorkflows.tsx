@@ -45,7 +45,7 @@ import {
   type FlowSuggestion,
   listSuggestions,
 } from '../../services/api/flowsApi';
-import Button from '../ui/Button';
+import { Button } from '../ui';
 
 const log = createDebug('app:flows:suggested');
 
