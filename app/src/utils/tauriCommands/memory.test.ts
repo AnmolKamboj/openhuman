@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
 
 import { callCoreRpc } from '../../services/coreRpcClient';
-import { isTauri, safeInvoke } from './common';
+import { isTauri } from './common';
 import {
   aiListMemoryFiles,
   memoryLearnAll,
@@ -17,7 +17,6 @@ vi.mock('./common', () => ({ isTauri: vi.fn(() => true), safeInvoke: vi.fn() }))
 
 const mockCallCoreRpc = callCoreRpc as Mock;
 const mockIsTauri = isTauri as Mock;
-const mockSafeInvoke = safeInvoke as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -2,7 +2,7 @@
  * Memory subsystem commands.
  */
 import { callCoreRpc } from '../../services/coreRpcClient';
-import { isTauri, safeInvoke } from './common';
+import { isTauri } from './common';
 
 export interface MemoryDebugDocument {
   documentId: string;
