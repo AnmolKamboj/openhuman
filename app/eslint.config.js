@@ -152,33 +152,31 @@ export default [
   // vendored primitive set (shadcn-style, one file per component, no
   // `index.ts`) and deep-importing it is the intended, only way to use it.
   //
-  // NOT YET GLOBAL. `settings/controls` has no outstanding deep imports
-  // (confirmed via `rg "from '.*settings/controls/[A-Za-z]"`), so that half
-  // is enforced everywhere. `components/ui` still has ~336 pre-existing deep
-  // imports across the directories listed in `ignores` below — discovered
-  // only once this rule went in, well past the 48 the S10 audit itself
-  // flagged (`components/flows`, `components/layout`, `components/dashboard`,
-  // `components/approvals`, `pages/FlowsPage.tsx`, `pages/FlowCanvasPage.tsx`
-  // — all clean, all NOT in `ignores`). Migrating the rest is a separate,
-  // per-directory pass; shrink `ignores` as each one lands rather than
-  // widening it, so the net only ever tightens.
+  // SCOPED, NOT GLOBAL — an allowlist, not a denylist. Turning this on
+  // app-wide surfaced ~340 pre-existing deep `components/ui` imports across
+  // `src/components/{accounts,BootCheckGate,channels,chat,feedback,
+  // InitProgressScreen,intelligence,notifications,orchestration,rewards,
+  // settings,shortcuts,skills}`, several root-level `src/components/*.tsx`
+  // files, `src/features/**`, and most of `src/pages/**` — well past the 48
+  // the S10 audit itself flagged, and far beyond this change's scope to fix.
+  // `files` below lists exactly the directories this pass actually migrated
+  // (confirmed clean via `rg "from '(\.\./)+ui/[A-Za-z]"` returning nothing
+  // for each), so the rule is enforced everywhere it has already been
+  // cleaned up without failing lint on code this change never touched.
+  // Widen `files` as each remaining directory gets its own migration pass —
+  // an allowlist only ever grows, never shrinks, so the net only tightens.
   {
-    files: ['src/**/*.ts', 'src/**/*.tsx'],
-    ignores: [
-      'src/components/ui/**',
-      'src/components/accounts/**',
-      'src/components/BootCheckGate/**',
-      'src/components/channels/**',
-      'src/components/chat/**',
-      'src/components/feedback/**',
-      'src/components/InitProgressScreen/**',
-      'src/components/intelligence/**',
-      'src/components/notifications/**',
-      'src/components/orchestration/**',
-      'src/components/rewards/**',
-      'src/components/settings/**',
-      'src/components/shortcuts/**',
-      'src/components/skills/**',
+    files: [
+      'src/components/flows/**/*.tsx',
+      'src/components/flows/**/*.ts',
+      'src/components/layout/**/*.tsx',
+      'src/components/layout/**/*.ts',
+      'src/components/dashboard/**/*.tsx',
+      'src/components/dashboard/**/*.ts',
+      'src/components/approvals/**/*.tsx',
+      'src/components/approvals/**/*.ts',
+      'src/pages/FlowsPage.tsx',
+      'src/pages/FlowCanvasPage.tsx',
     ],
     rules: {
       'no-restricted-imports': [
@@ -190,6 +188,24 @@ export default [
               message:
                 "Import UI primitives from the 'components/ui' barrel (src/components/ui) instead of a deep path into the primitive file.",
             },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Barrel-import enforcement, `settings/controls` half. This one IS global:
+  // it has zero outstanding deep imports app-wide (confirmed via
+  // `rg "from '.*settings/controls/[A-Za-z]"`), so there is nothing to
+  // grandfather.
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['src/components/settings/controls/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
             {
               group: ['**/settings/controls/*', '!**/settings/controls/index'],
               message:
