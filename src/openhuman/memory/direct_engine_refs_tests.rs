@@ -340,11 +340,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "re-export shim for the thread-id task-local",
     ),
     (
-        "src/openhuman/memory/diff/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::diff::*",
-    ),
-    (
         "src/openhuman/memory/mod.rs",
         Verdict::HostSide,
         "the re-export block itself — twenty-five engine modules under their historical paths",
