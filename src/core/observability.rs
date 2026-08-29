@@ -141,10 +141,9 @@ pub enum ExpectedErrorKind {
     ///
     MemoryStoreBreakerOpen,
     // (WhatsApp structured-ingest SQLite busy/corrupt classifiers were removed
-    // when the whatsapp_data store moved to the Tauri shell: the core no longer
-    // runs the ingest write path, so the `[whatsapp_data] ingest failed:`
-    // envelope these matched is never produced core-side. The shell store keeps
-    // its own once-per-episode corruption report + quarantine/rebuild recovery.)
+    // when that store moved to the Tauri shell; the store itself is gone now —
+    // its only writer was the CDP scanner deleted in #5478 — so no build
+    // produces the envelope these matched.)
     /// Host disk is full — the filesystem returned `ENOSPC` to a write,
     /// `mkdir`, or `open` syscall. The user cannot recover from this without
     /// freeing space on their machine, and Sentry has no remediation path

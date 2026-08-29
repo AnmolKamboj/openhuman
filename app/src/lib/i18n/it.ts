@@ -2821,8 +2821,6 @@ const messages: TranslationMap = {
   'reflections.act': 'Agisci',
   'reflections.dismiss': 'Ignora',
   'reflections.viewConversation': 'Visualizza',
-  'whatsapp.chatsSynced': 'chat sincronizzate',
-  'whatsapp.chatSynced': 'chat sincronizzata',
   'sync.active': 'Attivo',
   'sync.recent': 'Recenti',
   'sync.idle': 'Inattivo',
@@ -6154,7 +6152,6 @@ const messages: TranslationMap = {
   'memory.sourceFilterAria': 'Filtra per origine',
   'calls.comingSoonDescription':
     "Le chiamate assistite dall'IA sono in arrivo. Resta sintonizzato.",
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Aspetto',
   'settings.appearanceDesc': 'Scegli la luce, scuro o abbina il tema del tuo sistema',
   'settings.mascot': 'Mascotte',

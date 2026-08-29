@@ -49,18 +49,11 @@ app/src-tauri/src/
 │                           # core at a URL, or one this app provisions in a container /
 │                           # over SSH / both (tinybox). types · store · ops · registry ·
 │                           # commands
-├── cdp/                    # Chrome DevTools Protocol plumbing for child webviews
-├── cef_preflight.rs / cef_profile.rs / cef_singleton_wait.rs / cef_stale_reap.rs   # CEF cache/profile management
-├── webview_accounts/       # Embedded provider account webviews (open/close/bounds/notifications)
-├── webview_apis/           # WS bridge for webview-side APIs
-├── discord_scanner/ … whatsapp_scanner/ …   # Per-provider scanners (slack, telegram, wechat,
-│                                            # gmessages, imessage, meet, …) driving CDP
-├── meet_audio/ meet_call/ meet_video/       # Google Meet call window + media integration
-├── fake_camera/            # Virtual camera support
+├── imessage_scanner/       # macOS-only: reads ~/Library/Messages/chat.db directly (never used CDP)
 ├── mascot_native_window.rs / notch_window.rs / window_state.rs
-├── dictation_hotkeys.rs / ptt_hotkeys.rs / ptt_overlay.rs / companion_commands.rs
+├── dictation_hotkeys.rs / ptt_hotkeys.rs / ptt_overlay.rs
 ├── native_notifications/ notification_settings/
-├── artifact_commands.rs    # Artifact export (save dialog / Downloads)
+├── artifact_commands.rs    # Artifact export (copy into Downloads)
 ├── workspace_paths.rs      # Safe workspace-relative file open/reveal/preview
 ├── app_update.rs           # Updater support (commands live in lib.rs)
 ├── loopback_oauth.rs       # Localhost OAuth redirect listener
@@ -71,6 +64,13 @@ app/src-tauri/src/
 ├── deep_link_ipc.rs / deep_link_ipc_windows.rs / deep_link_registration_check.rs
 └── stderr_panic_hook.rs / reset_reboot_schedule.rs
 ```
+
+This listing was rewritten against the real tree after #5478 / #5456. Gone with
+the move off Chromium: `cdp/`, the `cef_*` preflight modules, `webview_accounts/`,
+every `*_scanner/` but `imessage_scanner/`, the `meet_*` call window,
+`fake_camera/` and `companion_commands.rs`. `webview_apis/` went later — it was
+the WS bridge those scanners called, and once they were gone its router
+dispatched nothing while still binding a loopback listener at boot.
 
 There is **no** `src-tauri/src/services/session_service.rs` in this tree; session semantics are handled in the web layer + backend + core as applicable.
 

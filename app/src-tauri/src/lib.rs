@@ -33,8 +33,8 @@ const _: () = assert!(
 );
 
 mod app_update;
-// Artifact export commands (#2779, #3162) — both cross-platform
-// (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
+// Artifact export command (#2779) — cross-platform Downloads copy. The `rfd`
+// Save-As dialog that used to sit in front of it was removed with the crate.
 mod artifact_commands;
 mod claude_code;
 mod core_process;
@@ -73,8 +73,6 @@ mod ptt_overlay;
 #[cfg(target_os = "windows")]
 mod reset_reboot_schedule;
 mod stderr_panic_hook;
-mod webview_apis;
-mod whatsapp_data;
 mod window_state;
 mod workspace_paths;
 
@@ -1789,8 +1787,6 @@ fn perform_early_teardown_sync(app_handle: &AppHandle<AppRuntime>) {
     #[cfg(feature = "gateways")]
     tauri::async_runtime::block_on(gateway::registry::shutdown());
 
-    webview_apis::server::stop();
-
     if let Some(core) = app_handle.try_state::<core_process::CoreProcessHandle>() {
         let core = core.inner().clone();
         // Aborts the embedded server task. Synchronous and safe on
@@ -1827,8 +1823,6 @@ async fn perform_early_teardown_async(app_handle: &AppHandle<AppRuntime>) {
     // `block_on` inside an async fn runs a runtime inside a runtime.
     #[cfg(feature = "gateways")]
     gateway::registry::shutdown().await;
-
-    webview_apis::server::stop();
 
     if let Some(core) = app_handle.try_state::<core_process::CoreProcessHandle>() {
         let core = core.inner().clone();
@@ -3013,12 +3007,6 @@ pub fn run() {
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
     builder
         .setup(move |app| {
-            // Structured WhatsApp Web data store lives shell-side. Register the
-            // in-process native handlers so the core agent tools (list/search)
-            // and the scanner ingest path can reach the SQLite store over the
-            // native request bus. No handler = graceful degradation core-side.
-            whatsapp_data::register_native_handlers();
-
             #[cfg(windows)]
             {
                 // `register_all` writes HKCU\Software\Classes\openhuman so the
@@ -3100,32 +3088,6 @@ pub fn run() {
                 // before setup() ran (issue #2359). Also installs the live
                 // handler so URLs arriving after setup() are emitted directly.
                 deep_link_ipc::drain_pending_urls(app.app_handle());
-            }
-
-            // Start the webview_apis WebSocket bridge BEFORE spawning core —
-            // core reads OPENHUMAN_WEBVIEW_APIS_PORT on first connect, and
-            // connects lazily, so the env var must be set before the spawn.
-            //
-            // If the bridge fails to bind we clear any inherited port env so
-            // the core child can't accidentally connect to whichever loopback
-            // process already owns that port, then abort setup — the bridge
-            // is load-bearing for every webview_apis RPC method.
-            let bridge_ok = tauri::async_runtime::block_on(async {
-                match webview_apis::start().await {
-                    Ok(port) => {
-                        std::env::set_var(webview_apis::server::PORT_ENV, port.to_string());
-                        log::info!("[webview_apis] bridge ready on port {port}");
-                        true
-                    }
-                    Err(err) => {
-                        log::error!("[webview_apis] failed to start bridge: {err}");
-                        std::env::remove_var(webview_apis::server::PORT_ENV);
-                        false
-                    }
-                }
-            });
-            if !bridge_ok {
-                return Err("webview_apis bridge failed to start — aborting setup".into());
             }
 
             // Purge stray LaunchAgent left over from a prior worktree's
@@ -3431,16 +3393,11 @@ pub fn run() {
             core_rpc::relay_http_rpc,
             overlay_parent_rpc_url,
             process_diagnostics_list_owned,
-            // Artifact export commands — both cross-platform (#3162). The
-            // Downloads command was previously macOS/Linux-gated, but the
-            // `directories` + `tokio::fs::copy` flow compiles on Windows too,
-            // and the Save-As fallback needs it there (CodeRabbit on #4127).
-            artifact_commands::save_artifact_via_dialog,
+            // Artifact export — cross-platform. Previously macOS/Linux-gated,
+            // but the `directories` + `tokio::fs::copy` flow compiles on Windows
+            // too (CodeRabbit on #4127). The Save-As dialog that used to sit in
+            // front of this went with the shell's `rfd` dependency.
             artifact_commands::download_artifact_to_downloads,
-            // Structured WhatsApp data (store lives shell-side).
-            whatsapp_data::whatsapp_data_list_chats,
-            whatsapp_data::whatsapp_data_list_messages,
-            whatsapp_data::whatsapp_data_search_messages,
             check_core_update,
             apply_core_update,
             check_app_update,
@@ -3610,9 +3567,7 @@ pub fn run() {
                 //      (gives them time to settle before cef::shutdown).
                 //   2. abort our long-lived tokio tasks so they're not
                 //      driving CDP traffic against CEF as it tears down.
-                //   3. stop the webview_apis WS listener so its accept
-                //      loop releases the loopback port.
-                //   4. SIGTERM the core sidecar (non-blocking). Tauri
+                //   3. SIGTERM the core sidecar (non-blocking). Tauri
                 //      spawned the child so we own its lifecycle, but we
                 //      do not wait — that would block the main thread
                 //      and starve CEF's UI loop. The kernel reaps the

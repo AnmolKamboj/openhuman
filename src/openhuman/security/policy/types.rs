@@ -189,6 +189,10 @@ pub(super) const WORKSPACE_INTERNAL_DIRS: &[&str] = &[
     "subconscious",
     "vault",
     "task_sources",
+    // The whatsapp_data store was removed along with the scanner that wrote it,
+    // but an upgraded profile can still hold `whatsapp_data/whatsapp_data.db`
+    // (chat and message history) from an older version. Keep the directory on
+    // the internal denylist so agents with workspace access cannot read it.
     "whatsapp_data",
     // The redirect_links domain was removed (#5051), but an upgraded profile can
     // still hold a legacy `redirect_links/links.db` (stored URL history) written

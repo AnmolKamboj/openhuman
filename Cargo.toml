@@ -92,13 +92,6 @@ path = "tests/observability_smoke.rs"
 required-features = ["crash-reporting"]
 
 [[test]]
-name = "memory_artifacts_e2e"
-path = "tests/memory_artifacts_e2e.rs"
-# Opens the wiki ledger with `tinycortex::git2::Repository::open` and asserts on
-# `content::wiki_git` artifacts — both of which exist only behind this gate.
-required-features = ["memory-git"]
-
-[[test]]
 name = "x402_twit_sh_live"
 path = "tests/x402_twit_sh_live.rs"
 # `x402::tools::X402RequestTool` — the x402 domain is part of the web3 family.
@@ -201,11 +194,12 @@ tinytools = { path = "vendor/tinyagents/vendor/tinytools/crates/tinytools" }
 # (=0.40) so one bundled SQLite links. The submodule intentionally tracks
 # reviewed upstream main commits; keep this semver requirement compatible with
 # the vendored crate version.
-# `git-diff` and `wiki-git` are NOT here: they are pulled in by the
-# `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
-# enters the graph. This crate holds no `git2` pin of its own to align — the
-# gate turns tinycortex's on, and tinycortex is the sole libgit2 link in the
-# graph. Everything else tinycortex needs is unconditional.
+# `git-diff` and `wiki-git` are NOT here, and there is no longer a gate that
+# turns them on: the `memory-git` feature and the `memory::diff` RPC/tool
+# surface it guarded were deleted, taking the git2/libgit2-sys/libz-sys cohort
+# out of every configuration. tinycortex remains the sole libgit2 link in the
+# graph, and nothing in this crate enables it. Everything else tinycortex needs
+# is unconditional.
 tinycortex = { version = "0.1", features = [
     "obsidian",
     "persona",
@@ -385,15 +379,14 @@ rand = "0.10"
 dirs = "5"
 sha2 = "0.10"
 # NO `git2` HERE, DELIBERATELY — do not add it back. Every use of libgit2 in
-# the memory stack lives in tinycortex: the diff ledger (`memory::diff`), the
-# wiki mirror (`memory::store::content::wiki_git`), and the persona git-history
-# reader. This crate holds the RPC surface, the agent tool and the gate around
-# them, and never touches a repository itself, so a direct dependency here was
-# a declaration with no `use` behind it. Re-declaring it costs nothing in
-# crates (the `memory-git` gate pulls tinycortex's copy either way) but invites
-# a second major pin, and `git2` sets `links = "git2"` — two majors in one
-# graph is a hard cargo error, not a warning. Test code that must inspect a
-# ledger goes through `tinycortex::git2`.
+# the memory stack lives in tinycortex: the diff ledger, the wiki mirror
+# (`memory::store::content::wiki_git`), and the persona git-history reader.
+# This crate never touches a repository itself, so a direct dependency here
+# would be a declaration with no `use` behind it. It also invites a second
+# major pin, and `git2` sets `links = "git2"` — two majors in one graph is a
+# hard cargo error, not a warning. Nothing here now enables tinycortex's
+# `git-diff` / `wiki-git` features either, so libgit2 is out of the graph
+# entirely; re-adding a gate for it means re-adding the cohort.
 hmac = "0.12"
 # Archive handling for the Piper voice installer and the document tools. The
 # Node.js and Python toolchain archives are no longer unpacked here — the
@@ -804,7 +797,6 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # `None`; and the three `ops` entry points always-on code calls return a
 # build-fact error, so a post-sync snapshot or a subconscious diff is logged and
 # skipped rather than silently reported as "nothing changed".
-memory-git = ["tinycortex/git-diff", "tinycortex/wiki-git", "tinymemory-core/memory-git"]
 http-server = ["dep:axum", "dep:socketioxide"]
 # Local audio-device access: the `cpal` capture stack behind voice recording
 # and the accessibility microphone-permission probe. Default-ON. Slim /
@@ -1128,8 +1120,7 @@ medulla = []
 # Channels domain: `openhuman::channels` (external-messaging providers — Telegram,
 # Discord, Slack, Signal, WhatsApp, iMessage, IRC, … — plus the channel runtime,
 # controllers, host, proactive messaging and inbound dispatch) together with the
-# `webview_accounts` / `webview_apis` / `webview_notifications` / `whatsapp_data`
-# webview-bridge domains. Default-ON — the desktop app always ships with
+# `webview_notifications` bridge domain. Default-ON — the desktop app always ships with
 # channels. Slim / headless builds opt out via `--no-default-features --features
 # "<explicit list without channels>"`. Composes with the runtime
 # `DomainSet::Channels` flag (#4796): this feature narrows the compile-time
