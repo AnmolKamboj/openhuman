@@ -30,10 +30,10 @@ import {
 import { useT } from '../../../../lib/i18n/I18nContext';
 import {
   Button,
-  Input as UiInput,
   NativeSelect,
   ToggleGroupItem,
   ToggleGroupRoot,
+  Input as UiInput,
 } from '../../../ui';
 import { Field, MONO_CLASS } from './nodeConfigFields';
 

@@ -23,7 +23,7 @@ import { cn } from '../../../../lib/cn';
 import { listAvailableTriggers, listTools } from '../../../../lib/composio/composioApi';
 import { useT } from '../../../../lib/i18n/I18nContext';
 import type { FlowConnection } from '../../../../services/api/flowsApi';
-import { Input as UiInput, NativeSelect } from '../../../ui';
+import { NativeSelect, Input as UiInput } from '../../../ui';
 import { Field, MONO_CLASS } from './nodeConfigFields';
 
 /** Sentinel select value that reveals a raw text input. */

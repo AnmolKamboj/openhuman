@@ -318,9 +318,7 @@ export default function TwoPanelLayout({
   return (
     <div className={cn('flex min-h-0', className)}>
       {seamless ? (
-        <div className={cn('flex min-h-0 flex-1 overflow-hidden', DEFAULT_PANE_CLASS)}>
-          {panes}
-        </div>
+        <div className={cn('flex min-h-0 flex-1 overflow-hidden', DEFAULT_PANE_CLASS)}>{panes}</div>
       ) : (
         panes
       )}

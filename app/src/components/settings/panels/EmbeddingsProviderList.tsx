@@ -3,8 +3,8 @@
  * `EmbeddingsPanel.tsx` to keep that file under the repo's file-size
  * convention.
  */
-import { useT } from '../../../lib/i18n/I18nContext';
 import { cn } from '../../../lib/cn';
+import { useT } from '../../../lib/i18n/I18nContext';
 import type { EmbeddingProviderEntry } from '../../../services/api/embeddingsApi';
 import { Button } from '../../ui';
 import { SettingsBadge, SettingsSection } from '../controls';

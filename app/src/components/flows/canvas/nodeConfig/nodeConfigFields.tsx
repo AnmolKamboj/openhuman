@@ -23,11 +23,11 @@ import { useT } from '../../../../lib/i18n/I18nContext';
 import type { FlowConnection } from '../../../../services/api/flowsApi';
 import {
   Button,
-  Input as UiInput,
   InputGroupAddon,
   InputGroupInput,
   InputGroupRoot,
   NativeSelect,
+  Input as UiInput,
   TextArea as UiTextArea,
 } from '../../../ui';
 import type { UpstreamExpressionOption } from './upstreamOptions';

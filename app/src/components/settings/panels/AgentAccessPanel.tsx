@@ -444,7 +444,9 @@ const AgentAccessPanel = () => {
                     // opt out of the assertive default for the same reason
                     // as the auto-approve-all warning above.
                     <Alert variant="warning" density="compact" role={undefined}>
-                      <AlertDescription>{t('settings.agentAccess.timeout.envOverride')}</AlertDescription>
+                      <AlertDescription>
+                        {t('settings.agentAccess.timeout.envOverride')}
+                      </AlertDescription>
                     </Alert>
                   )}
                   <SettingsStatusLine
