@@ -178,11 +178,12 @@ tinyagents = { version = "2.1", features = ["sqlite", "multimodal"] }
 # (=0.40) so one bundled SQLite links. The submodule intentionally tracks
 # reviewed upstream main commits; keep this semver requirement compatible with
 # the vendored crate version.
-# `git-diff` and `wiki-git` are NOT here: they are pulled in by the
-# `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
-# enters the graph. This crate holds no `git2` pin of its own to align — the
-# gate turns tinycortex's on, and tinycortex is the sole libgit2 link in the
-# graph. Everything else tinycortex needs is unconditional.
+# `git-diff` and `wiki-git` are NOT here, and there is no longer a gate that
+# turns them on: the `memory-git` feature and the `memory::diff` RPC/tool
+# surface it guarded were deleted, taking the git2/libgit2-sys/libz-sys cohort
+# out of every configuration. tinycortex remains the sole libgit2 link in the
+# graph, and nothing in this crate enables it. Everything else tinycortex needs
+# is unconditional.
 tinycortex = { version = "0.1", features = [
     "obsidian",
     "persona",
@@ -362,15 +363,14 @@ rand = "0.10"
 dirs = "5"
 sha2 = "0.10"
 # NO `git2` HERE, DELIBERATELY — do not add it back. Every use of libgit2 in
-# the memory stack lives in tinycortex: the diff ledger (`memory::diff`), the
-# wiki mirror (`memory::store::content::wiki_git`), and the persona git-history
-# reader. This crate holds the RPC surface, the agent tool and the gate around
-# them, and never touches a repository itself, so a direct dependency here was
-# a declaration with no `use` behind it. Re-declaring it costs nothing in
-# crates (the `memory-git` gate pulls tinycortex's copy either way) but invites
-# a second major pin, and `git2` sets `links = "git2"` — two majors in one
-# graph is a hard cargo error, not a warning. Test code that must inspect a
-# ledger goes through `tinycortex::git2`.
+# the memory stack lives in tinycortex: the diff ledger, the wiki mirror
+# (`memory::store::content::wiki_git`), and the persona git-history reader.
+# This crate never touches a repository itself, so a direct dependency here
+# would be a declaration with no `use` behind it. It also invites a second
+# major pin, and `git2` sets `links = "git2"` — two majors in one graph is a
+# hard cargo error, not a warning. Nothing here now enables tinycortex's
+# `git-diff` / `wiki-git` features either, so libgit2 is out of the graph
+# entirely; re-adding a gate for it means re-adding the cohort.
 hmac = "0.12"
 # Archive handling for the Piper voice installer and the document tools. The
 # Node.js and Python toolchain archives are no longer unpacked here — the
