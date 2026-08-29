@@ -292,6 +292,9 @@
   --animate-float: float 3s ease-in-out infinite;
   --animate-ticker: ticker 30s linear infinite;
   --animate-wiggle: wiggle 0.5s ease-in-out;
+  /* The composer's ambient shadow drift — see the `composerShadowDrift`
+     keyframes below for why it is slow and why the offsets stay small. */
+  --animate-composer-shadow: composerShadowDrift 18s ease-in-out infinite;
 
   --backdrop-blur-xs: 2px;
   --backdrop-blur-sm: 4px;
@@ -404,6 +407,37 @@
     }
     50% {
       opacity: 0.5;
+    }
+  }
+  /* Drifts the composer's cast shadow horizontally, as though the light above
+     it moves. Deliberately slow (18s) and small (±8px on a 44px blur): the
+     point is that you never catch it moving, only notice the composer feels
+     lit rather than stamped on. Anything faster reads as a bug.
+
+     Only the x offsets change — y, blur and spread are identical in every
+     frame. Animating the blur would make the shadow pulse in and out of focus,
+     which no light source does; animating y would make the composer look like
+     it is bobbing.
+
+     The two layers drift by different amounts (4px near, 8px far) and in the
+     same direction. That is parallax: the further a shadow is cast, the more a
+     given change in light angle moves it. Equal drift would read as the whole
+     shadow sliding sideways as one flat sheet.
+
+     Paired with `motion-reduce:animate-none` at the call site, which falls back
+     to the static `shadow-[…]` utility beside it — so the composer keeps its
+     elevation when motion is off, it just stops moving. */
+  @keyframes composerShadowDrift {
+    0%,
+    100% {
+      box-shadow:
+        -4px 8px 12px -4px rgb(0 0 0 / 0.34),
+        -8px 30px 44px -16px rgb(0 0 0 / 0.48);
+    }
+    50% {
+      box-shadow:
+        4px 8px 12px -4px rgb(0 0 0 / 0.34),
+        8px 30px 44px -16px rgb(0 0 0 / 0.48);
     }
   }
   @keyframes float {
