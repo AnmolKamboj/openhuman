@@ -52,20 +52,6 @@ export function ThreadList({
   return (
     // Card background / rounded corners come from TwoPanelLayout's pane styling.
     <div className="h-full flex flex-col">
-      {/* Section header: a muted group label alone. It used to dock the "new
-          conversation" affordance on its right as a 20px icon square; that is a
-          row in the list below now, in the same shape as every other row, so
-          the header is purely a group label — the same idiom the settings
-          sidebar's group headings use.
-
-          `pt-0`, not `pt-4`: projected into the app sidebar this list sits under
-          a separator that already owns the gap, and a top pad here stacked on
-          top of it. Spacing above this list belongs to whatever precedes it. */}
-      <div className="flex shrink-0 items-center px-3 pb-1.5 pt-0">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
-          {t('chat.conversationsHeading')}
-        </span>
-      </div>
       {/* Rows carry no padding gutter of their own — a thread pill spans the
           full width the scroll container gives it, so its hover/selected fill
           reads as the width of the list rather than a floating inset card, with
@@ -106,9 +92,12 @@ export function ThreadList({
         {/* "New conversation" as a row, not a header icon. It is the same
             affordance as a thread row — pick a conversation to work in — so it
             takes the same shape: `h-8` pill, same radius, same hover fill, same
-            14px label, sitting in the same column. As a 20px icon docked in the
-            header it was both the smallest hit target in the sidebar and the
-            only control there that did not look like the thing it produced.
+            14px label, sitting in the same column. As a 20px icon docked in a
+            section header it was both the smallest hit target in the sidebar
+            and the only control there that did not look like the thing it
+            produced. That header is gone with it: it was a group label for a
+            list that is already the only thing in its region, under a separator
+            that already divides it from the nav above.
 
             A `<button>` rather than a `div[role=button]` like the thread rows:
             those rows carry nested action buttons (rename, delete) and cannot
@@ -116,16 +105,25 @@ export function ThreadList({
             the role and key handling. This row has no children, so it can be
             the real element and get Enter/Space, focus and semantics for free.
 
-            `text-content-muted` matches an unselected thread row rather than
-            asserting itself — the list's emphasis belongs to whichever
-            conversation is selected. */}
+            Outline, not filled: a solid accent button would make the loudest
+            thing in the sidebar an action nobody needs most of the time, and it
+            would outrank the selected conversation, which is the one row that
+            should carry emphasis. A border states the affordance and leaves
+            `text-content-muted` matching an unselected thread row. The border
+            uses the same `content-faint` token as the composer's outline, so
+            the two read as one edge language rather than two.
+
+            `mb-1` on top of the column's `gap-0.5`: this row is a different
+            kind of thing from the conversations under it, and an outlined box
+            sitting on the exact rhythm of the plain rows reads as the first
+            item in the list rather than as its own control. */}
         <button
           type="button"
           data-testid="new-thread-button"
           data-analytics-id="chat-sidebar-new-thread"
           onClick={onCreateThread}
           title={t('chat.newThreadShortcut')}
-          className="group flex h-8 w-full flex-none cursor-pointer items-center gap-1.5 rounded-md px-3 text-left text-[14px] text-content-muted transition-colors hover:bg-surface/40 hover:text-content-secondary dark:hover:bg-surface/60">
+          className="group mb-1 flex h-8 w-full flex-none cursor-pointer items-center gap-1.5 rounded-md border border-content-faint/35 px-3 text-left text-[14px] text-content-muted transition-colors hover:border-content-faint/60 hover:bg-surface/40 hover:text-content-secondary dark:hover:bg-surface/60">
           <svg
             className="h-3.5 w-3.5 flex-none"
             fill="none"
