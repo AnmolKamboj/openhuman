@@ -2941,11 +2941,6 @@ pub fn run() {
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
     builder
         .setup(move |app| {
-            // Structured WhatsApp Web data store lives shell-side. Register the
-            // in-process native handlers so the core agent tools (list/search)
-            // and the scanner ingest path can reach the SQLite store over the
-            // native request bus. No handler = graceful degradation core-side.
-
             #[cfg(windows)]
             {
                 // `register_all` writes HKCU\Software\Classes\openhuman so the
@@ -3332,12 +3327,11 @@ pub fn run() {
             core_rpc::relay_http_rpc,
             overlay_parent_rpc_url,
             process_diagnostics_list_owned,
-            // Artifact export commands — both cross-platform (#3162). The
-            // Downloads command was previously macOS/Linux-gated, but the
-            // `directories` + `tokio::fs::copy` flow compiles on Windows too,
-            // and the Save-As fallback needs it there (CodeRabbit on #4127).
+            // Artifact export — cross-platform. Previously macOS/Linux-gated,
+            // but the `directories` + `tokio::fs::copy` flow compiles on Windows
+            // too (CodeRabbit on #4127). The Save-As dialog that used to sit in
+            // front of this went with the shell's `rfd` dependency.
             artifact_commands::download_artifact_to_downloads,
-            // Structured WhatsApp data (store lives shell-side).
             check_core_update,
             apply_core_update,
             check_app_update,
