@@ -168,13 +168,13 @@ const FeedbackPanel = () => {
             <h2 className="flex items-center gap-2 font-title text-base font-semibold text-content">
               {t('feedback.board')}
               {total > 0 && (
-                <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs font-medium tabular-nums text-content-muted dark:bg-white/10">
+                <span className="rounded-full bg-content-muted/10 px-2 py-0.5 text-xs font-medium tabular-nums text-content-muted">
                   {total}
                 </span>
               )}
             </h2>
 
-            <div className="inline-flex rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong dark:bg-white/3">
+            <div className="inline-flex rounded-xl border border-line bg-surface-muted p-0.5 dark:border-line-strong">
               {SORTS.map(option => (
                 <button
                   key={option}
@@ -227,7 +227,7 @@ const FeedbackPanel = () => {
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-28 animate-pulse rounded-2xl border border-line bg-surface-subtle dark:bg-white/5"
+                  className="h-28 animate-pulse rounded-2xl border border-line bg-surface-subtle"
                 />
               ))}
             </div>
@@ -245,7 +245,7 @@ const FeedbackPanel = () => {
             </div>
           ) : loadError ? null : (
             <div className="rounded-2xl border border-dashed border-line py-12 text-center">
-              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-subtle dark:bg-white/5">
+              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-subtle">
                 <svg
                   className="h-5 w-5 text-content-faint"
                   fill="none"
