@@ -188,6 +188,17 @@ export default [
               message:
                 "Import UI primitives from the 'components/ui' barrel (src/components/ui) instead of a deep path into the primitive file.",
             },
+            // Repeated verbatim from the global block below. Flat config
+            // REPLACES a rule's options rather than merging them, so a later
+            // block that also sets `no-restricted-imports` would otherwise
+            // silently drop whichever patterns it does not itself list. Both
+            // halves therefore have to travel together in every block that
+            // configures this rule.
+            {
+              group: ['**/settings/controls/*', '!**/settings/controls/index'],
+              message:
+                "Import settings controls from the 'settings/controls' barrel instead of a deep path into the control file.",
+            },
           ],
         },
       ],
