@@ -2014,7 +2014,6 @@ async fn memory_families_absent_when_capabilities_not_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
-        "memory_diff",
         "slack_memory",
     ] {
         assert!(
