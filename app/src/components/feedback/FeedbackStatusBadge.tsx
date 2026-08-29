@@ -20,7 +20,10 @@ const STATUS_LABEL_KEYS: Record<FeedbackStatus, string> = {
  * Style for a status this build does not know about. Neutral on purpose — an
  * unrecognised status should not borrow the visual weight of "completed".
  */
-const UNKNOWN_STATUS_STYLE = { pill: 'bg-content-muted/10 text-content-muted', dot: 'bg-content-faint' };
+const UNKNOWN_STATUS_STYLE = {
+  pill: 'bg-content-muted/10 text-content-muted',
+  dot: 'bg-content-faint',
+};
 
 export default function FeedbackStatusBadge({ status }: { status: FeedbackStatus }) {
   const { t } = useT();
