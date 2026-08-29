@@ -48,13 +48,22 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.12.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.3";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
 /// Deliberately not `Capabilities::all()`. `Capability::ALL` is what the
 /// *contract crate this host compiles against* declares; the loaded `cdylib` is
 /// a specific release and may serve fewer families.
+///
+/// Re-read at tag `v1.13.3`. v1.13.0 added a `MemoryEvent` variant and two
+/// additive audit fields, v1.13.1 fixed the module's source-registry path,
+/// v1.13.2 fixed the `Embed` wire order, and v1.13.3 fixed folder-source path
+/// resolution; none of those touched families. tinymemory#110 (in v1.13.2)
+/// did add `Scoring`
+/// (`ExtractEntities`, `EmbedText`, `EmbedderSlug`), which the artifact serves
+/// and which `as_scoring` below forwards, so it is advertised here in the same
+/// change, the way `Episodic` arrived with `as_episodic`.
 ///
 /// Read at tag `v1.3.0`. Unchanged from v1.2.0 — the release added members
 /// within existing families (`retry_failed`, the diagnostics trio,
@@ -74,7 +83,7 @@ pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.12.0";
 /// **Widen this only together with the `version` bump in
 /// [`super::registry`].** `the_capability_list_matches_the_pinned_release`
 /// fails if the two drift.
-const ARTIFACT_CAPABILITIES: &[Capability] = &[
+pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     Capability::Core,
     Capability::Recall,
     Capability::Ingest,
@@ -101,6 +110,10 @@ const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // module's declared `methods` list at that tag, which serves all ten.
     Capability::SourceSync,
     Capability::CodingSessions,
+    // Arrived in v1.13.2 (tinymemory#110): entity extraction, text embedding
+    // and embedder identification, served by the module's engine and forwarded
+    // by `MemoryScoring for ModuleMemoryProvider` below.
+    Capability::Scoring,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -171,10 +184,10 @@ use tinymemory_api::provider::{
     FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore, MemoryDiff,
     MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest,
     MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider,
-    MemoryRecall, MemoryRetrieval, MemorySourceSink, MemorySourceSync, MemoryToolMemory,
-    MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore, ProfileFacet,
-    RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
-    SourceTotal, UserState,
+    MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink, MemorySourceSync,
+    MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord, PersonScore,
+    ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, SourceTotal, UserState,
 };
 use tinymemory_api::recall::OwnedRecallOpts;
 use tinymemory_api::tool_memory::ToolMemoryRule;
@@ -185,6 +198,7 @@ use tinymemory_api::types::{
     StoredMemoryDocument,
 };
 use tinymemory_api::wire;
+use tinymemory_bus::names::methods;
 
 use super::{host, ops, registry};
 use crate::openhuman::config::Config;
@@ -548,6 +562,9 @@ impl MemoryProvider for ModuleMemoryProvider {
     fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
         artifact_serves(Capability::Episodic).then_some(self as &dyn MemoryEpisodic)
     }
+    fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
+        artifact_serves(Capability::Scoring).then_some(self as &dyn MemoryScoring)
+    }
 }
 
 #[async_trait]
@@ -672,7 +689,7 @@ impl MemoryPortability for ModuleMemoryProvider {
 }
 
 macro_rules! module_call {
-    ($self:expr, $operation:literal, $method:literal, $args:expr) => {
+    ($self:expr, $operation:literal, $method:expr, $args:expr) => {
         $self
             .proxy($operation)
             .await?
@@ -1085,6 +1102,26 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
 }
 
+/// Bus deadline for the three calls that run a whole source sync inside the
+/// module: `RunConnectionSync`, `RunSourceSync` and `BootstrapConnection`.
+///
+/// tinybus gives every call a 30 s default deadline if nobody sets one, and a
+/// sync is routinely longer than that: one Gmail page is ~31 s end to end, an
+/// initial bootstrap of a connection is minutes. With the default, the caller
+/// was released with "call to `RunSourceSync` timed out after 30000ms" while
+/// the module kept fetching and ingesting, and finished; the UI reported a
+/// failure for work that succeeded (openhuman#5820). Same failure class, same
+/// fix as `IngestCodingSessions` above: the deadline here is the wedged-forever
+/// backstop tinybus requires, not a ceiling anyone is meant to hit.
+///
+/// Sized from the frontend's clamp, `PER_CALL_TIMEOUT_MAX_MS = 600 s`
+/// (`app/src/services/coreRpcClient.ts`): that is the longest wait any RPC
+/// caller can observe, so the bus must outlast it, plus [`INGEST_BUS_GRACE`]
+/// so the client's own abort, with its clean message, is the one that fires
+/// first when a run really does wedge.
+const SOURCE_SYNC_BUS_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(600).saturating_add(INGEST_BUS_GRACE);
+
 #[async_trait]
 impl MemorySourceSync for ModuleMemoryProvider {
     async fn run_connection_sync(
@@ -1092,27 +1129,32 @@ impl MemorySourceSync for ModuleMemoryProvider {
         toolkit: &str,
         connection_id: &str,
     ) -> Result<SyncRunOutcome, MemoryError> {
-        module_call!(
-            self,
-            "run_connection_sync",
-            "RunConnectionSync",
-            (toolkit, connection_id)
-        )
+        self.proxy("run_connection_sync")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("RunConnectionSync", (toolkit, connection_id))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn run_source_sync(&self, source_id: &str) -> Result<SyncRunOutcome, MemoryError> {
-        module_call!(self, "run_source_sync", "RunSourceSync", (source_id,))
+        self.proxy("run_source_sync")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("RunSourceSync", (source_id,))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn bootstrap_connection(
         &self,
         toolkit: &str,
         connection_id: &str,
     ) -> Result<(), MemoryError> {
-        module_call!(
-            self,
-            "bootstrap_connection",
-            "BootstrapConnection",
-            (toolkit, connection_id)
-        )
+        self.proxy("bootstrap_connection")
+            .await?
+            .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
+            .call("BootstrapConnection", (toolkit, connection_id))
+            .await
+            .map_err(|error| from_bus(&error))
     }
     async fn is_toolkit_syncable(&self, toolkit: &str) -> Result<bool, MemoryError> {
         module_call!(self, "is_toolkit_syncable", "IsToolkitSyncable", (toolkit,))
@@ -1615,5 +1657,23 @@ impl MemoryProfile for ModuleMemoryProvider {
             .call::<bool>("WorkflowIdentityMatches", (key_pattern, canonical_value))
             .await
             .unwrap_or(false)
+    }
+}
+
+#[async_trait]
+impl MemoryScoring for ModuleMemoryProvider {
+    async fn extract_entities(&self, query: &str) -> Result<Vec<String>, MemoryError> {
+        module_call!(
+            self,
+            "extract_entities",
+            methods::EXTRACT_ENTITIES,
+            (query,)
+        )
+    }
+    async fn embed_text(&self, text: &str) -> Result<Vec<f32>, MemoryError> {
+        module_call!(self, "embed_text", methods::EMBED_TEXT, (text,))
+    }
+    async fn embedder_slug(&self) -> Result<String, MemoryError> {
+        module_call!(self, "embedder_slug", methods::EMBEDDER_SLUG, ())
     }
 }

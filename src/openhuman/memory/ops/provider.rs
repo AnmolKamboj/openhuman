@@ -211,6 +211,10 @@ mod tests {
                 "profile",
                 "recall",
                 "retrieval",
+                // Added with tinymemory v1.13.0: the MemoryScoring bus family
+                // (#5560). Widened deliberately — the wire surface the frontend
+                // reads must be an explicit decision, not a silent addition.
+                "scoring",
                 "source_sync",
                 "sources",
                 "tool_memory",

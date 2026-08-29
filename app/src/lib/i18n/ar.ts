@@ -554,6 +554,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': 'قبل {n} ي',
   'sync.status.success': 'نجاح',
   'sync.status.failed': 'فشل',
+  'sync.status.partial': 'تم الجلب، وفشل الإدراج في الذاكرة',
   'common.error': 'خطأ',
   'common.success': 'نجاح',
   'common.back': 'رجوع',
@@ -1590,11 +1591,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'وكل الوصول إلى شبكة الإنترنت مغلق - لا يمكن للمساعد فتح أو قراءة أي موقع على شبكة الإنترنت.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'بحث في الإعدادات…',
-  'settings.settingsSearch.ariaLabel': 'بحث في الإعدادات',
-  'settings.settingsSearch.clear': 'مسح البحث',
-  'settings.settingsSearch.resultsLabel': 'نتائج البحث',
-  'settings.settingsSearch.noResults': 'لا توجد إعدادات مطابقة لـ ”{query}“',
   'settings.embeddings.title': 'التضمينات',
   'settings.embeddings.description':
     'اختر مزود التضمينات الذي يحول الذاكرة إلى متجهات للبحث الدلالي. تغيير المزود أو النموذج أو الأبعاد يبطل المتجهات المخزنة ويتطلب إعادة تعيين كاملة للذاكرة.',
@@ -2711,8 +2707,6 @@ const messages: TranslationMap = {
   'reflections.act': 'تنفيذ',
   'reflections.dismiss': 'تجاهل',
   'reflections.viewConversation': 'عرض',
-  'whatsapp.chatsSynced': 'محادثات مزامنة',
-  'whatsapp.chatSynced': 'محادثة مزامنة',
   'sync.active': 'نشط',
   'sync.recent': 'الأخيرة',
   'sync.idle': 'خامل',
@@ -2807,6 +2801,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'لا',
   'memorySources.allIn.success': 'تم تمكين جميع المصادر بدون قيود. بدأت المزامنة.',
   'memorySources.allIn.failed': 'تعذّر تطبيق خيار الكل. يرجى المحاولة مرة أخرى.',
+  'memorySources.allIn.allFailed': 'تعذّر بدء أي مزامنة. تحقق من كل مصدر لمعرفة السبب.',
+  'memorySources.allIn.partial': 'المزامنات التي بدأت: {triggered}. التي تعذّر بدؤها: {failed}.',
   'memorySources.settings.button': 'الإعدادات',
   'memorySources.settings.title': 'إعدادات المزامنة',
   'memorySources.settings.maxPrs': 'أقصى عدد لطلبات السحب',
@@ -5247,7 +5243,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'لون موحّد',
   'settings.theme.backdrop.image': 'صورة',
   'settings.theme.backdropImageUrl': 'رابط صورة الخلفية',
-  'settings.theme.backdropDots': 'إظهار نقاط الخلفية',
   'settings.theme.backdropHint':
     'تعرض الشبكة التدرّج المتحرك؛ ويستخدم اللون الموحّد خلفية ثابتة؛ وترسم الصورة خلفيتك الخاصة.',
   'settings.theme.autoForkHint': 'تعديل سمة جاهزة يحفظ تغييراتك تلقائيًا كسمة مخصّصة جديدة.',
@@ -5813,9 +5808,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'إدارة الاتصالات',
   'walkthrough.steps.connectionsTab.content':
     'Connections متاح دائماً في التنقل الرئيسي عندما تريد إضافة الخدمات أو تعديلها.',
-  'walkthrough.steps.feedbackTab.title': 'إرسال ملاحظات',
-  'walkthrough.steps.feedbackTab.content':
-    'يوفر Feedback مكاناً مباشراً للإبلاغ عن المشاكل أو طلب التحسينات.',
   'walkthrough.steps.allSet.title': 'كل شيء جاهز!',
   'walkthrough.steps.allSet.content':
     'ترك لك المساعد رسالة ترحيب: هذه مساحتك للدردشة وطرح الأسئلة وتطوير الأفكار. استمتع!',
@@ -5919,7 +5911,6 @@ const messages: TranslationMap = {
     'تكوين إعدادات فرز الذكاء الاصطناعي لمشغلات التكامل Composio',
   'memory.sourceFilterAria': 'التصفية حسب المصدر',
   'calls.comingSoonDescription': 'المكالمات بمساعدة الذكاء الاصطناعي قادمة قريباً. ابقَ على اطلاع.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'المظهر',
   'settings.appearanceDesc': 'اختر لونًا فاتحًا أو داكنًا أو قم بمطابقة سمة النظام لديك',
   'settings.mascot': 'التميمة',
@@ -6591,6 +6582,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'النموذج المحلي غير متاح',
   'userErrors.localModelUnavailable.body':
     'لا يمكن الوصول إلى Ollama على النقطة الطرفية المُهيأة، أو أن النموذج المطلوب غير مثبّت عليها. شغّل Ollama ونزّل النموذج على تلك النقطة الطرفية، أو حوّل هذا العمل إلى مزوّد سحابي.',
+  'userErrors.memoryStoreCorrupt.title': 'تلف فهرس الذاكرة',
+  'userErrors.memoryStoreCorrupt.body':
+    'كانت قاعدة بيانات شجرة الذاكرة تالفة. تم الاحتفاظ بالملف التالف بجوار بيانات الذاكرة وأعيد إنشاء فهرس فارغ. أعد مزامنة مصادر الذاكرة لإعادة تعبئته.',
+  'userErrors.action.openMemorySync': 'إعادة مزامنة الذاكرة',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
   'userErrors.scope.workspace': 'مساحة العمل',

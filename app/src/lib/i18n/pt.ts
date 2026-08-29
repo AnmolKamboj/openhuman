@@ -576,6 +576,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': 'há {n} d',
   'sync.status.success': 'Sucesso',
   'sync.status.failed': 'Falhou',
+  'sync.status.partial': 'Conteúdo obtido, mas falhou ao indexar na memória',
   'common.error': 'Erro',
   'common.success': 'Sucesso',
   'common.back': 'Voltar',
@@ -1658,11 +1659,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'Todo o acesso à web está bloqueado: o assistente não pode abrir ou ler nenhum site.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'Pesquisar configurações…',
-  'settings.settingsSearch.ariaLabel': 'Pesquisar configurações',
-  'settings.settingsSearch.clear': 'Limpar pesquisa',
-  'settings.settingsSearch.resultsLabel': 'Resultados da pesquisa',
-  'settings.settingsSearch.noResults': 'Nenhuma configuração encontrada para “{query}”',
   'settings.embeddings.title': 'Incorporações',
   'settings.embeddings.description':
     'Escolha qual provedor de embeddings converte memória em vetores para busca semântica. Alterar o provedor, modelo ou dimensões invalida vetores armazenados e requer uma redefinição completa da memória.',
@@ -2822,8 +2818,6 @@ const messages: TranslationMap = {
   'reflections.act': 'Agir',
   'reflections.dismiss': 'Dispensar',
   'reflections.viewConversation': 'Ver',
-  'whatsapp.chatsSynced': 'chats sincronizados',
-  'whatsapp.chatSynced': 'chat sincronizado',
   'sync.active': 'Ativo',
   'sync.recent': 'Recente',
   'sync.idle': 'Inativo',
@@ -2921,6 +2915,10 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Não',
   'memorySources.allIn.success': 'Todas as fontes ativadas sem limites. Sincronização iniciada.',
   'memorySources.allIn.failed': 'Não foi possível ativar tudo. Por favor, tente novamente.',
+  'memorySources.allIn.allFailed':
+    'Nenhuma sincronização pôde começar. Verifique cada fonte para ver o motivo.',
+  'memorySources.allIn.partial':
+    'Sincronizações iniciadas: {triggered}. Não foi possível iniciar: {failed}.',
   'memorySources.settings.button': 'Configurações',
   'memorySources.settings.title': 'Configurações de sincronização',
   'memorySources.settings.maxPrs': 'Máximo de pull requests',
@@ -5451,7 +5449,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'Sólido',
   'settings.theme.backdrop.image': 'Imagem',
   'settings.theme.backdropImageUrl': 'URL da imagem de fundo',
-  'settings.theme.backdropDots': 'Mostrar pontos de fundo',
   'settings.theme.backdropHint':
     'A malha mostra o gradiente animado; Sólido usa um fundo plano; Imagem exibe o seu próprio.',
   'settings.theme.autoForkHint':
@@ -6035,9 +6032,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'Gerencie conexões',
   'walkthrough.steps.connectionsTab.content':
     'Connections está sempre na navegação principal quando você quiser adicionar ou ajustar serviços.',
-  'walkthrough.steps.feedbackTab.title': 'Enviar feedback',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback oferece um lugar direto para relatar problemas ou pedir melhorias.',
   'walkthrough.steps.allSet.title': 'Tudo pronto!',
   'walkthrough.steps.allSet.content':
     'Seu assistente deixou uma nota de boas-vindas: este é seu espaço para conversar, perguntar ou explorar ideias. Divirta-se!',
@@ -6150,7 +6144,6 @@ const messages: TranslationMap = {
     'Definir configurações de triagem de IA para gatilhos de integração Composio',
   'memory.sourceFilterAria': 'Filtrar por origem',
   'calls.comingSoonDescription': 'Chamadas assistidas por IA chegam em breve. Fique ligado.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Aparência',
   'settings.appearanceDesc': 'Escolha claro, escuro ou combine com o tema do seu sistema',
   'settings.mascot': 'Mascote',
@@ -6853,6 +6846,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Modelo local indisponível',
   'userErrors.localModelUnavailable.body':
     'O Ollama não está acessível no endpoint configurado, ou o modelo necessário não está instalado nele. Inicie o Ollama e baixe o modelo nesse endpoint, ou mude este trabalho para um provedor na nuvem.',
+  'userErrors.memoryStoreCorrupt.title': 'O índice de memória foi corrompido',
+  'userErrors.memoryStoreCorrupt.body':
+    'O banco de dados da árvore de memória estava danificado. O arquivo danificado foi preservado ao lado dos seus dados de memória e um índice vazio foi reconstruído. Sincronize novamente suas fontes de memória para preenchê-lo.',
+  'userErrors.action.openMemorySync': 'Ressincronizar memória',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarefa agendada',
   'userErrors.scope.workspace': 'Espaço de trabalho',

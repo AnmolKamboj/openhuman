@@ -174,10 +174,39 @@ impl ArchivistHook {
                 );
             }
             Err(e) => {
-                tracing::warn!(
-                    "[archivist] tree ingest failed (non-fatal): source_id={source_id} \
-                     session={session_id} segment={segment_id} error={e}"
-                );
+                // Corruption is not non-fatal (openhuman#5820): a malformed
+                // chunk store fails every segment identically, and this warn
+                // was one of the paths that let it run silently for 34
+                // minutes. The driver's engine owns the recovery (its queue
+                // worker quarantines + rebuilds within one poll interval);
+                // this side's job is to escalate visibility — log at ERROR and
+                // put a durable notice in front of the user, once per process
+                // rather than once per segment. The engine's own quarantine
+                // publishes the same `memory_store_corrupt` kind afterwards;
+                // that is not a second entry, because the notice store keys on
+                // the descriptor id (kind + scope) and refreshes the existing
+                // one. This early notice is what covers damage the queue worker
+                // never walks. The episodic write above is still the source of
+                // truth either way, so the turn itself is never failed from
+                // here.
+                let rendered = e.to_string();
+                if crate::openhuman::memory::tree::health::user_error::is_corrupt_store_error(
+                    &rendered,
+                ) {
+                    tracing::error!(
+                        "[archivist] tree ingest hit a CORRUPT memory store: \
+                         source_id={source_id} session={session_id} segment={segment_id} \
+                         error={rendered}"
+                    );
+                    crate::openhuman::memory::tree::health::user_error::notice_corrupt_store_once(
+                        "archivist tree ingest",
+                    );
+                } else {
+                    tracing::warn!(
+                        "[archivist] tree ingest failed (non-fatal): source_id={source_id} \
+                         session={session_id} segment={segment_id} error={rendered}"
+                    );
+                }
             }
         }
     }

@@ -323,7 +323,7 @@ fn capability_allowed_in(caps: Capabilities, capability: Option<Capability>) -> 
 static REGISTRY: OnceLock<Vec<GroupedController>> = OnceLock::new();
 
 /// Internal-only controllers: registered for RPC dispatch but NOT in the agent-facing
-/// schema catalog.  These handlers are callable by trusted callers (e.g. the Tauri scanner)
+/// schema catalog.  These handlers are callable by trusted callers (e.g. the desktop shell)
 /// but should not be advertised to agents via tool listings or schema discovery.
 static INTERNAL_REGISTRY: OnceLock<Vec<GroupedController>> = OnceLock::new();
 
@@ -849,13 +849,6 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         Some(Capability::Sources),
         crate::openhuman::memory::sources::all_memory_sources_registered_controllers(),
     );
-    // Memory diff — snapshot-based change tracking for memory sources
-    push_cap(
-        &mut controllers,
-        DomainGroup::Memory,
-        Some(Capability::Diff),
-        crate::openhuman::memory::diff::all_memory_diff_registered_controllers(),
-    );
     // Referral and growth tracking
     push(
         &mut controllers,
@@ -969,11 +962,6 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Desktop,
         crate::openhuman::desktop::notifications::all_notifications_registered_controllers(),
     );
-    // Structured WhatsApp Web data has NO core RPC controllers: the SQLite
-    // store + ingest + list/search moved to the Tauri shell
-    // (`app/src-tauri/src/whatsapp_data/`). The agent's read-only query tools
-    // live in `openhuman::channels::whatsapp_data::tools` and reach the shell store via
-    // the in-process native request bus, not the controller registry.
     // Mobile device pairing and management
     push(
         &mut controllers,
@@ -1028,11 +1016,9 @@ fn build_registered_controllers() -> Vec<GroupedController> {
 /// Aggregates controllers that are registered for RPC routing but NOT exposed to agents.
 ///
 /// These are write-path or internal-only handlers callable by trusted callers
-/// (e.g. the Tauri scanner ingest path) that should not appear in agent tool listings.
+/// (e.g. the desktop shell) that should not appear in agent tool listings.
 fn build_internal_only_controllers() -> Vec<GroupedController> {
     let mut controllers = Vec::new();
-    // (whatsapp_data ingest is no longer a core RPC path — the scanner writes
-    // the shell-side store directly over the in-process native request bus.)
     // MCP write audit list: internal-only so the desktop UI/CLI can inspect
     // local write history without exposing cross-client history as an MCP tool.
     push(
@@ -1175,9 +1161,6 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         ),
         "memory_sources" => Some(
             "User-configured data connectors (Composio, folders, GitHub repos, RSS, web pages) that feed memory.",
-        ),
-        "memory_diff" => Some(
-            "Snapshot-based change tracking for memory sources — capture state, compute diffs, and surface changes to agents.",
         ),
         "referral" => Some("Referral codes, stats, and apply flows via the hosted backend API."),
         "run_ledger" => Some(

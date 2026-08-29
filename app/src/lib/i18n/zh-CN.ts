@@ -538,6 +538,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n}天前',
   'sync.status.success': '成功',
   'sync.status.failed': '失败',
+  'sync.status.partial': '已获取，但记忆摄取失败',
   'common.error': '错误',
   'common.success': '成功',
   'common.back': '返回',
@@ -1534,11 +1535,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': '全部阻止',
   'settings.search.accessBlockAllHint': '所有网页访问都已阻止，助手无法打开或阅读任何网站。',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': '搜索设置…',
-  'settings.settingsSearch.ariaLabel': '搜索设置',
-  'settings.settingsSearch.clear': '清除搜索',
-  'settings.settingsSearch.resultsLabel': '搜索结果',
-  'settings.settingsSearch.noResults': '未找到与“{query}”匹配的设置',
   'settings.embeddings.title': '向量嵌入',
   'settings.embeddings.description':
     '选择将记忆转换为语义搜索向量的嵌入提供商。更改提供商、模型或维度会使已存储的向量无效，需要完全重置记忆。',
@@ -2623,8 +2619,6 @@ const messages: TranslationMap = {
   'reflections.act': '执行',
   'reflections.dismiss': '忽略',
   'reflections.viewConversation': '查看',
-  'whatsapp.chatsSynced': '个对话已同步',
-  'whatsapp.chatSynced': '个对话已同步',
   'sync.active': '活跃',
   'sync.recent': '最近',
   'sync.idle': '空闲',
@@ -2719,6 +2713,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': '否',
   'memorySources.allIn.success': '所有来源已无限制启用。同步已开始。',
   'memorySources.allIn.failed': '无法应用全部启用。请重试。',
+  'memorySources.allIn.allFailed': '没有任何同步能够开始。请检查每个来源以了解原因。',
+  'memorySources.allIn.partial': '已开始同步：{triggered}。无法开始：{failed}。',
   'memorySources.settings.button': '设置',
   'memorySources.settings.title': '同步设置',
   'memorySources.settings.maxPrs': '最大拉取请求数',
@@ -5082,7 +5078,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': '纯色',
   'settings.theme.backdrop.image': '图片',
   'settings.theme.backdropImageUrl': '背景图片 URL',
-  'settings.theme.backdropDots': '显示背景圆点',
   'settings.theme.backdropHint': '网格显示动态渐变；纯色使用平面背景；图片使用你自己的背景。',
   'settings.theme.autoForkHint': '编辑预设主题会自动将更改保存为新的自定义主题。',
   'settings.theme.title': '主题工作室',
@@ -5624,8 +5619,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': '管理连接',
   'walkthrough.steps.connectionsTab.content':
     '想添加或调整服务时，Connections 始终可从主导航进入。',
-  'walkthrough.steps.feedbackTab.title': '发送反馈',
-  'walkthrough.steps.feedbackTab.content': 'Feedback 提供直接入口，用来报告问题或请求改进。',
   'walkthrough.steps.allSet.title': '全部就绪！',
   'walkthrough.steps.allSet.content':
     '你的助手留下了一条欢迎消息：这里就是你聊天、提问和整理想法的空间。祝你使用愉快！',
@@ -5726,7 +5719,6 @@ const messages: TranslationMap = {
   'devOptions.menuComposioTriggersDesc': '为 Composio 集成触发器配置 AI 分级设置',
   'memory.sourceFilterAria': '按来源过滤',
   'calls.comingSoonDescription': '人工智能辅助通话即将推出。敬请关注。',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': '外观',
   'settings.appearanceDesc': '选择浅色、深色或跟随系统主题',
   'settings.mascot': '吉祥物',
@@ -6377,6 +6369,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': '本地模型不可用',
   'userErrors.localModelUnavailable.body':
     '无法在配置的端点连接 Ollama，或所需模型未安装在该端点。请启动 Ollama 并在该端点拉取模型，或将此工作切换到云端提供商。',
+  'userErrors.memoryStoreCorrupt.title': '记忆索引已损坏',
+  'userErrors.memoryStoreCorrupt.body':
+    '记忆树使用的数据库已损坏。受损文件已保留在记忆数据旁边，并已重建一个空索引。请重新同步记忆来源以重新填充。',
+  'userErrors.action.openMemorySync': '重新同步记忆',
   'userErrors.scope.chat': '聊天',
   'userErrors.scope.cron': '定时任务',
   'userErrors.scope.workspace': '工作区',

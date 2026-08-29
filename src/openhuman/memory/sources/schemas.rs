@@ -594,6 +594,18 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     comment: "Number of sync tasks spawned.",
                     required: true,
                 },
+                FieldSchema {
+                    name: "sync_failed",
+                    ty: TypeSchema::U64,
+                    comment: "Number of enabled sources whose sync trigger failed (openhuman#5820).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "sync_errors",
+                    ty: TypeSchema::Array(Box::new(TypeSchema::String)),
+                    comment: "One `<source_id>: <error>` line per failed trigger; absent when none failed.",
+                    required: false,
+                },
             ],
         },
         "coding_session_status" => ControllerSchema {

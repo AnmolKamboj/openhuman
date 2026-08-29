@@ -52,6 +52,7 @@ use crate::openhuman::memory::api::provider::retrieval::{
     CoverWindowQuery, EntityMatch, FastRetrieveQuery, MemoryRetrieval, RetrievalHit,
     RetrievalResponse, SourceRetrievalQuery,
 };
+use crate::openhuman::memory::api::provider::scoring::MemoryScoring;
 use crate::openhuman::memory::api::provider::sessions::{
     CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
 };
@@ -234,6 +235,13 @@ decorator!(
     dyn MemoryProfile,
     as_profile,
     Profile
+);
+decorator!(
+    /// Guarded [`MemoryScoring`].
+    GuardedScoring,
+    dyn MemoryScoring,
+    as_scoring,
+    Scoring
 );
 
 // ── Ingest ───────────────────────────────────────────────────────────────────
@@ -1787,6 +1795,41 @@ impl MemorySourceSync for GuardedSourceSync {
         self.family()?
             .rebuild_from_raw_archive(tree_scope, archive_source_id)
             .await
+    }
+}
+
+// ── Scoring ──────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryScoring for GuardedScoring {
+    async fn extract_entities(&self, query: &str) -> Result<Vec<String>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Scoring,
+            "scoring.extract_entities",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.extract_entities(query).await
+    }
+
+    async fn embed_text(&self, text: &str) -> Result<Vec<f32>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Scoring,
+            "scoring.embed_text",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.embed_text(text).await
+    }
+
+    async fn embedder_slug(&self) -> Result<String, MemoryError> {
+        self.policy.admit_read(
+            Capability::Scoring,
+            "scoring.embedder_slug",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.embedder_slug().await
     }
 }
 

@@ -570,6 +570,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} दि. पहले',
   'sync.status.success': 'सफल',
   'sync.status.failed': 'विफल',
+  'sync.status.partial': 'प्राप्त हुआ, मेमोरी में दर्ज नहीं हुआ',
   'common.error': 'एरर',
   'common.success': 'सफल',
   'common.back': 'वापस',
@@ -1622,11 +1623,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'सभी वेब एक्सेस अवरुद्ध है - सहायक किसी भी वेबसाइट को खोल या पढ़ नहीं सकता है।',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'सेटिंग खोजें…',
-  'settings.settingsSearch.ariaLabel': 'सेटिंग खोजें',
-  'settings.settingsSearch.clear': 'खोज साफ़ करें',
-  'settings.settingsSearch.resultsLabel': 'खोज परिणाम',
-  'settings.settingsSearch.noResults': '“{query}” के लिए कोई सेटिंग नहीं मिली',
   'settings.embeddings.title': 'एम्बेडिंग्स',
   'settings.embeddings.description':
     'चुनें कि कौन सा एम्बेडिंग प्रदाता मेमोरी को सिमेंटिक सर्च के लिए वेक्टर में बदलता है। प्रदाता, मॉडल या आयाम बदलने से संग्रहीत वेक्टर अमान्य हो जाते हैं और पूर्ण मेमरी रीसेट की आवश्यकता होती है।',
@@ -2773,8 +2769,6 @@ const messages: TranslationMap = {
   'reflections.act': 'करें',
   'reflections.dismiss': 'हटाएं',
   'reflections.viewConversation': 'देखें',
-  'whatsapp.chatsSynced': 'चैट्स सिंक हुईं',
-  'whatsapp.chatSynced': 'चैट सिंक हुई',
   'sync.active': 'एक्टिव',
   'sync.recent': 'हाल का',
   'sync.idle': 'आइडल',
@@ -2871,6 +2865,9 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'नहीं',
   'memorySources.allIn.success': 'सभी स्रोत बिना सीमा के सक्रिय हुए। सिंक शुरू हो गई।',
   'memorySources.allIn.failed': 'सब चालू नहीं किया जा सका। कृपया पुनः प्रयास करें।',
+  'memorySources.allIn.allFailed':
+    'कोई भी सिंक शुरू नहीं हो सका। कारण जानने के लिए हर स्रोत को जाँचें।',
+  'memorySources.allIn.partial': 'शुरू हुए सिंक: {triggered}। शुरू नहीं हो सके: {failed}।',
   'memorySources.settings.button': 'सेटिंग',
   'memorySources.settings.title': 'सिंक सेटिंग',
   'memorySources.settings.maxPrs': 'अधिकतम पुल रिक्वेस्ट',
@@ -5367,7 +5364,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'ठोस',
   'settings.theme.backdrop.image': 'छवि',
   'settings.theme.backdropImageUrl': 'पृष्ठभूमि छवि URL',
-  'settings.theme.backdropDots': 'पृष्ठभूमि बिंदु दिखाएं',
   'settings.theme.backdropHint':
     'मेश एनिमेटेड ग्रेडिएंट दिखाता है; ठोस एक सपाट पृष्ठभूमि का उपयोग करता है; छवि आपकी अपनी पृष्ठभूमि बनाती है।',
   'settings.theme.autoForkHint':
@@ -5945,9 +5941,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'कनेक्शन प्रबंधित करें',
   'walkthrough.steps.connectionsTab.content':
     'सेवाएं जोड़ने या बदलने के लिए Connections हमेशा मुख्य नेविगेशन में उपलब्ध है।',
-  'walkthrough.steps.feedbackTab.title': 'फ़ीडबैक भेजें',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback समस्याएं बताने या सुधार मांगने की सीधी जगह है।',
   'walkthrough.steps.allSet.title': 'सब तैयार है!',
   'walkthrough.steps.allSet.content':
     'आपके सहायक ने स्वागत नोट छोड़ा है: यहां आप चैट कर सकते हैं, सवाल पूछ सकते हैं या विचार कर सकते हैं। आनंद लें!',
@@ -6055,7 +6048,6 @@ const messages: TranslationMap = {
     'Composio एकीकरण ट्रिगर के लिए AI ट्राइएज सेटिंग्स कॉन्फ़िगर करें',
   'memory.sourceFilterAria': 'स्रोत के अनुसार फ़िल्टर करें',
   'calls.comingSoonDescription': 'एआई-सहायक कॉल जल्द ही आ रही हैं। बने रहें।',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'दिखावट',
   'settings.appearanceDesc': 'प्रकाश, अंधेरा, या अपने सिस्टम थीम से मेल चुनें',
   'settings.mascot': 'शुभंकर',
@@ -6741,6 +6733,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'लोकल मॉडल उपलब्ध नहीं है',
   'userErrors.localModelUnavailable.body':
     'कॉन्फ़िगर किए गए एंडपॉइंट पर Ollama तक पहुँच नहीं है, या ज़रूरी मॉडल वहाँ इंस्टॉल नहीं है। Ollama शुरू करके उसी एंडपॉइंट पर मॉडल पुल करें, या इस काम को किसी क्लाउड प्रोवाइडर पर ले जाएँ।',
+  'userErrors.memoryStoreCorrupt.title': 'मेमोरी इंडेक्स खराब हो गया',
+  'userErrors.memoryStoreCorrupt.body':
+    'आपकी मेमोरी ट्री का डेटाबेस खराब हो गया था। खराब फाइल आपके मेमोरी डेटा के पास सुरक्षित रखी गई है, और एक खाली इंडेक्स फिर से बनाया गया है। इसे दोबारा भरने के लिए अपने मेमोरी स्रोतों को फिर से सिंक करें।',
+  'userErrors.action.openMemorySync': 'मेमोरी फिर से सिंक करें',
   'userErrors.scope.chat': 'चैट',
   'userErrors.scope.cron': 'निर्धारित कार्य',
   'userErrors.scope.workspace': 'वर्कस्पेस',

@@ -17,8 +17,8 @@
 //! can be honest, in `tinymemory`'s own module E2E against a real module.
 
 use super::{
-    serve_interfaces, ComposioCallbacks, CHAT_NAME, CHAT_PATH, COMPOSIO_NAME, COMPOSIO_PATH,
-    EMBEDDING_NAME, EMBEDDING_PATH, RUNTIME_NAME, RUNTIME_PATH,
+    serve_interfaces, ComposioCallbacks, EmbeddingCallbacks, CHAT_NAME, CHAT_PATH, COMPOSIO_NAME,
+    COMPOSIO_PATH, EMBEDDING_NAME, EMBEDDING_PATH, RUNTIME_NAME, RUNTIME_PATH,
 };
 use crate::openhuman::config::Config;
 use crate::openhuman::integrations::composio::client::create_composio_client;
@@ -298,4 +298,42 @@ async fn execute_forwards_an_absent_connection_pin_as_absent() {
         .expect_err("no client can be built for an empty workspace");
         assert_eq!(error.wire_name(), HOST_ERROR, "{error}");
     }
+}
+
+#[tokio::test]
+async fn embed_takes_its_four_arguments_in_the_order_the_module_sends_them() {
+    // `Embed` is `(provider, model, dimensions, texts)`. The module shipped
+    // sending three — `(model, dimensions, texts)` — so `dimensions` landed in
+    // `model` and every call was refused at decode with "invalid type:
+    // integer, expected a string"; nothing ingested in module mode got a vector
+    // (#5820). Same cheapest-honest-check as `Execute` above: the right arity
+    // gets as far as the host's provider factory, the wrong one never does.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let callbacks = EmbeddingCallbacks(scoped_config(dir.path()));
+
+    let error = callbacks
+        .call(
+            &MemberName::new("Embed").expect("member name"),
+            json!(["no-such-provider", "some-model", 4, ["alpha"]]),
+        )
+        .await
+        .expect_err("an unknown provider slug fails inside the host's factory");
+    assert_eq!(
+        error.wire_name(),
+        HOST_ERROR,
+        "a well-formed call must reach the host's provider factory: {error}"
+    );
+
+    let error = callbacks
+        .call(
+            &MemberName::new("Embed").expect("member name"),
+            json!(["some-model", 4, ["alpha"]]),
+        )
+        .await
+        .expect_err("the module's old three-argument form is malformed");
+    assert_eq!(
+        error.wire_name(),
+        "ai.tinyhumans.tinybus.Error.BadArguments",
+        "a malformed call must be refused at decode, not inside the host: {error}"
+    );
 }

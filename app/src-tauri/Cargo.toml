@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.17"
+version = "0.63.18"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -57,10 +57,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 directories = "5"
-# Native Save-As file dialog for artifact export (#3162). default-features
-# off + xdg-portal keeps Linux off GTK (the Downloads-copy fallback covers
-# headless CI where no portal is available); tokio drives the async backend.
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "process", "sync", "time", "net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"
@@ -93,17 +89,14 @@ sentry = { version = "0.47.0", default-features = false, features = ["backtrace"
 
 # Used by the imessage_scanner module.
 anyhow = "1.0"
-# SQLite for the shell-side whatsapp_data store (relocated from the core). All
-# platforms — the store persists on Windows/Linux/macOS. Pinned to match the
-# core crate so a single bundled SQLite is linked. (The macOS-only iMessage
-# scanner also uses rusqlite; this general dep covers it too.)
+# SQLite for the macOS iMessage scanner, which reads ~/Library/Messages/chat.db
+# read-only. Declared in the general table rather than under the macOS target so
+# `cargo check` on Linux/Windows resolves the same graph. Pinned to match the
+# core crate so a single bundled SQLite is linked.
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 parking_lot = "0.12"
 chrono = "0.4"
 async-trait = "0.1"
-# Desktop companion: native mic capture + POINT-tag parsing + session ids.
-cpal = "0.15"
-uuid = { version = "1", features = ["v4"] }
 # NOTE (#5541): `resvg` + `tiny-skia` were removed here. They existed only for
 # the mascot fake-camera pipeline, which rasterized the mascot SVG to a Y4M
 # frame for CEF's `--use-file-for-fake-video-capture` flag. That whole path
@@ -171,10 +164,6 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "file-logging",
     "contacts",
     "runtime-node",
-    # Without this the memory_diff RPC namespace is unknown-method in the
-    # shipped app, the memory_diff agent tool is absent, and the embedded
-    # driver stops advertising Capability::Diff — the product keeps all three.
-    "memory-git",
     # Declared "Default-OFF, product-ON" by its own gate comment in the root
     # Cargo.toml, but it reached neither the product set nor this list, so the
     # family was compiled in no configuration at all. Registration stays
@@ -282,6 +271,10 @@ motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
 # released tag) — same patch as the root Cargo world so both resolve the
 # in-tree SDK source. `git submodule update --init vendor/tinyagents` first.
 tinyagents = { path = "../../vendor/tinyagents" }
+# TinyTools rides in through tinyagents' own vendored checkout. The path must
+# match the one the core crate names, or cargo resolves two distinct packages
+# and the shell's `dyn Tool` stops being the core's. See the core manifest.
+tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools" }
 # TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.

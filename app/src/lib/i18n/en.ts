@@ -285,6 +285,7 @@ const en: TranslationMap = {
   'sync.timeAgo.days': '{n}d ago',
   'sync.status.success': 'Success',
   'sync.status.failed': 'Failed',
+  'sync.status.partial': 'Fetched, memory ingest failed',
   'common.error': 'Error',
   'common.success': 'Success',
   'common.back': 'Back',
@@ -1736,11 +1737,6 @@ const en: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'All web access is blocked: the assistant cannot open or read any website.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'Search settings…',
-  'settings.settingsSearch.ariaLabel': 'Search settings',
-  'settings.settingsSearch.clear': 'Clear search',
-  'settings.settingsSearch.resultsLabel': 'Search results',
-  'settings.settingsSearch.noResults': 'No settings found for “{query}”',
   // ─── Embeddings settings ───────────────────────────────────
   'settings.embeddings.title': 'Embeddings',
   'settings.embeddings.description':
@@ -3010,8 +3006,6 @@ const en: TranslationMap = {
   // Subconscious mode selector
 
   // WhatsApp
-  'whatsapp.chatsSynced': 'chats synced',
-  'whatsapp.chatSynced': 'chat synced',
 
   // Sync
   'sync.active': 'Active',
@@ -3121,6 +3115,8 @@ const en: TranslationMap = {
   'memorySources.allIn.cancel': 'No',
   'memorySources.allIn.success': 'All sources enabled with no limits. Syncing started.',
   'memorySources.allIn.failed': 'Could not apply All In. Please try again.',
+  'memorySources.allIn.allFailed': 'No sync could start. Check each source for the reason.',
+  'memorySources.allIn.partial': 'Syncs started: {triggered}. Could not start: {failed}.',
   'memorySources.settings.button': 'Settings',
   'memorySources.settings.title': 'Sync settings',
   'memorySources.settings.maxPrs': 'Max pull requests',
@@ -5982,7 +5978,6 @@ const en: TranslationMap = {
   'settings.theme.backdrop.solid': 'Solid',
   'settings.theme.backdrop.image': 'Image',
   'settings.theme.backdropImageUrl': 'Background image URL',
-  'settings.theme.backdropDots': 'Show background dots',
   'settings.theme.backdropHint':
     'Mesh shows the animated gradient; Solid uses a flat background; Image paints your own.',
   'settings.theme.builtInBadge': 'Preset',
@@ -6564,9 +6559,6 @@ const en: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'Manage connections',
   'walkthrough.steps.connectionsTab.content':
     'Connections is always available from the main nav when you want to add or adjust services.',
-  'walkthrough.steps.feedbackTab.title': 'Send feedback',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback gives you a direct place to report rough edges or ask for improvements.',
   'walkthrough.steps.allSet.title': "You're all set!",
   'walkthrough.steps.allSet.content':
     'Your assistant left you a welcome note - this is your space to chat, ask questions, or brainstorm. Have fun!',
@@ -6673,7 +6665,6 @@ const en: TranslationMap = {
     'Configure AI triage settings for Composio integration triggers',
   'memory.sourceFilterAria': 'Filter by source',
   'calls.comingSoonDescription': 'AI-assisted calls are coming soon. Stay tuned.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Appearance',
   'settings.appearanceDesc': 'Pick light, dark, or match your system theme',
   'settings.mascot': 'Mascot',
@@ -7153,6 +7144,10 @@ const en: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Local model unavailable',
   'userErrors.localModelUnavailable.body':
     'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
+  'userErrors.memoryStoreCorrupt.title': 'Memory index was corrupted',
+  'userErrors.memoryStoreCorrupt.body':
+    'The database behind your memory tree was damaged. The damaged file was preserved next to your memory data, and an empty index was rebuilt. Re-sync your memory sources to fill it again.',
+  'userErrors.action.openMemorySync': 'Re-sync memory',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
   'userErrors.scope.workspace': 'Workspace',

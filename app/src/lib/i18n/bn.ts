@@ -570,6 +570,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} দি. আগে',
   'sync.status.success': 'সফল',
   'sync.status.failed': 'ব্যর্থ',
+  'sync.status.partial': 'আনা হয়েছে, মেমোরিতে যুক্ত হয়নি',
   'common.error': 'ত্রুটি',
   'common.success': 'সফল',
   'common.back': 'পেছনে',
@@ -1625,11 +1626,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'সকল ওয়েব প্রবেশাধিকার ব্লক করা হয়েছে- সহকারী কোন ওয়েবসাইট খুলতে বা পড়তে পারে না।',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'সেটিংস খুঁজুন…',
-  'settings.settingsSearch.ariaLabel': 'সেটিংস খুঁজুন',
-  'settings.settingsSearch.clear': 'অনুসন্ধান সাফ করুন',
-  'settings.settingsSearch.resultsLabel': 'অনুসন্ধানের ফলাফল',
-  'settings.settingsSearch.noResults': '“{query}” এর জন্য কোনো সেটিং পাওয়া যায়নি',
   'settings.embeddings.title': 'এমবেডিংস',
   'settings.embeddings.description':
     'কোন এমবেডিং প্রদানকারী মেমরিকে সিমান্টিক সার্চের জন্য ভেক্টরে রূপান্তর করে তা চয়ন করুন। প্রদানকারী, মডেল বা মাত্রা পরিবর্তন করলে সংরক্ষিত ভেক্টর অবৈধ হয়ে যায় এবং সম্পূর্ণ মেমরি রিসেট প্রয়োজন।',
@@ -2776,8 +2772,6 @@ const messages: TranslationMap = {
   'reflections.act': 'কাজ করুন',
   'reflections.dismiss': 'বাদ দিন',
   'reflections.viewConversation': 'দেখুন',
-  'whatsapp.chatsSynced': 'চ্যাট সিঙ্ক হয়েছে',
-  'whatsapp.chatSynced': 'চ্যাট সিঙ্ক হয়েছে',
   'sync.active': 'সক্রিয়',
   'sync.recent': 'সাম্প্রতিক',
   'sync.idle': 'নিষ্ক্রিয়',
@@ -2873,6 +2867,8 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'না',
   'memorySources.allIn.success': 'সব উৎস সীমা ছাড়া সক্রিয় হয়েছে। সিঙ্ক শুরু হয়েছে।',
   'memorySources.allIn.failed': 'সব চালু করা সম্ভব হয়নি। আবার চেষ্টা করুন।',
+  'memorySources.allIn.allFailed': 'কোনো সিঙ্ক শুরু করা যায়নি। কারণ জানতে প্রতিটি উৎস দেখুন।',
+  'memorySources.allIn.partial': 'শুরু হওয়া সিঙ্ক: {triggered}। শুরু করা যায়নি: {failed}।',
   'memorySources.settings.button': 'সেটিংস',
   'memorySources.settings.title': 'সিঙ্ক সেটিংস',
   'memorySources.settings.maxPrs': 'সর্বোচ্চ পুল রিকোয়েস্ট',
@@ -5370,7 +5366,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'একরঙা',
   'settings.theme.backdrop.image': 'ছবি',
   'settings.theme.backdropImageUrl': 'পটভূমির ছবির URL',
-  'settings.theme.backdropDots': 'পটভূমির বিন্দু দেখান',
   'settings.theme.backdropHint':
     'মেশ অ্যানিমেটেড গ্রেডিয়েন্ট দেখায়; একরঙা একটি সমতল পটভূমি ব্যবহার করে; ছবি আপনার নিজের পটভূমি আঁকে।',
   'settings.theme.autoForkHint':
@@ -5948,9 +5943,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'সংযোগ পরিচালনা করুন',
   'walkthrough.steps.connectionsTab.content':
     'সেবা যোগ বা বদলাতে চাইলে Connections সবসময় প্রধান নেভিগেশনে থাকে।',
-  'walkthrough.steps.feedbackTab.title': 'মতামত পাঠান',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback সমস্যা জানানো বা উন্নতির অনুরোধ করার সরাসরি জায়গা।',
   'walkthrough.steps.allSet.title': 'সব প্রস্তুত!',
   'walkthrough.steps.allSet.content':
     'আপনার সহকারী একটি স্বাগত নোট রেখে গেছে: এখানে আপনি চ্যাট করতে, প্রশ্ন করতে বা ধারণা গুছাতে পারেন। উপভোগ করুন!',
@@ -6056,7 +6048,6 @@ const messages: TranslationMap = {
     'Composio ইন্টিগ্রেশন ট্রিগারের জন্য AI ট্রাইজ সেটিংস কনফিগার করুন',
   'memory.sourceFilterAria': 'উত্স দ্বারা ফিল্টার',
   'calls.comingSoonDescription': 'AI-সহায়তা কলগুলি শীঘ্রই আসছে৷ সাথে থাকুন।',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'চেহারা',
   'settings.appearanceDesc': 'হালকা, অন্ধকার বাছুন বা আপনার সিস্টেম থিমের সাথে মেলে',
   'settings.mascot': 'মাসকট',
@@ -6744,6 +6735,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'লোকাল মডেল অনুপলব্ধ',
   'userErrors.localModelUnavailable.body':
     'কনফিগার করা এন্ডপয়েন্টে Ollama-তে পৌঁছানো যাচ্ছে না, অথবা সেখানে প্রয়োজনীয় মডেলটি ইনস্টল করা নেই। Ollama চালু করে সেই এন্ডপয়েন্টে মডেলটি পুল করুন, অথবা এই কাজটি কোনো ক্লাউড প্রোভাইডারে সরিয়ে নিন।',
+  'userErrors.memoryStoreCorrupt.title': 'মেমোরি ইনডেক্স নষ্ট হয়ে গেছে',
+  'userErrors.memoryStoreCorrupt.body':
+    'আপনার মেমোরি ট্রির ডেটাবেস নষ্ট হয়ে গিয়েছিল। নষ্ট ফাইলটি মেমোরি ডেটার পাশে সংরক্ষিত আছে এবং একটি খালি ইনডেক্স নতুন করে তৈরি হয়েছে। আবার পূরণ করতে মেমোরি উৎসগুলি পুনরায় সিঙ্ক করুন।',
+  'userErrors.action.openMemorySync': 'মেমোরি আবার সিঙ্ক করুন',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
   'userErrors.scope.workspace': 'ওয়ার্কস্পেস',

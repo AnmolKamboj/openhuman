@@ -574,6 +574,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} hr lalu',
   'sync.status.success': 'Berhasil',
   'sync.status.failed': 'Gagal',
+  'sync.status.partial': 'Terambil, gagal masuk ke memori',
   'common.error': 'Kesalahan',
   'common.success': 'Berhasil',
   'common.back': 'Kembali',
@@ -1636,11 +1637,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'Semua akses web diblokir - asisten tidak dapat membuka atau membaca website apapun.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'Cari pengaturan…',
-  'settings.settingsSearch.ariaLabel': 'Cari pengaturan',
-  'settings.settingsSearch.clear': 'Hapus pencarian',
-  'settings.settingsSearch.resultsLabel': 'Hasil pencarian',
-  'settings.settingsSearch.noResults': 'Tidak ada pengaturan yang cocok untuk “{query}”',
   'settings.embeddings.title': 'Sematan',
   'settings.embeddings.description':
     'Pilih penyedia embedding yang mengubah memori menjadi vektor untuk pencarian semantik. Mengubah penyedia, model, atau dimensi membatalkan vektor yang tersimpan dan memerlukan reset memori penuh.',
@@ -2785,8 +2781,6 @@ const messages: TranslationMap = {
   'reflections.act': 'Tindakan',
   'reflections.dismiss': 'Abaikan',
   'reflections.viewConversation': 'Lihat',
-  'whatsapp.chatsSynced': 'obrolan disinkronkan',
-  'whatsapp.chatSynced': 'obrolan disinkronkan',
   'sync.active': 'Aktif',
   'sync.recent': 'Terbaru',
   'sync.idle': 'Siaga',
@@ -2883,6 +2877,9 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Tidak',
   'memorySources.allIn.success': 'Semua sumber diaktifkan tanpa batas. Sinkronisasi dimulai.',
   'memorySources.allIn.failed': 'Gagal mengaktifkan semua. Silakan coba lagi.',
+  'memorySources.allIn.allFailed':
+    'Tidak ada sinkronisasi yang bisa dimulai. Periksa setiap sumber untuk melihat alasannya.',
+  'memorySources.allIn.partial': 'Sinkronisasi dimulai: {triggered}. Tidak bisa dimulai: {failed}.',
   'memorySources.settings.button': 'Pengaturan',
   'memorySources.settings.title': 'Pengaturan sinkronisasi',
   'memorySources.settings.maxPrs': 'Maksimal pull request',
@@ -5394,7 +5391,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'Solid',
   'settings.theme.backdrop.image': 'Gambar',
   'settings.theme.backdropImageUrl': 'URL gambar latar belakang',
-  'settings.theme.backdropDots': 'Tampilkan titik latar belakang',
   'settings.theme.backdropHint':
     'Jaring menampilkan gradien beranimasi; Solid menggunakan latar belakang polos; Gambar menampilkan milik Anda sendiri.',
   'settings.theme.autoForkHint':
@@ -5974,9 +5970,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'Kelola koneksi',
   'walkthrough.steps.connectionsTab.content':
     'Connections selalu tersedia di navigasi utama saat Anda ingin menambah atau menyesuaikan layanan.',
-  'walkthrough.steps.feedbackTab.title': 'Kirim masukan',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback memberi tempat langsung untuk melaporkan masalah atau meminta peningkatan.',
   'walkthrough.steps.allSet.title': 'Semua siap!',
   'walkthrough.steps.allSet.content':
     'Asisten meninggalkan catatan sambutan: ini ruang Anda untuk chat, bertanya, atau menyusun ide. Selamat mencoba!',
@@ -6084,7 +6077,6 @@ const messages: TranslationMap = {
     'Konfigurasikan pengaturan triase AI untuk pemicu integrasi Composio',
   'memory.sourceFilterAria': 'Filter berdasarkan sumber',
   'calls.comingSoonDescription': 'Panggilan dengan bantuan AI akan segera hadir. Pantau terus.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Tampilan',
   'settings.appearanceDesc': 'Pilih terang, gelap, atau ikuti tema sistem Anda',
   'settings.mascot': 'Maskot',
@@ -6776,6 +6768,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Model lokal tidak tersedia',
   'userErrors.localModelUnavailable.body':
     'Ollama tidak dapat dijangkau di endpoint yang dikonfigurasi, atau model yang dibutuhkan belum terpasang di sana. Jalankan Ollama dan unduh modelnya di endpoint tersebut, atau alihkan pekerjaan ini ke penyedia cloud.',
+  'userErrors.memoryStoreCorrupt.title': 'Indeks memori rusak',
+  'userErrors.memoryStoreCorrupt.body':
+    'Basis data pohon memori mengalami kerusakan. Berkas yang rusak disimpan di samping data memori Anda, dan indeks kosong telah dibangun ulang. Sinkronkan ulang sumber memori untuk mengisinya kembali.',
+  'userErrors.action.openMemorySync': 'Sinkronkan ulang memori',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
   'userErrors.scope.workspace': 'Ruang kerja',

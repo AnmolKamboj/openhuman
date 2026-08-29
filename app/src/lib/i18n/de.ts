@@ -592,6 +592,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': 'vor {n} T.',
   'sync.status.success': 'Erfolg',
   'sync.status.failed': 'Fehlgeschlagen',
+  'sync.status.partial': 'Abgerufen, Speicherung im Gedächtnis fehlgeschlagen',
   'common.error': 'Fehler',
   'common.success': 'Erfolg',
   'common.back': 'Zurück',
@@ -1677,11 +1678,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'Der gesamte Webzugriff ist blockiert – der Assistent kann keine Website öffnen oder lesen.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'Einstellungen durchsuchen…',
-  'settings.settingsSearch.ariaLabel': 'Einstellungen durchsuchen',
-  'settings.settingsSearch.clear': 'Suche löschen',
-  'settings.settingsSearch.resultsLabel': 'Suchergebnisse',
-  'settings.settingsSearch.noResults': 'Keine Einstellungen für „{query}“ gefunden',
   'settings.embeddings.title': 'Einbettungen',
   'settings.embeddings.description':
     'Wählen Sie den Embedding-Anbieter, der Erinnerungen in Vektoren für die semantische Suche umwandelt. Das Ändern des Anbieters, Modells oder der Dimensionen macht gespeicherte Vektoren ungültig und erfordert einen vollständigen Speicher-Reset.',
@@ -2852,8 +2848,6 @@ const messages: TranslationMap = {
   'reflections.act': 'Handeln',
   'reflections.dismiss': 'Entlassen',
   'reflections.viewConversation': 'Ansehen',
-  'whatsapp.chatsSynced': 'Chats synchronisiert',
-  'whatsapp.chatSynced': 'Chat synchronisiert',
   'sync.active': 'Aktiv',
   'sync.recent': 'Neu',
   'sync.idle': 'Leerlauf',
@@ -2951,6 +2945,10 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': 'Nein',
   'memorySources.allIn.success': 'Alle Quellen ohne Limits aktiviert. Synchronisierung gestartet.',
   'memorySources.allIn.failed': 'Konnte „Alles aktivieren" nicht anwenden. Bitte erneut versuchen.',
+  'memorySources.allIn.allFailed':
+    'Keine Synchronisierung konnte gestartet werden. Prüfe jede Quelle, um den Grund zu sehen.',
+  'memorySources.allIn.partial':
+    'Gestartete Synchronisierungen: {triggered}. Nicht startbar: {failed}.',
   'memorySources.settings.button': 'Einstellungen',
   'memorySources.settings.title': 'Synchronisierungseinstellungen',
   'memorySources.settings.maxPrs': 'Maximale Pull-Requests',
@@ -5511,7 +5509,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'Einfarbig',
   'settings.theme.backdrop.image': 'Bild',
   'settings.theme.backdropImageUrl': 'URL des Hintergrundbilds',
-  'settings.theme.backdropDots': 'Hintergrundpunkte anzeigen',
   'settings.theme.backdropHint':
     'Netz zeigt den animierten Farbverlauf; Einfarbig nutzt einen flachen Hintergrund; Bild verwendet dein eigenes.',
   'settings.theme.autoForkHint':
@@ -6101,9 +6098,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'Verbindungen verwalten',
   'walkthrough.steps.connectionsTab.content':
     'Connections ist immer in der Hauptnavigation verfügbar, wenn du Dienste hinzufügen oder anpassen möchtest.',
-  'walkthrough.steps.feedbackTab.title': 'Feedback senden',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback ist der direkte Ort, um Probleme zu melden oder Verbesserungen vorzuschlagen.',
   'walkthrough.steps.allSet.title': 'Alles bereit!',
   'walkthrough.steps.allSet.content':
     'Dein Assistent hat dir eine Willkommensnotiz hinterlassen: Hier kannst du chatten, fragen oder Ideen sammeln. Viel Spaß!',
@@ -6214,7 +6208,6 @@ const messages: TranslationMap = {
     'Konfiguriere KI-Triage-Einstellungen für Composio-Integrationsauslöser',
   'memory.sourceFilterAria': 'Nach Quelle filtern',
   'calls.comingSoonDescription': 'KI-unterstützte Anrufe folgen in Kürze. Bleiben Sie dran.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Aussehen',
   'settings.appearanceDesc': 'Wähle hell, dunkel oder passend zu deinem Systemthema',
   'settings.mascot': 'Maskottchen',
@@ -6928,6 +6921,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Lokales Modell nicht verfügbar',
   'userErrors.localModelUnavailable.body':
     'Ollama ist unter dem konfigurierten Endpunkt nicht erreichbar, oder das benötigte Modell ist dort nicht installiert. Starte Ollama und lade das Modell auf diesem Endpunkt, oder verlagere diese Arbeit auf einen Cloud-Anbieter.',
+  'userErrors.memoryStoreCorrupt.title': 'Gedächtnisindex war beschädigt',
+  'userErrors.memoryStoreCorrupt.body':
+    'Die Datenbank des Gedächtnisbaums war beschädigt. Die beschädigte Datei wurde neben deinen Gedächtnisdaten aufbewahrt und ein leerer Index neu aufgebaut. Synchronisiere deine Gedächtnisquellen erneut, um ihn wieder zu füllen.',
+  'userErrors.action.openMemorySync': 'Gedächtnis neu synchronisieren',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
   'userErrors.scope.workspace': 'Arbeitsbereich',

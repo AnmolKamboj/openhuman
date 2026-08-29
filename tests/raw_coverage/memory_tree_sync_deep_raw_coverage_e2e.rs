@@ -470,6 +470,15 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     let _workspace = EnvVarGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
     let _triage = EnvVarGuard::set_str("OPENHUMAN_TRIGGER_TRIAGE_DISABLED", "1");
     let mut cfg = test_config(&tmp);
+    // `list_chunks_rpc` below reads through the bound memory driver, which
+    // under the `modules` gate is the loaded tinymemory artifact and resolves
+    // its config from the process-wide boot policy. Publish it from THIS
+    // test's config: the policy is first-call-wins and the module captures
+    // its workspace at load, so the chunk seeded in-process and the rows the
+    // module lists must name one store. The only driver-routed case in this
+    // aggregated module, so nothing contends for the slot.
+    #[cfg(feature = "modules")]
+    openhuman_core::openhuman::modules::memory::set_modules_policy(Arc::new(cfg.clone()));
 
     let chunk = sample_chunk(
         &cfg,

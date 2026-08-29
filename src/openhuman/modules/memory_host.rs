@@ -313,6 +313,17 @@ struct RuntimeCallbacks(Arc<Config>);
 #[tinybus::interface(name = "ai.tinyhumans.tinymemory.RuntimeHost")]
 impl RuntimeCallbacks {
     async fn publish_event(&self, event: MemoryEvent) -> tinybus::Result<()> {
+        // openhuman#5820: the module just renamed and rebuilt `chunks.db`;
+        // this process's own engine copy still holds a handle to the old
+        // inode, so drop it before anything in-process reads the store again.
+        if matches!(event, MemoryEvent::StoreCorruptQuarantined { .. }) {
+            let config = Arc::clone(&self.0);
+            tokio::task::spawn_blocking(move || {
+                crate::openhuman::memory::host_impls::reset_in_process_chunk_store(&config);
+            })
+            .await
+            .ok();
+        }
         if let Some(event) = into_domain_event(event) {
             BUS.publish(event);
         }
@@ -552,6 +563,20 @@ fn into_domain_event(event: MemoryEvent) -> Option<crate::core::events::DomainEv
         }
         MemoryEvent::LocalModelUnavailable { origin } => {
             crate::openhuman::memory::tree::health::user_error::publish_local_model_unavailable_user_error(&origin);
+            return None;
+        }
+        // Web-channel-only (openhuman#5820): the module's engine already
+        // quarantined and rebuilt its store; the host's job is to make sure
+        // the user durably hears it — this is the arm the incident lacked,
+        // where a module-side quarantine was invisible to every host surface.
+        MemoryEvent::StoreCorruptQuarantined {
+            origin,
+            quarantined_path,
+        } => {
+            crate::openhuman::memory::tree::health::user_error::publish_store_corrupt_user_error(
+                &origin,
+                quarantined_path.as_deref(),
+            );
             return None;
         }
     })

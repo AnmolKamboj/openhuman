@@ -23,7 +23,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useT } from '../../lib/i18n/I18nContext';
-import { reportMemoryPipelineFailure } from '../../lib/userErrors/report';
+import { reportMemoryPipelineFailure, reportMemoryQuarantine } from '../../lib/userErrors/report';
 import { useAppDispatch } from '../../store/hooks';
 import type { ToastNotification } from '../../types/intelligence';
 import { memoryTreeRetryFailed, memoryTreeSetEnabled } from '../../utils/tauriCommands';
@@ -79,6 +79,16 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   useEffect(() => {
     reportMemoryPipelineFailure(dispatch, blockingCauseCode);
   }, [dispatch, blockingCauseCode]);
+  // openhuman#5820: this panel polls faster than the shell, so a re-sync
+  // retires the quarantine notice as soon as the first chunk lands.
+  const quarantine = status?.quarantine ?? null;
+  const quarantineKey = quarantine
+    ? `${quarantine.quarantined_at_ms}:${quarantine.resynced}`
+    : null;
+  useEffect(() => {
+    reportMemoryQuarantine(dispatch, quarantine);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the fields that matter
+  }, [dispatch, quarantineKey]);
 
   const handleToggle = useCallback(async () => {
     if (!status || toggleBusy) return;

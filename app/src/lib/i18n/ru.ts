@@ -574,6 +574,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n} дн назад',
   'sync.status.success': 'Успешно',
   'sync.status.failed': 'Сбой',
+  'sync.status.partial': 'Получено, но не записано в память',
   'common.error': 'Ошибка',
   'common.success': 'Готово',
   'common.back': 'Назад',
@@ -1641,11 +1642,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     'Весь веб-доступ заблокирован: помощник не может открыть или прочитать какой-либо веб-сайт.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': 'Поиск в настройках…',
-  'settings.settingsSearch.ariaLabel': 'Поиск в настройках',
-  'settings.settingsSearch.clear': 'Очистить поиск',
-  'settings.settingsSearch.resultsLabel': 'Результаты поиска',
-  'settings.settingsSearch.noResults': 'Настройки по запросу «{query}» не найдены',
   'settings.embeddings.title': 'Эмбеддинги',
   'settings.embeddings.description':
     'Выберите провайдера эмбеддингов, который преобразует память в векторы для семантического поиска. Изменение провайдера, модели или размерности делает сохранённые векторы недействительными и требует полного сброса памяти.',
@@ -2794,8 +2790,6 @@ const messages: TranslationMap = {
   'reflections.act': 'Выполнить',
   'reflections.dismiss': 'Закрыть',
   'reflections.viewConversation': 'Просмотр',
-  'whatsapp.chatsSynced': 'чатов синхронизировано',
-  'whatsapp.chatSynced': 'чат синхронизирован',
   'sync.active': 'Активно',
   'sync.recent': 'Недавние',
   'sync.idle': 'Ожидание',
@@ -2893,6 +2887,10 @@ const messages: TranslationMap = {
     'Все источники активированы без ограничений. Синхронизация запущена.',
   'memorySources.allIn.failed':
     'Не удалось применить «Включить всё». Пожалуйста, попробуйте снова.',
+  'memorySources.allIn.allFailed':
+    'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
+  'memorySources.allIn.partial':
+    'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',
   'memorySources.settings.maxPrs': 'Максимум pull request',
@@ -5420,7 +5418,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': 'Сплошной',
   'settings.theme.backdrop.image': 'Изображение',
   'settings.theme.backdropImageUrl': 'URL фонового изображения',
-  'settings.theme.backdropDots': 'Показывать точки фона',
   'settings.theme.backdropHint':
     'Сетка показывает анимированный градиент; Сплошной использует ровный фон; Изображение задаёт ваш собственный.',
   'settings.theme.autoForkHint':
@@ -6001,9 +5998,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': 'Управляйте подключениями',
   'walkthrough.steps.connectionsTab.content':
     'Connections всегда доступен в основной навигации, когда нужно добавить или настроить сервисы.',
-  'walkthrough.steps.feedbackTab.title': 'Отправить отзыв',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback дает прямое место для сообщений о проблемах и просьб об улучшениях.',
   'walkthrough.steps.allSet.title': 'Все готово!',
   'walkthrough.steps.allSet.content':
     'Ассистент оставил приветственную заметку: здесь можно общаться, задавать вопросы и развивать идеи. Удачи!',
@@ -6114,7 +6108,6 @@ const messages: TranslationMap = {
     'Настройка параметров сортировки AI для триггеров интеграции Composio',
   'memory.sourceFilterAria': 'Фильтровать по источнику',
   'calls.comingSoonDescription': 'Звонки с поддержкой ИИ скоро появятся. Следите за обновлениями.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': 'Внешний вид',
   'settings.appearanceDesc': 'Выберите светлую, темную или соответствующую теме вашей системы.',
   'settings.mascot': 'Талисман',
@@ -6815,6 +6808,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': 'Локальная модель недоступна',
   'userErrors.localModelUnavailable.body':
     'Ollama недоступен по настроенному адресу, либо нужная модель там не установлена. Запустите Ollama и загрузите модель по этому адресу или переведите эту работу на облачного провайдера.',
+  'userErrors.memoryStoreCorrupt.title': 'Индекс памяти был повреждён',
+  'userErrors.memoryStoreCorrupt.body':
+    'База данных дерева памяти была повреждена. Повреждённый файл сохранён рядом с данными памяти, а пустой индекс создан заново. Заново синхронизируйте источники памяти, чтобы заполнить его.',
+  'userErrors.action.openMemorySync': 'Пересинхронизировать память',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
   'userErrors.scope.workspace': 'Рабочая область',

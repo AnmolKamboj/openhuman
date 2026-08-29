@@ -563,6 +563,7 @@ const messages: TranslationMap = {
   'sync.timeAgo.days': '{n}일 전',
   'sync.status.success': '성공',
   'sync.status.failed': '실패',
+  'sync.status.partial': '가져왔지만 메모리 기록 실패',
   'common.error': '오류',
   'common.success': '성공',
   'common.back': '뒤로',
@@ -1612,11 +1613,6 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAllHint':
     '모든 웹 접근이 차단됩니다. 어시스턴트는 어떤 웹사이트도 열거나 읽을 수 없습니다.',
   // ─── Settings global search bar ────────────────────────────
-  'settings.settingsSearch.placeholder': '설정 검색…',
-  'settings.settingsSearch.ariaLabel': '설정 검색',
-  'settings.settingsSearch.clear': '검색 지우기',
-  'settings.settingsSearch.resultsLabel': '검색 결과',
-  'settings.settingsSearch.noResults': '“{query}”에 대한 설정을 찾을 수 없습니다',
   'settings.embeddings.title': '임베딩',
   'settings.embeddings.description':
     '시맨틱 검색을 위해 메모리를 벡터로 변환할 임베딩 제공자를 선택하세요. 제공자, 모델 또는 차원을 변경하면 저장된 벡터가 무효화되며 전체 메모리 초기화가 필요합니다.',
@@ -2741,8 +2737,6 @@ const messages: TranslationMap = {
   'reflections.act': '실행',
   'reflections.dismiss': '닫기',
   'reflections.viewConversation': '보기',
-  'whatsapp.chatsSynced': '채팅 동기화됨',
-  'whatsapp.chatSynced': '채팅 동기화됨',
   'sync.active': '활성',
   'sync.recent': '최근',
   'sync.idle': '유휴',
@@ -2837,6 +2831,9 @@ const messages: TranslationMap = {
   'memorySources.allIn.cancel': '아니오',
   'memorySources.allIn.success': '제한 없이 모든 소스가 활성화되었습니다. 동기화가 시작되었습니다.',
   'memorySources.allIn.failed': '전체 활성화를 적용하지 못했습니다. 다시 시도해 주세요.',
+  'memorySources.allIn.allFailed':
+    '동기화를 하나도 시작할 수 없습니다. 각 소스에서 원인을 확인하세요.',
+  'memorySources.allIn.partial': '시작된 동기화: {triggered}. 시작하지 못함: {failed}.',
   'memorySources.settings.button': '설정',
   'memorySources.settings.title': '동기화 설정',
   'memorySources.settings.maxPrs': '최대 풀 리퀘스트 수',
@@ -5305,7 +5302,6 @@ const messages: TranslationMap = {
   'settings.theme.backdrop.solid': '단색',
   'settings.theme.backdrop.image': '이미지',
   'settings.theme.backdropImageUrl': '배경 이미지 URL',
-  'settings.theme.backdropDots': '배경 점 표시',
   'settings.theme.backdropHint':
     '메시는 애니메이션 그라데이션을 표시하고, 단색은 평면 배경을 사용하며, 이미지는 직접 지정한 배경을 사용합니다.',
   'settings.theme.autoForkHint':
@@ -5878,9 +5874,6 @@ const messages: TranslationMap = {
   'walkthrough.steps.connectionsTab.title': '연결 관리',
   'walkthrough.steps.connectionsTab.content':
     '서비스를 추가하거나 조정하고 싶을 때 Connections는 항상 기본 내비게이션에 있습니다.',
-  'walkthrough.steps.feedbackTab.title': '피드백 보내기',
-  'walkthrough.steps.feedbackTab.content':
-    'Feedback은 문제를 보고하거나 개선을 요청하는 직접적인 공간입니다.',
   'walkthrough.steps.allSet.title': '준비 완료!',
   'walkthrough.steps.allSet.content':
     '어시스턴트가 환영 메모를 남겼습니다. 이곳에서 채팅하고, 질문하고, 아이디어를 정리해 보세요. 즐겁게 사용하세요!',
@@ -5984,7 +5977,6 @@ const messages: TranslationMap = {
   'devOptions.menuComposioTriggersDesc': 'Composio 통합 트리거에 대한 AI 심사 설정 구성',
   'memory.sourceFilterAria': '소스별 필터링',
   'calls.comingSoonDescription': 'AI 지원 통화가 곧 제공됩니다. 기대해 주세요.',
-  'whatsapp.title': 'WhatsApp',
   'settings.appearance': '모양',
   'settings.appearanceDesc': '밝은 색, 어두운 색 선택 또는 시스템 테마와 일치',
   'settings.mascot': '마스코트',
@@ -6666,6 +6658,10 @@ const messages: TranslationMap = {
   'userErrors.localModelUnavailable.title': '로컬 모델을 사용할 수 없음',
   'userErrors.localModelUnavailable.body':
     '구성된 엔드포인트에서 Ollama에 연결할 수 없거나 필요한 모델이 그곳에 설치되어 있지 않습니다. Ollama를 실행하고 해당 엔드포인트에 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
+  'userErrors.memoryStoreCorrupt.title': '메모리 인덱스가 손상되었습니다',
+  'userErrors.memoryStoreCorrupt.body':
+    '메모리 트리의 데이터베이스가 손상되었습니다. 손상된 파일은 메모리 데이터 옆에 보존되었고 빈 인덱스가 다시 생성되었습니다. 메모리 소스를 다시 동기화하여 채워 주세요.',
+  'userErrors.action.openMemorySync': '메모리 다시 동기화',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
   'userErrors.scope.workspace': '작업 공간',
