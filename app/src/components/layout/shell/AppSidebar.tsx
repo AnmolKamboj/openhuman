@@ -1,7 +1,6 @@
 import debugFactory from 'debug';
 import { useEffect } from 'react';
 import { LuPanelLeftOpen } from 'react-icons/lu';
-
 import { useLocation } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';

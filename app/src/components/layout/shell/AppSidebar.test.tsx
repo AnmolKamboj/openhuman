@@ -30,6 +30,36 @@ function renderAppSidebar(
 // `SidebarHeader.test.tsx`). `ConnectionIndicator` itself is still live — it
 // renders on the Home page — so it is only this mount point that went.
 vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
+
+describe('nav separator visibility', () => {
+  it('shows the separator on a route whose region opens with a plain list', () => {
+    renderAppSidebar({ initialEntries: ['/settings'] });
+    expect(screen.getByTestId('sidebar-nav-separator').className).not.toContain('opacity-0');
+  });
+
+  it('hides it on chat, whose region opens with its own outlined button', () => {
+    renderAppSidebar({ initialEntries: ['/chat'] });
+    expect(screen.getByTestId('sidebar-nav-separator').className).toContain('opacity-0');
+  });
+
+  it('hides it on a chat thread route too', () => {
+    renderAppSidebar({ initialEntries: ['/chat/abc123'] });
+    expect(screen.getByTestId('sidebar-nav-separator').className).toContain('opacity-0');
+  });
+
+  it('keeps the separator mounted when hidden', () => {
+    // `opacity-0`, never unmounted: its `my-*` is the only gap between the nav
+    // group and the projected region, so removing it would collapse the two
+    // lists together.
+    renderAppSidebar({ initialEntries: ['/chat'] });
+    expect(screen.getByTestId('sidebar-nav-separator')).toBeInTheDocument();
+  });
+
+  it('does not match a route that merely starts with the same letters', () => {
+    renderAppSidebar({ initialEntries: ['/chatter'] });
+    expect(screen.getByTestId('sidebar-nav-separator').className).not.toContain('opacity-0');
+  });
+});
 vi.mock('./SidebarHeader', () => ({ default: () => null }));
 vi.mock('./SidebarNav', () => ({ default: () => null }));
 vi.mock('./SidebarAppRail', () => ({ default: () => null }));
