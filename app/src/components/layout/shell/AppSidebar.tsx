@@ -2,6 +2,8 @@ import debugFactory from 'debug';
 import { useEffect } from 'react';
 import { LuPanelLeftOpen } from 'react-icons/lu';
 
+import { useLocation } from 'react-router-dom';
+
 import { useT } from '../../../lib/i18n/I18nContext';
 import {
   SidebarContent as SidebarScrollRegion,
@@ -16,6 +18,29 @@ import SidebarNav from './SidebarNav';
 import { SidebarSlotOutlet } from './SidebarSlot';
 
 const log = debugFactory('sidebar');
+
+/**
+ * Routes whose projected sidebar region is hidden behind an `opacity-0`
+ * separator rather than a visible one.
+ *
+ * Hidden, not removed: the separator's `my-*` is the ONLY gap between the nav
+ * group above and the projected region below (both give up their own padding —
+ * see `SidebarNav` and `ThreadList`), so unmounting it would collapse the two
+ * lists together. `opacity-0` keeps the box, and with it the spacing.
+ *
+ * Chat is the case that wanted it: its region opens with an outlined "new
+ * conversation" button, so a rule directly above a box that already draws its
+ * own top edge put two horizontal lines within a few pixels of each other.
+ * Regions that open with a plain list still want the divider.
+ */
+const ROUTES_WITHOUT_SIDEBAR_SEPARATOR = ['/chat'];
+
+/** True when the current route's projected region draws its own top edge. */
+function hidesSidebarSeparator(pathname: string): boolean {
+  return ROUTES_WITHOUT_SIDEBAR_SEPARATOR.some(
+    route => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
 
 /**
  * The root-shell sidebar. Mounted as the sole child of `RootShellLayout`'s
@@ -49,6 +74,8 @@ const log = debugFactory('sidebar');
  */
 export default function AppSidebar() {
   const { t } = useT();
+  const { pathname } = useLocation();
+  const separatorHidden = hidesSidebarSeparator(pathname);
   const { state: sidebarState } = useSidebar();
   const collapsed = sidebarState === 'collapsed';
 
@@ -133,7 +160,11 @@ export default function AppSidebar() {
 
           `mx-3` lines its ends up with the nav rows' own inset rather than the
           primitive's narrower `mx-2`. */}
-      <SidebarSeparator className="mx-3 my-2.5 bg-content-faint/40" />
+      <SidebarSeparator
+        aria-hidden={separatorHidden || undefined}
+        data-testid="sidebar-nav-separator"
+        className={`mx-3 my-2.5 bg-content-faint/40 ${separatorHidden ? 'opacity-0' : ''}`}
+      />
       <SidebarScrollRegion className="gap-0">
         {/* Flex column so routes that project more than one region can order
             them via Tailwind `order-*`. */}
