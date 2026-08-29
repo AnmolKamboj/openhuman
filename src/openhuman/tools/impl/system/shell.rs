@@ -10,7 +10,6 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tinyagents::harness::tool::ToolExecutionContext;
 use tinytools::ToolRunContext;
 
 /// Maximum output size in bytes (1MB).

@@ -26,7 +26,6 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, To
 use async_trait::async_trait;
 use serde_json::json;
 use std::fmt::Write as _;
-use tinyagents::harness::tool::ToolExecutionContext;
 use tinyagents::harness::workspace::WorkspaceDescriptor;
 use tinytools::ToolRunContext;
 

@@ -20,7 +20,6 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
-use tinyagents::harness::tool::ToolExecutionContext;
 use tinycortex::memory::conversations::{self as conversations, ConversationMessage};
 use tinytools::ToolRunContext;
 

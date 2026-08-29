@@ -19,7 +19,6 @@ use crate::openhuman::tools::traits::{
 };
 use async_trait::async_trait;
 use serde_json::json;
-use tinyagents::harness::tool::ToolExecutionContext;
 use tinytools::ToolRunContext;
 
 const AGENT_ID: &str = "agent_memory";

@@ -15,7 +15,6 @@ use crate::openhuman::agent::harness::subagent_runner::{run_subagent, SubagentRu
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
-use tinyagents::harness::tool::ToolExecutionContext;
 use tinycortex::memory::conversations;
 use tinytools::ToolRunContext;
 
