@@ -373,11 +373,23 @@ const Composer: FC<{
             // two competing edges.
             //
             // Focus moves the same token to 0.75 instead of swapping colour, so
-            // the cue is this edge asserting itself. `transition` covers
-            // box-shadow as well now, or focus would cross-fade the border
-            // against a shadow that snapped. `border-ring` on drag is
-            // untouched — that state is meant to break the pattern.
-            className="border-content-faint/40 focus-within:border-content-faint/75 data-[dragging=true]:border-ring shadow-soft flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
+            // the cue is this edge asserting itself, and lifts the shadow
+            // `soft` → `medium` at the same time: the border and the elevation
+            // are one gesture rather than two, which is why `transition` names
+            // box-shadow alongside border-color — otherwise the border would
+            // cross-fade against a shadow that snapped.
+            //
+            // `duration-200 ease-out` is the animation. Both tokens are defined
+            // (`index.css`) as two-layer shadows with matching structure, so the
+            // browser interpolates them layer-for-layer instead of falling back
+            // to a hard swap; a step up to `large` or `float` would read as the
+            // composer jumping rather than settling. `motion-reduce` drops it
+            // for anyone who has asked the OS for less motion — the focus cue
+            // still lands, just instantly.
+            //
+            // `border-ring` on drag is untouched — that state is meant to break
+            // the pattern.
+            className="border-content-faint/40 focus-within:border-content-faint/75 data-[dragging=true]:border-ring shadow-soft focus-within:shadow-medium flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color,box-shadow] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
             {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
