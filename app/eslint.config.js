@@ -141,6 +141,29 @@ export default [
     },
   },
 
+  // Barrel-import enforcement, `settings/controls` half. This one IS global:
+  // it has zero outstanding deep imports app-wide (confirmed via
+  // `rg "from '.*settings/controls/[A-Za-z]"`), so there is nothing to
+  // grandfather.
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['src/components/settings/controls/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/settings/controls/*', '!**/settings/controls/index'],
+              message:
+                "Import settings controls from the 'settings/controls' barrel instead of a deep path into the control file.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Barrel-import enforcement (S10). `src/components/ui` is documented as
   // the only sanctioned import path for shared UI primitives (see its
   // `index.ts` doc comment) and `src/components/settings/controls` is the
@@ -194,29 +217,6 @@ export default [
             // silently drop whichever patterns it does not itself list. Both
             // halves therefore have to travel together in every block that
             // configures this rule.
-            {
-              group: ['**/settings/controls/*', '!**/settings/controls/index'],
-              message:
-                "Import settings controls from the 'settings/controls' barrel instead of a deep path into the control file.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  // Barrel-import enforcement, `settings/controls` half. This one IS global:
-  // it has zero outstanding deep imports app-wide (confirmed via
-  // `rg "from '.*settings/controls/[A-Za-z]"`), so there is nothing to
-  // grandfather.
-  {
-    files: ['src/**/*.ts', 'src/**/*.tsx'],
-    ignores: ['src/components/settings/controls/**'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
             {
               group: ['**/settings/controls/*', '!**/settings/controls/index'],
               message:
