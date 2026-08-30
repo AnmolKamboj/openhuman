@@ -218,6 +218,7 @@ as `tinyhumans-sdk`).
 | `tinyruntime-bus` | none — `ShellTool` holds an `Option<Arc<NodeBootstrap>>` field | `modules/runtime.rs`, `runtime/**` |
 | `tinywallet-bus` | `web3` | `modules/wallet.rs`, `web3/**` |
 | `tinymcp-bus` | `mcp` | `mcp/**` |
+| `tinychannels-bus` | **none** — the channel vocabulary is kernel surface | `core/events.rs`, `config/schema/channels.rs`, `security/pairing.rs`, `cron/bus.rs`, `memory/conversations/bus.rs`, `channels/traits.rs` |
 
 After cloning: `git submodule update --init --recursive vendor/`.
 
@@ -1072,6 +1073,23 @@ Leaf-gate pattern with **two ungated carve-outs and no stub file** — the reach
   **Measured, this sheds ZERO dependencies, and you should expect that.** The kernel profile is **288 packages / 270 names / 2 native before and after** — a diff of the two package lists is literally one line, `tinychannels` out, `tinychannels-bus` in. Every heavy crate tinychannels carried is shared with kernel surface (`rusqlite` has six parents, `reqwest` ten), so removing its *parent* frees nothing. This is the third time this exact result has been recorded here — the TinyMemory port and the `tinymcp` extraction both landed at −1/−1/0 for the same reason — so **do not open this seam expecting a dependency win.**
 
   What it does buy is a **compilation** boundary and an architectural one: a `channels`-less build compiles **~31.7k lines instead of ~39.3k**, since only the ~7.6k-line contract crate remains. And the contract is now a real `-bus` crate, which is the prerequisite for moving the providers out of the binary entirely.
+
+  **The module now exists upstream; what is missing is a release.**
+`tinychannels` carries `crates/tinychannels-module`, a `cdylib` serving
+`ai.tinyhumans.tinychannels.Channels` (`StartChannel` / `StopChannel` /
+`SendMessage` / `ListChannels` / `ChannelStatus`) and calling the host's
+`ChannelsHost` object for inbound traffic. Provider construction was lifted out
+of `channels/runtime/startup.rs` into `tinychannels::factory::build_channels`, so
+the module and this host build the same providers from the same config instead of
+from two copies — credential hydration, the proxy-aware HTTP clients and the
+`ChannelHost` capability surface stay here, as host policy.
+
+  **There is deliberately no `TINYCHANNELS` entry in `modules::registry` yet.**
+That table pins SHA-256 digests taken verbatim from a published release, and
+`tinychannels` has not cut one. Do not invent digests or compute them from a
+local build — a registry entry that a server could satisfy with different bytes
+is the whole thing the digest exists to prevent. The order is: release the
+module, then pin it, then switch `channels/runtime` onto the bus.
 
   **The module step, if it is taken, is worth roughly −20 packages.** Unlike the gate, that one is not zero: `scripts/dep-sim.py --features "$(bash scripts/ci/product-features.sh)" --cut tinychannels` projects **398/369/2 → 378/351/2, i.e. −20 packages / −18 names / 0 native**. Measure with the simulator rather than summing `cargo tree -i` results, which over-counts shared subtrees. Two things gate that work and neither is in this repo: the providers need a **host-callback object** for inbound traffic (a served object cannot open a stream back to its caller, so `tinychannels-bus` already declares `HOST_BUS_NAME` for it, the same shape as `modules/memory_host.rs`), and `modules::registry` pins SHA-256-verified release artifacts, so a `tinychannels` release must land first.
 
