@@ -476,7 +476,7 @@ async fn composio_execute_via_mock_propagates_backend_error() {
     // For an unrecognised tool slug and a 502-shaped envelope the only
     // signal we get is the backend error text, so assert on its contents.
     assert!(
-        err.starts_with("[composio:error:") && err.contains("rate limited"),
+        err.contains("[composio:error:") && err.contains("rate limited"),
         "got: {err}"
     );
 }

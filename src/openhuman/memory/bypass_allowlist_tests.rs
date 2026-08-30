@@ -173,11 +173,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // family", and it now has one. The learning subsystem reads facets through
     // `MemoryProfile` on the bound driver.
     (
-        "src/openhuman/memory/tree/retrieval/rpc.rs",
-        "NullMemoryProvider::new(",
-        "inline #[cfg(test)] module only; it builds the no-retrieval driver these handlers must degrade against, which is the opposite of a bypass — the test exists to prove the family is asked for and its absence handled",
-    ),
-    (
         "src/openhuman/agent/learning/startup.rs",
         "binding::for_workspace(",
         "boot-time facet cache: resolves a *guard* for a known workspace, exactly as \
@@ -202,7 +197,7 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "the process-global slot itself; it is what global::client hands out",
     ),
     (
-        "src/openhuman/memory/guard/families.rs",
+        "src/openhuman/memory/guard/families_part_01.rs",
         ".get_document(",
         "the guard's own documents decorator forwarding to the inner family",
     ),

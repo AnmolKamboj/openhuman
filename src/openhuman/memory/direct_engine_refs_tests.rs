@@ -310,11 +310,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/flows/memory_tools.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/integrations/composio/ops/mod.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
