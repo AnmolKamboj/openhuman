@@ -289,6 +289,9 @@ tinymemory-core = { path = "vendor/tinymemory/crates/tinymemory-core" }
 # `network` matches what `tinymemory-core` enables, so the GitHub / RSS /
 # web-page readers exist. Their dispatch is deliberately NOT `reader_for` —
 # see that module's docs and `memory::sources`'s.
+tinymemory-sources = { path = "vendor/tinymemory/crates/tinymemory-sources", features = [
+    "network",
+] }
 
 
 # tinymcp — the Model Context Protocol client, extracted out of this tree
