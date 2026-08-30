@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tinybus::EventHandler;
-use tinychannels::{Channel, SendMessage};
+use tinychannels_bus::{Channel, SendMessage};
 
 /// Subscribes to `CronDeliveryRequested` events and dispatches
 /// the output to the named channel.
@@ -100,7 +100,7 @@ impl EventHandler<DomainEvent> for CronDeliverySubscriber {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use tinychannels::ChannelMessage;
+    use tinychannels_bus::ChannelMessage;
     use tokio::sync::mpsc;
 
     /// Minimal mock channel that tracks send() calls.
