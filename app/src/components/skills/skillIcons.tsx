@@ -5,9 +5,7 @@ import { IoChatbubble } from 'react-icons/io5';
 import {
   LuBlocks,
   LuBot,
-  LuKeyboard,
   LuMessageSquareMore,
-  LuMic,
   LuPlugZap,
   LuShare2,
   LuSparkles,
@@ -179,8 +177,3 @@ export function skillCategoryIconClassName(category: SkillCategory): string {
 export function skillCategoryHeadingClassName(category: SkillCategory): string {
   return CATEGORY_META[category].headingClassName;
 }
-
-export const BUILT_IN_SKILL_ICONS = {
-  textAutocomplete: <LuKeyboard className="h-5 w-5" aria-hidden="true" />,
-  voiceStt: <LuMic className="h-5 w-5" aria-hidden="true" />,
-};

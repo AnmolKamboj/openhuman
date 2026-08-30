@@ -100,7 +100,6 @@ let _activeTransport: CoreTransport | null = null;
  * Override the active transport used by `callCoreRpc`.
  * Set to null to revert to the default local HTTP path.
  *
- * @knipignore Public transport-manager integration seam for remote profiles.
  */
 export function setActiveCoreTransport(transport: CoreTransport | null): void {
   _activeTransport = transport;

@@ -4,69 +4,16 @@
  */
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { useState } from 'react';
-import { LuCheck } from 'react-icons/lu';
 
 import { useT } from '../../../../lib/i18n/I18nContext';
 import { openUrl } from '../../../../utils/openUrl';
-import Badge from '../../../ui/Badge';
 import Button from '../../../ui/Button';
 import { DialogContent, DialogRoot } from '../../../ui/Dialog';
 import Label from '../../../ui/Label';
-import Switch from '../../../ui/Switch';
 import TextField from '../../../ui/TextField';
 import { builtinCloudProvider } from '../builtinCloudProviders';
 import { presentProviderSetupError, ProviderSetupErrorNotice } from '../ProviderSetupErrorNotice';
-import {
-  defaultEndpointFor,
-  formatI18n,
-  KIMI_PLATFORM_URL,
-  providerToggleAriaLabel,
-  slugTone,
-} from './aiPanelTypes';
-
-export const ProviderToggleChip = ({
-  slug,
-  label,
-  enabled,
-  busy,
-  locked = false,
-  alwaysOn = false,
-  onToggle,
-}: {
-  slug: string;
-  label: string;
-  enabled: boolean;
-  busy?: boolean;
-  locked?: boolean;
-  // When true the provider is permanently available (e.g. Managed) and renders
-  // a static "Always on" indicator instead of a toggle. A locked toggle reads
-  // as switchable-but-broken (#3760); a badge has no affordance to fight.
-  alwaysOn?: boolean;
-  onToggle?: () => void;
-}) => {
-  const { t } = useT();
-  const tone = slugTone(slug);
-  return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${tone}`}>
-      <span>{label}</span>
-      {alwaysOn ? (
-        <Badge variant="success" className="gap-1 border-transparent bg-transparent">
-          <LuCheck className="h-3 w-3" />
-          {t('settings.ai.routing.managedAlwaysOn')}
-        </Badge>
-      ) : (
-        <Switch
-          id={`provider-toggle-${slug}`}
-          checked={enabled}
-          onCheckedChange={() => onToggle?.()}
-          disabled={busy || locked}
-          aria-label={providerToggleAriaLabel(t, enabled, label)}
-        />
-      )}
-    </div>
-  );
-};
+import { defaultEndpointFor, formatI18n, KIMI_PLATFORM_URL } from './aiPanelTypes';
 
 // Connect-provider dialog — shown when the user flips a provider toggle ON.
 //
