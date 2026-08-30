@@ -185,12 +185,22 @@ async fn composio_get_user_profile_refuses_cleanly_without_a_loaded_module() {
 /// deletion — only what their handlers call underneath changed (see module
 /// doc comment). This drives all three with `modules.enabled = false` so the
 /// module-mediated calls inside them fail closed and log rather than reach
-/// the network, and asserts the wiring (name/domains) plus the one
-/// observable side effect that does not depend on the module at all: a
-/// created connection is still auto-registered into the `memory_sources`
-/// registry even though its initial profile fetch and sync both refuse.
+/// the network, and asserts the wiring (name/domains) plus that `handle()`
+/// returns cleanly for the event each one actually matches on.
+///
+/// `ComposioConnectionCreatedSubscriber::handle` fires its whole body into a
+/// detached `tokio::spawn` and — before this test's own
+/// `memory_sources` auto-register step is even reached — polls the backend
+/// via `wait_for_connection_active` to confirm the OAuth handoff completed.
+/// With no reachable backend that poll fails and the background task returns
+/// early, so the auto-register side effect this test used to be able to
+/// observe synchronously is not observable here at all: it depends on a real
+/// backend round trip this file's "no real provider network" design
+/// deliberately excludes. `handle()` itself still returns immediately
+/// (the network call happens on the spawned task, not inline), so what this
+/// test can honestly assert is that the call is wired and does not panic.
 #[tokio::test]
-async fn composio_bus_subscribers_wire_up_and_auto_register_despite_no_loaded_module() {
+async fn composio_bus_subscribers_wire_up_and_return_without_a_loaded_module() {
     let _guard = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
