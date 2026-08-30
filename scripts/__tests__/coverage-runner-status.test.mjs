@@ -82,8 +82,10 @@ test("a failed raw coverage module fails the run even when a later module succee
   // The loop's status is its last iteration's, so without an explicit `return`
   // the failure is discarded and CI goes green on a red suite.
   const res = withRunnerFunctions(
-    ["run_counted", "run_integration_target"],
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
     [
+      "TEST_TARGET_REQS=''",
+      "PRODUCT_FEATURES=''",
       "log() { printf '%s\\n' \"$*\"; }",
       "raw_coverage_modules() { printf 'first\\nsecond\\n'; }",
       // Fails for `first::`, succeeds otherwise.
