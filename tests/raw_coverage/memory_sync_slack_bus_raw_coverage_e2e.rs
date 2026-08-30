@@ -210,7 +210,12 @@ async fn composio_bus_subscribers_wire_up_and_return_without_a_loaded_module() {
 
     let config = config_in(&tmp);
     persist_config(&config).await;
-    store_session(&config);
+    // Deliberately no `store_session(&config)` here: signed-in would let
+    // `ComposioConnectionCreatedSubscriber`'s spawned task past its
+    // `create_composio_client` guard and into a real backend poll
+    // (`wait_for_connection_active`) with no loopback server behind it —
+    // exactly the network dependency this file avoids. Staying signed out
+    // makes that guard fail closed immediately instead.
 
     let trigger_sub = ComposioTriggerSubscriber::new();
     assert_eq!(trigger_sub.name(), "composio::trigger");
