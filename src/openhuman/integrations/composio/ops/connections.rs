@@ -6,7 +6,6 @@ use super::super::module_client::{self as connectors, methods};
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 
-use super::super::client::ComposioClient;
 use super::super::connected_integrations::{
     fetch_connected_integrations_status, invalidate_connected_integrations_cache,
     sync_cache_with_connections, FetchConnectedIntegrationsStatus,
@@ -19,7 +18,7 @@ use super::super::types::{
     ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
 use super::error_utils::{
-    direct_mode_without_key, report_composio_op_error, resolve_client, OpResult,
+    direct_mode_without_key, report_composio_op_error, OpResult,
 };
 use super::memory_cleanup::composio_memory_targets_for_connection;
 
