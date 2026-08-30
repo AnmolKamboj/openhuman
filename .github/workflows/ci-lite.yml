@@ -155,6 +155,7 @@ jobs:
               # lane FAILS, so they arm it for the same reason.
               - 'scripts/ci/assert-coverage-presence.sh'
               - 'scripts/ci/coverage-presence-allowlist.txt'
+              - 'scripts/ci/check-openhuman-rust-layout.mjs'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'
@@ -616,23 +617,23 @@ jobs:
           core/jsonrpc_tests.rs
           core/legacy_aliases.rs
           core/runtime/services.rs
-          openhuman/agent/harness/builtin_definitions.rs
+          openhuman/agent/harness/builtin_definitions_tests.rs
           openhuman/agent/harness/definition_tests.rs
-          openhuman/agent/harness/session/tests.rs
-          openhuman/agent/harness/subagent_runner/tool_prep.rs
-          openhuman/agent/registry/agents/loader.rs
+          openhuman/agent/harness/session/session_tests_part_01_tests.rs
+          openhuman/agent/harness/subagent_runner/tool_prep_tests.rs
+          openhuman/agent/registry/agents/loader_tests_part_01_tests.rs
+          openhuman/agent/registry/agents/loader_tests_part_02_tests.rs
+          openhuman/agent/registry/agents/loader_tests_part_03_tests.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
-          openhuman/mcp/server/resources.rs
-          openhuman/memory/people/mod.rs
-          openhuman/platform/socket/event_handlers.rs
-          openhuman/platform/socket/ops.rs
-          openhuman/tools/registry/ops_tests.rs
-          openhuman/tools/registry/schemas.rs
+          openhuman/memory/people/mod_contacts_gate_tests_tests.rs
           openhuman/tools/ops_tests.rs
-          openhuman/voice/compile_status.rs
-          openhuman/web3/stub.rs
+          openhuman/tools/ops_tests_part_01_tests.rs
+          openhuman/tools/ops_tests_part_03_tests.rs
+          openhuman/tools/ops_tests_part_04_tests.rs
+          openhuman/tools/registry/ops_tests.rs
+          openhuman/tools/registry/schemas_tests.rs
+          openhuman/voice/compile_status_tests.rs
           openhuman/web3/wallet/stub.rs
-          openhuman/web3/x402/stub.rs
           embed/harness/builder_tests.rs
           tui/runner.rs
           EOF
