@@ -1423,76 +1423,27 @@ fn memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases() {
     assert_eq!(extract_item_id(&item, &["missing"]), None);
 }
 
+/// The `slack_memory` RPC schema assertions below are unchanged real
+/// coverage — `memory::sync::composio::providers::slack::schemas` is this
+/// host's own current RPC surface, not part of the deletion.
+///
+/// The rest of this test's original name is no longer accurate: it also
+/// drove the deleted engine's per-action Slack response reshaping
+/// (`providers::slack::post_process` — history/channel/search-result
+/// normalization, empty-text filtering, non-object passthrough). That moved
+/// into the separately-versioned `tinyconnectors` module with nothing left
+/// in this crate to assert against — see
+/// `memory_sync_providers_raw_coverage_e2e.rs`'s module doc comment for the
+/// fuller account of this same gap. Reported rather than silently dropped;
+/// not recoverable from here.
 #[test]
-fn slack_memory_schemas_and_post_processors_normalize_composio_shapes() {
+fn slack_memory_schemas_cover_public_surfaces() {
     let schemas = slack_memory_schemas::all_slack_memory_controller_schemas();
     assert_eq!(schemas.len(), 2);
     assert_eq!(schemas[0].namespace, "slack_memory");
     assert!(schemas
         .iter()
         .any(|schema| schema.function == "sync_status" && schema.inputs.is_empty()));
-
-    let mut history = json!({
-        "data": {
-            "messages": [
-                {
-                    "ts": "1717000000.000100",
-                    "user": "U001",
-                    "text": " hello ",
-                    "thread_ts": "1717000000.000100",
-                    "permalink": "https://slack.test/archives/C1/p1"
-                },
-                { "ts": "1717000000.000200", "text": "   " },
-                { "user": "U002", "text": "missing timestamp" }
-            ]
-        }
-    });
-    slack_post_process::post_process("SLACK_FETCH_CONVERSATION_HISTORY", None, &mut history);
-    assert_eq!(history["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(history["messages"][0]["text"], "hello");
-    assert_eq!(history["messages"][0]["user"], "U001");
-
-    let mut channels = json!({
-        "data": {
-            "conversations": [
-                { "id": "C001", "name": "engineering", "is_private": true },
-                { "id": " ", "name": "skip" },
-                { "id": "C002" }
-            ]
-        }
-    });
-    slack_post_process::post_process("SLACK_LIST_CONVERSATIONS", None, &mut channels);
-    assert_eq!(channels["channels"].as_array().unwrap().len(), 2);
-    assert_eq!(channels["channels"][0]["is_private"], true);
-    assert_eq!(channels["channels"][1]["name"], "C002");
-
-    let mut search = json!({
-        "messages": {
-            "matches": [
-                {
-                    "ts": "1717000000.000300",
-                    "bot_id": "B001",
-                    "text": "bot update",
-                    "channel": { "id": "C001" },
-                    "permalink": "https://slack.test/search/result"
-                },
-                { "ts": "1717000000.000400", "text": "" }
-            ],
-            "paging": { "pages": 3 }
-        }
-    });
-    slack_post_process::post_process("SLACK_SEARCH_MESSAGES", None, &mut search);
-    assert_eq!(search["pages"], 3);
-    assert_eq!(search["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(search["messages"][0]["channel_id"], "C001");
-    assert_eq!(search["messages"][0]["user"], "B001");
-
-    let mut non_object = json!("replace me");
-    slack_post_process::post_process("SLACK_LIST_CONVERSATIONS", None, &mut non_object);
-    assert!(non_object["channels"].as_array().unwrap().is_empty());
-    let mut passthrough = json!({ "ok": true });
-    slack_post_process::post_process("SLACK_UNKNOWN", None, &mut passthrough);
-    assert_eq!(passthrough, json!({ "ok": true }));
 }
 
 #[test]
