@@ -522,6 +522,13 @@ async fn store_session_inner(
         config.clone()
     };
 
+    if let Err(error) = crate::openhuman::cron::seed::prune_retired_jobs(&effective_config) {
+        tracing::warn!(
+            error = %error,
+            "[credentials] failed to prune retired cron jobs after user workspace activation"
+        );
+    }
+
     if local_session {
         match crate::openhuman::config::ops::set_onboarding_completed(false).await {
             Ok(_) => logs.push("onboarding left incomplete for local session setup".to_string()),
