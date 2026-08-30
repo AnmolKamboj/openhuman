@@ -1,0 +1,811 @@
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import debug from 'debug';
+import { REHYDRATE } from 'redux-persist';
+
+import {
+  defaultVoiceIdForLocale,
+  ELEVENLABS_VOICE_PRESETS,
+} from '../components/settings/panels/elevenlabsVoicePresets';
+import type { MascotColor } from '../features/human/Mascot/mascotPalette';
+import type { Locale } from '../lib/i18n/types';
+import { MASCOT_VOICE_ID } from '../utils/config';
+import { resetUserScopedState } from './resetActions';
+
+const mascotLog = debug('mascot:slice');
+
+export const SUPPORTED_MASCOT_COLORS: readonly MascotColor[] = [
+  'yellow',
+  'burgundy',
+  'black',
+  'navy',
+  'custom',
+];
+
+export const DEFAULT_MASCOT_COLOR: MascotColor = 'yellow';
+
+export type MascotVoiceGender = 'male' | 'female';
+
+/**
+ * Default gender for the mascot's reply voice. Matches the default
+ * voice id (`MASCOT_VOICE_ID` — George, a male multilingual ElevenLabs
+ * voice) so new users see consistent state in the Mascot settings
+ * panel without any extra writes.
+ */
+const DEFAULT_MASCOT_VOICE_GENDER: MascotVoiceGender = 'male';
+
+/**
+ * Maximum length of a stored mascot voice id. ElevenLabs voice ids are
+ * short opaque alphanumeric strings (typically 20 chars); the cap exists
+ * solely so a stray paste of multi-megabyte clipboard data can never
+ * land in localStorage and balloon the persisted blob. Anything longer
+ * is dropped at the reducer boundary.
+ */
+export const MAX_MASCOT_VOICE_ID_LEN = 128;
+export const MAX_CUSTOM_MASCOT_GIF_URL_LEN = 2048;
+
+/**
+ * Upper bound on the *source file* a user may upload as a custom image avatar
+ * (issue #5360). Uploaded avatars are inlined as base64 `data:image/…` strings
+ * inside the persisted `mascot` slice, which lives in the localStorage-backed
+ * `userScopedStorage`. localStorage is a shared, few-megabyte budget, so the
+ * cap is deliberately small — a large avatar would bloat the blob and, because
+ * `userScopedStorage.setItem` silently swallows QuotaExceededError, an oversize
+ * write drops the *entire* mascot slice (colour, voice, selection) rather than
+ * failing loudly. The UI enforces this before dispatch so the user sees a clear
+ * "too large" error instead of losing their settings.
+ */
+export const MAX_CUSTOM_MASCOT_AVATAR_UPLOAD_BYTES = Math.floor(1.5 * 1024 * 1024);
+
+/**
+ * Reducer-boundary backstop on an inlined base64 image data URL. base64
+ * inflates the raw file by ~4/3, so a 1.5 MB upload yields ~2.1 MB of string;
+ * this cap (~2.2 MB) leaves headroom while still rejecting a hand-pasted or
+ * tampered data URL that skipped the UI's byte check. Plain http/https/file
+ * URLs keep the far tighter MAX_CUSTOM_MASCOT_GIF_URL_LEN.
+ */
+export const MAX_CUSTOM_MASCOT_AVATAR_DATA_URL_LEN = 2_200_000;
+
+/**
+ * Upper bound on how many per-mascot voice overrides we persist (issue
+ * #4277). A user only ever drives two mascots in a meeting, but they may
+ * try several before settling; the cap keeps the persisted map bounded
+ * against a runaway writer while comfortably covering real use. Once the
+ * cap is reached the reducer refuses NEW keys (an existing mascot can
+ * still be re-voiced); on rehydrate the first `MAX_MASCOT_VOICES` valid
+ * entries are kept and the rest dropped.
+ */
+export const MAX_MASCOT_VOICES = 16;
+
+/**
+ * Loose shape check for a stored mascot voice id. Issue #1762 lets users
+ * paste a custom ElevenLabs voice id, so we cannot enumerate the valid
+ * set — instead we accept any non-empty trimmed string under the length
+ * cap. The TTS path (`synthesizeSpeech` in
+ * `app/src/features/human/voice/ttsClient.ts`) is the authoritative
+ * gate: a syntactically valid id that ElevenLabs rejects falls back
+ * cleanly via the existing TTS error handling, leaving `MASCOT_VOICE_ID`
+ * as the implicit safe default.
+ */
+function isMascotVoiceId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.trim().length <= MAX_MASCOT_VOICE_ID_LEN
+  );
+}
+
+// Raster image extensions accepted for a custom avatar (issue #5360). `.svg`
+// is deliberately absent — an SVG can carry inline scripts, so it stays a
+// rejected avatar source even though the render path is a plain <img>.
+const CUSTOM_MASCOT_AVATAR_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'];
+
+// Matches a base64-encoded raster image data URL. `image/svg+xml` is excluded
+// for the same script-injection reason.
+//
+// The payload requires *structurally valid* base64, not merely base64-ish
+// characters: a run of whole 4-character quartets, optionally ending in one
+// padded group (`xx==` or `xxx=`). A looser `[A-Za-z0-9+/]+={0,2}` would accept
+// truncated payloads like `A=` — the reducer would then persist an avatar no
+// image decoder can render, so the user sees a silently broken mascot rather
+// than a rejection. The empty payload (`data:image/png;base64,`) is rejected
+// too: every branch consumes at least one group.
+//
+// No ReDoS: the two top-level branches are disjoint (one ends in padding, one
+// cannot), and each quantified group has a fixed 4-character width, so a
+// failing match backtracks linearly. Callers still gate on length first.
+const CUSTOM_MASCOT_AVATAR_DATA_URL_RE =
+  /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,(?:(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)|(?:[A-Za-z0-9+/]{4})+)$/;
+
+function hasImagePath(value: string): boolean {
+  const [path = ''] = value.split(/[?#]/, 1);
+  const lower = path.toLowerCase();
+  return CUSTOM_MASCOT_AVATAR_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+function isCustomMascotAvatarDataUrl(value: string): boolean {
+  return (
+    value.length <= MAX_CUSTOM_MASCOT_AVATAR_DATA_URL_LEN &&
+    CUSTOM_MASCOT_AVATAR_DATA_URL_RE.test(value)
+  );
+}
+
+/**
+ * Coarse, privacy-safe label for where an avatar value came from, for logging.
+ * Deliberately derived from the value's *prefix* only — never its content — so
+ * a diagnostic can never leak a filename, a local path, or image bytes.
+ */
+function customMascotAvatarSourceCategory(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('data:')) return 'data-url';
+  if (trimmed.startsWith('https:')) return 'https';
+  if (trimmed.startsWith('http:')) return 'http-loopback';
+  if (trimmed.startsWith('file:')) return 'file-url';
+  if (trimmed.startsWith('/') || trimmed.startsWith('~/')) return 'local-path';
+  return 'other';
+}
+
+/**
+ * Accepts a custom mascot avatar source: a base64 raster-image data URL (from
+ * an uploaded PNG/GIF/JPEG/WebP/BMP, issue #5360), or an http(s)/file/relative
+ * URL pointing at one of those image types. The field name keeps its legacy
+ * `Gif` spelling for persistence compatibility — the stored value survives
+ * rehydrate — but the accepted set is now any safe raster image, not GIF only.
+ */
+export function isCustomMascotGifUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+
+  // Uploaded avatars are inlined as base64 data URLs; they get their own
+  // (much larger) length cap and a strict raster-only allowlist.
+  if (trimmed.startsWith('data:')) return isCustomMascotAvatarDataUrl(trimmed);
+
+  if (trimmed.length > MAX_CUSTOM_MASCOT_GIF_URL_LEN) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!hasImagePath(parsed.pathname)) return false;
+    if (parsed.protocol === 'https:' || parsed.protocol === 'file:') return true;
+    if (parsed.protocol !== 'http:') return false;
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname);
+  } catch {
+    return hasImagePath(trimmed) && (trimmed.startsWith('/') || trimmed.startsWith('~/'));
+  }
+}
+
+function isMascotVoiceGender(value: unknown): value is MascotVoiceGender {
+  return value === 'male' || value === 'female';
+}
+
+interface MascotState {
+  color: MascotColor;
+  /**
+   * User-selected ElevenLabs voice id for the mascot's reply speech, or
+   * `null` to use the build-time default (`MASCOT_VOICE_ID` in
+   * `app/src/utils/config.ts`). Issue #1762: surfaces what was
+   * previously a build-time-only env var (`VITE_MASCOT_VOICE_ID`) as a
+   * persisted user preference so the choice survives restarts and a
+   * reset is just `setMascotVoiceId(null)`.
+   */
+  voiceId: string | null;
+  /**
+   * Coarse gender bucket used by the Mascot settings panel to filter
+   * the voice preset dropdown and to drive the "default voice from app
+   * locale" toggle (combined with the current locale to pick a single
+   * voice id). Independent of `voiceId` — the user can keep a manual
+   * override and still flip gender for the locale-default branch.
+   */
+  voiceGender: MascotVoiceGender;
+  /**
+   * When true, ignore `voiceId` and pick the voice from the active
+   * locale (+ `voiceGender`) via `defaultVoiceIdForLocale`. Lets users
+   * say "speak in my UI language" once and have the mascot follow
+   * locale changes without re-opening settings.
+   */
+  voiceUseLocaleDefault: boolean;
+  /**
+   * Mascot id selected from the published GitHub manifest
+   * (`tinyhumansai/mascots`, resolved via `useMascotManifest`). `null` falls
+   * back to the manifest's default (first `ready`) mascot; any non-empty value
+   * pins that specific mascot. The id is the manifest entry id (e.g.
+   * `tiny-mascot`) and length-capped at the same threshold as voiceId to keep
+   * the persisted blob bounded.
+   */
+  selectedMascotId: string | null;
+  /**
+   * Second mascot enabled for meetings (issue #4277). When set (and
+   * distinct from `selectedMascotId`) the meeting bot shows both mascots
+   * together and alternates who speaks each reply. `null` = single-mascot
+   * behavior, unchanged. Same validation/length cap as `selectedMascotId`.
+   */
+  secondaryMascotId: string | null;
+  /**
+   * Per-mascot reply-voice overrides (issue #4277), keyed by manifest
+   * mascot id → ElevenLabs voice id. Lets each mascot in a two-mascot
+   * meeting speak in its own voice. Empty map = no per-mascot override,
+   * so every mascot falls back to `selectEffectiveMascotVoiceId` (the
+   * single-voice behavior). Bounded by `MAX_MASCOT_VOICES`.
+   */
+  mascotVoices: Record<string, string>;
+  /**
+   * User-supplied animated avatar source. Kept as a plain validated
+   * string so the renderer can fall back to YellowMascot whenever the
+   * override is absent or scrubbed during rehydrate.
+   */
+  customMascotGifUrl: string | null;
+  customPrimaryColor: string;
+  customSecondaryColor: string;
+  /**
+   * Whether the chat surface's mascot is scaled up into its right-hand voice
+   * stage (`true`) or docked as the small figure standing on the composer
+   * (`false`). Persisted so the user's choice survives a reload — the merged
+   * chat/Human surface has no other memory of which mode they were in.
+   */
+  chatMascotExpanded: boolean;
+  /**
+   * Whether agent replies are spoken back through TTS with mascot lipsync.
+   *
+   * Previously ad-hoc `localStorage['human.speakReplies']`, duplicated in the
+   * Human page and the chat page's face-mode panel. Now one persisted source of
+   * truth (`AGENTS.md`: prefer Redux over ad-hoc localStorage); the legacy key
+   * is migrated once on rehydrate.
+   */
+  speakReplies: boolean;
+  /**
+   * Live mic state for the chat mascot: `true` while `MicComposer` is
+   * recording, which forces the `listening` pose.
+   *
+   * Deliberately NOT persisted — it is transient hardware state, and a `true`
+   * restored from localStorage would pin the mascot into a listening pose with
+   * no mic running.
+   */
+  chatMascotListening: boolean;
+  /**
+   * Whether the mascot appears on the chat composer at all.
+   *
+   * Dismissing it from the composer is a real preference, not a session quirk —
+   * someone who does not want a character on their message box should not have
+   * to re-dismiss it on every launch. Re-enabled from
+   * Settings → Appearance → Chat, which is why the dismiss dialog names that
+   * path: a hidden control the user cannot find again is a trap.
+   */
+  chatMascotDismissed: boolean;
+  /**
+   * Which voice-chat implementation the mascot's voice stage uses (#5399).
+   * `classic` is
+   * today's turn-based record → transcribe → reply → TTS pipeline; `realtime`
+   * is the streaming ElevenLabs Agents session. Defaults to `classic` and is
+   * only togglable when `VOICE_MODE_FLAG_ENABLED` is on, so the realtime path
+   * ships dark until it is ready.
+   */
+  voiceMode: VoiceMode;
+}
+
+/** Voice-chat implementation used by the mascot's voice stage. */
+export type VoiceMode = 'classic' | 'realtime';
+
+const isVoiceMode = (value: unknown): value is VoiceMode =>
+  value === 'classic' || value === 'realtime';
+
+const initialState: MascotState = {
+  color: DEFAULT_MASCOT_COLOR,
+  voiceId: null,
+  voiceGender: DEFAULT_MASCOT_VOICE_GENDER,
+  voiceUseLocaleDefault: false,
+  selectedMascotId: null,
+  secondaryMascotId: null,
+  mascotVoices: {},
+  customMascotGifUrl: null,
+  customPrimaryColor: '#F7D145',
+  customSecondaryColor: '#B23C05',
+  chatMascotExpanded: false,
+  speakReplies: true,
+  chatMascotListening: false,
+  chatMascotDismissed: false,
+  voiceMode: 'classic',
+};
+
+/**
+ * localStorage key the speak-replies preference used before it moved into this
+ * slice. Exported for the migration test.
+ */
+export const LEGACY_SPEAK_REPLIES_KEY = 'human.speakReplies';
+
+/**
+ * Fold the pre-Redux `human.speakReplies` preference into the persisted mascot
+ * blob, then delete it.
+ *
+ * Runs as a redux-persist `migrate` hook — deliberately NOT inside the reducer.
+ * Reading and deleting a localStorage key is a side effect, and a reducer that
+ * performs one is not a pure function of `(state, action)`: replaying the action
+ * log (devtools time-travel) would take the other branch the second time,
+ * because the key is gone. `migrate` is the layer that is *allowed* to do this,
+ * and it runs before REHYDRATE, so the legacy value simply arrives in the
+ * payload and the reducer stays pure.
+ *
+ * The legacy value wins over the slice default on purpose: a user who turned TTS
+ * off before the merge must not have it silently turned back on.
+ */
+export function migrateLegacySpeakReplies(
+  persisted: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(LEGACY_SPEAK_REPLIES_KEY);
+    if (raw === null) return persisted;
+    window.localStorage.removeItem(LEGACY_SPEAK_REPLIES_KEY);
+  } catch {
+    // localStorage can throw in sandboxed / private contexts — nothing to do.
+    return persisted;
+  }
+  mascotLog('[mascot][migrate] speakReplies from legacy localStorage raw=%s', raw);
+  return { ...(persisted ?? {}), speakReplies: raw === '1' };
+}
+
+/**
+ * Scrub a persisted / raw `mascotVoices` blob down to valid
+ * `mascotId → voiceId` entries under the size cap. Non-object inputs and
+ * any entry whose key or value fails `isMascotVoiceId` are dropped, so a
+ * corrupted localStorage blob can never poison the meeting TTS payload.
+ */
+function sanitizeMascotVoices(value: unknown): Record<string, string> {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(out).length >= MAX_MASCOT_VOICES) break;
+    if (isMascotVoiceId(key) && isMascotVoiceId(val)) {
+      out[key.trim()] = (val as string).trim();
+    }
+  }
+  return out;
+}
+
+function isMascotColor(value: unknown): value is MascotColor {
+  return (
+    typeof value === 'string' && (SUPPORTED_MASCOT_COLORS as readonly string[]).includes(value)
+  );
+}
+
+const mascotSlice = createSlice({
+  name: 'mascot',
+  initialState,
+  reducers: {
+    setMascotColor(state, action: PayloadAction<MascotColor>) {
+      if (isMascotColor(action.payload)) {
+        state.color = action.payload;
+      }
+    },
+    /**
+     * Select a backend mascot by id. Trimmed; empty / oversize / null
+     * clears the override and falls back to the local YellowMascot.
+     */
+    setSelectedMascotId(state, action: PayloadAction<string | null>) {
+      if (action.payload == null) {
+        state.selectedMascotId = null;
+        return;
+      }
+      if (isMascotVoiceId(action.payload)) {
+        state.selectedMascotId = action.payload.trim();
+        state.customMascotGifUrl = null;
+      } else {
+        state.selectedMascotId = null;
+      }
+    },
+    /**
+     * Enable / clear the second meeting mascot (issue #4277). Trimmed;
+     * empty / oversize / null clears it (back to single-mascot). A custom
+     * GIF avatar and a second Rive mascot are mutually exclusive, so
+     * setting one clears the GIF override — mirroring `setSelectedMascotId`.
+     */
+    setSecondaryMascotId(state, action: PayloadAction<string | null>) {
+      if (action.payload == null) {
+        state.secondaryMascotId = null;
+        return;
+      }
+      if (isMascotVoiceId(action.payload)) {
+        state.secondaryMascotId = action.payload.trim();
+        state.customMascotGifUrl = null;
+      } else {
+        state.secondaryMascotId = null;
+      }
+    },
+    /**
+     * Set or clear a per-mascot reply voice (issue #4277). A non-empty
+     * valid `voiceId` records `mascotId → voiceId`; a `null`/invalid
+     * `voiceId` removes the entry (that mascot falls back to the effective
+     * single voice). Both key and value are validated + trimmed so junk
+     * can't grow the persisted map. Over-cap writes are ignored.
+     */
+    setMascotVoice(state, action: PayloadAction<{ mascotId: string; voiceId: string | null }>) {
+      const { mascotId, voiceId } = action.payload;
+      if (!isMascotVoiceId(mascotId)) return;
+      const key = mascotId.trim();
+      if (voiceId == null || !isMascotVoiceId(voiceId)) {
+        delete state.mascotVoices[key];
+        return;
+      }
+      // Only enforce the cap when introducing a NEW key — updating an
+      // existing mascot's voice must always be allowed.
+      if (
+        !(key in state.mascotVoices) &&
+        Object.keys(state.mascotVoices).length >= MAX_MASCOT_VOICES
+      ) {
+        return;
+      }
+      state.mascotVoices[key] = voiceId.trim();
+    },
+    setCustomMascotGifUrl(state, action: PayloadAction<string | null>) {
+      if (action.payload == null) {
+        console.debug('[mascot-avatar] store: cleared');
+        state.customMascotGifUrl = null;
+        return;
+      }
+      // Diagnostics carry the source *category* and length only — never the URL,
+      // local path, or data URL itself, any of which can hold a filename or
+      // the image bytes. A silent reject here is otherwise invisible: the
+      // reducer's failure mode is a cleared avatar, not an error.
+      const trimmed = action.payload.trim();
+      const category = customMascotAvatarSourceCategory(trimmed);
+      // Read the length up front: `isCustomMascotGifUrl` is a `value is string`
+      // predicate, so the else-branch narrows an already-`string` argument to
+      // `never` and no property access survives there.
+      const length = trimmed.length;
+      if (isCustomMascotGifUrl(trimmed)) {
+        console.debug('[mascot-avatar] store: accepted', category, length);
+        state.customMascotGifUrl = trimmed;
+        state.selectedMascotId = null;
+        state.secondaryMascotId = null;
+      } else {
+        console.debug('[mascot-avatar] store: rejected', category, length);
+        state.customMascotGifUrl = null;
+      }
+    },
+    /**
+     * Set or clear the user-selected mascot voice id. Whitespace is
+     * trimmed; empty / oversize / non-string values clear the override
+     * (falling back to the build-time default voice). Pass `null` from
+     * the UI's Reset button to explicitly drop the override.
+     */
+    setMascotVoiceId(state, action: PayloadAction<string | null>) {
+      if (action.payload == null) {
+        state.voiceId = null;
+        return;
+      }
+      if (isMascotVoiceId(action.payload)) {
+        state.voiceId = action.payload.trim();
+      } else {
+        // Invalid input is treated as a reset rather than left in place
+        // — a half-typed or junk-pasted value would otherwise silently
+        // poison the TTS path on the next reply.
+        state.voiceId = null;
+      }
+    },
+    setMascotVoiceGender(state, action: PayloadAction<MascotVoiceGender>) {
+      if (isMascotVoiceGender(action.payload)) {
+        state.voiceGender = action.payload;
+      }
+    },
+    setMascotVoiceUseLocaleDefault(state, action: PayloadAction<boolean>) {
+      state.voiceUseLocaleDefault = Boolean(action.payload);
+    },
+    setCustomPrimaryColor(state, action: PayloadAction<string>) {
+      state.customPrimaryColor = action.payload;
+    },
+    setCustomSecondaryColor(state, action: PayloadAction<string>) {
+      state.customSecondaryColor = action.payload;
+    },
+    setChatMascotExpanded(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      if (state.chatMascotExpanded === next) return;
+      state.chatMascotExpanded = next;
+      mascotLog('[mascot][chat-stage] expanded=%s', next);
+    },
+    setSpeakReplies(state, action: PayloadAction<boolean>) {
+      state.speakReplies = Boolean(action.payload);
+      mascotLog('[mascot][voice] speakReplies=%s', state.speakReplies);
+    },
+    setChatMascotDismissed(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      if (state.chatMascotDismissed === next) return;
+      state.chatMascotDismissed = next;
+      // Collapsing on dismiss keeps the two flags from disagreeing: a dismissed
+      // mascot that is still marked expanded would reopen its voice stage the
+      // moment it is restored, which is not what the user asked for.
+      if (next) state.chatMascotExpanded = false;
+      mascotLog('[mascot][chat-stage] dismissed=%s', next);
+    },
+    setChatMascotListening(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      // Guard the no-op: `MicComposer` reports its state on every transition and
+      // a same-value dispatch would re-render the mascot stage for nothing.
+      if (state.chatMascotListening === next) return;
+      state.chatMascotListening = next;
+      mascotLog('[mascot][voice] listening=%s', next);
+    },
+    setVoiceMode(state, action: PayloadAction<VoiceMode>) {
+      if (isVoiceMode(action.payload)) {
+        state.voiceMode = action.payload;
+      }
+    },
+  },
+  extraReducers: builder => {
+    builder.addCase(resetUserScopedState, () => initialState);
+    // Guard against unknown/missing values surviving a rehydrate (e.g.
+    // a future build removed a variant that was previously persisted).
+    builder.addCase(REHYDRATE, (state, action) => {
+      const rehydrateAction = action as {
+        type: typeof REHYDRATE;
+        key: string;
+        payload?: {
+          color?: unknown;
+          voiceId?: unknown;
+          voiceGender?: unknown;
+          voiceUseLocaleDefault?: unknown;
+          selectedMascotId?: unknown;
+          secondaryMascotId?: unknown;
+          mascotVoices?: unknown;
+          customMascotGifUrl?: unknown;
+          customPrimaryColor?: unknown;
+          customSecondaryColor?: unknown;
+          chatMascotExpanded?: unknown;
+          chatMascotDismissed?: unknown;
+          speakReplies?: unknown;
+          voiceMode?: unknown;
+        };
+      };
+      if (rehydrateAction.key !== 'mascot') return;
+      const restoredColor = rehydrateAction.payload?.color;
+      state.color = isMascotColor(restoredColor) ? restoredColor : DEFAULT_MASCOT_COLOR;
+      const restoredSelectedMascotId = rehydrateAction.payload?.selectedMascotId;
+      state.selectedMascotId =
+        restoredSelectedMascotId == null
+          ? null
+          : isMascotVoiceId(restoredSelectedMascotId)
+            ? (restoredSelectedMascotId as string).trim()
+            : null;
+      // Second mascot + per-mascot voices are absent in pre-#4277 blobs;
+      // the `null` / `{}` fallbacks match a fresh install and keep
+      // single-mascot users unchanged. Invalid values are scrubbed.
+      const restoredSecondaryMascotId = rehydrateAction.payload?.secondaryMascotId;
+      state.secondaryMascotId =
+        restoredSecondaryMascotId == null
+          ? null
+          : isMascotVoiceId(restoredSecondaryMascotId)
+            ? (restoredSecondaryMascotId as string).trim()
+            : null;
+      state.mascotVoices = sanitizeMascotVoices(rehydrateAction.payload?.mascotVoices);
+      const restoredCustomMascotGifUrl = rehydrateAction.payload?.customMascotGifUrl;
+      state.customMascotGifUrl =
+        restoredCustomMascotGifUrl == null
+          ? null
+          : isCustomMascotGifUrl(restoredCustomMascotGifUrl)
+            ? (restoredCustomMascotGifUrl as string).trim()
+            : null;
+      // A custom GIF avatar is mutually exclusive with Rive mascots —
+      // drop both mascot selections if a GIF override survived.
+      if (state.customMascotGifUrl) {
+        state.selectedMascotId = null;
+        state.secondaryMascotId = null;
+      }
+      // `voiceId` is optional in older persisted blobs (pre-#1762) — the
+      // `null` fallback is the intended default and matches a fresh
+      // install. Invalid values are scrubbed so a corrupted localStorage
+      // blob can never make it into the TTS payload.
+      const restoredVoiceId = rehydrateAction.payload?.voiceId;
+      state.voiceId =
+        restoredVoiceId == null
+          ? null
+          : isMascotVoiceId(restoredVoiceId)
+            ? (restoredVoiceId as string).trim()
+            : null;
+      const restoredGender = rehydrateAction.payload?.voiceGender;
+      state.voiceGender = isMascotVoiceGender(restoredGender)
+        ? restoredGender
+        : DEFAULT_MASCOT_VOICE_GENDER;
+      state.voiceUseLocaleDefault =
+        typeof rehydrateAction.payload?.voiceUseLocaleDefault === 'boolean'
+          ? rehydrateAction.payload.voiceUseLocaleDefault
+          : false;
+      const rpc = rehydrateAction.payload?.customPrimaryColor;
+      state.customPrimaryColor =
+        typeof rpc === 'string' && rpc.length > 0 ? rpc : initialState.customPrimaryColor;
+      const rsc = rehydrateAction.payload?.customSecondaryColor;
+      state.customSecondaryColor =
+        typeof rsc === 'string' && rsc.length > 0 ? rsc : initialState.customSecondaryColor;
+      // Chat-mascot stage: absent in pre-merge blobs, so `false` (docked) is the
+      // right default — it matches a fresh install.
+      state.chatMascotExpanded =
+        typeof rehydrateAction.payload?.chatMascotExpanded === 'boolean'
+          ? rehydrateAction.payload.chatMascotExpanded
+          : initialState.chatMascotExpanded;
+      // `speakReplies` moved here from `localStorage['human.speakReplies']`. The
+      // legacy value, if any, was already folded into this payload by
+      // `migrateLegacySpeakReplies` (see the note there on why that cannot live
+      // in this reducer), so there is nothing to special-case.
+      state.speakReplies =
+        typeof rehydrateAction.payload?.speakReplies === 'boolean'
+          ? rehydrateAction.payload.speakReplies
+          : initialState.speakReplies;
+      state.chatMascotDismissed =
+        typeof rehydrateAction.payload?.chatMascotDismissed === 'boolean'
+          ? rehydrateAction.payload.chatMascotDismissed
+          : initialState.chatMascotDismissed;
+      // Never restored — see the field docs on `chatMascotListening`.
+      state.chatMascotListening = false;
+      const restoredVoiceMode = rehydrateAction.payload?.voiceMode;
+      state.voiceMode = isVoiceMode(restoredVoiceMode) ? restoredVoiceMode : 'classic';
+    });
+  },
+});
+
+export const {
+  setMascotColor,
+  setMascotVoiceId,
+  setMascotVoiceGender,
+  setMascotVoiceUseLocaleDefault,
+  setSelectedMascotId,
+  setSecondaryMascotId,
+  setMascotVoice,
+  setCustomMascotGifUrl,
+  setCustomPrimaryColor,
+  setCustomSecondaryColor,
+  setChatMascotExpanded,
+  setChatMascotDismissed,
+  setSpeakReplies,
+  setChatMascotListening,
+  setVoiceMode,
+} = mascotSlice.actions;
+
+/**
+ * Whether the chat mascot is scaled up into its voice stage. Tolerates a
+ * pre-merge persisted slice (the field is simply absent there).
+ */
+export const selectChatMascotExpanded = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotExpanded ?? false;
+
+export const selectSpeakReplies = (state: { mascot: MascotState }): boolean =>
+  state.mascot.speakReplies ?? true;
+
+export const selectChatMascotListening = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotListening ?? false;
+
+/** Whether the user has dismissed the mascot from the composer. */
+export const selectChatMascotDismissed = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotDismissed ?? false;
+
+export const selectMascotColor = (state: { mascot: MascotState }): MascotColor =>
+  state.mascot.color;
+
+export const selectMascotVoiceId = (state: { mascot: MascotState }): string | null =>
+  state.mascot.voiceId;
+
+export const selectMascotVoiceGender = (state: { mascot: MascotState }): MascotVoiceGender =>
+  state.mascot.voiceGender;
+
+export const selectMascotVoiceUseLocaleDefault = (state: { mascot: MascotState }): boolean =>
+  state.mascot.voiceUseLocaleDefault;
+
+export const selectSelectedMascotId = (state: { mascot: MascotState }): string | null =>
+  state.mascot.selectedMascotId;
+
+export const selectSecondaryMascotId = (state: { mascot: MascotState }): string | null =>
+  state.mascot.secondaryMascotId;
+
+export const selectMascotVoices = (state: { mascot: MascotState }): Record<string, string> =>
+  state.mascot.mascotVoices ?? {};
+
+export const selectVoiceMode = (state: { mascot: MascotState }): VoiceMode =>
+  state.mascot.voiceMode ?? 'classic';
+
+/**
+ * Explicit per-mascot voice override for `mascotId`, or `null` when none
+ * is set (caller falls back to the effective single voice). Curried so it
+ * reads like the other parameterised selectors at call sites.
+ */
+export const selectMascotVoiceFor =
+  (mascotId: string | null) =>
+  (state: { mascot: MascotState }): string | null =>
+    mascotId ? (state.mascot.mascotVoices?.[mascotId] ?? null) : null;
+
+/**
+ * True when a distinct second mascot is enabled — the single gate the
+ * meeting render + join paths use to decide dual vs single behavior.
+ * Guards against the same mascot being picked twice.
+ */
+export const selectDualMascotEnabled = (state: { mascot: MascotState }): boolean => {
+  const { selectedMascotId, secondaryMascotId } = state.mascot;
+  return secondaryMascotId != null && secondaryMascotId !== selectedMascotId;
+};
+
+export const selectCustomMascotGifUrl = (state: { mascot: MascotState }): string | null =>
+  state.mascot.customMascotGifUrl;
+
+export const selectCustomPrimaryColor = (state: { mascot: MascotState }): string =>
+  state.mascot.customPrimaryColor;
+
+export const selectCustomSecondaryColor = (state: { mascot: MascotState }): string =>
+  state.mascot.customSecondaryColor;
+
+/**
+ * Resolve the voice id the next reply will be synthesised with, taking
+ * into account every mascot-voice setting plus the active locale. This
+ * is the single source of truth read by both UI ("what does the picker
+ * show as current?") and the TTS hook ("what voice should I pass to
+ * synthesizeSpeech?"), so they can never drift.
+ *
+ * Resolution order:
+ *   1. `voiceUseLocaleDefault` on → locale-default for `voiceGender`.
+ *   2. Manual `voiceId` set → that id.
+ *   3. Otherwise → `MASCOT_VOICE_ID` (the build-time default).
+ *
+ * The first branch deliberately wins over a manual override so the
+ * "speak in my UI language" toggle behaves predictably — flipping it on
+ * without first clearing a stale override would otherwise silently do
+ * nothing. The UI in `MascotPanel` makes this precedence visible by
+ * disabling the manual picker while the toggle is on.
+ */
+export const selectEffectiveMascotVoiceId = (state: {
+  mascot: MascotState;
+  locale?: { current: Locale };
+}): string => {
+  if (state.mascot.voiceUseLocaleDefault) {
+    // `locale` slice may be absent in narrow test harnesses (e.g.
+    // MascotPanel.test wires only the mascot reducer). Default to `en`
+    // so the resolver still produces a usable id rather than throwing.
+    const current = state.locale?.current ?? 'en';
+    return defaultVoiceIdForLocale(current, state.mascot.voiceGender);
+  }
+  if (state.mascot.voiceId) return state.mascot.voiceId;
+  // Belt-and-braces: if the build-time default ever drops out of the
+  // curated preset list, fall back to the first preset rather than a
+  // bogus empty string.
+  return MASCOT_VOICE_ID || ELEVENLABS_VOICE_PRESETS[0].id;
+};
+
+interface MeetingMascotSlot {
+  /** Manifest mascot id, or `null` for the primary when the user is on
+   *  the default (first-`ready`) mascot. */
+  mascotId: string | null;
+  /** Resolved voice id: the per-mascot override, else the effective
+   *  single voice — never empty, so the join payload always carries one. */
+  voiceId: string;
+}
+
+interface MeetingMascotVoicePair {
+  primary: MeetingMascotSlot;
+  secondary: MeetingMascotSlot | null;
+}
+
+/**
+ * Resolve the (up to two) mascots + voices a meeting join should use
+ * (issue #4277). Single source of truth for the backend
+ * `agent_meetings_join` sender and for tests, so they can't drift.
+ * (The in-app CEF join path was removed in #5478.)
+ *
+ * `secondary` is non-null only when a distinct second mascot is enabled
+ * (`selectDualMascotEnabled`). Each slot's voice is its per-mascot
+ * override, falling back to `selectEffectiveMascotVoiceId`; when the user
+ * hasn't set distinct voices both slots resolve to that same voice
+ * (harmless — alternation still works, it just sounds the same).
+ */
+export const selectMeetingMascotVoicePair = (state: {
+  mascot: MascotState;
+  locale?: { current: Locale };
+}): MeetingMascotVoicePair => {
+  const effective = selectEffectiveMascotVoiceId(state);
+  const { selectedMascotId, secondaryMascotId } = state.mascot;
+  // Tolerate a partial / pre-migration mascot slice (e.g. a legacy persisted
+  // blob or a test's preloadedState) that predates `mascotVoices`.
+  const mascotVoices = state.mascot.mascotVoices ?? {};
+  const primary: MeetingMascotSlot = {
+    mascotId: selectedMascotId,
+    voiceId: (selectedMascotId && mascotVoices[selectedMascotId]) || effective,
+  };
+  const dualEnabled = secondaryMascotId != null && secondaryMascotId !== selectedMascotId;
+  const secondary: MeetingMascotSlot | null = dualEnabled
+    ? { mascotId: secondaryMascotId, voiceId: mascotVoices[secondaryMascotId] || effective }
+    : null;
+  return { primary, secondary };
+};
+
+export default mascotSlice.reducer;
