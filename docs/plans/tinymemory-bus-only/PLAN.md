@@ -255,3 +255,27 @@ Do **not** raise `scripts/kernel-floor.limits` as part of this work: the growth
 is not this branch's, and raising it here would launder someone else's
 regression into a memory-migration PR. It needs finding and justifying on its
 own.
+
+
+## Are `sync` / `status` / `reconcile` already on the contract? (answered)
+
+Mostly yes — an earlier note in this file said otherwise and compared against
+the wrong type. Corrected:
+
+| Engine module | On the contract? |
+| --- | --- |
+| **`sync`** | **Yes.** `MemorySourceSync::run_source_sync(source_id)` and `run_connection_sync(toolkit, connection_id)`. And the host barely uses this module: `sources::sync::sync_source` has **zero** call sites in `src/`; the only thing reached is `derive_scopes`, a pure helper over a `MemorySourceEntry` + `Config`. |
+| **`status`** | **Per-provider: yes, and already wired.** `MemorySourceSync::sync_statuses()` returns `SourceSyncStatus { provider, chunks_synced, chunks_pending, batch_total, batch_processed, last_chunk_at_ms, freshness }`, and `memory/sync/sync_status/rpc.rs` already calls it through `binding.provider().as_source_sync()`. **Per-source: no.** `sources::status::status_list` is keyed by `source_id` and returns a row per *configured* source, including ones holding zero chunks. |
+| **`reconcile`** | **Not a member, but not a bus gap.** `ensure_composio_sources` is `composio::scan_active_sync_targets` (a Composio API call) plus a registry batch upsert. The registry half is host-side already; the scan is Composio client work. This is a relocation, not an upstream ask. |
+
+**Correction to the earlier entry in this document.** It claimed status was
+inexpressible because `SourceTotal` carries no `chunks_pending`. That is true of
+`SourceTotal` and irrelevant: `MemoryChunks::source_totals` is a chunk-grouping
+read, not the sync-status twin. `SourceSyncStatus` is the twin and it *does*
+carry `chunks_pending`. The real gap is narrower than stated — the key
+(`provider` vs `source_id`) and the zero-chunk rows, not the pending count.
+
+The engine's own `status.rs` says the pending predicate is "the engine's own
+predicate from `list_sync_statuses`, kept identical so the per-source view and
+the per-provider one cannot disagree about the same chunk" — i.e. these are two
+deliberate views of one truth, and only one of them has a contract member.
