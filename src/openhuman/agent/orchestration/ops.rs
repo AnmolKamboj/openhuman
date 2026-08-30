@@ -223,23 +223,27 @@ impl AgentOrchestrationSession {
     /// Used by the workflow engine on stop/interrupt to drain a session's
     /// running children. Idempotent — the crate registry cancels the
     /// cooperative token and the hard abort handle, and the `Cancelled` status
-    /// is published atomically on each child's watch channel first. The
-    /// terminal registry entry is retained until a waiter observes it (or a
-    /// later soft-cap sweep prunes it), so a concurrent `wait_agents` resolves
-    /// with cancellation even when it starts after this method returns.
+    /// is published on each child's watch channel first so a concurrent
+    /// `wait_agents` resolves with a cancellation rather than a closed channel.
     pub async fn abort_all(&self) {
-        let cancelled = match self
-            .registry
-            .cancel_all_retaining(|metadata, _status| {
-                mark_cancelled(&metadata.status_tx);
-            })
-        {
+        let cancelled = match self.registry.cancel_all() {
             Ok(cancelled) => cancelled,
             Err(err) => {
                 log::warn!("[agent_orchestration] abort_all could not drain registry: {err:?}");
                 return;
             }
         };
+        for entry in &cancelled {
+            if entry.status.is_terminal() {
+                continue;
+            }
+            let _ = entry.metadata.status_tx.send(ChildState {
+                status: OrchestrationTaskStatus::Cancelled,
+                result_summary: entry.status.result_summary.clone(),
+                error: entry.status.error.clone(),
+                updated_at: now(),
+            });
+        }
         log::debug!(
             "[agent_orchestration] abort_all session={} cancelled={}",
             self.session_id,
@@ -453,19 +457,20 @@ impl AgentOrchestrationSession {
         progress_sink: Option<mpsc::Sender<AgentProgress>>,
         result: Result<SubagentRunOutcome, crate::openhuman::agent::harness::SubagentRunError>,
     ) {
+        // A cancelled child has already reached a terminal status via
+        // `abort_all`; do not overwrite it with a late completion.
+        if status_tx.borrow().is_terminal() {
+            return;
+        }
+
         match result {
             Ok(outcome) => {
-                if !publish_terminal(
-                    status_tx,
-                    ChildState {
+                let _ = status_tx.send(ChildState {
                     status: OrchestrationTaskStatus::Completed,
                     result_summary: Some(outcome.output.clone()),
                     error: None,
                     updated_at: now(),
-                    },
-                ) {
-                    return;
-                }
+                });
                 BUS.publish(DomainEvent::AgentOrchestrationCompleted {
                     session_id: self.session_id.clone(),
                     orchestration_id: orchestration_id.to_string(),
@@ -499,17 +504,12 @@ impl AgentOrchestrationSession {
             }
             Err(error) => {
                 let message = error.to_string();
-                if !publish_terminal(
-                    status_tx,
-                    ChildState {
-                        status: OrchestrationTaskStatus::Failed,
-                        result_summary: None,
-                        error: Some(message.clone()),
-                        updated_at: now(),
-                    },
-                ) {
-                    return;
-                }
+                let _ = status_tx.send(ChildState {
+                    status: OrchestrationTaskStatus::Failed,
+                    result_summary: None,
+                    error: Some(message.clone()),
+                    updated_at: now(),
+                });
                 BUS.publish(DomainEvent::AgentOrchestrationFailed {
                     session_id: self.session_id.clone(),
                     orchestration_id: orchestration_id.to_string(),
@@ -528,35 +528,6 @@ impl AgentOrchestrationSession {
             }
         }
     }
-}
-
-/// Publish a terminal state only when no terminal writer won the race first.
-///
-/// The watch-channel update is the compare-and-set boundary for both the state
-/// transition and the caller's subsequent lifecycle events: callers emit only
-/// when this returns `true`.
-fn publish_terminal(status_tx: &watch::Sender<ChildState>, terminal: ChildState) -> bool {
-    debug_assert!(terminal.is_terminal());
-    status_tx.send_if_modified(|state| {
-        if state.is_terminal() {
-            return false;
-        }
-        *state = terminal.clone();
-        true
-    })
-}
-
-/// Atomically mark a live child cancelled while preserving any partial payload.
-fn mark_cancelled(status_tx: &watch::Sender<ChildState>) -> bool {
-    let updated_at = now();
-    status_tx.send_if_modified(|state| {
-        if state.is_terminal() {
-            return false;
-        }
-        state.status = OrchestrationTaskStatus::Cancelled;
-        state.updated_at = updated_at.clone();
-        true
-    })
 }
 
 /// Publish `Running` unless the child already reached a terminal status.

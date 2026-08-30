@@ -20,7 +20,7 @@
 //! Resolving the effective oversize threshold is host policy: the crate
 //! takes `threshold_tokens` as an explicit parameter (it deliberately
 //! dropped an environment-variable backdoor), and this host still needs
-//! that backdoor for its external test harnesses —
+//! that backdoor for its own test harnesses —
 //! `OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS` lets a test lower the
 //! threshold so the handoff path can be exercised on payloads that survive
 //! tokenjuice's compaction cap (see e.g.
@@ -51,32 +51,10 @@ pub(crate) fn apply_handoff(
     agent_id: &str,
     result_text: String,
 ) -> String {
-    let threshold_override = std::env::var("OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS").ok();
-    let effective_threshold = resolve_handoff_threshold(threshold_override.as_deref());
-    apply_handoff_with_threshold(
-        cache,
-        tool_name,
-        task_id,
-        agent_id,
-        result_text,
-        effective_threshold,
-    )
-}
-
-fn resolve_handoff_threshold(threshold_override: Option<&str>) -> usize {
-    threshold_override
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(HANDOFF_OVERSIZE_THRESHOLD_TOKENS)
-}
-
-fn apply_handoff_with_threshold(
-    cache: &ResultHandoffCache,
-    tool_name: &str,
-    task_id: &str,
-    agent_id: &str,
-    result_text: String,
-    effective_threshold: usize,
-) -> String {
+    let effective_threshold = std::env::var("OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(HANDOFF_OVERSIZE_THRESHOLD_TOKENS);
     tinyagents::harness::handoff::apply_handoff(
         cache,
         tool_name,
@@ -90,22 +68,61 @@ fn apply_handoff_with_threshold(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    /// `OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS` is process-global and this
+    /// suite runs ~11.6k tests in one process, so serialize the two tests in
+    /// this module that touch it and restore the prior value on drop.
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: caller holds `env_lock()` for the duration of the test.
+            unsafe { std::env::set_var(key, val) };
+            Self { key, prev }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: caller holds `env_lock()` for the duration of the test.
+            unsafe { std::env::remove_var(key) };
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                // SAFETY: caller holds `env_lock()` for the duration of the test.
+                Some(val) => unsafe { std::env::set_var(self.key, val) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
 
     #[test]
-    fn apply_handoff_uses_an_injected_threshold() {
+    fn apply_handoff_uses_the_test_env_threshold_when_set() {
+        let _guard = env_lock();
+        let _env = EnvGuard::set("OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS", "5");
         let cache = ResultHandoffCache::new();
 
         // 40 bytes / 4 => 10 estimated tokens, comfortably above the
-        // injected threshold of 5 but nowhere near the real default of 50_000.
+        // env-lowered threshold of 5 but nowhere near the real default of
+        // 50_000 — this only exercises the handoff path because the env var
+        // was actually read and honoured.
         let oversized = "x".repeat(40);
-        let out = apply_handoff_with_threshold(
-            &cache,
-            "some_tool",
-            "task-1",
-            "agent-1",
-            oversized.clone(),
-            5,
-        );
+        let out = apply_handoff(&cache, "some_tool", "task-1", "agent-1", oversized.clone());
 
         assert_ne!(
             out, oversized,
@@ -118,34 +135,16 @@ mod tests {
     }
 
     #[test]
-    fn threshold_resolution_accepts_valid_overrides_and_rejects_invalid_ones() {
-        assert_eq!(resolve_handoff_threshold(Some("5")), 5);
-        assert_eq!(
-            resolve_handoff_threshold(Some("not-a-number")),
-            HANDOFF_OVERSIZE_THRESHOLD_TOKENS
-        );
-        assert_eq!(
-            resolve_handoff_threshold(None),
-            HANDOFF_OVERSIZE_THRESHOLD_TOKENS
-        );
-    }
-
-    #[test]
-    fn apply_handoff_uses_the_default_threshold_when_injected() {
+    fn apply_handoff_falls_back_to_the_default_threshold_when_env_unset() {
+        let _guard = env_lock();
+        let _env = EnvGuard::remove("OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS");
         let cache = ResultHandoffCache::new();
 
         // Comfortably below HANDOFF_OVERSIZE_THRESHOLD_TOKENS (50_000 tokens
         // / 200_000 bytes), so with the env var unset (falling back to the
         // real default) the text passes through unchanged.
         let small = "hello world".to_string();
-        let out = apply_handoff_with_threshold(
-            &cache,
-            "some_tool",
-            "task-1",
-            "agent-1",
-            small.clone(),
-            HANDOFF_OVERSIZE_THRESHOLD_TOKENS,
-        );
+        let out = apply_handoff(&cache, "some_tool", "task-1", "agent-1", small.clone());
 
         assert_eq!(
             out, small,
