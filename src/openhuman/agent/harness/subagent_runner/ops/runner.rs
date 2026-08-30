@@ -1767,7 +1767,9 @@ mod fast_path_tests {
         apply_max_result_chars, format_deterministic_memory_hits, parse_memory_fast_path_enabled,
         MEMORY_FAST_PATH_LIMIT,
     };
-    use crate::openhuman::memory::tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
+    use crate::openhuman::memory::api::provider::retrieval::{
+        RetrievalHit, RetrievalNodeKind, RetrievalResponse,
+    };
     use chrono::Utc;
     // `RetrievalHit::tree_kind` is TinyCortex's own enum. `tinymemory_core::
     // store::trees::types::TreeKind` was a re-export of exactly this item
