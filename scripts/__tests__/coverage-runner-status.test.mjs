@@ -161,3 +161,53 @@ test("run_counted counts zero for a run that executed no tests", () => {
   assert.equal(res.status, 0, res.output);
   assert.match(res.output, /ZERO/);
 });
+
+// The `required-features` skip that `run_integration_target` performs on entry
+// had no test of its own, which is how the extraction above drifted out of sync
+// with it unnoticed. These pin both directions.
+
+test("an integration target whose required-features are not in the product set is skipped", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      // `memory_artifacts_e2e` needs `memory-git`, which the product set below
+      // does not enable — the exact shape that took this lane down when a gate
+      // was dropped from the product set.
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      'PRODUCT_FEATURES="channels,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      // Fails loudly if the skip does not happen, so a regression cannot pass
+      // by quietly doing the work.
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    [
+      "run_integration_target memory_artifacts_e2e",
+      'echo "rc=$?"',
+    ].join("\n"),
+  );
+
+  assert.match(res.output, /skipping memory_artifacts_e2e/, res.output);
+  assert.doesNotMatch(res.output, /RAN-THE-TARGET/, res.output);
+  // Skipping is success: one unsatisfiable target must not fail the lane.
+  assert.match(res.output, /rc=0/, res.output);
+});
+
+test("an integration target whose required-features are all present still runs", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      // Same target, now satisfied. Substring matching would be a real hazard
+      // here, so the product set deliberately contains a feature that has
+      // `memory-git` as a prefix-adjacent neighbour.
+      'PRODUCT_FEATURES="memory-github,memory-git,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    ["run_integration_target memory_artifacts_e2e", 'echo "rc=$?"'].join("\n"),
+  );
+
+  assert.match(res.output, /RAN-THE-TARGET/, res.output);
+  assert.doesNotMatch(res.output, /skipping/, res.output);
+  assert.match(res.output, /rc=0/, res.output);
+});
