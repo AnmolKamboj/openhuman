@@ -124,9 +124,76 @@ const GRAPH_CHANGED_SINCE_PARK_ERROR: &str = "the workflow changed after this ru
 pub(crate) fn validate_and_migrate_graph(graph_json: Value) -> Result<WorkflowGraph, String> {
     let graph = migrate_and_deserialize_graph(graph_json)?;
     tinyflows::validate::validate(&graph).map_err(|e| e.to_string())?;
-    ensure_engine_compatible(&graph)?;
+    tinyflows::compat::ensure_compatible(&graph)?;
     Ok(graph)
 }
+
+/// Every engine-incompatible topology in `graph`, mapped onto this domain's
+/// validation-error shape.
+///
+/// The classification is [`tinyflows::compat`]'s, and belongs there: which
+/// fan-in shapes the engine's barrier relief can execute is a fact about the
+/// engine, not about OpenHuman. This host used to carry the whole walk.
+pub(crate) fn engine_compatibility_errors(
+    graph: &WorkflowGraph,
+) -> Vec<crate::openhuman::flows::FlowValidationError> {
+    tinyflows::compat::errors(graph)
+        .into_iter()
+        .map(to_compat_validation_error)
+        .collect()
+}
+
+/// Same walk, with the inline-nesting budget passed in rather than recomputed.
+///
+/// [`referenced_workflow_compatibility_errors`] needs this: a saved child
+/// reached partway through the root's referenced-workflow chain must still be
+/// checked to the *remaining* depth the root allows. The engine's runtime depth
+/// counter is one budget shared across the whole inline-plus-referenced chain,
+/// so a fan-in the child's own cap would not reach can still be reached from
+/// the root.
+pub(crate) fn engine_compatibility_errors_with_max_depth(
+    graph: &WorkflowGraph,
+    max_depth: u64,
+) -> Vec<crate::openhuman::flows::FlowValidationError> {
+    tinyflows::compat::errors_with_max_depth(graph, max_depth)
+        .into_iter()
+        .map(to_compat_validation_error)
+        .collect()
+}
+
+/// The nesting cap `graph` declares on its trigger, or the engine default.
+pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
+    tinyflows::compat::max_sub_workflow_depth(graph)
+}
+
+fn to_compat_validation_error(
+    error: tinyflows::compat::CompatibilityError,
+) -> crate::openhuman::flows::FlowValidationError {
+    crate::openhuman::flows::FlowValidationError {
+        code: error.code.to_string(),
+        message: error.message,
+        node_id: error.node_id,
+        field: None,
+    }
+}
+
+/// Host-aware compatibility check, including saved descendants that graph-only
+/// validation cannot inspect. Authoring boundaries use it before persistence;
+/// execution boundaries use it before compiling a root run/resume or returning
+/// a resolver graph, so an unsafe descendant cannot run after earlier effects.
+fn ensure_config_aware_engine_compatible(
+    config: &Config,
+    graph: &WorkflowGraph,
+) -> Result<(), String> {
+    match config_aware_engine_compatibility_errors(config, graph)
+        .into_iter()
+        .next()
+    {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
 
 /// Runs a raw graph JSON value through migration + deserialization **without**
 /// the structural `validate` step. Splits the two so a caller that wants
