@@ -11,8 +11,6 @@ mod tests {
     use serde_json::json;
     use tinyflows_catalog::import::n8n::map_n8n_workflow;
 
-
-
     /// Imports a small n8n fixture that uses `$json` bindings end-to-end
     /// through the exact same path `ops::flows_import` takes (map →
     /// re-serialize → `validate_and_migrate_graph`), then runs the imported

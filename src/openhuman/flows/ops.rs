@@ -27,7 +27,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
-use tinyflows_catalog::build_registry;
 use crate::openhuman::flows::bus;
 use crate::openhuman::flows::draft_store;
 use crate::openhuman::flows::run_registry;
@@ -41,6 +40,7 @@ use crate::openhuman::security::approval::{
     APPROVAL_FLOW_RUN_CONTEXT,
 };
 use crate::rpc::RpcOutcome;
+use tinyflows_catalog::build_registry;
 // `MemoryProvider` brings `driver_id()` / `as_documents()` into scope for the
 // `MemoryGuard` this file's delete path clears through. Nothing here names the
 // engine crate any more — `flows_delete_impl`'s test seam took an
@@ -202,7 +202,6 @@ fn ensure_config_aware_engine_compatible(
         None => Ok(()),
     }
 }
-
 
 /// Runs a raw graph JSON value through migration + deserialization **without**
 /// the structural `validate` step. Splits the two so a caller that wants

@@ -24,10 +24,10 @@ pub(crate) use llm::*;
 // "answer the shape this node declared" is a fact about the engine's own
 // output-parser sub-port, not about OpenHuman. Re-exported under the historical
 // `caps::` path so existing call sites resolve unchanged.
-pub(crate) use tinyflows::caps::mock_schema_aware::*;
 pub use ops::*;
 pub(crate) use prompt::*;
 pub(crate) use resolver::*;
 pub(crate) use state::*;
 pub(crate) use tier::*;
+pub(crate) use tinyflows::caps::mock_schema_aware::*;
 pub(crate) use tools::NATIVE_TOOL_PREFIX;

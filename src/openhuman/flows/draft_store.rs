@@ -12,7 +12,13 @@ use tinyflows_catalog::{DraftOrigin, FlowDraft};
 
 /// Binds [`tinyflows_sqlite::drafts::create_draft`] to this host's catalog directory.
 #[inline]
-pub fn create_draft(config: &Config, flow_id: Option<String>, name: String, graph: Value, origin: DraftOrigin) -> Result<FlowDraft> {
+pub fn create_draft(
+    config: &Config,
+    flow_id: Option<String>,
+    name: String,
+    graph: Value,
+    origin: DraftOrigin,
+) -> Result<FlowDraft> {
     tinyflows_sqlite::drafts::create_draft(&dir(config), flow_id, name, graph, origin)
 }
 
@@ -24,7 +30,13 @@ pub fn get_draft(config: &Config, id: &str) -> Result<Option<FlowDraft>> {
 
 /// Binds [`tinyflows_sqlite::drafts::update_draft`] to this host's catalog directory.
 #[inline]
-pub fn update_draft(config: &Config, id: &str, name: Option<String>, graph: Option<Value>, flow_id: Option<Option<String>>) -> Result<FlowDraft> {
+pub fn update_draft(
+    config: &Config,
+    id: &str,
+    name: Option<String>,
+    graph: Option<Value>,
+    flow_id: Option<Option<String>>,
+) -> Result<FlowDraft> {
     tinyflows_sqlite::drafts::update_draft(&dir(config), id, name, graph, flow_id)
 }
 

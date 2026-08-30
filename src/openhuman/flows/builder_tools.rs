@@ -2824,11 +2824,9 @@ fn build_null_resolution_entry(
     diag: &tinyflows::expr::NullResolution,
     graph: &WorkflowGraph,
 ) -> Value {
-    if let Some(upstream) = tinyflows::preflight::mock_opaque_tool_call_upstream_ref(
-        &diag.expression,
-        graph,
-        node_id,
-    ) {
+    if let Some(upstream) =
+        tinyflows::preflight::mock_opaque_tool_call_upstream_ref(&diag.expression, graph, node_id)
+    {
         let field = diag.location.strip_prefix("args.").unwrap_or("args");
         // The disambiguation advice differs by upstream kind: a native `oh:`
         // tool's output binds FLAT (`.item.json.<field>`) after

@@ -42,7 +42,13 @@ pub fn insert_duplicate_flow(config: &Config, source: &Flow, new_name: String) -
 
 /// Binds [`tinyflows_sqlite::flows::create_flow`] to this host's catalog directory.
 #[inline]
-pub fn create_flow(config: &Config, name: String, graph: tinyflows::model::WorkflowGraph, require_approval: bool, enabled: bool) -> Result<Flow> {
+pub fn create_flow(
+    config: &Config,
+    name: String,
+    graph: tinyflows::model::WorkflowGraph,
+    require_approval: bool,
+    enabled: bool,
+) -> Result<Flow> {
     tinyflows_sqlite::flows::create_flow(&dir(config), name, graph, require_approval, enabled)
 }
 
@@ -78,8 +84,26 @@ pub fn set_enabled(config: &Config, id: &str, enabled: bool) -> Result<Flow> {
 
 /// Binds [`tinyflows_sqlite::flows::update_flow_graph`] to this host's catalog directory.
 #[inline]
-pub fn update_flow_graph(config: &Config, id: &str, name: String, graph: tinyflows::model::WorkflowGraph, require_approval: bool, enabled_override: Option<bool>, force_disarm_if_automatic: bool, expected_updated_at: Option<&str>) -> std::result::Result<Flow, FlowUpdateError> {
-    tinyflows_sqlite::flows::update_flow_graph(&dir(config), id, name, graph, require_approval, enabled_override, force_disarm_if_automatic, expected_updated_at)
+pub fn update_flow_graph(
+    config: &Config,
+    id: &str,
+    name: String,
+    graph: tinyflows::model::WorkflowGraph,
+    require_approval: bool,
+    enabled_override: Option<bool>,
+    force_disarm_if_automatic: bool,
+    expected_updated_at: Option<&str>,
+) -> std::result::Result<Flow, FlowUpdateError> {
+    tinyflows_sqlite::flows::update_flow_graph(
+        &dir(config),
+        id,
+        name,
+        graph,
+        require_approval,
+        enabled_override,
+        force_disarm_if_automatic,
+        expected_updated_at,
+    )
 }
 
 /// Binds [`tinyflows_sqlite::flows::list_revisions`] to this host's catalog directory.
@@ -90,7 +114,11 @@ pub fn list_revisions(config: &Config, flow_id: &str, limit: usize) -> Result<Ve
 
 /// Binds [`tinyflows_sqlite::flows::revision_by_id`] to this host's catalog directory.
 #[inline]
-pub fn revision_by_id(config: &Config, flow_id: &str, revision_id: &str) -> Result<Option<FlowRevision>> {
+pub fn revision_by_id(
+    config: &Config,
+    flow_id: &str,
+    revision_id: &str,
+) -> Result<Option<FlowRevision>> {
     tinyflows_sqlite::flows::revision_by_id(&dir(config), flow_id, revision_id)
 }
 
@@ -108,7 +136,12 @@ pub fn kv_get(config: &Config, namespace: &str, key: &str) -> Result<Option<serd
 
 /// Binds [`tinyflows_sqlite::flows::kv_set`] to this host's catalog directory.
 #[inline]
-pub fn kv_set(config: &Config, namespace: &str, key: &str, value: &serde_json::Value) -> Result<()> {
+pub fn kv_set(
+    config: &Config,
+    namespace: &str,
+    key: &str,
+    value: &serde_json::Value,
+) -> Result<()> {
     tinyflows_sqlite::flows::kv_set(&dir(config), namespace, key, value)
 }
 
@@ -120,7 +153,13 @@ pub fn kv_delete(config: &Config, namespace: &str, key: &str) -> Result<()> {
 
 /// Binds [`tinyflows_sqlite::flows::insert_flow_run`] to this host's catalog directory.
 #[inline]
-pub fn insert_flow_run(config: &Config, id: &str, flow_id: &str, thread_id: &str, started_at: &str) -> Result<()> {
+pub fn insert_flow_run(
+    config: &Config,
+    id: &str,
+    flow_id: &str,
+    thread_id: &str,
+    started_at: &str,
+) -> Result<()> {
     tinyflows_sqlite::flows::insert_flow_run(&dir(config), id, flow_id, thread_id, started_at)
 }
 
@@ -132,8 +171,26 @@ pub fn prune_flow_runs(config: &Config, flow_id: &str, keep: usize) -> Result<us
 
 /// Binds [`tinyflows_sqlite::flows::finish_flow_run`] to this host's catalog directory.
 #[inline]
-pub fn finish_flow_run(config: &Config, id: &str, status: &str, finished_at: &str, steps: &[FlowRunStep], pending_approvals: &[String], error: Option<&str>, graph_hash: Option<&str>) -> Result<bool> {
-    tinyflows_sqlite::flows::finish_flow_run(&dir(config), id, status, finished_at, steps, pending_approvals, error, graph_hash)
+pub fn finish_flow_run(
+    config: &Config,
+    id: &str,
+    status: &str,
+    finished_at: &str,
+    steps: &[FlowRunStep],
+    pending_approvals: &[String],
+    error: Option<&str>,
+    graph_hash: Option<&str>,
+) -> Result<bool> {
+    tinyflows_sqlite::flows::finish_flow_run(
+        &dir(config),
+        id,
+        status,
+        finished_at,
+        steps,
+        pending_approvals,
+        error,
+        graph_hash,
+    )
 }
 
 /// Binds [`tinyflows_sqlite::flows::upsert_flow_run_step`] to this host's catalog directory.
@@ -144,13 +201,21 @@ pub fn upsert_flow_run_step(config: &Config, run_id: &str, step: &FlowRunStep) -
 
 /// Binds [`tinyflows_sqlite::flows::expire_parked_runs`] to this host's catalog directory.
 #[inline]
-pub fn expire_parked_runs(config: &Config, cutoff: &str, now: &str, error_msg: &str) -> Result<Vec<(String, String)>> {
+pub fn expire_parked_runs(
+    config: &Config,
+    cutoff: &str,
+    now: &str,
+    error_msg: &str,
+) -> Result<Vec<(String, String)>> {
     tinyflows_sqlite::flows::expire_parked_runs(&dir(config), cutoff, now, error_msg)
 }
 
 /// Binds [`tinyflows_sqlite::flows::list_running_run_ids`] to this host's catalog directory.
 #[inline]
-pub fn list_running_run_ids(config: &Config, started_before: &str) -> Result<Vec<(String, String)>> {
+pub fn list_running_run_ids(
+    config: &Config,
+    started_before: &str,
+) -> Result<Vec<(String, String)>> {
     tinyflows_sqlite::flows::list_running_run_ids(&dir(config), started_before)
 }
 
@@ -160,7 +225,12 @@ pub fn list_running_run_ids(config: &Config, started_before: &str) -> Result<Vec
 /// this crate turns on as a dev-dependency and never in a shipped build.
 #[cfg(test)]
 #[inline]
-pub fn force_run_status_for_test(config: &Config, id: &str, status: &str, error: Option<&str>) -> Result<()> {
+pub fn force_run_status_for_test(
+    config: &Config,
+    id: &str,
+    status: &str,
+    error: Option<&str>,
+) -> Result<()> {
     tinyflows_sqlite::flows::force_run_status_for_test(&dir(config), id, status, error)
 }
 
@@ -170,8 +240,16 @@ pub fn force_run_status_for_test(config: &Config, id: &str, status: &str, error:
 /// this crate turns on as a dev-dependency and never in a shipped build.
 #[cfg(test)]
 #[inline]
-pub fn force_corrupt_graph_json_for_test(config: &Config, flow_id: &str, raw_graph_json: &str) -> Result<()> {
-    tinyflows_sqlite::flows::force_corrupt_graph_json_for_test(&dir(config), flow_id, raw_graph_json)
+pub fn force_corrupt_graph_json_for_test(
+    config: &Config,
+    flow_id: &str,
+    raw_graph_json: &str,
+) -> Result<()> {
+    tinyflows_sqlite::flows::force_corrupt_graph_json_for_test(
+        &dir(config),
+        flow_id,
+        raw_graph_json,
+    )
 }
 
 /// Binds [`tinyflows_sqlite::flows::mark_run_resuming`] to this host's catalog directory.
@@ -212,7 +290,11 @@ pub fn upsert_suggestions(config: &Config, suggestions: &[FlowSuggestion]) -> Re
 
 /// Binds [`tinyflows_sqlite::flows::list_suggestions`] to this host's catalog directory.
 #[inline]
-pub fn list_suggestions(config: &Config, status: Option<SuggestionStatus>, limit: usize) -> Result<Vec<FlowSuggestion>> {
+pub fn list_suggestions(
+    config: &Config,
+    status: Option<SuggestionStatus>,
+    limit: usize,
+) -> Result<Vec<FlowSuggestion>> {
     tinyflows_sqlite::flows::list_suggestions(&dir(config), status, limit)
 }
 
