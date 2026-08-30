@@ -298,6 +298,26 @@ tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex
 # (`MemoryConfig`, `MemoryTreeConfig`, …) now live in `tinymemory_api::host` and
 # are still fields of OpenHuman's `Config`, which derives `JsonSchema`.
 tinymemory-core = { path = "vendor/tinymemory/crates/tinymemory-core" }
+# `tinymemory-sources` is the source registry, its types and its readers, in a
+# crate of its own. Taken directly rather than through `tinymemory-core`
+# (OpenHuman#5560): `tinymemory_core::sources` is a thin layer over it —
+# `sources::types` is already a `pub use` of this crate, and `sources::registry`
+# is "the host's config path plus a write lock" around a `SourceRegistry` over
+# the host's own `sources.toml`. The host owns that file; it does not need the
+# engine to read it.
+#
+# It costs this crate no new dependency: serde, schemars, serde_json, anyhow,
+# `tinymemory-api`, async-trait, walkdir, toml and uuid are all already here,
+# and `network` adds reqwest / futures / tracing / chrono / tokio, which are
+# too. No `rusqlite`, no `tinycortex`.
+#
+# `network` matches what `tinymemory-core` enables, so the GitHub / RSS /
+# web-page readers exist. Their dispatch is deliberately NOT `reader_for` —
+# see that module's docs and `memory::sources`'s.
+tinymemory-sources = { path = "vendor/tinymemory/crates/tinymemory-sources", features = [
+    "network",
+] }
+
 
 # tinymcp — the Model Context Protocol client, extracted out of this tree
 # (https://github.com/tinyhumansai/tinymcp). Owns both transports, the static

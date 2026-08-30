@@ -6,7 +6,7 @@
 //! `FilterSpec` variant into the shared filter envelope and stamps the
 //! per-fetch cap.
 
-use crate::openhuman::memory::sync::composio::providers::TaskFetchFilter;
+use crate::openhuman::integrations::composio::providers::TaskFetchFilter;
 
 use super::types::FilterSpec;
 

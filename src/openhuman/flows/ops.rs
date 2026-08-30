@@ -1781,7 +1781,7 @@ pub(crate) fn toolkit_has_curated_catalog(toolkit: &str) -> bool {
     // provider data rather than wire vocabulary. `toolkit_from_slug` and
     // friends moved and are named at `tinymemory_api::composio` above; these
     // two cannot until the registry itself goes behind the module.
-    use crate::openhuman::memory::sync::composio::providers::{catalog_for_toolkit, get_provider};
+    use crate::openhuman::integrations::composio::providers::{catalog_for_toolkit, get_provider};
     get_provider(toolkit)
         .and_then(|p| p.curated_tools())
         .or_else(|| catalog_for_toolkit(toolkit))

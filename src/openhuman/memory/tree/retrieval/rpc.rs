@@ -63,7 +63,6 @@ use crate::openhuman::memory::api::provider::retrieval::{
     CoverWindowQuery, EntityMatch, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
 };
 use crate::openhuman::memory::source_scope::as_bus_scope;
-use crate::openhuman::memory::tree::score::extract::EntityKind;
 use crate::rpc::RpcOutcome;
 use tinymemory_api::chunks::SourceKind;
 
@@ -274,25 +273,22 @@ pub async fn search_entities_rpc(
     // Capture logging-friendly summary BEFORE we move fields out of `req`.
     let query_len = req.query.len();
     let has_kinds = req.kinds.is_some();
-    // Parsed before the driver is resolved, so an unknown kind stays a caller
-    // error naming the offending value rather than a driver round trip that
-    // matches nothing and reads as an empty index — the ambiguity the contract
-    // requires this filter to be validated against. `EntityKind::parse` is
-    // exact-match, so `as_str` re-emits what a caller that got it right sent.
-    let kinds: Option<Vec<String>> = match req.kinds {
-        None => None,
-        Some(list) => {
-            let parsed: Result<Vec<String>, String> = list
-                .iter()
-                .map(|s| {
-                    EntityKind::parse(s)
-                        .map(|kind| kind.as_str().to_string())
-                        .map_err(|e| format!("search_entities: {e}"))
-                })
-                .collect();
-            Some(parsed?)
-        }
-    };
+    // Passed through unparsed. This used to run `EntityKind::parse` here so an
+    // unknown kind stayed a caller error naming the offending value rather than
+    // a driver round trip that matched nothing and read as an empty index — the
+    // ambiguity the contract requires this filter to be validated against.
+    //
+    // The driver already does exactly that: it parses each requested kind and
+    // answers `MemoryError::Invalid("unknown entity kind: {kind}")`, naming the
+    // value. So the host-side pass bought nothing but a compile-time link to
+    // the engine's `EntityKind` (#5560) — and that enum is `#[non_exhaustive]`
+    // and has grown twice, so a host-side copy of the vocabulary would drift
+    // and start rejecting kinds the driver accepts. Validation belongs where
+    // the vocabulary is defined.
+    //
+    // Parsing was also a no-op for valid input: it is exact-match, so `as_str`
+    // re-emitted what a caller that got it right already sent.
+    let kinds: Option<Vec<String>> = req.kinds;
     // 0 is the engine's "no caller preference" sentinel, not a request for zero
     // rows, and the driver forwards `limit` verbatim — so the absent-limit
     // default stays the engine's, exactly as it was on the direct call.

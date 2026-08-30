@@ -147,6 +147,15 @@ fn create_then_registry_roundtrip_preserves_when_to_use_and_inputs() {
 async fn mock_llm_orchestrator_lists_and_runs_workflows_through_the_loop() {
     let ws = tempfile::tempdir().unwrap();
     seed_project_workflow(ws.path(), "triage-inbox", "Summarise the inbox.");
+    // An EMPTY home, not the developer's. `WorkflowListTool` scans the user
+    // scope as well as the workspace, so without this the listing also carries
+    // every bundle installed under the real `~/.openhuman/skills` and
+    // `~/.agents/skills` — and since the harness caps one tool result at 16 KiB
+    // (`ContextConfig::tool_result_budget_bytes`), a developer with a dozen
+    // skills pushes the seeded workflow out of the window entirely. Discovery
+    // was right; the fixture was not. Same hazard `ops_tests::load_skills_ws`
+    // documents for `load_workflow_metadata`.
+    let home = tempfile::tempdir().unwrap();
 
     let mut config = Config::default();
     config.workspace_dir = ws.path().to_path_buf();
@@ -154,9 +163,10 @@ async fn mock_llm_orchestrator_lists_and_runs_workflows_through_the_loop() {
 
     // The two tools the orchestrator now carries for workflows.
     let tools: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![
-        Box::new(crate::openhuman::skills::tools::WorkflowListTool::new(
-            config.clone(),
-        )),
+        Box::new(
+            crate::openhuman::skills::tools::WorkflowListTool::new(config.clone())
+                .with_home_dir(Some(home.path().to_path_buf())),
+        ),
         Box::new(RunWorkflowTool::new()),
     ]);
 
