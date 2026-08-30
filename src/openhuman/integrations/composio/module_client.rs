@@ -109,6 +109,31 @@ pub async fn call_bare<Reply: serde::de::DeserializeOwned>(
     Err(format!("{member}: {WITHOUT_MODULES}"))
 }
 
+/// Serializes every test that reaches the connector module.
+///
+/// The module is loaded once per process and holds exactly one route, but each
+/// test that exercises it stands up its own mock backend on its own port and
+/// points the module at it. Run in parallel they reconfigure each other
+/// mid-call, and the failure surfaces as a 404 from somebody else's mock —
+/// which reads like a bug in the code under test rather than as a race.
+///
+/// This did not exist before the connector extraction, because each test built
+/// its own client. Sharing one module instance is the price of the module
+/// being real in these tests rather than mocked, and they are worth more for
+/// it: they exercise the loader, the bus, and the module's own dispatch.
+///
+/// It lives here rather than in one test module because the tests that need it
+/// are spread across `ops_tests` and the flow adapter's own suite, and two
+/// locks would serialize neither against the other.
+#[cfg(test)]
+pub(crate) static MODULE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Take the module lock for the rest of the test.
+#[cfg(test)]
+pub(crate) async fn module_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    MODULE_LOCK.lock().await
+}
+
 #[cfg(test)]
 #[path = "module_client_tests.rs"]
 mod tests;

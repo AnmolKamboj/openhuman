@@ -28,24 +28,7 @@ fn parse_sync_reason_rejects_unknown_values() {
     assert!(parse_sync_reason(Some("")).is_err());
 }
 
-/// Serializes every test that reaches the connector module.
-///
-/// The module is loaded once per process and holds exactly one route, but each
-/// test below stands up its own mock backend on its own port and points the
-/// module at it. Run in parallel they reconfigure each other mid-call, and the
-/// failure surfaces as a 404 from somebody else's mock — which reads like a
-/// bug in the code under test rather than as a race.
-///
-/// This did not exist before the extraction because each test built its own
-/// client. Sharing one module instance is the price of the module being real
-/// here rather than mocked, and these tests are worth more for it: they
-/// exercise the loader, the bus, and the module's own dispatch.
-static MODULE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-/// Take the module lock for the rest of the test.
-async fn module_guard() -> tokio::sync::MutexGuard<'static, ()> {
-    MODULE_LOCK.lock().await
-}
+use crate::openhuman::integrations::composio::module_client::module_guard;
 
 // ── resolve_client / ops auth errors ──────────────────────────
 
