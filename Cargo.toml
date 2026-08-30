@@ -1142,14 +1142,20 @@ medulla = []
 # `DomainSet::Channels` flag (#4796): this feature narrows the compile-time
 # surface, `DomainSet` gates it at runtime.
 #
-# INTENTIONALLY EMPTY — do NOT "fix" this by adding `dep:` entries. This gate
-# sheds ZERO dependencies: `tinychannels` stays load-bearing regardless
-# (`config/schema/channels.rs` re-exports its config types, `event_bus/events.rs`
-# `DomainEvent` embeds `tinychannels::ChannelInboundEnvelope`, and
-# `security/pairing.rs` re-exports its pairing helpers), so it is always
-# compiled. The gate's value is compile-time surface + binary size, not the dep
-# tree. (`whatsapp-web` refines this gate — see below — forwarding to the
-# `tinychannels/whatsapp-web` provider feature.)
+# This gate now owns the `tinychannels` CRATE, not just two of its providers.
+# The three always-on pins that used to make the crate unconditional
+# (`config/schema/channels.rs` re-exporting the config types, `DomainEvent`
+# embedding `ChannelInboundEnvelope`, `security/pairing.rs` re-exporting the
+# pairing helpers) now resolve through `tinychannels-bus`, the transport-free
+# contract crate, which stays unconditional. What is left behind this gate is
+# the provider stack and the relay transport loop — and with them `reqwest`,
+# `rusqlite`, `rustls`, `tokio-tungstenite` and the email/lark cohorts.
+#
+# ONE caveat, and it is the reason a channels-less product build still links
+# the crate: `voice` enables `dep:tinychannels` for `EmailChannel` alone
+# (`audio_toolkit::ops` mails generated podcasts). A build with neither
+# `channels` nor `voice` drops it entirely. (`whatsapp-web` refines this gate —
+# see below — forwarding to the `tinychannels/whatsapp-web` provider feature.)
 #
 # NOTE: the in-app web chat (`openhuman::web_chat`, RPC namespace `channel`) is
 # NOT gated by this feature even though its runtime tag is
@@ -1158,13 +1164,9 @@ medulla = []
 # carve-outs also stay ungated — `traits` is a 1-line tinychannels re-export and
 # `cli::CliChannel` is the dep-free local REPL used by the always-on agent
 # harness interactive loop. See AGENTS.md "channels gate" + `channels/mod.rs`.
-# Provider modules inside tinychannels are now feature-gated there, so this
-# gate finally sheds crates instead of being surface-only: `email` owns the
-# lettre/async-imap/mail-parser stack and `lark` owns axum + prost — 27 crates
-# that a workflow-only build has no use for. The crate itself still cannot be
-# dropped (DomainEvent embeds its inbound envelope, config re-exports its
-# provider types, security::pairing re-exports its helpers), which is why
-# gating the providers rather than the crate is the right seam.
+# The crate itself is now droppable, which it was not before: splitting
+# `tinychannels-bus` out moved every always-on pin into a contract crate that
+# costs serde/schemars and nothing this build did not already have.
 channels = ["dep:tinychannels", "tinychannels/email", "tinychannels/lark"]
 sandbox-landlock = ["dep:landlock"]
 sandbox-bubblewrap = []
