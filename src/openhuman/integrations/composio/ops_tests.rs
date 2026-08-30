@@ -1221,7 +1221,7 @@ async fn composio_execute_via_mock_propagates_backend_error() {
 }
 
 #[tokio::test]
-async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome() {
+async fn composio_sync_gmail_via_mock_ingests_records_and_updates_outcome() {
     let _serialised = module_guard().await;
     // The embedding seam fails loudly when unwired. Installed here rather
     // than relied upon from another test: `install_for_tests` is
@@ -1341,8 +1341,13 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
         outcome.value.summary
     );
 
-    // Poll for the spawned ingest task to persist the TinyCortex skill
-    // document. The mock backend is local, so this normally lands quickly.
+    // Poll for the spawned ingest task to write the records into memory.
+    //
+    // The namespace is `source:<source_id>` because the sync now hands its
+    // records to the bound driver's `accept_source_items` rather than writing a
+    // provider-shaped skill document itself. That is the whole point of the
+    // split — the module reads, this crate ingests — so reading them back the
+    // way memory files them is what proves the two halves met.
     let documents = {
         let mut documents = Vec::new();
         for _ in 0..50 {
@@ -1352,7 +1357,7 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
                 .provider()
                 .as_documents()
                 .expect("the bound driver serves documents")
-                .list_documents(Some("skill-gmail"))
+                .list_documents(Some("source:gmail:c1"))
                 .await
                 .unwrap()
                 .get("documents")
@@ -1369,11 +1374,13 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     assert_eq!(
         documents.len(),
         1,
-        "expected one ingested Gmail document after spawned task drains"
+        "expected one ingested Gmail record after the spawned task drains"
     );
     let document = &documents[0];
-    assert_eq!(document["documentId"], "gmail:gmail-msg-1");
     assert_eq!(document["title"], "Phoenix launch canary");
+    // `external_sync` is what stops a third party's words being treated later
+    // as the user's own. A sync that ingested without it would be worse than
+    // one that ingested nothing.
     assert_eq!(document["taint"], "external_sync");
 }
 
