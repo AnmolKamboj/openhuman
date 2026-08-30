@@ -26,14 +26,17 @@ use tinymemory_core::store::trees::types::INPUT_TOKEN_BUDGET;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioTriggerSubscriber,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    extract_item_id, DailyBudget, SyncState,
-};
-use openhuman_core::openhuman::memory::sync::composio::providers::{
+// `sync_state` moved off `memory::sync::composio::providers` (the deleted
+// engine registry's former home) onto the contract crate directly — this
+// data (a per-connection cursor/dedup-set/budget) was always pure `serde`
+// vocabulary shared by both sides of the module boundary, never engine
+// behaviour, so it re-exports unchanged. See
+// `integrations::composio::providers`'s module docs for the fuller account of
+// what moved where.
+use tinymemory_api::composio::state::{extract_item_id, DailyBudget, SyncState};
+use openhuman_core::openhuman::integrations::composio::providers::{
     agent_ready_toolkits, capability_matrix, catalog_for_toolkit, classify_unknown, find_curated,
-    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ComposioProvider,
-    CuratedTool, ProviderContext, ProviderUserProfile, SyncOutcome, SyncReason, TaskFetchFilter,
-    ToolScope, UserScopePref,
+    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ToolScope, UserScopePref,
 };
 use openhuman_core::openhuman::memory::tree::score::extract::{EntityKind, ExtractedEntities};
 use openhuman_core::openhuman::memory::tree::score::resolver::canonicalise;
