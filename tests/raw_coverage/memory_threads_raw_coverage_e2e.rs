@@ -69,6 +69,7 @@ use openhuman_core::openhuman::memory::sync::composio::providers::slack::schemas
 use openhuman_core::openhuman::integrations::composio::identity_store::{
     delete_connected_identity_facets, load_connected_identities,
 };
+use openhuman_core::openhuman::integrations::composio::ops::{composio_get_user_profile, composio_sync};
 use openhuman_core::openhuman::integrations::composio::profile_md::{
     block_end, block_start, merge_provider_into_profile_md, remove_provider_from_profile_md,
     replace_managed_block,
