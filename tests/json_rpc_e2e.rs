@@ -10700,60 +10700,22 @@ async fn json_rpc_task_sources_crud_and_status() {
     rpc_join.abort();
 }
 
-/// Stub Composio provider used by the task-sources fetch E2E. Returns a
-/// canned set of tasks from `fetch_tasks` so the full
-/// fetch → enrich → route → ingest pipeline can be exercised over RPC
-/// without a live Composio connection.
-mod task_sources_stub {
-    use async_trait::async_trait;
-    use openhuman_core::openhuman::memory::sync::composio::providers::{
-        ComposioProvider, NormalizedTask, ProviderContext, ProviderUserProfile, TaskFetchFilter,
-    };
-
-    pub struct StubGithubProvider {
-        pub tasks: Vec<NormalizedTask>,
-    }
-
-    pub fn task(external_id: &str, title: &str, updated: &str) -> NormalizedTask {
-        NormalizedTask {
-            external_id: external_id.to_string(),
-            provider: "github".to_string(),
-            title: title.to_string(),
-            url: Some(format!("https://example.com/{external_id}")),
-            updated_at: Some(updated.to_string()),
-            ..Default::default()
-        }
-    }
-
-    #[async_trait]
-    impl ComposioProvider for StubGithubProvider {
-        fn toolkit_slug(&self) -> &'static str {
-            "github"
-        }
-        async fn fetch_user_profile(
-            &self,
-            _ctx: &ProviderContext,
-        ) -> Result<ProviderUserProfile, String> {
-            Ok(ProviderUserProfile::default())
-        }
-        async fn fetch_tasks(
-            &self,
-            _ctx: &ProviderContext,
-            _filter: &TaskFetchFilter,
-        ) -> Result<Vec<NormalizedTask>, String> {
-            Ok(self.tasks.clone())
-        }
-    }
-}
-
-/// Full task-sources fetch pipeline over JSON-RPC: a stub provider feeds
-/// `fetch_tasks`, then `task_sources_fetch` routes the tasks onto the
-/// board, `list_tasks` surfaces them, a re-fetch dedups, and
-/// `preview_filter` returns matches without ingesting.
+/// `task_sources_fetch` / `task_sources_preview_filter` over JSON-RPC now
+/// that `ComposioProvider::fetch_tasks` has no replacement.
+///
+/// This test used to register a stub `ComposioProvider` (deleted by
+/// tinymemory v1.13.4 with the whole in-process provider registry — see
+/// `crate::openhuman::integrations::composio::providers`'s module docs) and
+/// exercise the full fetch → enrich → route → ingest pipeline against it.
+/// `task_sources::pipeline::fetch_tasks_unavailable` documents why that
+/// capability was not ported forward: tinyconnectors' `Sync` member returns
+/// memory records, not board items, and there is no structured task-fetch
+/// bus surface to reimplement `fetch_tasks` against for any toolkit. So the
+/// pipeline now refuses cleanly for every provider instead of silently
+/// dropping some toolkits' coverage, and this test asserts that refusal
+/// end to end over RPC rather than a successful fetch.
 #[tokio::test]
 async fn json_rpc_task_sources_fetch_pipeline_e2e() {
-    use std::sync::Arc;
-
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
