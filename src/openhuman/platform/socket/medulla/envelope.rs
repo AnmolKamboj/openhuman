@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::openhuman::agent::progress::AgentProgress;
 
-const MEDULLA_ENVELOPE_VERSION: &str = "medulla.harness.session.v1";
+// The backend validates this discriminator. Keep the established v2 wire value
+// even though the Rust types are now owned here instead of by the retired
+// TinyPlace crate.
+const MEDULLA_ENVELOPE_VERSION: &str = "tinyplace.harness.session.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TextPayload {
@@ -251,7 +254,7 @@ pub fn envelope_for_kind(session_id: &str, seq: i64, kind: &HarnessEventKind) ->
 
     HarnessEnvelope {
         envelope_version: MEDULLA_ENVELOPE_VERSION.to_string(),
-        version: 1,
+        version: 2,
         scope: HarnessScope {
             scope_type: "session".to_string(),
             wrapper_session_id: session_id.to_string(),
@@ -335,6 +338,8 @@ mod tests {
         });
         let env = envelope_for_kind("sess-1", 7, &kind);
         assert!(env.is_valid());
+        assert_eq!(env.envelope_version, "tinyplace.harness.session.v2");
+        assert_eq!(env.version, 2);
         assert_eq!(env.event.kind, "agent_message");
         assert_eq!(env.event.seq, 7);
 

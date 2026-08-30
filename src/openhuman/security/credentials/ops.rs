@@ -54,8 +54,8 @@ fn is_embedder_host() -> bool {
     crate::core::runtime::context::CoreContext::current_embedder_config().is_some()
 }
 
-/// Start all login-gated background services (local AI, voice, and
-/// orchestration). Called both from the initial boot path (when an existing
+/// Start all login-gated background services (local AI and voice). Called both
+/// from the initial boot path (when an existing
 /// session is detected) and from `store_session()` on fresh login.
 pub async fn start_login_gated_services(config: &Config) {
     // These login-gated services are mutually independent — the ONLY ordering
@@ -63,9 +63,9 @@ pub async fn start_login_gated_services(config: &Config) {
     // for the single rdev global listener on macOS). Previously each was
     // `.await`ed in series, so their cold-start costs SUMMED: the local-AI
     // bootstrap (Ollama/embeddings) + the Windows WASAPI microphone init
-    // (a synchronous readiness handshake in `always_on::spawn_capture_thread`) +
-    // the hosted-client network sync stacked into the ~10s stall users hit
-    // before hotkeys/commands were usable — worst on Windows (#3490). Worse,
+    // (a synchronous readiness handshake in `always_on::spawn_capture_thread`)
+    // stacked into the ~10s stall users hit before hotkeys/commands were usable
+    // — worst on Windows (#3490). Worse,
     // the hotkey/command registration (steps 2–3) sat
     // *after* the local-AI bootstrap in the series, so commands could not
     // register until Ollama finished warming.
@@ -77,9 +77,8 @@ pub async fn start_login_gated_services(config: &Config) {
     // panic in one service is logged on join and never aborts the others.
 
     // Unit tests must not launch the real login-gated background services: they
-    // are detached, long-lived loops (hosted-client read-sync + world-diff
-    // uploader + one-shot history migration, continuous audio capture) that
-    // outlive the test that spawned them and interleave with the
+    // include detached, long-lived continuous audio capture that outlives the
+    // test that spawned it and interleaves with the
     // shared process state (HOME / active_user.toml) of the parallel `cargo
     // test` run. Once startup became concurrent (#3490) that interleaving made
     // the session-isolation tests order-dependent. `cfg!(test)` is compiled out

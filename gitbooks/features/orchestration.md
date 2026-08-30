@@ -12,7 +12,7 @@ icon: sitemap
 
 Most harnesses run one agent in one loop. OpenHuman is built as an **orchestrator**: a stack for coordinating many agents, over long horizons, across machines. It does this durably, observably, and under your control.
 
-Five layers make that real:
+Four layers make that real:
 
 ## 1. Graphs, not loops
 

@@ -12,8 +12,8 @@
 //! exposes the same public surface that always-on / other-gated callers depend
 //! on (`WALLET_NOT_CONFIGURED_MESSAGE`, `status`, `secret_material`,
 //! `WalletChain`, `prepare_transfer`, `execute_prepared`, the prepare/execute
-//! param + result types, `solana_cluster` / `SolanaCluster`, the `rpc`
-//! submodule, `prepared_quotes_for_test`, and the controller-registration
+//! param + result types, `solana_cluster` / `SolanaCluster`,
+//! `prepared_quotes_for_test`, and the controller-registration
 //! entry points) with no-op / disabled-error bodies. Signatures MUST match the real ones;
 //! the disabled build
 //! (`cargo check --no-default-features`) is
