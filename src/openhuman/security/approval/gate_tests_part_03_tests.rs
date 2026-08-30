@@ -439,9 +439,7 @@ async fn decide_approve_always_for_flow_then_insert_flow_trust_composes_to_auto_
     assert!(!gate.is_flow_tool_trusted("flow-2", "composio").unwrap());
 
     match &decided.source_context {
-        Some(super::super::super::types::ApprovalSourceContext::Flow {
-            flow_id, ..
-        }) => {
+        Some(super::super::super::types::ApprovalSourceContext::Flow { flow_id, .. }) => {
             gate.insert_flow_trust(flow_id, &decided.tool_name).unwrap();
         }
         other => panic!("expected Flow source_context, got {other:?}"),
