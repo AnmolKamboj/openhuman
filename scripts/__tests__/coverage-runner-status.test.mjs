@@ -59,6 +59,13 @@ function extractFunction(name) {
 function withRunnerFunctions(functions, preamble, body) {
   const script = [
     "set -euo pipefail",
+    // Merge stderr into stdout for the whole script, including the success
+    // path. A `case`/`if !` guard around an undefined helper can turn bash's
+    // status-127 "command not found" into a handled branch rather than a
+    // thrown error, so execFileSync's success path — which otherwise only
+    // returns stdout — would never see it and the guard below would miss a
+    // real extraction drift.
+    "exec 2>&1",
     extractTestsRunDecl(),
     preamble,
     ...functions.map(extractFunction),
