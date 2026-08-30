@@ -19,8 +19,10 @@ use super::super::module_client::{self as connectors, methods};
 use super::super::providers::{ProviderUserProfile, SyncOutcome, SyncReason};
 use super::super::types::{
     reencode, ComposioRefreshIdentitiesResponse, ComposioUserProfile, ComposioUserProfileRequest,
-    ConnectorSyncRequest, ConnectorSyncResponse,
 };
+use crate::openhuman::memory::api::provider::types::SourceItem;
+use crate::openhuman::memory::api::types::MemoryTaint;
+use tinyconnectors_bus::records::{ConnectorSyncRequest, ConnectorSyncResponse};
 use super::connections::resolve_toolkit_for_connection;
 use super::error_utils::{report_composio_op_error, OpResult};
 
@@ -287,7 +289,7 @@ async fn run_sync_pass(
     // `ConnectorRecord` and memory's `SourceItem` carry the same seven keys —
     // the contract crate asserts that against a literal list, so a drift is a
     // failing test there rather than a decode error here.
-    let items = reencode::<_, Vec<tinymemory_bus::provider::SourceItem>>(&response.batch.records)?;
+    let items = reencode::<_, Vec<SourceItem>>(&response.batch.records)?;
 
     // `ExternalSync`: everything here came from a third-party account over the
     // network, and the taint is what stops it being treated as the user's own
@@ -297,7 +299,7 @@ async fn run_sync_pass(
             &response.batch.source_id,
             &response.batch.source_kind,
             items,
-            tinymemory_bus::provider::MemoryTaint::ExternalSync,
+            MemoryTaint::ExternalSync,
         )
         .await
         .map_err(|error| format!("ingesting {toolkit} records failed: {error}"))?;
