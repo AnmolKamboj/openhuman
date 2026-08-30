@@ -35,10 +35,10 @@ use std::sync::OnceLock;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::config::Config;
 
+use tinymemory_sources::types::{MemorySourceEntry, SourceKind};
 pub use tinymemory_sources::{
     apply_kind_defaults, memory_sync_defaults_for_toolkit, ComposioUpsertTarget, MemorySourcePatch,
 };
-use tinymemory_sources::types::{MemorySourceEntry, SourceKind};
 
 static MEMORY_SOURCES_WRITE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -183,9 +183,7 @@ pub async fn remove_source(id: &str) -> Result<bool, String> {
 /// # Errors
 ///
 /// As [`replace_sources_in`].
-pub async fn remove_composio_source_by_connection_id(
-    connection_id: &str,
-) -> Result<usize, String> {
+pub async fn remove_composio_source_by_connection_id(connection_id: &str) -> Result<usize, String> {
     let _guard = memory_sources_write_guard().await;
     registry()
         .await?

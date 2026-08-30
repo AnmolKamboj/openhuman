@@ -123,5 +123,5 @@ pub async fn offload_oversized_result(
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "artifact_offload_tests.rs"]
 mod tests;

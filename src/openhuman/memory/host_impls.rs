@@ -527,68 +527,9 @@ pub(crate) fn install_for_tests() {
 }
 
 #[cfg(test)]
-mod boot_seam_tests {
-    use super::*;
-
-    /// Installing the seams must satisfy the engine's `require_embedding_host`.
-    ///
-    /// This is the regression for the outage #5560 shipped and had to take back:
-    /// the seam install was removed from all three boot sites on the reasoning
-    /// that "this process embeds no engine, so there is nothing to call back".
-    /// It does embed one — `tinymemory-core` is a normal dependency, and
-    /// `session::builder::factory` reaches `store::factories::
-    /// create_session_memory_with_local_ai`, which calls
-    /// `require_embedding_host()`. Every chat turn then died with
-    ///
-    ///   no EmbeddingHost installed — the host must call
-    ///   memory::embedding_host::set_embedding_host during startup wiring
-    ///
-    /// The loaded module installing its own seams does not cover this: a
-    /// `cdylib` has its own statics, so what it sets is invisible in this
-    /// process. Nothing in a build or a type check said so, which is why the
-    /// assertion is here.
-    ///
-    /// It asserts the engine's own accessor rather than a local flag, so it
-    /// keeps testing the thing the engine actually reads.
-    #[test]
-    fn installing_the_seams_satisfies_the_engines_embedding_host() {
-        install_for_tests();
-
-        assert!(
-            tinymemory_core::embedding_host::embedding_host().is_some(),
-            "boot installed no EmbeddingHost; the session memory factory on the \
-             chat path calls require_embedding_host() and will fail every turn"
-        );
-        assert!(
-            tinymemory_core::embedding_host::require_embedding_host().is_ok(),
-            "require_embedding_host must succeed once the boot seams are in"
-        );
-    }
-}
+#[path = "host_impls_boot_seam_tests_tests.rs"]
+mod boot_seam_tests;
 
 #[cfg(test)]
-mod chunk_store_reset_tests {
-    use super::*;
-
-    /// The reset must be safe to run against a healthy (or absent) store: it
-    /// drops the cached handle and reopens without quarantining anything.
-    #[test]
-    fn reset_reopens_a_healthy_or_absent_store_without_quarantining() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut config = Config::default();
-        config.workspace_dir = tmp.path().join("workspace");
-        std::fs::create_dir_all(config.workspace_dir.join("memory_tree")).unwrap();
-
-        reset_in_process_chunk_store(&config);
-
-        let entries: Vec<String> = std::fs::read_dir(config.workspace_dir.join("memory_tree"))
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        assert!(
-            !entries.iter().any(|name| name.contains(".corrupt-")),
-            "a healthy or absent store must never be quarantined by the reset: {entries:?}"
-        );
-    }
-}
+#[path = "host_impls_chunk_store_reset_tests_tests.rs"]
+mod chunk_store_reset_tests;

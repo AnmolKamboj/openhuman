@@ -390,5 +390,5 @@ pub(crate) fn strip_temperature_suffix(model: &str) -> &str {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "http_tests.rs"]
 mod tests;

@@ -417,6 +417,10 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
+      - name: Enforce OpenHuman Rust file layout
+        if: needs.changes.outputs['rust-core'] == 'true'
+        run: node scripts/ci/check-openhuman-rust-layout.mjs
+
       - name: Enforce Linux TLS dependency policy
         if: needs.changes.outputs['rust-core'] == 'true' || needs.changes.outputs['rust-tauri'] == 'true'
         run: bash scripts/check-linux-tls-dependencies.sh

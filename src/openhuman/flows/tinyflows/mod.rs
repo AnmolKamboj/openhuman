@@ -28,6 +28,7 @@ pub mod memory_adapter;
 mod memory_node_e2e_tests;
 pub mod observability;
 #[cfg(test)]
+#[path = "tinyflows_tests.rs"]
 mod tests;
 
 /// The durable SQLite checkpoint store. It lives in `tinyflows-sqlite` — the

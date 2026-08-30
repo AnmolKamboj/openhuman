@@ -46,6 +46,6 @@ pub use tinymemory_api::host::composio::capability_matrix;
 // listing them by name is what keeps that measurable.
 pub use crate::openhuman::memory::sync::composio::providers::{
     all_providers, get_provider, init_default_providers, load_user_scope_or_default, profile,
-    profile_md, register_provider, resolve_sync_interval_secs, slack, sync_state,
-    ComposioProvider, ProviderArc, ProviderContext, ProviderUserProfile,
+    profile_md, register_provider, resolve_sync_interval_secs, slack, sync_state, ComposioProvider,
+    ProviderArc, ProviderContext, ProviderUserProfile,
 };
