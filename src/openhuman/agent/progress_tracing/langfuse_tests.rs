@@ -2,8 +2,8 @@ use super::*;
 use std::collections::BTreeMap;
 
 use crate::openhuman::agent::progress_tracing::SpanKind;
-use tinyagents::harness::ids::{CallId, EventId, RunId};
-use tinyagents::harness::usage::Usage;
+use tinyagents_harness::ids::{CallId, EventId, RunId};
+use tinyinference::usage::Usage;
 
 fn span(
     trace: &str,

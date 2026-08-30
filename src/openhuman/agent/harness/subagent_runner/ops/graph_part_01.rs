@@ -10,7 +10,7 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::agent::tinyagents::{run_turn_via_tinyagents_shared, SubagentScope};
 use crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use crate::openhuman::tools::{Tool, ToolSpec};
-use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
 
 /// Cumulative usage stats gathered across a sub-agent graph run.
 #[derive(Debug, Clone, Default)]

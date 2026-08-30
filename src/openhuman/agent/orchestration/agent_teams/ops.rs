@@ -1,6 +1,6 @@
 //! Business logic for durable agent-team coordination (#3374).
 //!
-//! Thin orchestration over `tinyagents::session::run_ledger`: create teams + members,
+//! Thin orchestration over `tinyagents_session::run_ledger`: create teams + members,
 //! assign dependency-aware tasks (with self/unknown/cycle validation reusing
 //! the same Kahn's-algorithm shape as `workflow_runs`), atomically claim tasks,
 //! and exchange teammate messages. Messaging rides the run-ledger event stream
@@ -14,8 +14,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::openhuman::config::Config;
-use tinyagents::graph::dag::{has_cycle, DagNode};
-use tinyagents::session::run_ledger::{
+use tinyagents_graph::dag::{has_cycle, DagNode};
+use tinyagents_session::run_ledger::{
     self, AgentTeam, AgentTeamListRequest, AgentTeamListResponse, AgentTeamMemberStatus,
     AgentTeamMemberUpsert, AgentTeamStatus, AgentTeamTask, AgentTeamTaskStatus,
     AgentTeamTaskUpsert, AgentTeamUpsert, ClaimOutcome, CompletionOutcome, RunEvent,
@@ -393,7 +393,7 @@ fn team_view(config: &Config, team_id: &str) -> Result<TeamView> {
 /// introduce a cycle. The self and unknown checks stay here because they are
 /// scoped to the *new* task: a pre-existing task carrying a dangling edge is
 /// not this caller's fault and must not block the assignment. The cycle check
-/// delegates to `tinyagents::graph::dag`.
+/// delegates to `tinyagents_graph::dag`.
 fn validate_dependencies(
     new_task_id: &str,
     depends_on: &[String],
@@ -422,7 +422,7 @@ fn validate_dependencies(
 }
 
 /// Cycle check over the task dependency graph (existing tasks plus the
-/// candidate new task), delegating to `tinyagents::graph::dag::has_cycle`.
+/// candidate new task), delegating to `tinyagents_graph::dag::has_cycle`.
 ///
 /// Edge `dep -> task` means `task` depends on `dep`. Edges pointing at unknown
 /// ids are ignored by the shared validator (they are rejected separately).

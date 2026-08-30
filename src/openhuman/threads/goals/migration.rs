@@ -4,8 +4,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use ::tinyagents::graph::goals::store::GOALS_NAMESPACE;
-use ::tinyagents::harness::store::Store;
+use tinyagents_graph::goals::store::GOALS_NAMESPACE;
+use tinyagents_harness::store::Store;
 
 use super::ThreadGoal;
 use crate::openhuman::agent::session_import::ops::open_session_stores;

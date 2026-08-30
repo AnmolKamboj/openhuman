@@ -102,8 +102,8 @@ fn selector(parent_thread_id: &str) -> subagent_sessions::SubagentSessionSelecto
 }
 
 fn parent_context(workspace_dir: &Path) -> ParentExecutionContext {
-    let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
-        Arc::new(tinyagents::harness::testkit::ScriptedModel::new(Vec::new()));
+    let model: Arc<dyn tinyinference::model::ChatModel<()>> =
+        Arc::new(tinyagents_harness::testkit::ScriptedModel::new(Vec::new()));
     ParentExecutionContext {
         workspace_descriptor: None,
         agent_definition_id: "orchestrator".into(),

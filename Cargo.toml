@@ -166,22 +166,48 @@ tinyflows-copilot = { path = "vendor/tinyflows/crates/tinyflows-copilot", option
 # #4249): every turn drives through the harness; the workflow phase DAG, team
 # member runtime, parallel fan-out, and multi-stage delegation run on graphs.
 # We wire openhuman's own Provider/Tool, not the removed bundled openai client.
-# The `sqlite` feature is enabled now that openhuman's direct rusqlite pin is
-# aligned to 0.40, avoiding duplicate `links = "sqlite3"` native bindings.
-# Durable graph checkpoints still use `SqlRunLedgerCheckpointer` until the
-# migration re-points those rows to the crate checkpointer.
-# The `repl` feature (embedded Rhai `.ragsh` session runtime powering the
-# `rhai_workflows` language-workflow tool, `src/openhuman/rhai_workflows/`) is
-# NOT enabled here — the default-ON `flows` feature turns it on via
-# `tinyagents/repl` (#4797), so a slim build without `flows` sheds `rhai`.
-# The crate itself can never be dropped: 26+ domains consume tinyagents.
+#
+# tinyagents was split into a workspace of focused crates (tinyhumansai/tinyagents
+# commit 612ea5e "refactor: split tinyagents into focused crates" and follow-on
+# work): there is no longer a single `tinyagents` package. openhuman now depends
+# directly on the members it actually uses — `tinyagents-harness` (agent loop,
+# tools, middleware), `tinyagents-graph` (durable state graphs), `tinyagents-language`
+# (`.rag`), `tinyagents-registry` (capability/model registry), and
+# `tinyagents-session` (durable session history + run ledger, previously gated
+# behind this crate's own `sqlite` feature — it is its own always-on crate now).
+# The `sqlite` feature is enabled on the harness/graph crates now that openhuman's
+# direct rusqlite pin is aligned to 0.40, avoiding duplicate `links = "sqlite3"`
+# native bindings. Durable graph checkpoints still use `SqlRunLedgerCheckpointer`
+# until the migration re-points those rows to the crate checkpointer.
+# The `repl` feature/`rhai` scripting engine no longer exists in the split crates
+# (see the tinyagents-harness module list) — the comment that used to describe
+# `tinyagents/repl` gating `rhai` in for `flows` builds is stale; `rhai` is pulled
+# in by `flows`'s own dependency on the `rhai` crate directly, not through tinyagents.
+# None of these crates can be dropped: 26+ domains consume tinyagents.
 # `multimodal` is not optional here: `agent::multimodal` is kernel surface —
 # web chat and the agent harness both resolve attachment markers on every turn
 # — so the gate is on for every OpenHuman build. It costs the dependency graph
 # nothing: `base64`, `flate2` and `sha2` are all already resolved in the kernel
 # profile, so turning it on moves neither the package count nor the native
 # build count that `scripts/check-kernel-floor.sh` ratchets.
-tinyagents = { version = "2.1", features = ["sqlite", "multimodal"] }
+#
+# A large share of the old crate's re-exported surface (Message, ModelRequest/
+# Response, ToolCall/ToolSchema, Usage, embeddings, hosted-provider plumbing)
+# moved further upstream still, into `tinyinference` (vendored as a submodule
+# of vendor/tinyagents at vendor/tinyagents/vendor/tinyinference) — declared
+# below as its own path dependency for the same "one checkout, one type
+# identity" reason `tinytools` is.
+tinyagents-harness = { path = "vendor/tinyagents/crates/tinyagents-harness", features = [
+    "sqlite",
+    "multimodal",
+] }
+tinyagents-graph = { path = "vendor/tinyagents/crates/tinyagents-graph", features = [
+    "sqlite",
+] }
+tinyagents-language = { path = "vendor/tinyagents/crates/tinyagents-language" }
+tinyagents-registry = { path = "vendor/tinyagents/crates/tinyagents-registry" }
+tinyagents-session = { path = "vendor/tinyagents/crates/tinyagents-session" }
+tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinference" }
 # TinyTools — the tool vocabulary: the `Tool` trait, `ToolResult`, and the
 # permission / scope / timeout classifications this host enforces around a call.
 #
@@ -1307,6 +1333,18 @@ while_let_loop = "allow"
 [patch."https://github.com/tinyhumansai/tinymemory"]
 tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
 
+# `tinycortex` (vendored below) depends on `tinyinference` by git rev rather
+# than by path — `[patch.crates-io]` only rewrites crates.io-sourced deps, so
+# it does not touch this one. Without this entry cargo resolves a THIRD copy
+# of `tinyinference` (git) alongside the path copy openhuman/tinyagents use and
+# the crates.io copy tinymemory-core names (patched onto the same path below),
+# the identical "one checkout, one type identity" hazard the `tinyinference`
+# patch entry documents. Patched onto the same vendored checkout so all three
+# resolve to one package — verified with `cargo metadata` / `cargo tree -i
+# tinyinference`.
+[patch."https://github.com/tinyhumansai/tinyinference"]
+tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinference" }
+
 [patch.crates-io]
 # Upstream 0.2.1 enables reqwest's default native-tls backend even though it
 # also requests rustls. Patch the official release locally so Linux/macOS do
@@ -1316,10 +1354,31 @@ tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
 motosan-ai-oauth = { path = "vendor/motosan-ai-oauth" }
 # TinyAgents is vendored as a git submodule (pinned at the released tag) so
 # migration work can change the SDK source in-tree, test it against OpenHuman
-# immediately, and PR the diff upstream from the submodule. Keep the submodule
-# version in lockstep with the `tinyagents` requirement above. After cloning:
-# `git submodule update --init vendor/tinyagents` (worktrees included).
-tinyagents = { path = "vendor/tinyagents" }
+# immediately, and PR the diff upstream from the submodule. After cloning:
+# `git submodule update --init --recursive vendor/tinyagents` (worktrees
+# included) — tinyagents itself now vendors `tinyinference` and `tinytools` as
+# its own submodules, hence `--recursive`.
+#
+# tinyagents is a workspace of several crates now (see the dependency block
+# above), each depended on directly by path, so there is nothing to patch here
+# for tinyagents itself — a path dependency already points at this checkout.
+# `tinyinference` is a normal crates-io-shaped dependency, declared by path
+# above (vendor/tinyagents/vendor/tinyinference/crates/tinyinference) but not
+# by a plain `path = ...` requirement inside the tinyagents workspace's own
+# Cargo.toml — it is a git submodule under vendor/tinyagents. `tinymemory-core`
+# ALSO declares `tinyinference = "0.2"` (crates-io-shaped) in its own
+# Cargo.toml, and because tinymemory is consumed here as a path dependency, its
+# own `[patch]` table (which points at tinymemory's own vendored copy) does not
+# apply — only this crate's `[patch.crates-io]` governs the build. Without an
+# entry here, tinymemory-core would resolve `tinyinference` from crates.io
+# while this crate uses the vendored path: two separately compiled, nominally
+# distinct copies of the same types (`tinyinference::model::ChatModel` from one
+# would not satisfy a trait bound written against the other), exactly the
+# "one checkout, one type identity" hazard the `tinytools` note above
+# describes. Patched onto the SAME checkout openhuman already depends on by
+# path (tinyagents' crates are built against it too), so `cargo tree -i
+# tinyinference` resolves to exactly one package.
+tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinference" }
 # TinyFlows, TinyCortex, and TinyChannels are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.

@@ -1,10 +1,18 @@
 use super::*;
 
 #[test]
-fn empty_uncurated_toolkits_message_uses_provider_curated_tools() {
-    register_provider(Arc::new(ProviderOnlyCatalog));
-
-    assert!(empty_uncurated_toolkits_message(&["provideronly".to_string()]).is_none());
+fn empty_uncurated_toolkits_message_uses_contract_catalog() {
+    // Used to register a stub `ComposioProvider` under the engine's
+    // provider registry and assert a toolkit answered only by that
+    // provider's `curated_tools()` (not the static catalog) still counted
+    // as catalogued. tinymemory v1.13.4 deleted `ComposioProvider` and the
+    // registry outright with no replacement (see `providers`'s module
+    // docs) — `uncatalogued_toolkits` now consults `catalog_for_toolkit`
+    // alone, so this asserts the same "catalogued toolkit produces no
+    // message" behaviour against a real catalogued toolkit instead of an
+    // injected one.
+    assert!(empty_uncurated_toolkits_message(&["gmail".to_string()]).is_none());
+    assert!(empty_uncurated_toolkits_message(&["not-a-real-toolkit-xyz".to_string()]).is_some());
 }
 
 #[test]

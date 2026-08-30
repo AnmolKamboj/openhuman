@@ -6,11 +6,14 @@
 //! compare the connected account against another subsystem (e.g. local
 //! `git config user.name`).
 //!
-//! The lookup goes through the per-toolkit
-//! [`ComposioProvider::fetch_user_profile`](crate::openhuman::integrations::composio::providers::ComposioProvider::fetch_user_profile)
-//! call, which already knows the right Composio action slug for each
-//! toolkit (`GITHUB_GET_THE_AUTHENTICATED_USER`,
-//! `GMAIL_GET_PROFILE`, …) and the JSON field that holds the username.
+//! The lookup goes through the `tinyconnectors` module's `GetUserProfile`
+//! member, which already knows the right Composio action slug for each
+//! toolkit (`GITHUB_GET_THE_AUTHENTICATED_USER`, `GMAIL_GET_PROFILE`, …) and
+//! the JSON field that holds the username. This used to go through the
+//! engine's per-toolkit `ComposioProvider::fetch_user_profile`, deleted by
+//! tinymemory v1.13.4 along with the rest of the in-process pipeline —
+//! `GetUserProfile` is the module-hosted equivalent, already used by
+//! `integrations::composio::ops::providers_ops::composio_get_user_profile`.
 //!
 //! ## Failure surface
 //!
@@ -25,26 +28,26 @@
 //! `None` into a clear "GitHub identity not resolved — reconnect via
 //! `composio_authorize github`" error.
 
-use std::sync::Arc;
-
 use crate::openhuman::config::Config;
 
+use super::module_client::{self as connectors, methods};
 use super::ops::fetch_connected_integrations;
-use super::providers::{get_provider, ProviderContext};
+use super::types::ComposioUserProfileRequest;
 
 /// Resolve the connected account's username for the given Composio
-/// toolkit, going through the existing per-provider `fetch_user_profile`
-/// path.
+/// toolkit, going through the `tinyconnectors` module's `GetUserProfile`.
 ///
 /// Returns `Some(username)` when:
-///   1. The toolkit has a registered provider; AND
-///   2. The toolkit is currently connected (per
+///   1. The toolkit is currently connected (per
 ///      [`fetch_connected_integrations`]); AND
-///   3. The provider's `fetch_user_profile` call succeeds AND yields a
+///   2. The module's `GetUserProfile` call succeeds AND yields a
 ///      non-empty `username`.
 ///
-/// Returns `None` for any other case. See module docs for the failure
-/// contract.
+/// Returns `None` for any other case, including a toolkit the module has no
+/// identity provider for — the same "no provider registered" outcome the
+/// deleted engine's `get_provider(toolkit).is_none()` used to answer, now
+/// discovered from the module's own reply instead of a host-side registry
+/// lookup. See module docs for the failure contract.
 pub async fn connection_identity(config: &Config, toolkit: &str) -> Option<String> {
     let toolkit_norm = toolkit.trim().to_ascii_lowercase();
     if toolkit_norm.is_empty() {
@@ -52,20 +55,8 @@ pub async fn connection_identity(config: &Config, toolkit: &str) -> Option<Strin
         return None;
     }
 
-    // (1) Provider must exist for this toolkit.
-    let provider = match get_provider(&toolkit_norm) {
-        Some(p) => p,
-        None => {
-            tracing::debug!(
-                toolkit = %toolkit_norm,
-                "[composio:identity] no provider registered for toolkit"
-            );
-            return None;
-        }
-    };
-
-    // (2) Toolkit must be in the active integrations set. This is the
-    //     same source of truth Connections uses.
+    // Toolkit must be in the active integrations set. This is the same
+    // source of truth Connections uses.
     let connections = fetch_connected_integrations(config).await;
     let matching = connections
         .iter()
@@ -78,12 +69,17 @@ pub async fn connection_identity(config: &Config, toolkit: &str) -> Option<Strin
         return None;
     }
 
-    // (3) Build a provider context and call fetch_user_profile.
-    //     `ProviderContext::from_config` probes the Composio factory and
-    //     returns `None` when the user isn't signed in at all — same
-    //     short-circuit other consumers rely on.
-    let ctx = ProviderContext::from_config(Arc::new(config.clone()), &toolkit_norm, None)?;
-    match provider.fetch_user_profile(&ctx).await {
+    let profile = connectors::call::<_, super::types::ComposioUserProfile>(
+        config,
+        methods::GET_USER_PROFILE,
+        ComposioUserProfileRequest {
+            toolkit: toolkit_norm.clone(),
+            connection_id: None,
+        },
+    )
+    .await;
+
+    match profile {
         Ok(profile) => {
             let username = profile.username.as_deref().map(str::trim).unwrap_or("");
             if username.is_empty() {
@@ -105,7 +101,7 @@ pub async fn connection_identity(config: &Config, toolkit: &str) -> Option<Strin
             tracing::debug!(
                 toolkit = %toolkit_norm,
                 error = %e,
-                "[composio:identity] fetch_user_profile failed"
+                "[composio:identity] GetUserProfile failed"
             );
             None
         }

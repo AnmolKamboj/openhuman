@@ -582,7 +582,7 @@ async fn run_spawn_parallel_workers(
     prepared: Vec<SpawnParallelWorker>,
     action_root: Option<PathBuf>,
     cancel: CancellationToken,
-) -> tinyagents::Result<Vec<ParallelAgentResult>> {
+) -> tinyagents_harness::Result<Vec<ParallelAgentResult>> {
     let n = prepared.len();
     let serial_write_count = prepared
         .iter()

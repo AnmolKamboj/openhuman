@@ -1,6 +1,6 @@
 use super::*;
-use tinyagents::harness::events::AgentEvent;
-use tinyagents::harness::ids::ExecutionStatus;
+use tinyagents_harness::events::AgentEvent;
+use tinyagents_harness::ids::ExecutionStatus;
 
 /// The full 05.1 acceptance in miniature: emit events through a sink with a
 /// durable journal attached, then reconstruct the timeline + terminal status

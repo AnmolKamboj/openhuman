@@ -19,7 +19,7 @@
 //! provider call and reconcile with streaming; keeping the logic here pure keeps
 //! it unit-testable without a provider.
 
-use tinyagents::harness::config::RequiredOutput;
+use tinyagents_harness::config::RequiredOutput;
 
 /// Whether `text` satisfies `contract`: it contains a JSON object carrying every
 /// required key with a non-null value, in the expected leading position. An

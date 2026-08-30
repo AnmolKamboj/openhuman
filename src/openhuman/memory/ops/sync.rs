@@ -195,8 +195,17 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
 
     // Resolved BEFORE the spawn so a missing driver is an error the caller
     // sees, not a status line the spawned task emits into a channel nobody is
-    // reading yet.
+    // reading yet. `run_sync_pass` re-resolves its own binding per target
+    // (it takes `&Config`, not a binding), so this check exists purely to
+    // fail fast on the same "does the bound driver accept source items"
+    // question it would otherwise only discover after the spawn.
     let binding = crate::openhuman::memory::binding::for_config(&config)?;
+    if binding.provider().as_sources().is_none() {
+        return Err(format!(
+            "the bound memory driver '{}' does not accept source items",
+            binding.driver_id()
+        ));
+    }
 
     tokio::spawn(async move {
         for target in targets {
@@ -209,30 +218,27 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                 None, // provider-level composio sync — not a memory-source row
             );
 
-            // Through the driver, not the engine. `run_connection_sync` drops
-            // the config argument the engine call took: the driver resolves its
-            // own, and its proxied branch now reaches this host for the session
-            // bearer rather than reading a snapshot that has none.
-            let outcome = match binding.provider().as_source_sync() {
-                Some(sync) => sync
-                    .run_connection_sync(&target.toolkit, &target.connection_id)
-                    .await
-                    .map_err(|error| error.to_string()),
-                None => Err(format!(
-                    "the bound memory driver '{}' does not serve source sync",
-                    binding.driver_id()
-                )),
-            };
+            // Through the tinyconnectors module and the bound driver's
+            // `MemorySourceSink`, not the (now permanently refusing) engine
+            // seam — see `memory::sync::composio`'s module docs.
+            let outcome = crate::openhuman::integrations::composio::ops::run_sync_pass(
+                &config,
+                &target.toolkit,
+                &target.connection_id,
+                "manual",
+            )
+            .await;
             match outcome {
-                Ok(outcome) => {
+                Ok(pass) => {
                     emit_sync_stage(
                         MemorySyncTrigger::Manual,
                         MemorySyncStage::Completed,
                         Some(&target.toolkit),
                         Some(&target.connection_id),
                         Some(format!(
-                            "provider sync completed items_ingested={}",
-                            outcome.records_ingested
+                            "provider sync completed items_ingested={} written={} \
+                             already_ingested={}",
+                            pass.records_read, pass.written, pass.already_ingested
                         )),
                         None, // provider-level composio sync — not a memory-source row
                     );

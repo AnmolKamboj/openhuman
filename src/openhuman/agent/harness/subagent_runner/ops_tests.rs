@@ -74,11 +74,11 @@ use crate::openhuman::agent::harness::fork_context::with_parent_context;
 use crate::openhuman::agent::harness::run_queue::{QueueMode, QueuedMessage, RunQueue};
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock, Message, MessageDelta};
-use tinyagents::harness::model::{
+use tinyinference::message::{AssistantMessage, ContentBlock, Message, MessageDelta};
+use tinyinference::model::{
     ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
 };
-use tinyagents::harness::tool::ToolCall;
+use tinyinference::tool::ToolCall;
 
 /// Mock provider whose response queue can be inspected by the test
 /// to verify the bytes that arrive at the model.
@@ -153,11 +153,15 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         Ok(self.take_response(request))
     }
 
-    async fn stream(&self, _state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.take_response(request);
         let reasoning = response
             .message

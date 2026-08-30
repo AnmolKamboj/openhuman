@@ -2,14 +2,14 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use serde_json::{json, Map, Value};
-use tinyagents::harness::events::AgentEvent;
-use tinyagents::harness::observability::{AgentObservation, LangfuseClient, LangfuseTraceConfig};
+use tinyagents_harness::events::AgentEvent;
+use tinyagents_harness::observability::{AgentObservation, LangfuseClient, LangfuseTraceConfig};
 
 use crate::api::config::effective_backend_api_url;
 use crate::api::jwt::bearer_authorization_value;
 use crate::openhuman::config::Config;
 use crate::openhuman::security::credentials::session_support::require_live_session_token;
-use tinyagents::session::run_ledger::RunTelemetry;
+use tinyagents_session::run_ledger::RunTelemetry;
 
 use super::{SpanStatus, TraceContext, TraceSpan};
 

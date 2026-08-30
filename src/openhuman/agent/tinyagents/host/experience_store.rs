@@ -1,4 +1,4 @@
-//! Host adapter: [`tinyagents::harness::host::ExperienceStore`] backed by
+//! Host adapter: [`tinyagents_harness::host::ExperienceStore`] backed by
 //! OpenHuman's `agent_experience` domain.
 //!
 //! This is `docs/specs/plan-agents.md` Phase 4. The crate's runtime records what
@@ -62,8 +62,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::{Result, TinyAgentsError};
-use tinyagents::harness::host::{Experience, ExperienceStore};
+use tinyagents_harness::error::{Result, TinyAgentsError};
+use tinyagents_harness::host::{Experience, ExperienceStore};
 
 use crate::openhuman::agent::experience::store::{
     retrieve_across_stores, AgentExperienceStore, ExperienceQuery,

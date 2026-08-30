@@ -11,9 +11,9 @@
 
 use std::path::Path;
 
-use tinyagents::harness::events::HarnessRunStatus;
-use tinyagents::harness::ids::ExecutionStatus;
-use tinyagents::harness::observability::{
+use tinyagents_harness::events::HarnessRunStatus;
+use tinyagents_harness::ids::ExecutionStatus;
+use tinyagents_harness::observability::{
     AgentObservation, HarnessEventJournal, HarnessStatusStore, StoreEventJournal,
 };
 

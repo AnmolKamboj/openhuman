@@ -61,11 +61,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use parking_lot::RwLock;
 
-use tinyagents::error::{Result, TinyAgentsError};
-use tinyagents::harness::host::budget_gate::{
+use tinyagents_harness::error::{Result, TinyAgentsError};
+use tinyagents_harness::host::budget_gate::{
     BudgetGate, CallEstimate, CompressionHint, ContextState, Permit,
 };
-use tinyagents::harness::usage::Usage;
+use tinyinference::usage::Usage;
 
 use crate::openhuman::config::{Config, DEFAULT_MODEL};
 use crate::openhuman::cron::scheduler_gate;

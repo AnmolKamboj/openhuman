@@ -3,8 +3,8 @@
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use tinyagents::graph::todos::{store as todos, TaskBoard};
-use tinyagents::harness::store::{InMemoryStore, Store};
+use tinyagents_graph::todos::{store as todos, TaskBoard};
+use tinyagents_harness::store::{InMemoryStore, Store};
 
 use crate::openhuman::agent::session_import::ops::open_session_stores;
 

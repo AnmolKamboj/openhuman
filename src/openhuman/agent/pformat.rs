@@ -1,5 +1,5 @@
 //! P-format tool calls — OpenHuman's adapter over
-//! [`tinyagents::harness::tool_calling::pformat`].
+//! [`tinyagents_harness::tool_calling::pformat`].
 //!
 //! The format itself — the positional `name[arg|arg]` grammar, the schema-driven
 //! argument reconstruction, the type coercion, the escape handling — lives in the
@@ -20,7 +20,7 @@
 
 use crate::openhuman::tools::Tool;
 
-pub use tinyagents::harness::tool_calling::{
+pub use tinyagents_harness::tool_calling::{
     parse_call, render_signature, render_signature_from_schema, PFormatParamType, PFormatRegistry,
     PFormatToolParams,
 };
@@ -37,7 +37,7 @@ pub use tinyagents::harness::tool_calling::{
 /// exist. A registry built from anything other than the agent's real tools
 /// would widen that.
 pub fn build_registry(tools: &[Box<dyn Tool>]) -> PFormatRegistry {
-    tinyagents::harness::tool_calling::build_registry(
+    tinyagents_harness::tool_calling::build_registry(
         tools.iter().map(|t| (t.name(), t.parameters_schema())),
     )
 }

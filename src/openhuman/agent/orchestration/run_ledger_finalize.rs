@@ -32,7 +32,7 @@ use async_trait::async_trait;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
-use tinyagents::session::run_ledger::{transition_agent_run_status, AgentRunStatus};
+use tinyagents_session::run_ledger::{transition_agent_run_status, AgentRunStatus};
 use tinybus::EventHandler;
 
 const LOG_PREFIX: &str = "[run_ledger][finalize]";

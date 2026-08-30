@@ -1,11 +1,11 @@
 //! Persistent per-thread task board used by the agent kanban UI.
 //!
-//! **Crate-backed.** Boards now live in the vendored `tinyagents::graph::todos`
+//! **Crate-backed.** Boards now live in the vendored `tinyagents_graph::todos`
 //! crate KV store (`<workspace>/tinyagents_store/kv/graph.todos/<hex(thread_id)>`),
 //! not the retired `<workspace>/agent_task_boards/<hex(thread_id)>.json`
 //! file-JSON tree. [`TaskBoardStore`] is a thin adapter that preserves the
 //! historical `get`/`put`/`delete` surface every consumer uses and forwards each
-//! operation directly to `tinyagents::graph::todos`.
+//! operation directly to `tinyagents_graph::todos`.
 //!
 //! The agent updates boards through the `todo` tool; the UI can fetch or replace
 //! them through the `threads.task_board_*` and granular `openhuman.todos_*` RPC
@@ -14,8 +14,8 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{TimeZone, Utc};
-use tinyagents::graph::todos::store as crate_todos;
-pub use tinyagents::graph::todos::{
+use tinyagents_graph::todos::store as crate_todos;
+pub use tinyagents_graph::todos::{
     normalise_board, TaskApprovalMode, TaskBoard, TaskBoardCard, TaskCardStatus,
 };
 

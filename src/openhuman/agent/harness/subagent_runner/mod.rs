@@ -24,7 +24,7 @@
 //! worker-thread transcript mirroring.
 //!
 //! It **stays host-owned**. The generic contract it would map onto already
-//! exists as `tinyagents::harness::host::HostCapabilities` — `ContextComposer`,
+//! exists as `tinyagents_harness::host::HostCapabilities` — `ContextComposer`,
 //! `DefinitionRegistry`, `SecurityGate`, `ModelResolver` are exactly the phases
 //! named above. So the open question is not whether to relocate this pipeline
 //! into the crate (that would push product policy across the GPL boundary) but

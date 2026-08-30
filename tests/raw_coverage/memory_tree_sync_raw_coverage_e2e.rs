@@ -6,7 +6,7 @@
 
 use std::ffi::OsString;
 use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
@@ -26,14 +26,17 @@ use tinymemory_core::store::trees::types::INPUT_TOKEN_BUDGET;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioTriggerSubscriber,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    extract_item_id, DailyBudget, SyncState,
-};
-use openhuman_core::openhuman::memory::sync::composio::providers::{
-    agent_ready_toolkits, capability_matrix, catalog_for_toolkit, classify_unknown, find_curated,
-    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ComposioProvider,
-    CuratedTool, ProviderContext, ProviderUserProfile, SyncOutcome, SyncReason, TaskFetchFilter,
-    ToolScope, UserScopePref,
+// `sync_state` moved off `memory::sync::composio::providers` (the deleted
+// engine registry's former home) onto the contract crate directly — this
+// data (a per-connection cursor/dedup-set/budget) was always pure `serde`
+// vocabulary shared by both sides of the module boundary, never engine
+// behaviour, so it re-exports unchanged. See
+// `integrations::composio::providers`'s module docs for the fuller account of
+// what moved where.
+use tinymemory_api::composio::state::{extract_item_id, DailyBudget, SyncState};
+use openhuman_core::openhuman::integrations::composio::providers::{
+    agent_ready_toolkits, catalog_for_toolkit, classify_unknown, find_curated, has_native_provider,
+    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ToolScope, UserScopePref,
 };
 use openhuman_core::openhuman::memory::tree::score::extract::{EntityKind, ExtractedEntities};
 use openhuman_core::openhuman::memory::tree::score::resolver::canonicalise;
@@ -44,7 +47,7 @@ use openhuman_core::openhuman::memory::tree::tree::{
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     engine, rpc as tree_runtime_rpc, store as runtime_store,
 };
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -165,7 +168,7 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         _request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let response = self
             .responses
             .lock()
@@ -324,13 +327,16 @@ async fn composio_providers_sync_state_and_bus_surfaces_cover_read_write_edges()
     let _workspace = EnvVarGuard::set("OPENHUMAN_WORKSPACE", tmp.path());
     let _triage = EnvVarGuard::set_str("OPENHUMAN_TRIGGER_TRIAGE_DISABLED", "yes");
 
-    let matrix = capability_matrix();
-    assert!(matrix
-        .iter()
-        .any(|cap| cap.toolkit == "gmail" && cap.native_provider));
-    assert!(matrix
-        .iter()
-        .any(|cap| cap.toolkit == "googlecalendar" && cap.curated_tools));
+    // `capability_matrix()` — a pure host-side function that used to build
+    // this table from the engine's provider registry — was deleted by
+    // tinymemory v1.13.4 with no replacement here; `composio_list_capabilities`
+    // now answers the equivalent RPC directly from the connectors module's
+    // `ListCapabilities` member (module-mediated, not testable network-free
+    // from this crate). What the matrix reported per toolkit is still
+    // answerable from the two pure functions that fed it, though:
+    // `has_native_provider` and `catalog_for_toolkit(..).is_some()`.
+    assert!(has_native_provider("gmail"));
+    assert!(catalog_for_toolkit("googlecalendar").is_some());
     let ready = agent_ready_toolkits();
     assert!(ready.windows(2).all(|pair| pair[0] <= pair[1]));
     assert!(ready.contains(&"gmail"));
@@ -411,85 +417,33 @@ async fn composio_providers_sync_state_and_bus_surfaces_cover_read_write_edges()
         .await;
 }
 
+// `default_composio_provider_hooks_cover_defaults_and_sync_preconditions`
+// used to implement a `MinimalProvider: ComposioProvider` and exercise the
+// trait's *default* method bodies: `identity_set`'s facet-count return,
+// `fetch_tasks`'s "provider has no task-fetch surface" default error,
+// `post_process_action_result`'s no-op default, `on_trigger`'s no-op
+// default, and `sync`'s "memory client is not ready" precondition check.
+//
+// `ComposioProvider` itself — trait, default methods included — is one of
+// the types tinymemory v1.13.4 deleted outright with the rest of the
+// in-process Composio pipeline (see
+// `crate::openhuman::integrations::composio::providers`'s module docs). It
+// did not move to a replacement inside this crate: reaching a connected
+// account now needs a credential this crate must not hold, so there is no
+// trait left to implement a minimal provider against, default methods
+// included. The nearest current behaviour — `run_sync_pass` refusing when no
+// connectors module is loaded, and `task_sources::pipeline::fetch_tasks_unavailable`
+// refusing task-board fetch for every toolkit — is already covered by
+// `composio_get_user_profile_refuses_cleanly_without_a_loaded_module`-style
+// tests elsewhere in this suite (see
+// memory_sync_round23_raw_coverage_e2e.rs and
+// json_rpc_e2e.rs::json_rpc_task_sources_fetch_pipeline_e2e), so this test
+// keeps only the entity-canonicalisation coverage below, which has nothing
+// to do with Composio and is untouched by the deletion. The trait-default
+// coverage above is a genuine gap with no local equivalent — flagged in the
+// migration report rather than papered over.
 #[tokio::test]
-async fn default_composio_provider_hooks_cover_defaults_and_sync_preconditions() {
-    struct MinimalProvider;
-
-    #[async_trait]
-    impl ComposioProvider for MinimalProvider {
-        fn toolkit_slug(&self) -> &'static str {
-            "round14"
-        }
-
-        fn sync_interval_secs(&self) -> Option<u64> {
-            None
-        }
-
-        fn curated_tools(&self) -> Option<&'static [CuratedTool]> {
-            Some(&[CuratedTool {
-                slug: "ROUND14_READ",
-                scope: ToolScope::Read,
-            }])
-        }
-
-        async fn fetch_user_profile(
-            &self,
-            ctx: &ProviderContext,
-        ) -> Result<ProviderUserProfile, String> {
-            Ok(ProviderUserProfile {
-                toolkit: ctx.toolkit.clone(),
-                connection_id: ctx.connection_id.clone(),
-                display_name: Some("Round Fourteen".into()),
-                email: Some("round14@example.com".into()),
-                username: Some("round14".into()),
-                avatar_url: None,
-                profile_url: None,
-                extras: json!({"source": "test"}),
-            })
-        }
-
-    }
-
-    let tmp = TempDir::new().expect("tempdir");
-    let cfg = Arc::new(config_in(&tmp));
-    let ctx = ProviderContext {
-        config: cfg,
-        toolkit: "round14".into(),
-        connection_id: Some("conn-round14".into()),
-        usage: Default::default(),
-        max_items: None,
-        sync_depth_days: None,
-    };
-    let provider = MinimalProvider;
-    assert_eq!(provider.sync_interval_secs(), None);
-    assert_eq!(provider.curated_tools().unwrap()[0].scope.as_str(), "read");
-    let facets_written = provider.identity_set(&provider.fetch_user_profile(&ctx).await.unwrap());
-    assert!(facets_written <= 4);
-
-    let filter = TaskFetchFilter {
-        max: 0,
-        ..TaskFetchFilter::default()
-    };
-    assert_eq!(filter.effective_max(), 25);
-    let err = provider.fetch_tasks(&ctx, &filter).await.unwrap_err();
-    assert!(err.contains("provider has no task-fetch surface"));
-
-    let mut data = json!({"ok": true});
-    provider.post_process_action_result("ROUND14_READ", None, &mut data);
-    assert_eq!(data, json!({"ok": true}));
-    provider
-        .on_trigger(&ctx, "ROUND14_TRIGGER", &json!({"ok": true}))
-        .await
-        .expect("default trigger no-op");
-
-    let profile = provider.fetch_user_profile(&ctx).await.expect("profile");
-    assert_eq!(profile.email.as_deref(), Some("round14@example.com"));
-    let sync_error = provider
-        .sync(&ctx, SyncReason::Manual)
-        .await
-        .expect_err("sync requires an initialized memory client");
-    assert!(sync_error.contains("memory client is not ready"));
-
+async fn memory_tree_entity_canonicalisation_covers_email_and_person_kinds() {
     let extracted = ExtractedEntities {
         entities: vec![
             openhuman_core::openhuman::memory::tree::score::extract::ExtractedEntity {

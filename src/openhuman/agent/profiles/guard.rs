@@ -4,7 +4,7 @@
 //!
 //! 1. **Identity plumbing (1a).** When a dedicated-workspace profile is active,
 //!    its id is carried to the tool layer inside the
-//!    [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)'s
+//!    [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)'s
 //!    `policy_id` field as `openhuman.profile:<id>`. [`workspace_policy_id`] and
 //!    [`profile_id_from_policy_id`] are the single encode/decode pair so the
 //!    session builder and the tool gates can never drift on the wire format.

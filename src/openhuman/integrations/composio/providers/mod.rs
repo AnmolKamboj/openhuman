@@ -6,21 +6,31 @@
 //! that most of what this host reads is not provider behaviour at all
 //! (OpenHuman#5560).
 //!
-//! - **The curated catalogs, the scope verdicts and the capability matrix**
-//!   come from the contract crate. They are `&'static str` tables and pure
-//!   functions over them; nothing about answering "is this action curated, and
-//!   at what scope" needs a provider, an HTTP client or a store. Every host
-//!   read here — the agent's visible tool list, the `gated_tools` unlock hints,
+//! - **The curated catalogs, the scope verdicts and the identity vocabulary**
+//!   come from the contract crate (`tinymemory-bus`/`tinymemory-api`). They
+//!   are `&'static str` tables, pure functions over them, and inert payload
+//!   types; nothing about answering "is this action curated, and at what
+//!   scope" needs a provider, an HTTP client or a store. Every host read
+//!   here — the agent's visible tool list, the `gated_tools` unlock hints,
 //!   the agent-ready badge — is one of these.
-//! - **The provider registry, the `ComposioProvider` trait and the run types**
-//!   still come from the engine crate. That is the syncing half: fetching a
-//!   profile, pulling items, normalising tasks. It reaches `reqwest` and the
-//!   chunk store, and it is what still has to move behind
-//!   `MemorySourceSync`.
+//! - **The provider registry, the `ComposioProvider` trait, `ProviderContext`
+//!   and the run types are gone.** tinymemory v1.13.4 deleted the in-process
+//!   Composio pipeline outright (72 files, ~18.3k lines) rather than moving
+//!   it behind `MemorySourceSync` — reaching a connected account needs a
+//!   credential this crate must not hold. There is no registry to glob-import
+//!   any more. Every former `get_provider(toolkit)` call site now either:
 //!
-//! Keeping the split visible here is the point. While it was a glob, "the host
-//! links the memory engine to render a tool list" and "the host links the
-//! memory engine to run a sync" were the same line.
+//!     - answers from `catalog_for_toolkit`/`has_native_provider` directly
+//!       (curated-tool lookups — a native provider's `curated_tools()` was
+//!       always verified identical to its catalog entry, so the registry hop
+//!       was pure indirection), or
+//!     - calls the `tinyconnectors` module directly through
+//!       [`super::module_client`] (profile fetch, action execution, sync —
+//!       see `ops::providers_ops::run_sync_pass` and `ops::execute`).
+//!
+//!   `slack` stays re-exported below: it is this host's own RPC layer over
+//!   the connector module (`memory::sync::composio::providers::slack`), not
+//!   an engine provider.
 
 // ── The contract half ───────────────────────────────────────────────────────
 pub use tinymemory_api::composio::catalogs::{
@@ -35,17 +45,10 @@ pub use tinymemory_api::composio::scopes::{
 pub use tinymemory_api::composio::tasks::{
     GithubFetchMode, NormalizedTask, TaskContainer, TaskFetchFilter, TaskKind,
 };
-pub use tinymemory_api::composio::{SyncOutcome, SyncReason};
-pub use tinymemory_api::host::composio::capability_matrix;
-
-// ── The syncing half, still the engine's ────────────────────────────────────
-//
-// Each of these is provider *behaviour* or the state it keeps. They go when
-// the sync pipelines move behind the bus; until then they are the whole of
-// this host's remaining compile-time link to the engine's composio tree, and
-// listing them by name is what keeps that measurable.
-pub use crate::openhuman::memory::sync::composio::providers::{
-    all_providers, get_provider, init_default_providers, load_user_scope_or_default, profile,
-    profile_md, register_provider, resolve_sync_interval_secs, slack, sync_state, ComposioProvider,
-    ProviderArc, ProviderContext, ProviderUserProfile,
+pub use tinymemory_api::composio::{
+    render_connected_identities_section, ConnectedIdentity, ProviderUserProfile, SyncOutcome,
+    SyncReason,
 };
+
+// ── This host's own RPC layer over the connector module ────────────────────
+pub use crate::openhuman::memory::sync::composio::providers::slack;

@@ -75,7 +75,7 @@ async fn cost_budget_is_a_noop_without_a_global_tracker() {
 /// must be inert (no panic, `Ok`) when no shadow tracker is installed.
 #[tokio::test]
 async fn cost_budget_shadow_after_agent_never_fails_the_run() {
-    use tinyagents::harness::usage::Usage;
+    use tinyinference::usage::Usage;
 
     // No shadow tracker: after_agent is a silent no-op.
     let plain = CostBudgetMiddleware::new();
@@ -257,7 +257,7 @@ async fn repeated_tool_failure_nudges_change_of_strategy_before_the_halt() {
     use crate::openhuman::agent::tinyagents::orchestration::{
         openhuman_steering_handle, SteeringRunClass,
     };
-    use tinyagents::harness::steering::SteeringCommandKind;
+    use tinyagents_harness::steering::SteeringCommandKind;
 
     // #4089: before the same-strategy retry cap, the breaker must feed a
     // structured "no progress since step X" corrective back into the loop so

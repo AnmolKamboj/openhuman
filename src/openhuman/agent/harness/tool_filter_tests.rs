@@ -1,7 +1,7 @@
 //! Host-side coverage for the tool-filter adapter.
 //!
 //! The ranking algorithm itself is tested upstream in
-//! `tinyagents::harness::tool::select`, against synthetic catalogues. What is
+//! `tinyagents_harness::tool::select`, against synthetic catalogues. What is
 //! tested here is the half that stayed: the `ConnectedIntegrationTool`
 //! adapter, exercised against the real Composio tool-list dumps in
 //! `tests/fixtures/` (1000 actions across nine toolkits). Those fixtures are

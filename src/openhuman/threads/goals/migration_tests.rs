@@ -1,5 +1,5 @@
 use super::*;
-use ::tinyagents::graph::goals::{store, ThreadGoalStatus};
+use tinyagents_graph::goals::{store, ThreadGoalStatus};
 
 #[tokio::test]
 async fn migrates_legacy_goal_into_tinyagents_store() {

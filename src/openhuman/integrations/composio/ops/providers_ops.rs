@@ -46,15 +46,15 @@ pub struct RefreshIdentitiesReport {
 
 /// Persist one profile's identity facets and report how many rows it wrote.
 ///
-/// Still routed through the memory-side provider registry, which owns the facet
-/// schema. Phase 4 moves that here and this conversion goes away — see
-/// [`super::super::types::reencode`].
-fn persist_identity(profile: &ComposioUserProfile) -> OpResult<usize> {
+/// Was routed through the engine's provider registry (`get_provider(toolkit)
+/// .identity_set(profile)`), deleted by tinymemory v1.13.4 with no
+/// replacement. `identity_store::persist_provider_profile` is this host's own
+/// port of what `identity_set`'s default impl did — see its module docs for
+/// what carried over (the facet write) and what did not (the deleted
+/// engine's `LearningCandidate` emission for stability scoring).
+async fn persist_identity(config: &Config, profile: &ComposioUserProfile) -> OpResult<usize> {
     let native: ProviderUserProfile = reencode(profile)?;
-    let Some(provider) = super::super::providers::get_provider(&profile.toolkit) else {
-        return Ok(0);
-    };
-    Ok(provider.identity_set(&native))
+    super::super::identity_store::persist_provider_profile(config, &native).await
 }
 
 /// `openhuman.composio_get_user_profile` — fetch a normalized user profile for
@@ -80,7 +80,7 @@ pub async fn composio_get_user_profile(
         format!("[composio] get_user_profile({toolkit}) failed: {error}")
     })?;
 
-    let facets = persist_identity(&profile)?;
+    let facets = persist_identity(config, &profile).await?;
     tracing::debug!(
         toolkit = %toolkit,
         facets_written = facets,
@@ -126,7 +126,9 @@ pub async fn composio_refresh_all_identities(
         // A toolkit the module read but this build has no facet schema for is
         // not a failure — it is the same "no native provider" case the loop
         // used to skip before fetching, now discovered one step later.
-        if super::super::providers::get_provider(toolkit).is_none() {
+        // `has_native_provider` replaces the deleted engine registry's
+        // `get_provider(toolkit).is_none()` — see `providers`'s module docs.
+        if !super::super::providers::has_native_provider(toolkit) {
             report.skipped_no_provider += 1;
             messages.push(format!(
                 "{toolkit}/{connection_id}: skipped (no native provider)"
@@ -134,7 +136,7 @@ pub async fn composio_refresh_all_identities(
             continue;
         }
 
-        let rows = persist_identity(profile)?;
+        let rows = persist_identity(config, profile).await?;
         report.refreshed += 1;
         report.rows_written += rows;
         tracing::debug!(
@@ -225,10 +227,13 @@ pub async fn composio_sync(
         )
         .await;
         match outcome {
-            Ok(ingested) => tracing::info!(
+            Ok(pass) => tracing::info!(
                 toolkit = %toolkit_for_task,
                 connection_id = %connection_for_task,
-                items_ingested = ingested,
+                items_ingested = pass.records_read,
+                written = pass.written,
+                already_ingested = pass.already_ingested,
+                more_pending = pass.more_pending,
                 "[composio] background sync ok"
             ),
             Err(error) => {
@@ -257,18 +262,45 @@ pub async fn composio_sync(
     Ok(RpcOutcome::new(outcome, vec![summary]))
 }
 
+/// What one [`run_sync_pass`] call did.
+///
+/// A superset of the `usize` the caller inside this file needs, so
+/// `memory::sync::composio::providers::slack::rpc` — the other caller — can
+/// build a [`SyncOutcome`] without a second round trip through the module.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SyncPassOutcome {
+    /// Records the module returned in this page.
+    pub records_read: usize,
+    /// Of those, how many the driver actually wrote (the rest were already
+    /// ingested and unchanged).
+    pub written: u32,
+    /// Whether the driver treated this whole batch as already ingested and
+    /// unchanged (a no-op call) — `IngestOutcome::already_ingested` is a
+    /// batch-level flag, not a per-record count.
+    pub already_ingested: bool,
+    /// Whether the module has more to read — the caller decides whether to
+    /// call again.
+    pub more_pending: bool,
+}
+
 /// Read one connection through the module and ingest what it returns.
 ///
 /// The two halves are deliberately not interleaved with retries or partial
 /// commits: the module already decides what a page is and where the cursor
 /// stands, and re-deciding that here would give the run two opinions about
 /// what has been read.
-async fn run_sync_pass(
+///
+/// `pub(crate)` — also called from
+/// `memory::sync::composio::providers::slack::rpc`, which needs the same
+/// tinyconnectors-mediated sync pass `composio_sync` runs here, but awaited
+/// synchronously rather than fired into a background task (its RPC contract
+/// is "return the outcome", not "return that a run started").
+pub(crate) async fn run_sync_pass(
     config: &Config,
     toolkit: &str,
     connection_id: &str,
     reason: &str,
-) -> Result<usize, String> {
+) -> Result<SyncPassOutcome, String> {
     let response = connectors::call::<_, ConnectorSyncResponse>(
         config,
         methods::SYNC,
@@ -283,7 +315,12 @@ async fn run_sync_pass(
 
     let count = response.batch.records.len();
     if count == 0 {
-        return Ok(0);
+        return Ok(SyncPassOutcome {
+            records_read: 0,
+            written: 0,
+            already_ingested: false,
+            more_pending: !response.batch.complete,
+        });
     }
 
     let binding = crate::openhuman::memory::binding::for_config(config)?;
@@ -331,7 +368,12 @@ async fn run_sync_pass(
         already_ingested = outcome.already_ingested,
         "[composio] sync pass ingested"
     );
-    Ok(count)
+    Ok(SyncPassOutcome {
+        records_read: count,
+        written: outcome.written,
+        already_ingested: outcome.already_ingested,
+        more_pending: !response.batch.complete,
+    })
 }
 
 /// Parse the optional `reason` parameter into a [`SyncReason`].

@@ -79,8 +79,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tinyagents::error::{Result as TaResult, TinyAgentsError};
-use tinyagents::harness::host::security_gate::{
+use tinyagents_harness::error::{Result as TaResult, TinyAgentsError};
+use tinyagents_harness::host::security_gate::{
     ContentOrigin, GateDecision, ScreenOutcome, SecurityGate, ToolCallRequest,
 };
 

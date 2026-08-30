@@ -16,8 +16,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::{
+use tinyinference::message::Message;
+use tinyinference::model::{
     ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
 };
 
@@ -37,7 +37,7 @@ impl ChatModel<()> for MockProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let mut guard = self.responses.lock();
         let response = if guard.is_empty() {
             ChatResponse {
@@ -56,7 +56,11 @@ impl ChatModel<()> for MockProvider {
         )
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.invoke(state, request).await?;
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,
@@ -93,7 +97,7 @@ impl ChatModel<()> for RecordingProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let system_prompt = request.messages.iter().find_map(|message| match message {
             Message::System(_) => Some(message.text()),
             _ => None,
@@ -121,7 +125,11 @@ impl ChatModel<()> for RecordingProvider {
         )
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.invoke(state, request).await?;
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,
@@ -359,17 +367,21 @@ impl crate::openhuman::agent::harness::session::transcript_history::SessionHisto
 }
 
 #[async_trait]
-impl tinyagents::harness::memory::ChatHistory for FakeSessionHistory {
-    async fn messages(&self, _thread_id: &str) -> tinyagents::Result<Vec<Message>> {
+impl tinyagents_harness::memory::ChatHistory for FakeSessionHistory {
+    async fn messages(&self, _thread_id: &str) -> tinyagents_harness::Result<Vec<Message>> {
         Ok(vec![])
     }
-    async fn append(&self, _thread_id: &str, _message: Message) -> tinyagents::Result<()> {
+    async fn append(&self, _thread_id: &str, _message: Message) -> tinyagents_harness::Result<()> {
         Ok(())
     }
-    async fn replace(&self, _thread_id: &str, _messages: Vec<Message>) -> tinyagents::Result<()> {
+    async fn replace(
+        &self,
+        _thread_id: &str,
+        _messages: Vec<Message>,
+    ) -> tinyagents_harness::Result<()> {
         Ok(())
     }
-    async fn clear(&self, _thread_id: &str) -> tinyagents::Result<()> {
+    async fn clear(&self, _thread_id: &str) -> tinyagents_harness::Result<()> {
         Ok(())
     }
 }

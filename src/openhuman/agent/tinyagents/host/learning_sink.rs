@@ -1,4 +1,4 @@
-//! Host adapter for [`tinyagents::harness::host::LearningSink`] — the seam the
+//! Host adapter for [`tinyagents_harness::host::LearningSink`] — the seam the
 //! generic agent runtime uses to hand a finished turn to OpenHuman's
 //! self-learning subsystem.
 //!
@@ -42,7 +42,7 @@
 //!
 //! **2. `thread_id` vs `session_id`.** `TurnContext.session_id` is populated
 //! host-side from the harness' `event_session_id`; a [`TurnSummary`] only
-//! carries a [`tinyagents::harness::ids::ThreadId`]. The thread id is the
+//! carries a [`tinyagents_harness::ids::ThreadId`]. The thread id is the
 //! closest available correlation key, so it is mapped through. The visible
 //! consequence is that `ReflectionHook`'s `max_reflections_per_session` throttle
 //! becomes per-thread rather than per-session on this path — a slightly
@@ -72,8 +72,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::Result;
-use tinyagents::harness::host::{LearningSink, TurnSummary};
+use tinyagents_harness::error::Result;
+use tinyagents_harness::host::{LearningSink, TurnSummary};
 
 use crate::openhuman::agent::hooks::{self, PostTurnHook, TurnContext};
 use crate::openhuman::agent::learning::{ToolTrackerHook, UserProfileHook};
@@ -152,7 +152,7 @@ impl OpenHumanLearningSink {
             // generic runtime, the fix is upstream — the crate would need a
             // richer per-tool record (name + outcome class + duration, still no
             // arguments or results), most likely alongside
-            // `tinyagents::harness::host::ToolOutcomeClassifier`, which already
+            // `tinyagents_harness::host::ToolOutcomeClassifier`, which already
             // owns the "did this tool call succeed" judgement host-side. It is
             // not something this adapter can synthesize.
             tool_calls: Vec::new(),

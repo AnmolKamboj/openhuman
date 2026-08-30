@@ -1,6 +1,6 @@
 use super::*;
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
-use tinyagents::harness::message::Message;
+use tinyinference::message::Message;
 
 fn backend() -> OpenHumanBackendModel {
     OpenHumanBackendModel::new(
@@ -59,8 +59,8 @@ fn resolve_model_normalizes_blank_and_trims_non_empty_values() {
 #[test]
 fn project_managed_usage_recovers_charged_and_cached() {
     use crate::openhuman::agent::tinyagents::model::usage_info_from_response;
-    use tinyagents::harness::message::AssistantMessage;
-    use tinyagents::harness::usage::Usage;
+    use tinyinference::message::AssistantMessage;
+    use tinyinference::usage::Usage;
 
     let raw = serde_json::json!({
         "openhuman": {
@@ -105,8 +105,8 @@ fn project_managed_usage_recovers_charged_and_cached() {
 #[test]
 fn project_managed_usage_is_noop_without_envelope() {
     use crate::openhuman::agent::tinyagents::model::usage_info_from_response;
-    use tinyagents::harness::message::AssistantMessage;
-    use tinyagents::harness::usage::Usage;
+    use tinyinference::message::AssistantMessage;
+    use tinyinference::usage::Usage;
 
     let response = ModelResponse {
         message: AssistantMessage {

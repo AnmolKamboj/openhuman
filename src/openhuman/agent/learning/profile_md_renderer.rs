@@ -42,7 +42,7 @@ use async_trait::async_trait;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::cache::FacetCache;
-use crate::openhuman::integrations::composio::providers::profile_md::replace_managed_block;
+use crate::openhuman::integrations::composio::profile_md::replace_managed_block;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
 use tinymemory_api::provider::UserState;

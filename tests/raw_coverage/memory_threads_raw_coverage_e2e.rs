@@ -57,30 +57,40 @@ use tinymemory_core::store::{
     MemoryClient, NamespaceDocumentInput, UnifiedMemory,
 };
 use openhuman_core::openhuman::memory::sync::composio;
-use openhuman_core::openhuman::memory::sync::composio::providers::profile::{
-    canonicalize, delete_connected_identity_facets, is_self_identity, is_self_identity_any_toolkit,
-    load_connected_identities, render_connected_identities_section, ConnectedIdentity,
-    IdentityKind,
+// `memory::sync::composio::providers::slack::schemas` is this host's own real,
+// current RPC schema module (`openhuman.slack_memory_sync_trigger` /
+// `_status`) — unrelated to the deleted per-action `post_process` (see below).
+use openhuman_core::openhuman::memory::sync::composio::providers::slack::schemas as slack_memory_schemas;
+// Everything below moved off `memory::sync::composio::providers::*` onto
+// `integrations::composio::providers`/`integrations::composio::identity_store`/
+// `integrations::composio::profile_md` (host code) or `tinymemory_api::composio`
+// (contract-crate vocabulary) — see `crate::openhuman::integrations::composio::providers`'s
+// module docs for the full account of what replaced each deleted piece.
+use openhuman_core::openhuman::integrations::composio::identity_store::{
+    delete_connected_identity_facets, load_connected_identities,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::profile_md::{
+use openhuman_core::openhuman::integrations::composio::ops::{composio_get_user_profile, composio_sync};
+use openhuman_core::openhuman::integrations::composio::profile_md::{
     block_end, block_start, merge_provider_into_profile_md, remove_provider_from_profile_md,
     replace_managed_block,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
-    post_process as slack_post_process, schemas as slack_memory_schemas,
+use openhuman_core::openhuman::integrations::composio::providers::{
+    agent_ready_toolkits, catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated,
+    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, CuratedTool,
+    NormalizedTask, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome, SyncReason,
+    TaskFetchFilter, ToolScope, UserScopePref,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    extract_item_id, DailyBudget, PersistedSyncState, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
+use tinymemory_api::composio::{
+    canonicalize, extract_item_id, render_connected_identities_section, ConnectedIdentity,
+    DailyBudget, IdentityKind, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::user_scopes;
-use openhuman_core::openhuman::memory::sync::composio::providers::{
-    agent_ready_toolkits, all_providers as all_composio_providers, capability_matrix,
-    catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated, get_provider,
-    init_default_providers as init_default_composio_providers, is_action_visible_with_pref,
-    register_provider, toolkit_from_slug, toolkit_has_scope, ComposioProvider, CuratedTool,
-    NormalizedTask, ProviderContext, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome,
-    SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
-};
+// The deleted engine's per-toolkit `is_self_identity(prefix, kind, value)` has
+// no replacement anywhere (confirmed by exhaustive grep of vendor/tinymemory) —
+// only the cross-toolkit matcher survived, because the memory tree's entity
+// indexer was never scoped to one toolkit to begin with. Note this is a
+// DIFFERENT (structurally identical) `IdentityKind` than
+// `tinymemory_api::composio::IdentityKind` above.
+use tinymemory_core::store::identity::is_self_identity_any_toolkit;
 use openhuman_core::openhuman::memory::sync::sync_status::{
     rpc as memory_sync_status_rpc, schemas as memory_sync_status_schemas,
 };
@@ -1361,14 +1371,15 @@ fn memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases() {
         .windows(2)
         .all(|pair| pair[0] <= pair[1]));
 
-    let matrix = capability_matrix();
-    let gmail = matrix.iter().find(|cap| cap.toolkit == "gmail").unwrap();
-    assert!(gmail.native_provider);
-    assert!(gmail.curated_tools);
-    assert!(gmail.curated_tool_count > 0);
-    let spotify = matrix.iter().find(|cap| cap.toolkit == "spotify").unwrap();
-    assert!(!spotify.native_provider);
-    assert!(spotify.curated_tools);
+    // `capability_matrix()` — the host-side static function this used to
+    // build from the curated catalogs — is itself gone, not just relocated:
+    // `composio_list_capabilities` (`integrations::composio::ops::toolkits`)
+    // now answers directly from the connector module's live
+    // `ListCapabilities` reply, with no host-side matrix or conversion left
+    // to call statically. Confirmed by that op's own doc comment. Genuine,
+    // unrecoverable coverage gap for this specific assertion; the
+    // `has_native_provider`/`catalog_for_toolkit` checks above already cover
+    // the same per-toolkit facts this matrix used to expose.
 
     let sync_target = composio::SyncTarget {
         toolkit: "gmail".into(),
@@ -1413,76 +1424,27 @@ fn memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases() {
     assert_eq!(extract_item_id(&item, &["missing"]), None);
 }
 
+/// The `slack_memory` RPC schema assertions below are unchanged real
+/// coverage — `memory::sync::composio::providers::slack::schemas` is this
+/// host's own current RPC surface, not part of the deletion.
+///
+/// The rest of this test's original name is no longer accurate: it also
+/// drove the deleted engine's per-action Slack response reshaping
+/// (`providers::slack::post_process` — history/channel/search-result
+/// normalization, empty-text filtering, non-object passthrough). That moved
+/// into the separately-versioned `tinyconnectors` module with nothing left
+/// in this crate to assert against — see
+/// `memory_sync_providers_raw_coverage_e2e.rs`'s module doc comment for the
+/// fuller account of this same gap. Reported rather than silently dropped;
+/// not recoverable from here.
 #[test]
-fn slack_memory_schemas_and_post_processors_normalize_composio_shapes() {
+fn slack_memory_schemas_cover_public_surfaces() {
     let schemas = slack_memory_schemas::all_slack_memory_controller_schemas();
     assert_eq!(schemas.len(), 2);
     assert_eq!(schemas[0].namespace, "slack_memory");
     assert!(schemas
         .iter()
         .any(|schema| schema.function == "sync_status" && schema.inputs.is_empty()));
-
-    let mut history = json!({
-        "data": {
-            "messages": [
-                {
-                    "ts": "1717000000.000100",
-                    "user": "U001",
-                    "text": " hello ",
-                    "thread_ts": "1717000000.000100",
-                    "permalink": "https://slack.test/archives/C1/p1"
-                },
-                { "ts": "1717000000.000200", "text": "   " },
-                { "user": "U002", "text": "missing timestamp" }
-            ]
-        }
-    });
-    slack_post_process::post_process("SLACK_FETCH_CONVERSATION_HISTORY", None, &mut history);
-    assert_eq!(history["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(history["messages"][0]["text"], "hello");
-    assert_eq!(history["messages"][0]["user"], "U001");
-
-    let mut channels = json!({
-        "data": {
-            "conversations": [
-                { "id": "C001", "name": "engineering", "is_private": true },
-                { "id": " ", "name": "skip" },
-                { "id": "C002" }
-            ]
-        }
-    });
-    slack_post_process::post_process("SLACK_LIST_CONVERSATIONS", None, &mut channels);
-    assert_eq!(channels["channels"].as_array().unwrap().len(), 2);
-    assert_eq!(channels["channels"][0]["is_private"], true);
-    assert_eq!(channels["channels"][1]["name"], "C002");
-
-    let mut search = json!({
-        "messages": {
-            "matches": [
-                {
-                    "ts": "1717000000.000300",
-                    "bot_id": "B001",
-                    "text": "bot update",
-                    "channel": { "id": "C001" },
-                    "permalink": "https://slack.test/search/result"
-                },
-                { "ts": "1717000000.000400", "text": "" }
-            ],
-            "paging": { "pages": 3 }
-        }
-    });
-    slack_post_process::post_process("SLACK_SEARCH_MESSAGES", None, &mut search);
-    assert_eq!(search["pages"], 3);
-    assert_eq!(search["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(search["messages"][0]["channel_id"], "C001");
-    assert_eq!(search["messages"][0]["user"], "B001");
-
-    let mut non_object = json!("replace me");
-    slack_post_process::post_process("SLACK_LIST_CONVERSATIONS", None, &mut non_object);
-    assert!(non_object["channels"].as_array().unwrap().is_empty());
-    let mut passthrough = json!({ "ok": true });
-    slack_post_process::post_process("SLACK_UNKNOWN", None, &mut passthrough);
-    assert_eq!(passthrough, json!({ "ok": true }));
 }
 
 #[test]
@@ -2398,37 +2360,19 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
     assert!(!forgot.is_error);
     assert!(forgot.output().contains("Forgot memory"));
 
-    let scoped_client: tinymemory_core::store::MemoryClientRef =
-        Arc::new(MemoryClient::from_workspace_dir(tmp.path().join("scope-prefs")).unwrap());
-    assert_eq!(
-        user_scopes::load(&scoped_client, " GMAIL ").await,
-        UserScopePref::default()
-    );
-    let pref = UserScopePref {
-        read: true,
-        write: false,
-        admin: true,
-    };
-    user_scopes::save(&scoped_client, " GMAIL ", pref)
-        .await
-        .expect("save user scope pref");
-    assert_eq!(user_scopes::load(&scoped_client, "gmail").await, pref);
-    scoped_client
-        .kv_set(Some("composio-user-scopes"), "gmail", &json!("bad pref"))
-        .await
-        .expect("write bad pref");
-    assert_eq!(
-        user_scopes::load(&scoped_client, "gmail").await,
-        UserScopePref::default()
-    );
-    assert!(user_scopes::save(&scoped_client, " ", pref)
-        .await
-        .unwrap_err()
-        .contains("toolkit must not be empty"));
-    assert_eq!(
-        user_scopes::load_or_default("not-ready-toolkit").await,
-        UserScopePref::default()
-    );
+    // The engine's `tinymemory_core::sync::composio::providers::user_scopes`
+    // module this used to drive (`load`/`save`/`load_or_default` against a
+    // `&MemoryClientRef`) is deleted with the rest of the in-process
+    // Composio pipeline — confirmed by an exhaustive grep of
+    // vendor/tinymemory, nothing under that name survives anywhere. Its
+    // host-side replacement, `integrations::composio::ops::user_scopes`, is
+    // real but `pub(crate)` (reached only via the `composio.get_user_scopes`
+    // / `composio.set_user_scopes` JSON-RPC handlers, which this file does
+    // not run a server for) and so is not reachable from an integration
+    // test in this crate. Genuine, unrecoverable coverage gap — reported
+    // rather than silently dropped. `UserScopePref` itself (the pure type)
+    // is still exercised elsewhere in this file via
+    // `memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases`.
 }
 
 #[tokio::test]
@@ -2911,8 +2855,28 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert!(empty.hits.is_empty());
 }
 
-#[test]
-fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_rendering() {
+// The deleted engine's per-toolkit `is_self_identity(prefix, kind, value)`
+// has no replacement anywhere in `tinymemory-core` (confirmed by exhaustive
+// grep) — only the cross-toolkit `is_self_identity_any_toolkit` survived, and
+// it takes tinymemory-core's own `IdentityKind`, a distinct (structurally
+// identical) type from the contract crate's `IdentityKind` this test uses
+// everywhere else. Bridged here by name rather than imported directly at the
+// top of the file, so the two enums are never confused at a call site.
+fn to_core_identity_kind(kind: IdentityKind) -> tinymemory_core::store::identity::IdentityKind {
+    tinymemory_core::store::identity::IdentityKind::parse(kind.as_str())
+        .expect("every contract IdentityKind variant name parses on the core side too")
+}
+
+#[tokio::test]
+async fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_rendering() {
+    let _lock = env_lock();
+    let tmp = TempDir::new().expect("tempdir");
+    let _env_workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", module_workspace());
+    let mut config = config_in(&tmp);
+    use_module_workspace(&mut config);
+    wipe_shared_store(&config);
+    tinymemory_core::global::init(config.workspace_dir.clone()).expect("bind global memory client");
+
     assert_eq!(IdentityKind::parse("email"), Some(IdentityKind::Email));
     assert_eq!(IdentityKind::parse("missing"), None);
     assert!(IdentityKind::Email.is_matchable());
@@ -2937,22 +2901,23 @@ fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_renderi
     );
     assert_eq!(canonicalize(IdentityKind::Email, "   "), None);
 
-    assert!(load_connected_identities().is_empty());
-    assert!(!is_self_identity(
-        "gmail",
-        IdentityKind::Email,
-        "alice@example.com"
-    ));
-    assert!(!is_self_identity(
-        "gmail",
-        IdentityKind::AvatarUrl,
-        "https://example.test/avatar.png"
-    ));
+    assert!(load_connected_identities(&config)
+        .await
+        .expect("load connected identities")
+        .is_empty());
+    // `is_self_identity("gmail", ...)` (per-toolkit) is the genuine gap noted
+    // above — no assertion here replaces it. `is_self_identity_any_toolkit`
+    // survives and is exercised with nothing persisted yet, same as before.
     assert!(!is_self_identity_any_toolkit(
-        IdentityKind::Email,
+        to_core_identity_kind(IdentityKind::Email),
         "alice@example.com"
     ));
-    assert_eq!(delete_connected_identity_facets("gmail", "conn-1"), 0);
+    assert_eq!(
+        delete_connected_identity_facets(&config, "gmail", "conn-1")
+            .await
+            .expect("delete connected identity facets"),
+        0
+    );
 
     let rendered = render_connected_identities_section(&[
         ConnectedIdentity {
@@ -2992,228 +2957,52 @@ fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_renderi
     );
 }
 
-#[test]
-fn gmail_post_processor_and_provider_registry_cover_public_edges() {
-    let gmail_provider =
-        openhuman_core::openhuman::memory::sync::composio::providers::gmail::GmailProvider::new();
-    let mut raw_html_passthrough = json!({
-        "messages": [{ "messageId": "m-raw", "messageText": "<b>keep raw</b>" }]
-    });
-    gmail_provider.post_process_action_result(
-        "GMAIL_FETCH_EMAILS",
-        Some(&json!({ "rawHtml": true })),
-        &mut raw_html_passthrough,
-    );
-    assert_eq!(
-        raw_html_passthrough["messages"][0]["messageText"],
-        "<b>keep raw</b>"
-    );
-
-    let mut response = json!({
-        "data": {
-            "messages": [
-                {
-                    "messageId": "m-1",
-                    "threadId": "t-1",
-                    "subject": "Launch Plan",
-                    "sender": "Alice <alice@example.com>",
-                    "to": "Bob <bob@example.com>",
-                    "messageText": "fallback one",
-                    "markdownFormatted": "Rendered body one",
-                    "labelIds": ["INBOX"],
-                    "payload": {
-                        "headers": [
-                            { "name": "Date", "value": "Fri, 29 May 2026 12:00:00 +0000" },
-                            { "name": "List-Unsubscribe", "value": "<mailto:leave@example.com>" }
-                        ]
-                    },
-                    "attachmentList": [
-                        { "filename": "plan.pdf", "mimeType": "application/pdf" },
-                        { "filename": "", "mimeType": "text/plain" }
-                    ]
-                },
-                {
-                    "messageId": "m-2",
-                    "threadId": "t-2",
-                    "subject": "Budget",
-                    "sender": "Cara <cara@example.com>",
-                    "to": "Alice <alice@example.com>",
-                    "messageText": "fallback two",
-                    "markdown_formatted": "Rendered body two"
-                }
-            ],
-            "nextPageToken": "page-2",
-            "resultSizeEstimate": 2
-        }
-    });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut response);
-    let messages = response["data"]["messages"].as_array().expect("messages");
-    assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0]["id"], "m-1");
-    assert_eq!(messages[0]["date"], "Fri, 29 May 2026 12:00:00 +0000");
-    assert_eq!(
-        messages[0]["list_unsubscribe"],
-        "<mailto:leave@example.com>"
-    );
-    assert_eq!(messages[0]["markdown"], "Rendered body one");
-    assert_eq!(messages[0]["attachments"][0]["filename"], "plan.pdf");
-    assert_eq!(messages[1]["markdown"], "Rendered body two");
-    assert_eq!(response["data"]["nextPageToken"], "page-2");
-    assert_eq!(response["data"]["resultSizeEstimate"], 2);
-
-    let mut no_container = json!({ "ok": true });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut no_container);
-    assert_eq!(no_container, json!({ "ok": true }));
-
-    let mut one = json!({ "messages": [{ "messageId": "m-3", "messageText": "plain" }] });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut one);
-    assert_eq!(one["messages"][0]["markdown"], "plain");
-
-    init_default_composio_providers();
-    assert!(get_provider(" gmail ").is_some());
-    assert!(get_provider("unknown_provider_slug").is_none());
-    assert!(all_composio_providers()
-        .iter()
-        .any(|provider| provider.toolkit_slug() == "slack"));
-    register_provider(Arc::new(RawCoverageProvider {
-        fail_profile: false,
-    }));
-    register_provider(Arc::new(RawCoverageProvider { fail_profile: true }));
-    assert_eq!(
-        get_provider("raw_coverage").unwrap().toolkit_slug(),
-        "raw_coverage"
-    );
-    let raw_count = all_composio_providers()
-        .iter()
-        .filter(|provider| provider.toolkit_slug() == "raw_coverage")
-        .count();
-    assert_eq!(raw_count, 1);
-    register_provider(Arc::new(EmptySlugProvider));
-    assert!(get_provider("").is_none());
-}
-
-struct RawCoverageProvider {
-    fail_profile: bool,
-}
-
-#[async_trait::async_trait]
-impl ComposioProvider for RawCoverageProvider {
-    fn toolkit_slug(&self) -> &'static str {
-        "raw_coverage"
-    }
-
-    async fn fetch_user_profile(
-        &self,
-        _ctx: &ProviderContext,
-    ) -> Result<ProviderUserProfile, String> {
-        if self.fail_profile {
-            Err("profile unavailable".into())
-        } else {
-            Ok(ProviderUserProfile {
-                toolkit: "raw_coverage".into(),
-                connection_id: Some("conn-1".into()),
-                display_name: Some("Raw Coverage".into()),
-                email: Some("raw@example.com".into()),
-                username: None,
-                avatar_url: None,
-                profile_url: None,
-                extras: json!({}),
-            })
-        }
-    }
-}
-
-struct EmptySlugProvider;
-
-#[async_trait::async_trait]
-impl ComposioProvider for EmptySlugProvider {
-    fn toolkit_slug(&self) -> &'static str {
-        ""
-    }
-
-    async fn fetch_user_profile(
-        &self,
-        _ctx: &ProviderContext,
-    ) -> Result<ProviderUserProfile, String> {
-        Ok(ProviderUserProfile::default())
-    }
-}
-
+/// The deleted engine's `ComposioProvider` trait, its per-toolkit structs
+/// (`GmailProvider` among them), `ProviderContext`, and the whole in-process
+/// registry (`register_provider`/`get_provider`/`all_providers`/
+/// `init_default_providers`) are genuinely gone with nothing in this crate to
+/// exercise them against — see
+/// `crate::openhuman::integrations::composio::providers`'s module docs and
+/// `memory_sync_providers_raw_coverage_e2e.rs`, which documents this same gap
+/// in detail for the sibling suite that covered these types most directly.
+///
+/// This test used to cover two things through that registry:
+/// Gmail's `post_process_action_result` (nested-payload flattening, raw-HTML
+/// opt-out, non-container passthrough) and the registry's own CRUD
+/// (register/get/list, empty-slug and duplicate-slug handling) plus the
+/// `ComposioProvider` trait's default method bodies (`sync_interval_secs`,
+/// `curated_tools`, `fetch_tasks`'s "no task-fetch surface" default,
+/// `on_trigger`'s no-op default, `identity_set`, `on_connection_created`
+/// writing `PROFILE.md`). None of it moved anywhere reachable from this
+/// crate — it now lives entirely inside the separately-versioned
+/// `tinyconnectors` module, reachable only via a live loaded module (real
+/// network + `dlopen`), which this suite's local-only design rules out. What
+/// remains honestly testable of "fetch a provider's profile" / "sync a
+/// connection" is `composio_get_user_profile` / `composio_sync`
+/// (`integrations::composio::ops`), which refuse cleanly, deterministically
+/// and without touching the network when no connectors module is loaded.
 #[tokio::test]
-async fn memory_sync_provider_trait_defaults_and_connection_hook_are_deterministic() {
+async fn composio_get_user_profile_and_sync_refuse_cleanly_without_a_loaded_module() {
+    let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
-    // Determinism (as this test's name promises): `identity_set` →
-    // `persist_provider_profile` writes through the PROCESS-GLOBAL memory client
-    // and returns 0 when it isn't ready. Other tests in this binary rebind that
-    // global, so under parallel execution this test could otherwise observe an
-    // unready client and see 0 instead of 1. Bind the global to this test's
-    // workspace up front so the assertion is independent of execution order.
-    ensure_memory_seams();
-    tinymemory_core::global::init(tmp.path().to_path_buf())
-        .expect("init global memory client");
-    let ctx = ProviderContext {
-        config: Arc::new(config_in(&tmp)),
-        toolkit: "raw_coverage".into(),
-        connection_id: Some("conn-1".into()),
-        usage: Default::default(),
-        max_items: None,
-        sync_depth_days: None,
-    };
-    let provider = RawCoverageProvider { fail_profile: true };
-    assert_eq!(provider.sync_interval_secs(), Some(15 * 60));
-    assert!(provider.curated_tools().is_none());
-    assert!(provider
-        .fetch_tasks(&ctx, &TaskFetchFilter::default())
-        .await
-        .unwrap_err()
-        .contains("provider has no task-fetch surface"));
+    let mut config = config_in(&tmp);
+    config.modules.enabled = false;
 
-    let mut action_data = json!({ "ok": true });
-    provider.post_process_action_result("RAW_ACTION", None, &mut action_data);
-    assert_eq!(action_data, json!({ "ok": true }));
-    provider
-        .on_trigger(&ctx, "raw.trigger", &json!({ "payload": true }))
+    let error = composio_get_user_profile(&config, "conn-raw-coverage")
         .await
-        .expect("default trigger no-op");
-    assert_eq!(
-        provider.identity_set(&ProviderUserProfile {
-            toolkit: "raw_coverage".into(),
-            connection_id: Some("conn-1".into()),
-            display_name: Some("No client".into()),
-            ..Default::default()
-        }),
-        1
-    );
-    let memory_client = ctx.memory_client().expect("test memory client");
-    memory_client
-        .kv_set(Some("provider-context"), "covered", &json!(true))
-        .await
-        .expect("write through provider context memory client");
-    assert_eq!(
-        memory_client
-            .kv_get(Some("provider-context"), "covered")
-            .await
-            .expect("read provider context kv"),
-        Some(json!(true))
+        .expect_err("profile fetch must refuse without a loaded connectors module");
+    assert!(
+        error.contains("modules are disabled in configuration"),
+        "unexpected error: {error}"
     );
 
-    provider
-        .on_connection_created(&ctx)
-        .await
-        .expect("profile failure still syncs");
-    assert!(!tmp.path().join("PROFILE.md").exists());
-
-    let profile_provider = RawCoverageProvider {
-        fail_profile: false,
-    };
-    profile_provider
-        .on_connection_created(&ctx)
-        .await
-        .expect("profile success syncs");
-    let profile_md = std::fs::read_to_string(tmp.path().join("PROFILE.md")).expect("profile md");
-    assert!(profile_md.contains("Raw Coverage"));
-    assert!(profile_md.contains("raw@example.com"));
+    let outcome = composio_sync(&config, "conn-raw-coverage", None).await;
+    assert!(
+        outcome.is_err(),
+        "sync must refuse to resolve toolkit for an unregistered connection"
+    );
 }
+
 
 #[test]
 fn turn_state_mirror_persists_progress_edges_from_public_events() {
@@ -4859,47 +4648,29 @@ async fn memory_sources_types_registry_and_sync_state_cover_public_persistence_e
     assert_eq!(updated.max_issues, Some(6));
     assert_eq!(updated.max_prs, Some(7));
 
-    let memory = Arc::new(
-        MemoryClient::from_workspace_dir(tmp.path().join("memory-sync-state"))
-            .expect("memory client"),
-    );
-    let adapter =
-        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
-    let fresh = SyncState::load(&adapter, "gmail", "conn-raw")
-        .await
-        .expect("fresh state");
-    assert_eq!(fresh.toolkit, "gmail");
-    assert_eq!(fresh.connection_id, "conn-raw");
-
+    // `SyncState::load`/`::save` — the key/value persistence extension this
+    // block used to round-trip through `tinymemory_core::tinycortex::
+    // HostSyncAdapter` (a `SyncStateStore` impl) — no longer exist anywhere
+    // in `tinymemory-core`: `HostSyncAdapter` now offers only `new`, and
+    // `integrations::composio::ops::memory_cleanup`'s doc comments confirm
+    // this in passing, speaking of `SyncState::load` only in the past tense
+    // ("exactly as `SyncState::load` had them"). The connection-delete path
+    // that used to read a persisted `SyncState` was rewritten to work
+    // without it (`ForgetSelector`-based cleanup instead). This is a
+    // genuine, unrecoverable coverage gap for the persistence half — the
+    // pure in-memory `SyncState`/`DailyBudget` behaviour (construction,
+    // `advance_cursor`, `mark_synced`, `is_synced`, `budget_remaining`, …)
+    // is still exercised elsewhere in this file
+    // (`memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases`),
+    // so only the load/save round trip and its malformed-JSON recovery
+    // behaviour are lost.
     let mut saved = SyncState::new("gmail", "conn-raw");
     saved.advance_cursor("cursor-raw");
     saved.mark_synced("msg-1");
     saved.daily_budget.date = "2000-01-01".into();
     saved.daily_budget.requests_used = DEFAULT_DAILY_REQUEST_LIMIT;
-    saved.save(&adapter).await.expect("save state");
-
-    let loaded = SyncState::load(&adapter, "gmail", "conn-raw")
-        .await
-        .expect("load saved state");
-    assert_eq!(loaded.cursor.as_deref(), Some("cursor-raw"));
-    assert!(loaded.is_synced("msg-1"));
-    assert_eq!(loaded.daily_budget.requests_used, 0);
-    assert_eq!(loaded.budget_remaining(), DEFAULT_DAILY_REQUEST_LIMIT);
-
-    memory
-        .kv_set(
-            Some(tinymemory_core::tinycortex::HOST_SYNC_STATE_NAMESPACE),
-            "composio-sync-state:gmail:bad-json",
-            &json!("not a sync state"),
-        )
-        .await
-        .expect("write bad state");
-    let recovered = SyncState::load(&adapter, "gmail", "bad-json")
-        .await
-        .expect("malformed state recovers to defaults");
-    assert_eq!(recovered.toolkit, "gmail");
-    assert_eq!(recovered.connection_id, "bad-json");
-    assert!(recovered.cursor.is_none());
+    assert_eq!(saved.cursor.as_deref(), Some("cursor-raw"));
+    assert!(saved.is_synced("msg-1"));
 }
 
 #[test]

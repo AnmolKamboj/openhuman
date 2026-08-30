@@ -107,7 +107,7 @@ pub(crate) fn is_repeat_call_exempt(tool: &str) -> bool {
 
 /// Extract the assistant's visible text (concatenated [`ContentBlock::Text`]
 /// blocks) from a model response message, for the repeat-output signature.
-fn assistant_visible_text(message: &tinyagents::harness::message::AssistantMessage) -> String {
+fn assistant_visible_text(message: &tinyinference::message::AssistantMessage) -> String {
     let mut out = String::new();
     for block in &message.content {
         if let ContentBlock::Text(t) = block {

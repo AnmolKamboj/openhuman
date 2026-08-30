@@ -353,7 +353,7 @@ async fn fetch_connected_integrations_uncached(
                 // know the gated action exists at all and will tell the user
                 // "I don't support that" — technically correct about its
                 // callable surface, but misleading about the toolkit.
-                let pref = super::providers::load_user_scope_or_default(slug).await;
+                let pref = super::ops::load_user_scope_pref(config, slug).await;
                 let mut visible: Vec<ConnectedIntegrationTool> = Vec::new();
                 let mut gated: Vec<GatedIntegrationTool> = Vec::new();
                 for t in tools_by_toolkit
@@ -502,6 +502,7 @@ async fn fetch_connected_integrations_uncached(
 /// whose catalogue hasn't been published yet). Returns `Err` only for
 /// transport / auth failures the caller should surface to the user.
 pub async fn fetch_toolkit_actions(
+    config: &Config,
     client: &ComposioClient,
     toolkit: &str,
     tags: Option<&[String]>,
@@ -523,7 +524,7 @@ pub async fn fetch_toolkit_actions(
     let action_prefix = format!("{}_", toolkit_slug.to_uppercase());
     // Apply curated whitelist + user scope so spawn-time tool
     // discovery agrees with the bulk path and the meta-tool layer.
-    let pref = super::providers::load_user_scope_or_default(toolkit_slug).await;
+    let pref = super::ops::load_user_scope_pref(config, toolkit_slug).await;
     let actions: Vec<ConnectedIntegrationTool> = resp
         .tools
         .into_iter()

@@ -43,7 +43,7 @@
 //!   threading) — wired in 05.2/05.3. This slice threads `thread_id` (from the
 //!   sub-agent task scope) so [`FileStatusStore::list_by_thread`] answers.
 //!
-//! [`EventSink::with_stream_id`]: tinyagents::harness::events::EventSink::with_stream_id
+//! [`EventSink::with_stream_id`]: tinyagents_harness::events::EventSink::with_stream_id
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -52,14 +52,14 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 
-use tinyagents::error::Result as TaResult;
-use tinyagents::harness::events::{EventSink, HarnessRunStatus};
-use tinyagents::harness::ids::{ComponentId, HarnessPhase, RunId, ThreadId};
-use tinyagents::harness::observability::{
+use tinyagents_harness::error::Result as TaResult;
+use tinyagents_harness::events::{EventSink, HarnessRunStatus};
+use tinyagents_harness::ids::{ComponentId, HarnessPhase, RunId, ThreadId};
+use tinyagents_harness::observability::{
     AgentObservation, FanOutSink, HarnessEventJournal, HarnessStatusStore, JournalSink,
     RedactingSink, StoreEventJournal,
 };
-use tinyagents::harness::store::{FileStore, Store};
+use tinyagents_harness::store::{FileStore, Store};
 
 use crate::openhuman::agent::session_import::ops::open_session_stores;
 
@@ -84,7 +84,7 @@ static REQUEST_JOURNAL_RUNS: Lazy<Mutex<HashMap<String, String>>> =
 /// seeds the sink stream prefix and the durable journal/status — see
 /// [`attach_turn_journal`].
 ///
-/// [`EventSink::with_stream_id`]: tinyagents::harness::events::EventSink::with_stream_id
+/// [`EventSink::with_stream_id`]: tinyagents_harness::events::EventSink::with_stream_id
 pub(crate) fn mint_run_id() -> RunId {
     RunId::new(format!("run.{}", uuid::Uuid::new_v4().simple()))
 }
@@ -241,7 +241,7 @@ impl HarnessStatusStore for FileStatusStore {
     }
 
     async fn list_active(&self) -> TaResult<Vec<HarnessRunStatus>> {
-        use tinyagents::harness::ids::ExecutionStatus;
+        use tinyagents_harness::ids::ExecutionStatus;
         Ok(self
             .all()
             .await?
@@ -334,7 +334,7 @@ impl TurnJournal {
 /// and unobserved turns alike: it does not depend on `on_progress`.
 ///
 /// [`OpenhumanEventBridge`]: crate::openhuman::agent::tinyagents::observability::OpenhumanEventBridge
-/// [`EventSink::with_stream_id`]: tinyagents::harness::events::EventSink::with_stream_id
+/// [`EventSink::with_stream_id`]: tinyagents_harness::events::EventSink::with_stream_id
 pub(crate) async fn attach_turn_journal(
     events: &EventSink,
     model: &str,

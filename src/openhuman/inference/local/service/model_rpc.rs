@@ -10,9 +10,10 @@ use crate::openhuman::inference::local::ollama::{
     ollama_base_url_from_config, redact_ollama_base_url,
 };
 use crate::openhuman::inference::local::provider::{provider_from_config, LocalAiProvider};
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::{ChatModel, ModelRequest};
-use tinyagents::harness::providers::openai::OpenAiModel;
+use tinyinference::message::Message;
+use tinyinference::model::{ChatModel, ModelRequest};
+use tinyinference::providers::openai::OpenAiModel;
+use tinyinference::providers::{ProviderKind, ProviderSpec};
 
 pub(super) struct ModelRpcOutcome {
     pub reply: String,
@@ -41,10 +42,21 @@ fn local_model(config: &Config, model_id: &str) -> Result<OpenAiModel, String> {
                 model = %model_id,
                 "[local_ai:model_rpc] selecting LM Studio RPC model"
             );
-            OpenAiModel::lm_studio(
-                base,
+            // `OpenAiModel::lm_studio` no longer exists as a named preset; go
+            // through `from_spec` with `ProviderKind::LmStudio` instead, which
+            // routes to the same private `local_runtime` construction
+            // (auth-style none, vision/native-tool-choice/json-object off,
+            // context probing enabled) that the old preset used.
+            OpenAiModel::from_spec(
+                ProviderSpec {
+                    kind: ProviderKind::LmStudio,
+                    provider: "lm_studio".to_string(),
+                    model: model_id.to_string(),
+                    base_url: base,
+                    api_key_env: None,
+                    requires_api_key: false,
+                },
                 config.local_ai.api_key.as_deref().unwrap_or_default(),
-                model_id,
             )
         }
         LocalAiProvider::Ollama => {
@@ -70,14 +82,18 @@ fn local_model(config: &Config, model_id: &str) -> Result<OpenAiModel, String> {
 
 pub(super) async fn invoke(
     config: &Config,
-    client: reqwest::Client,
     messages: Vec<Message>,
     max_tokens: Option<u32>,
     temperature: f32,
     allow_empty: bool,
 ) -> Result<ModelRpcOutcome, String> {
     let model_id = crate::openhuman::inference::model_ids::effective_chat_model_id(config);
-    let model = local_model(config, &model_id)?.with_client(client);
+    // `OpenAiModel` no longer exposes `with_client`/injects an external
+    // `reqwest::Client` — each model now builds and owns its own client
+    // internally (`OpenAiModel::new`). This host no longer shares its app-wide
+    // HTTP client (connection pooling, proxy config) with local-inference
+    // calls as a result; there is no replacement hook upstream.
+    let model = local_model(config, &model_id)?;
     let provider = provider_from_config(config);
     tracing::debug!(
         provider = provider.as_str(),
@@ -126,7 +142,7 @@ pub(super) async fn invoke(
 }
 
 fn model_outcome(
-    response: tinyagents::harness::model::ModelResponse,
+    response: tinyinference::model::ModelResponse,
     allow_empty: bool,
 ) -> Result<ModelRpcOutcome, String> {
     let mut reply = response.text();
@@ -136,9 +152,7 @@ fn model_outcome(
             .content
             .iter()
             .filter_map(|block| match block {
-                tinyagents::harness::message::ContentBlock::Thinking { text, .. } => {
-                    Some(text.as_str())
-                }
+                tinyinference::message::ContentBlock::Thinking { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()

@@ -341,13 +341,13 @@ fn tool_char_cap_reads_the_tools_own_declared_cap() {
     let mut tool_policies = HashMap::new();
     tool_policies.insert(
         "big".to_string(),
-        TaToolPolicy::classified().with_runtime(tinyagents::harness::tool::ToolRuntime {
+        TaToolPolicy::classified().with_runtime(tinyagents_harness::tool::ToolRuntime {
             timeout_ms: None,
-            timeout: tinyagents::harness::tool::ToolTimeout::Inherit,
+            timeout: tinyagents_harness::tool::ToolTimeout::Inherit,
             max_retries: None,
             idempotent: false,
             cancelable: true,
-            sandbox: tinyagents::harness::tool::SandboxMode::Inherit,
+            sandbox: tinyagents_harness::tool::SandboxMode::Inherit,
             max_result_bytes: Some(10),
             streaming: false,
         }),
@@ -377,13 +377,13 @@ async fn an_unavailable_notice_survives_a_tool_cap_shorter_than_itself() {
     let mut tool_policies = HashMap::new();
     tool_policies.insert(
         "terse".to_string(),
-        TaToolPolicy::classified().with_runtime(tinyagents::harness::tool::ToolRuntime {
+        TaToolPolicy::classified().with_runtime(tinyagents_harness::tool::ToolRuntime {
             timeout_ms: None,
-            timeout: tinyagents::harness::tool::ToolTimeout::Inherit,
+            timeout: tinyagents_harness::tool::ToolTimeout::Inherit,
             max_retries: None,
             idempotent: false,
             cancelable: true,
-            sandbox: tinyagents::harness::tool::SandboxMode::Inherit,
+            sandbox: tinyagents_harness::tool::SandboxMode::Inherit,
             // Far shorter than the ~165-char notice.
             max_result_bytes: Some(12),
             streaming: false,
@@ -436,13 +436,13 @@ async fn tool_output_honors_a_tools_own_cap() {
     let mut tool_policies = HashMap::new();
     tool_policies.insert(
         "capped".to_string(),
-        TaToolPolicy::classified().with_runtime(tinyagents::harness::tool::ToolRuntime {
+        TaToolPolicy::classified().with_runtime(tinyagents_harness::tool::ToolRuntime {
             timeout_ms: None,
-            timeout: tinyagents::harness::tool::ToolTimeout::Inherit,
+            timeout: tinyagents_harness::tool::ToolTimeout::Inherit,
             max_retries: None,
             idempotent: false,
             cancelable: true,
-            sandbox: tinyagents::harness::tool::SandboxMode::Inherit,
+            sandbox: tinyagents_harness::tool::SandboxMode::Inherit,
             max_result_bytes: Some(20),
             streaming: false,
         }),

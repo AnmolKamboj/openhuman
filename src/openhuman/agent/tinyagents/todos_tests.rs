@@ -10,7 +10,7 @@ async fn legacy_migration_copies_once_without_replacing_tinyagents_data() {
     let mut legacy = TaskBoard::empty("thread-1");
     legacy
         .cards
-        .push(tinyagents::graph::todos::TaskBoardCard::new("legacy"));
+        .push(tinyagents_graph::todos::TaskBoardCard::new("legacy"));
     tokio::fs::write(
         legacy_dir.join("thread-1.json"),
         serde_json::to_vec(&legacy).expect("encode legacy"),

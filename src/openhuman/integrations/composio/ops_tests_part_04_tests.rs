@@ -451,19 +451,16 @@ fn composio_direct_500_does_not_demote() {
 
 #[tokio::test]
 async fn enrich_does_nothing_when_no_cached_identities() {
-    // The embedding seam fails loudly when unwired. Installed here rather
-    // than relied upon from another test: `install_for_tests` is
-    // `Once`-guarded, so a test that omits it passes only while some
-    // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    // Hold the lock so no sibling test can rebind the global to a workspace
-    // that has a profile row matching "c1".  The fresh temp workspace has no
-    // profiles, so load_connected_identities returns Vec::new() and the
-    // connection is returned unchanged.
+    // `enrich_connections_with_identity` reads through the bound memory
+    // driver now (`identity_store::load_connected_identities`), not the
+    // deleted engine's process-global client — see the module doc comment on
+    // `identity_store`. The fresh temp workspace has no profiles, so it
+    // returns `Vec::new()` and the connection is returned unchanged.
     let tmp = tempfile::tempdir().unwrap();
-    let _guard = init_memory_client(tmp.path()).await;
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
     let resp = make_connections_response(&[("c1", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
     assert_eq!(enriched.connections.len(), 1);
     assert!(enriched.connections[0].account_email.is_none());
     assert!(enriched.connections[0].workspace.is_none());
@@ -472,27 +469,28 @@ async fn enrich_does_nothing_when_no_cached_identities() {
 
 #[tokio::test]
 async fn enrich_populates_email_from_cached_profile() {
-    // The embedding seam fails loudly when unwired. Installed here rather
-    // than relied upon from another test: `install_for_tests` is
-    // `Once`-guarded, so a test that omits it passes only while some
-    // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    use crate::openhuman::integrations::composio::providers::{
-        profile::persist_provider_profile, ProviderUserProfile,
-    };
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = init_memory_client(tmp.path()).await;
+    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
+    use tinymemory_api::composio::ProviderUserProfile;
 
-    persist_provider_profile(&ProviderUserProfile {
-        toolkit: "gmail".to_string(),
-        connection_id: Some("conn-gmail-1".to_string()),
-        email: Some("alice@example.com".to_string()),
-        display_name: Some("Alice Smith".to_string()),
-        ..Default::default()
-    });
+    let tmp = tempfile::tempdir().unwrap();
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+
+    persist_provider_profile(
+        &config,
+        &ProviderUserProfile {
+            toolkit: "gmail".to_string(),
+            connection_id: Some("conn-gmail-1".to_string()),
+            email: Some("alice@example.com".to_string()),
+            display_name: Some("Alice Smith".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("persist provider profile");
 
     let resp = make_connections_response(&[("conn-gmail-1", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
 
     assert_eq!(
         enriched.connections[0].account_email.as_deref(),
@@ -512,26 +510,27 @@ async fn enrich_populates_email_from_cached_profile() {
 
 #[tokio::test]
 async fn enrich_populates_handle_for_github() {
-    // The embedding seam fails loudly when unwired. Installed here rather
-    // than relied upon from another test: `install_for_tests` is
-    // `Once`-guarded, so a test that omits it passes only while some
-    // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    use crate::openhuman::integrations::composio::providers::{
-        profile::persist_provider_profile, ProviderUserProfile,
-    };
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = init_memory_client(tmp.path()).await;
+    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
+    use tinymemory_api::composio::ProviderUserProfile;
 
-    persist_provider_profile(&ProviderUserProfile {
-        toolkit: "github".to_string(),
-        connection_id: Some("conn-gh-1".to_string()),
-        username: Some("octocat".to_string()),
-        ..Default::default()
-    });
+    let tmp = tempfile::tempdir().unwrap();
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+
+    persist_provider_profile(
+        &config,
+        &ProviderUserProfile {
+            toolkit: "github".to_string(),
+            connection_id: Some("conn-gh-1".to_string()),
+            username: Some("octocat".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("persist provider profile");
 
     let resp = make_connections_response(&[("conn-gh-1", "github", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
 
     // GitHub uses `handle` kind (the catch-all branch in expand_identity_rows).
     assert_eq!(
@@ -546,10 +545,14 @@ async fn enrich_populates_handle_for_github() {
 async fn enrich_skips_connection_already_having_identity() {
     // If the backend-proxied path already populated account_email, the
     // enricher must NOT overwrite it with a potentially stale cached value.
+    let tmp = tempfile::tempdir().unwrap();
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+
     let mut resp = make_connections_response(&[("c-preloaded", "gmail", "ACTIVE")]);
     resp.connections[0].account_email = Some("preloaded@example.com".to_string());
 
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
     assert_eq!(
         enriched.connections[0].account_email.as_deref(),
         Some("preloaded@example.com"),
@@ -559,33 +562,39 @@ async fn enrich_skips_connection_already_having_identity() {
 
 #[tokio::test]
 async fn enrich_handles_multiple_connections_same_toolkit() {
-    // The embedding seam fails loudly when unwired. Installed here rather
-    // than relied upon from another test: `install_for_tests` is
-    // `Once`-guarded, so a test that omits it passes only while some
-    // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
     // Two Gmail accounts — each gets its own identity label, not "Account N".
-    use crate::openhuman::integrations::composio::providers::{
-        profile::persist_provider_profile, ProviderUserProfile,
-    };
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = init_memory_client(tmp.path()).await;
+    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
+    use tinymemory_api::composio::ProviderUserProfile;
 
-    persist_provider_profile(&ProviderUserProfile {
-        toolkit: "gmail".to_string(),
-        connection_id: Some("g1".to_string()),
-        email: Some("alice@example.com".to_string()),
-        ..Default::default()
-    });
-    persist_provider_profile(&ProviderUserProfile {
-        toolkit: "gmail".to_string(),
-        connection_id: Some("g2".to_string()),
-        email: Some("bob@example.com".to_string()),
-        ..Default::default()
-    });
+    let tmp = tempfile::tempdir().unwrap();
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+
+    persist_provider_profile(
+        &config,
+        &ProviderUserProfile {
+            toolkit: "gmail".to_string(),
+            connection_id: Some("g1".to_string()),
+            email: Some("alice@example.com".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("persist provider profile");
+    persist_provider_profile(
+        &config,
+        &ProviderUserProfile {
+            toolkit: "gmail".to_string(),
+            connection_id: Some("g2".to_string()),
+            email: Some("bob@example.com".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("persist provider profile");
 
     let resp = make_connections_response(&[("g1", "gmail", "ACTIVE"), ("g2", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
 
     let emails: Vec<_> = enriched
         .connections
@@ -604,29 +613,30 @@ async fn enrich_handles_multiple_connections_same_toolkit() {
 
 #[tokio::test]
 async fn enrich_leaves_unmatched_connection_unchanged() {
-    // The embedding seam fails loudly when unwired. Installed here rather
-    // than relied upon from another test: `install_for_tests` is
-    // `Once`-guarded, so a test that omits it passes only while some
-    // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
     // Connection whose id has no cached profile row is returned with all
     // identity fields as None — the UI falls back to "toolkit · connection_id".
-    use crate::openhuman::integrations::composio::providers::{
-        profile::persist_provider_profile, ProviderUserProfile,
-    };
+    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
+    use tinymemory_api::composio::ProviderUserProfile;
+
     let tmp = tempfile::tempdir().unwrap();
-    let _guard = init_memory_client(tmp.path()).await;
+    let config = test_config(&tmp);
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
 
     // Persist a profile for a DIFFERENT connection id.
-    persist_provider_profile(&ProviderUserProfile {
-        toolkit: "gmail".to_string(),
-        connection_id: Some("other-conn".to_string()),
-        email: Some("other@example.com".to_string()),
-        ..Default::default()
-    });
+    persist_provider_profile(
+        &config,
+        &ProviderUserProfile {
+            toolkit: "gmail".to_string(),
+            connection_id: Some("other-conn".to_string()),
+            email: Some("other@example.com".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("persist provider profile");
 
     let resp = make_connections_response(&[("no-profile-conn", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(resp);
+    let enriched = enrich_connections_with_identity(&config, resp).await;
 
     assert!(
         enriched.connections[0].account_email.is_none(),

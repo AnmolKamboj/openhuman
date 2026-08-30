@@ -226,7 +226,7 @@ fn steering_command_for_mode(mode: QueueMode, text: String) -> Option<SteeringCo
 }
 
 fn send_registered_steering(
-    handle: &tinyagents::harness::steering::SteeringHandle,
+    handle: &tinyagents_harness::steering::SteeringHandle,
     text: String,
     mode: QueueMode,
 ) -> bool {

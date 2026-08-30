@@ -158,7 +158,7 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
     // Build the run context: an optional event sink feeds the progress/cost
     // bridge (streaming) and/or the model-call-cap pauser; the shared steering
     // handle carries mid-flight, early-exit, and cap pauses.
-    let cancellation = tinyagents::CancellationToken::new();
+    let cancellation = tinyagents_harness::CancellationToken::new();
     let mut ctx = RunContext::new(config, ()).with_cancellation(cancellation.clone());
     if let Some(descriptor) = workspace_descriptor {
         tracing::debug!(
@@ -293,7 +293,7 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
     // a 05.2/05.3 follow-up).
     let journal_thread_id = subagent_scope
         .as_ref()
-        .map(|scope| tinyagents::harness::ids::ThreadId::new(scope.task_id.clone()));
+        .map(|scope| tinyagents_harness::ids::ThreadId::new(scope.task_id.clone()));
     let turn_journal = match &events {
         Some(events) => {
             journal::attach_turn_journal(events, model, journal_run_id.clone(), journal_thread_id)
@@ -394,13 +394,13 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
                         break;
                     }
                     AgentStreamItem::Failed(error) => {
-                        terminal = Some(Err(tinyagents::TinyAgentsError::Model(error)));
+                        terminal = Some(Err(tinyagents_harness::TinyAgentsError::Model(error)));
                         break;
                     }
                 }
             }
             terminal.unwrap_or_else(|| {
-                Err(tinyagents::TinyAgentsError::Model(
+                Err(tinyagents_harness::TinyAgentsError::Model(
                     "tinyagents stream ended without terminal run".to_string(),
                 ))
             })
@@ -440,7 +440,7 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
             // callers downcast it (Sentry skip) and render the canonical
             // "Agent exceeded maximum tool iterations" message, matching the
             // legacy `ErrorCheckpoint`.
-            if let tinyagents::TinyAgentsError::LimitExceeded(msg) = &e {
+            if let tinyagents_harness::TinyAgentsError::LimitExceeded(msg) = &e {
                 if msg.contains("model call") {
                     tracing::debug!(
                         model,

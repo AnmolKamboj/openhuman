@@ -284,37 +284,26 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                     return;
                 }
 
-                // The provider's bootstrap, run by the driver rather than in
-                // this process (tinymemory#105). What it does is unchanged —
-                // fetch and persist the account profile, plus whatever the
-                // provider overrides — but it now happens where the engine
-                // lives, so this host does not need a `ProviderContext` to
-                // describe itself back to it.
-                match crate::openhuman::memory::binding::for_config(&config) {
-                    Ok(binding) => match binding.provider().as_source_sync() {
-                        Some(sync) => {
-                            if let Err(e) =
-                                sync.bootstrap_connection(&toolkit, &connection_id).await
-                            {
-                                tracing::warn!(
-                                    toolkit = %toolkit,
-                                    connection_id = %connection_id,
-                                    error = %e,
-                                    "[composio:bus] connection bootstrap failed"
-                                );
-                            }
-                        }
-                        None => tracing::debug!(
-                            toolkit = %toolkit,
-                            driver = %binding.driver_id(),
-                            "[composio:bus] driver does not serve SourceSync; skipping bootstrap"
-                        ),
-                    },
-                    Err(e) => tracing::warn!(
+                // The bootstrap step used to be `MemorySourceSync::bootstrap_connection`,
+                // run by the driver — "fetch and persist the account profile".
+                // tinymemory v1.13.4 made that member unconditionally refuse
+                // for every toolkit (reaching a connected account now needs a
+                // credential the engine must not hold), so this host does it
+                // directly through the connector module instead — the same
+                // `GET_USER_PROFILE` round trip `composio_get_user_profile`
+                // already performs.
+                if let Err(e) = crate::openhuman::integrations::composio::ops::composio_get_user_profile(
+                    &config,
+                    &connection_id,
+                )
+                .await
+                {
+                    tracing::warn!(
                         toolkit = %toolkit,
+                        connection_id = %connection_id,
                         error = %e,
-                        "[composio:bus] memory binding failed; skipping bootstrap"
-                    ),
+                        "[composio:bus] connection bootstrap (profile fetch) failed"
+                    );
                 }
 
                 // `ctx.config` is the seam's `dyn MemoryHostConfig`; the binding
@@ -338,39 +327,36 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                         return;
                     }
                 };
-                let attempted = match crate::openhuman::memory::binding::for_config(&host_config) {
-                    Ok(binding) => match binding.provider().as_source_sync() {
-                        Some(sync) => sync
-                            .run_connection_sync(&toolkit, &connection_id)
-                            .await
-                            .map_err(|error| error.to_string()),
-                        None => Err(format!(
-                            "the bound memory driver '{}' does not serve source sync",
-                            binding.driver_id()
-                        )),
-                    },
-                    Err(error) => Err(error),
-                };
+                // Was `MemorySourceSync::run_connection_sync`, now unconditionally
+                // refused for the same reason `bootstrap_connection` above is:
+                // reads through the connector module and ingests through the
+                // bound driver's `MemorySourceSink` instead — the same
+                // `run_sync_pass` helper every other sync entry point in this
+                // domain uses now.
+                let attempted = crate::openhuman::integrations::composio::ops::run_sync_pass(
+                    &host_config,
+                    &toolkit,
+                    &connection_id,
+                    "connection_created",
+                )
+                .await;
                 match attempted {
-                    Ok(outcome) => {
+                    Ok(pass) => {
                         tracing::info!(
                             toolkit = %toolkit,
                             connection_id = %connection_id,
-                            items_ingested = outcome.records_ingested,
-                            actions_called = outcome.actions_called,
-                            "[composio:bus] tinycortex initial sync complete"
+                            records_read = pass.records_read,
+                            written = pass.written,
+                            already_ingested = pass.already_ingested,
+                            more_pending = pass.more_pending,
+                            "[composio:bus] initial sync complete"
                         );
                         // Avoid immediately re-firing from the periodic scheduler.
-                        super::periodic::record_sync_success(&toolkit, &connection_id);
+                        crate::openhuman::integrations::composio::periodic::record_sync_success(
+                            &toolkit,
+                            &connection_id,
+                        );
                     }
-                    // `actions_called` and `provider_cost_usd` are no longer
-                    // separate fields here. The contract has one error channel
-                    // and the driver folds the usage into its message, because
-                    // a partial-success shape is not available on an error path
-                    // — so the spend a failed run incurred is in the text rather
-                    // than in two structured fields. Logged whole rather than
-                    // parsed back out: re-deriving numbers from a message is how
-                    // a log line becomes a fragile API.
                     Err(error) => tracing::warn!(
                         toolkit = %toolkit,
                         connection_id = %connection_id,

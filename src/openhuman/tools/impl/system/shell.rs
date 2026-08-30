@@ -147,7 +147,7 @@ impl ShellTool {
     ///
     /// Returns the per-worker git-worktree checkout when the tinyagents harness
     /// threaded a [`WorkspaceDescriptor`] into this call's
-    /// [`ToolExecutionContext`](tinyagents::harness::tool::ToolExecutionContext) — an edit-capable worker running with
+    /// [`ToolExecutionContext`](tinyagents_harness::tool::ToolExecutionContext) — an edit-capable worker running with
     /// `isolation = "worktree"`, whose isolated worktree root is carried on the
     /// run context (`RunContext::with_workspace`) and surfaced per tool call via
     /// `ToolExecutionContext::from_run_context`. Otherwise falls back to the

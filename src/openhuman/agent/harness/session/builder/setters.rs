@@ -63,7 +63,7 @@ impl AgentBuilder {
     /// Sets an already-constructed TinyAgents chat model. This is the native
     /// injection seam for tests and embedders; no legacy `Provider` adapter is
     /// constructed.
-    pub fn chat_model(mut self, model: Arc<dyn tinyagents::harness::model::ChatModel<()>>) -> Self {
+    pub fn chat_model(mut self, model: Arc<dyn tinyinference::model::ChatModel<()>>) -> Self {
         self.turn_model_source =
             Some(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model));
         self
@@ -191,7 +191,7 @@ impl AgentBuilder {
     /// tools resolve their default cwd to the profile's dedicated workspace.
     pub fn workspace_descriptor(
         mut self,
-        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+        descriptor: Option<tinyagents_harness::workspace::WorkspaceDescriptor>,
     ) -> Self {
         self.workspace_descriptor = descriptor;
         self

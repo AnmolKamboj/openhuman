@@ -6,7 +6,7 @@
 //! - openhuman `ChatMessage` is `{ role: String, content: String }` — tool
 //!   calls and tool-result correlation ids are not first-class fields; the
 //!   legacy loop threads them through provider-native encoding instead.
-//! - `tinyagents::harness::message::Message` is a typed enum
+//! - `tinyinference::message::Message` is a typed enum
 //!   (`System`/`User`/`Assistant`/`Tool`) whose `Assistant` arm carries
 //!   structured `tool_calls` and whose `Tool` arm carries a `tool_call_id`.
 //!
@@ -14,10 +14,10 @@
 //! resulting transcript back out, so a turn can run on the `tinyagents`
 //! agent-loop while callers keep speaking openhuman's `ChatMessage` vocabulary.
 
-use tinyagents::harness::message::{
+use tinyinference::message::{
     AssistantMessage, ContentBlock, ImageRef, Message, SystemMessage, ToolMessage, UserMessage,
 };
-use tinyagents::harness::tool::ToolCall as TaToolCall;
+use tinyinference::tool::ToolCall as TaToolCall;
 
 use crate::openhuman::agent::messages::{ChatMessage, ConversationMessage, ToolResultMessage};
 

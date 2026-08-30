@@ -314,25 +314,12 @@ fn direct_mode_no_key_config(tmp: &tempfile::TempDir) -> Config {
 }
 
 // ── enrich_connections_with_identity ──────────────────────────────────
-
-/// Helper: bind the process-global memory client to a fresh temp workspace.
-///
-/// Initialise the global memory client to an isolated temp workspace and return
-/// a serialisation lock that must be held for the duration of the test.
-///
-/// The global rebinds whenever the workspace path changes (see
-/// `memory::global::init`), so each test that passes a unique `TempDir` gets
-/// isolated profile storage. The returned guard prevents concurrent tests from
-/// rebinding the singleton while the calling test is running — hold it with
-/// `let _guard = init_memory_client(tmp.path());`.
-async fn init_memory_client(workspace: &std::path::Path) -> tokio::sync::MutexGuard<'static, ()> {
-    let guard = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
-        .lock()
-        .await;
-    tinymemory_core::global::init(workspace.to_path_buf())
-        .expect("global memory client should initialize for enrichment test");
-    guard
-}
+//
+// `enrich_connections_with_identity` reads through the bound memory driver
+// now (`identity_store::load_connected_identities`) rather than a
+// process-global engine client, so its tests bind a driver per test with
+// `memory::test_support::install_tinycortex_for_test` instead of the
+// `tinymemory_core::global::init` helper this file used to carry.
 
 fn make_connections_response(
     conns: &[(&str, &str, &str)],

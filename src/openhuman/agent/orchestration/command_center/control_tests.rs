@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 use tempfile::TempDir;
-use tinyagents::session::run_ledger::{
+use tinyagents_session::run_ledger::{
     list_recent_run_events, upsert_agent_run, AgentRunKind, AgentRunUpsert, RunEventListRequest,
 };
 

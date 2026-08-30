@@ -10,7 +10,7 @@ use crate::openhuman::inference::provider::openhuman_backend_model::OpenHumanBac
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
 use crate::openhuman::security::credentials::AuthService;
 use std::sync::Arc;
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse, ModelStream};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse, ModelStream};
 
 /// Sentinel meaning "use the OpenHuman backend session JWT".
 pub const PROVIDER_OPENHUMAN: &str = "openhuman";

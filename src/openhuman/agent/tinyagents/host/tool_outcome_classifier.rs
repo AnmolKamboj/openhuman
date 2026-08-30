@@ -73,8 +73,8 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use tinyagents::harness::host::{OutcomeClass, ToolOutcomeClassifier};
-use tinyagents::harness::tool::ToolResult;
+use tinyagents_harness::host::{OutcomeClass, ToolOutcomeClassifier};
+use tinyagents_harness::tool::ToolResult;
 
 use crate::openhuman::tools::status::{classify, ToolFailureClass};
 

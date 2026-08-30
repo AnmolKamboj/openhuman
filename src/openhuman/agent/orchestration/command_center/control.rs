@@ -2,7 +2,7 @@
 //!
 //! The read-only projection in [`super::ops`] shows what background agent work
 //! is in flight; these verbs let a reviewer *act* on a single row. Each verb is
-//! a durable transition on the run ledger (`tinyagents::session::run_ledger`):
+//! a durable transition on the run ledger (`tinyagents_session::run_ledger`):
 //!
 //! - **stop** — cancel a non-terminal run (→ `cancelled`).
 //! - **retry** — re-queue a finished-with-error run (`failed` / `cancelled` /
@@ -23,14 +23,14 @@
 //! unit-tested without a database, mirroring [`super::ops::build_view`].
 //!
 //! [`AgentOrchestrationSession`]: crate::openhuman::agent::orchestration::ops::AgentOrchestrationSession
-//! [`transition_agent_run_status`]: tinyagents::session::run_ledger::transition_agent_run_status
+//! [`transition_agent_run_status`]: tinyagents_session::run_ledger::transition_agent_run_status
 
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use thiserror::Error;
 
 use crate::openhuman::config::Config;
-use tinyagents::session::run_ledger::{
+use tinyagents_session::run_ledger::{
     append_run_event, get_agent_run, transition_agent_run_status, AgentRunStatus, RunEventAppend,
 };
 
@@ -107,8 +107,8 @@ pub enum ControlError {
 /// module's callers speak `anyhow`. Without this the `#[from] anyhow::Error`
 /// variant does not apply, because `TinyAgentsError` is a distinct type — so
 /// every ledger call in this file would need its own `map_err`.
-impl From<tinyagents::TinyAgentsError> for ControlError {
-    fn from(err: tinyagents::TinyAgentsError) -> Self {
+impl From<tinyagents_harness::TinyAgentsError> for ControlError {
+    fn from(err: tinyagents_harness::TinyAgentsError) -> Self {
         Self::Storage(err.into())
     }
 }

@@ -109,11 +109,16 @@ impl Tool for ComposioExecuteTool {
         }
 
         // Enforce per-user scope preferences before delegating to backend.
-        match evaluate_tool_visibility(&tool).await {
+        // Uses `self.config` rather than the live-reloaded config resolved
+        // further down: a scope-pref read is not the direct-mode-toggle
+        // hazard the composio client resolution below guards against, and
+        // restructuring the reload earlier would move it ahead of the
+        // sandbox/task-window setup this function does first.
+        match evaluate_tool_visibility(self.config.as_ref(), &tool).await {
             ToolDecision::Allow | ToolDecision::PassthroughCheckScope { .. } => {}
             ToolDecision::BlockedByScope { scope } => {
                 let toolkit = toolkit_from_slug(&tool).unwrap_or_default();
-                let pref = load_user_scope_or_default(&toolkit).await;
+                let pref = load_user_scope_pref(self.config.as_ref(), &toolkit).await;
                 let msg = scope_error_message(&tool, scope, pref);
                 tracing::info!(
                     tool = %tool,

@@ -1,8 +1,8 @@
 use super::{local_model, model_outcome, throughput};
 use crate::openhuman::config::Config;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock};
-use tinyagents::harness::model::ModelResponse;
-use tinyagents::harness::usage::Usage;
+use tinyinference::message::{AssistantMessage, ContentBlock};
+use tinyinference::model::ModelResponse;
+use tinyinference::usage::Usage;
 
 #[test]
 fn throughput_reads_ollama_timing_metadata() {

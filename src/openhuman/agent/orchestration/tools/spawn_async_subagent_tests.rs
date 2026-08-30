@@ -320,7 +320,7 @@ fn parent_context(workspace_dir: &Path) -> ParentExecutionContext {
         agent_definition_id: "orchestrator".into(),
         allowed_subagent_ids: HashSet::from(["researcher".to_string()]),
         turn_model_source: crate::openhuman::agent::tinyagents::TurnModelSource::from_model(
-            Arc::new(tinyagents::harness::testkit::ScriptedModel::replies(vec![
+            Arc::new(tinyagents_harness::testkit::ScriptedModel::replies(vec![
                 "done",
             ])),
         ),

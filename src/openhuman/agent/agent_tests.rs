@@ -36,7 +36,7 @@ use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
 use tinymemory_core::store as memory_store;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -74,7 +74,7 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let mut guard = self.responses.lock().unwrap();
         let response = if guard.is_empty() {
             ChatResponse {
@@ -103,10 +103,8 @@ impl ChatModel<()> for FailingProvider {
         &self,
         _state: &(),
         _request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
-        Err(tinyagents::TinyAgentsError::Model(
-            "provider error".to_string(),
-        ))
+    ) -> tinyinference::Result<ModelResponse> {
+        Err(tinyinference::Error::Model("provider error".to_string()))
     }
 }
 

@@ -1,4 +1,4 @@
-//! Compatibility facade over [`tinyagents::graph::todos::runs`].
+//! Compatibility facade over [`tinyagents_graph::todos::runs`].
 //!
 //! TinyAgents owns the durable task-run record, the heartbeat, the staleness
 //! policy, and the reclaim sweep (card back to `todo`, or parked at `blocked`
@@ -15,9 +15,9 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use tinyagents::graph::todos::runs as crate_runs;
+use tinyagents_graph::todos::runs as crate_runs;
 
-pub use tinyagents::graph::todos::runs::{
+pub use tinyagents_graph::todos::runs::{
     ReclaimDetail, ReclaimResult, RunLimits, RunOutcome, TaskRun, DEFAULT_CLAIM_TTL_SECS,
     DEFAULT_HEARTBEAT_STALE_SECS, DEFAULT_MAX_RECLAIM_COUNT,
 };
@@ -32,7 +32,7 @@ const HEARTBEAT_TICK: std::time::Duration = crate_runs::DEFAULT_HEARTBEAT_TICK;
 /// Legacy on-disk ledger the crate store replaced.
 const TASK_BOARD_DIR: &str = "agent_task_boards";
 
-fn map_err<T>(result: tinyagents::error::Result<T>) -> Result<T, String> {
+fn map_err<T>(result: tinyagents_harness::error::Result<T>) -> Result<T, String> {
     result.map_err(|error| error.to_string())
 }
 

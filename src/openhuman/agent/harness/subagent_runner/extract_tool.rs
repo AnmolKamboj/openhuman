@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tinyagents::graph::parallel::{map_reduce, FailurePolicy, ParallelOptions};
+use tinyagents_graph::parallel::{map_reduce, FailurePolicy, ParallelOptions};
 
 use super::handoff::{chunk_content, ResultHandoffCache, HANDOFF_MAX_ENTRIES};
 use crate::openhuman::agent::harness::session::transcript::{
@@ -35,8 +35,8 @@ use crate::openhuman::agent::harness::session::transcript::{
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::tinyagents::TurnModelSource;
 use crate::openhuman::tools::{Tool, ToolCategory, ToolResult};
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::ModelRequest;
+use tinyinference::message::Message;
+use tinyinference::model::ModelRequest;
 
 // ── Tunables ──────────────────────────────────────────────────────────
 
@@ -265,7 +265,7 @@ impl Tool for ExtractFromResultTool {
 
         // Map stage: each chunk extracts items matching `query` from
         // ITS OWN slice only. Dispatched through the shared bounded fan-out
-        // (`tinyagents::graph::parallel::map_reduce`), which keeps at most
+        // (`tinyagents_graph::parallel::map_reduce`), which keeps at most
         // `MAP_CONCURRENCY` calls in flight and hands results back in input
         // order. Fully parallel `join_all` was generating 504-gateway-timeout
         // storms from the staging proxy when 7+ concurrent calls piled onto the

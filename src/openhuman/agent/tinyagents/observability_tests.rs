@@ -1,5 +1,5 @@
 use super::*;
-use tinyagents::harness::events::EventSink;
+use tinyagents_harness::events::EventSink;
 
 #[tokio::test]
 async fn bridge_forwards_tool_and_cost_progress() {

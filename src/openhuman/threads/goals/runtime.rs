@@ -21,8 +21,8 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
-use tinyagents::graph::goals::budget as crate_budget;
-use tinyagents::graph::goals::{BudgetVerdict, GoalBudgetGuard};
+use tinyagents_graph::goals::budget as crate_budget;
+use tinyagents_graph::goals::{BudgetVerdict, GoalBudgetGuard};
 
 use super::migration::goals_store;
 use super::store;
@@ -162,7 +162,7 @@ fn is_goal_continuation_turn() -> bool {
 /// Account a finished turn's usage against the ambient thread's goal.
 ///
 /// The accounting rules are the crate's
-/// ([`crate_budget::account_turn`](tinyagents::graph::goals::account_turn)):
+/// ([`crate_budget::account_turn`](tinyagents_graph::goals::account_turn)):
 /// only **active** goals are charged, so a paused/complete/budget-limited goal
 /// doesn't accrue usage from incidental chat, and a user-initiated turn clears
 /// the one-shot continuation suppression (a continuation turn must not clear
@@ -219,7 +219,7 @@ pub async fn account_turn_against_goal(workspace_dir: &Path, input: u64, output:
 /// tokens so far) would meet or exceed its budget.
 ///
 /// The decision is the crate's
-/// [`GoalBudgetGuard`](tinyagents::graph::goals::GoalBudgetGuard); this is the
+/// [`GoalBudgetGuard`](tinyagents_graph::goals::GoalBudgetGuard); this is the
 /// adapter that votes it into OpenHuman's [`StopHook`] chain. #4469 item 1: the
 /// stop is a graceful *pause*, not an instantaneous abort — the vote fires in
 /// the stop-hook middleware's `after_model`, and the harness drains the pause

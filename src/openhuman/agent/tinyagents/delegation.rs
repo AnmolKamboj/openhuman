@@ -1,5 +1,5 @@
 //! Multi-stage sub-agent delegation — the OpenHuman-facing seam onto
-//! [`tinyagents::graph::delegation`] (issue #4249, #27/#28).
+//! [`tinyagents_graph::delegation`] (issue #4249, #27/#28).
 //!
 //! The graph itself — the plan→execute⇄review→finalize state machine, its
 //! revision budget, checkpoint/resume classification, durable human-approval
@@ -50,7 +50,7 @@ use serde_json::Value;
 use super::observability::GraphTracingSink;
 
 // The surface the core imports today, under its historical spellings.
-pub(crate) use tinyagents::graph::delegation::{
+pub(crate) use tinyagents_graph::delegation::{
     delegation_graph_topology, DelegationConfig, DelegationOutcome, DelegationStage,
     DelegationStageOutput, DelegationState,
 };
@@ -64,7 +64,7 @@ pub(crate) use tinyagents::graph::delegation::{
 // the wrappers that attach the tracing sink — rather than calling the crate
 // directly and silently losing the journal.
 #[allow(unused_imports)]
-pub(crate) use tinyagents::graph::delegation::{
+pub(crate) use tinyagents_graph::delegation::{
     deny_decision, PendingApproval, StepRecord, CURRENT_SCHEMA_VERSION,
 };
 
@@ -86,7 +86,7 @@ fn with_tracing_sink(mut config: DelegationConfig) -> DelegationConfig {
 /// Run the plan→execute⇄review→finalize delegation graph, invoking `run_stage`
 /// for each stage. Returns the final [`DelegationState`].
 ///
-/// See [`tinyagents::graph::delegation::run_delegation`].
+/// See [`tinyagents_graph::delegation::run_delegation`].
 #[allow(dead_code)]
 pub(crate) async fn run_delegation<F, Fut>(
     config: DelegationConfig,
@@ -96,13 +96,13 @@ where
     F: Fn(DelegationStage, DelegationState) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<DelegationStageOutput, String>> + Send + 'static,
 {
-    tinyagents::graph::delegation::run_delegation(with_tracing_sink(config), run_stage).await
+    tinyagents_graph::delegation::run_delegation(with_tracing_sink(config), run_stage).await
 }
 
 /// Run the delegation graph and report whether it finalized or parked on a
 /// durable human-approval interrupt.
 ///
-/// See [`tinyagents::graph::delegation::run_delegation_durable`].
+/// See [`tinyagents_graph::delegation::run_delegation_durable`].
 #[allow(dead_code)]
 pub(crate) async fn run_delegation_durable<F, Fut>(
     config: DelegationConfig,
@@ -112,8 +112,7 @@ where
     F: Fn(DelegationStage, DelegationState) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<DelegationStageOutput, String>> + Send + 'static,
 {
-    tinyagents::graph::delegation::run_delegation_durable(with_tracing_sink(config), run_stage)
-        .await
+    tinyagents_graph::delegation::run_delegation_durable(with_tracing_sink(config), run_stage).await
 }
 
 /// Resume a delegation graph parked on a durable human-approval interrupt,
@@ -123,7 +122,7 @@ where
 /// `approve_always_for_tool` / `deny`), so the existing decision contract routes
 /// into the resume unchanged. TTL expiry → pass [`deny_decision`].
 ///
-/// See [`tinyagents::graph::delegation::resume_delegation`].
+/// See [`tinyagents_graph::delegation::resume_delegation`].
 #[allow(dead_code)]
 pub(crate) async fn resume_delegation<F, Fut>(
     config: DelegationConfig,
@@ -134,7 +133,7 @@ where
     F: Fn(DelegationStage, DelegationState) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<DelegationStageOutput, String>> + Send + 'static,
 {
-    tinyagents::graph::delegation::resume_delegation(with_tracing_sink(config), decision, run_stage)
+    tinyagents_graph::delegation::resume_delegation(with_tracing_sink(config), decision, run_stage)
         .await
 }
 
@@ -142,7 +141,7 @@ where
 /// configured thread has a live, compatible, non-terminal checkpoint, else
 /// starting fresh.
 ///
-/// See [`tinyagents::graph::delegation::run_or_resume_delegation`].
+/// See [`tinyagents_graph::delegation::run_or_resume_delegation`].
 pub(crate) async fn run_or_resume_delegation<F, Fut>(
     config: DelegationConfig,
     run_stage: F,
@@ -151,7 +150,7 @@ where
     F: Fn(DelegationStage, DelegationState) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<DelegationStageOutput, String>> + Send + 'static,
 {
-    tinyagents::graph::delegation::run_or_resume_delegation(with_tracing_sink(config), run_stage)
+    tinyagents_graph::delegation::run_or_resume_delegation(with_tracing_sink(config), run_stage)
         .await
 }
 

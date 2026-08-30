@@ -1,6 +1,6 @@
 //! Host capability: **which** model answers a turn.
 //!
-//! Adapts [`tinyagents::harness::host::ModelResolver`] onto OpenHuman's
+//! Adapts [`tinyagents_harness::host::ModelResolver`] onto OpenHuman's
 //! inference domain — `crate::openhuman::inference::provider` (the per-role
 //! provider factory: [`create_chat_model_with_model_id`], `provider_for_role`,
 //! [`role_for_model_tier`]) driven by a [`Config`] snapshot.
@@ -67,12 +67,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tinyagents::error::TinyAgentsError;
-use tinyagents::harness::host::{ModelResolveRequest, ModelResolver};
-use tinyagents::harness::model::{
-    ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream,
-};
-use tinyagents::Result as TaResult;
+use tinyagents_harness::error::TinyAgentsError;
+use tinyagents_harness::host::{ModelResolveRequest, ModelResolver};
+use tinyagents_harness::Result as TaResult;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream};
 
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider::{create_chat_model_with_model_id, role_for_model_tier};
@@ -220,11 +218,19 @@ impl<State: Send + Sync> ChatModel<State> for StatelessModel {
         self.inner.profile()
     }
 
-    async fn invoke(&self, _state: &State, request: ModelRequest) -> TaResult<ModelResponse> {
+    async fn invoke(
+        &self,
+        _state: &State,
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.inner.invoke(&(), request).await
     }
 
-    async fn stream(&self, _state: &State, request: ModelRequest) -> TaResult<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &State,
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.inner.stream(&(), request).await
     }
 }

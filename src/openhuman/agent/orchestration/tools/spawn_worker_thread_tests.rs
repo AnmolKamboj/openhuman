@@ -62,8 +62,8 @@ impl crate::openhuman::memory::Memory for MockMemory {
 }
 
 fn test_parent_ctx(workspace_dir: PathBuf) -> ParentExecutionContext {
-    let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
-        Arc::new(tinyagents::harness::testkit::ScriptedModel::replies(vec![
+    let model: Arc<dyn tinyinference::model::ChatModel<()>> =
+        Arc::new(tinyagents_harness::testkit::ScriptedModel::replies(vec![
             "done",
         ]));
     ParentExecutionContext {

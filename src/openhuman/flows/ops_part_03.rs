@@ -421,19 +421,15 @@ pub(crate) async fn validate_inference_readiness(
 /// builder-tool warnings (`get_tool_contract` / `search_tool_catalog`) must all
 /// agree on it — one home for the check so they cannot drift.
 pub(crate) fn toolkit_has_curated_catalog(toolkit: &str) -> bool {
-    // The one site in this file that still needs the engine-backed shim, and it
-    // is not an oversight (#5560). `tinymemory-bus` deliberately kept the
-    // *shapes* (`CuratedTool`, `ToolScope`) and left the **curated catalogs and
-    // the provider registry** in the engine crate — several thousand `&'static
-    // str` action slugs and a process-global map of trait objects, which is
-    // provider data rather than wire vocabulary. `toolkit_from_slug` and
-    // friends moved and are named at `tinymemory_api::composio` above; these
-    // two cannot until the registry itself goes behind the module.
-    use crate::openhuman::integrations::composio::providers::{catalog_for_toolkit, get_provider};
-    get_provider(toolkit)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(toolkit))
-        .is_some()
+    // The curated catalogs moved to `tinymemory-bus` (OpenHuman#5560) and are
+    // reachable directly via `catalog_for_toolkit`, so this no longer needs
+    // the engine-backed provider-registry hop the comment here used to
+    // explain: `get_provider(toolkit).curated_tools()` was verified identical
+    // to `catalog_for_toolkit(toolkit)` for every toolkit that had one, and
+    // tinymemory v1.13.4 deleted the registry outright, so the hop is gone
+    // rather than merely unnecessary.
+    use crate::openhuman::integrations::composio::providers::catalog_for_toolkit;
+    catalog_for_toolkit(toolkit).is_some()
 }
 
 pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGraph) -> Vec<String> {

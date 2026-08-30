@@ -56,9 +56,9 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use tinyagents::harness::context::RunContext;
-use tinyagents::harness::runtime::{AgentHarness, InvalidArgsPolicy, RunPolicy, UnknownToolPolicy};
-use tinyagents::harness::subagent::SubAgent;
+use tinyagents_harness::context::RunContext;
+use tinyagents_harness::runtime::{AgentHarness, InvalidArgsPolicy, RunPolicy, UnknownToolPolicy};
+use tinyagents_harness::subagent::SubAgent;
 use tracing::{debug, info, warn};
 
 use crate::openhuman::agent::harness::definition::{AgentDefinition, PromptSource};

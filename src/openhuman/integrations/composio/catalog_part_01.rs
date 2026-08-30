@@ -259,9 +259,7 @@ pub(crate) async fn fetch_live_toolkit_catalog(
     config: &Config,
     toolkit: &str,
 ) -> Option<Vec<ToolContract>> {
-    use crate::openhuman::integrations::composio::providers::{
-        catalog_for_toolkit, find_curated, get_provider,
-    };
+    use crate::openhuman::integrations::composio::providers::{catalog_for_toolkit, find_curated};
 
     let key = toolkit.trim().to_ascii_lowercase();
     if key.is_empty() {
@@ -295,9 +293,7 @@ pub(crate) async fn fetch_live_toolkit_catalog(
     tracing::debug!(target: "flows", toolkit = %key, "[flows] live catalog: fetching (cache miss or expired)");
     let resp = fetch_raw_toolkit_tools(config, &key).await?;
 
-    let curated_catalog = get_provider(&key)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(&key));
+    let curated_catalog = catalog_for_toolkit(&key);
 
     let contracts: Vec<ToolContract> = resp
         .tools
@@ -558,14 +554,11 @@ fn resolve_composio_action_scope(
     slug: &str,
 ) -> Option<crate::openhuman::integrations::composio::providers::ToolScope> {
     use crate::openhuman::integrations::composio::providers::{
-        catalog_for_toolkit, classify_unknown, find_curated, get_provider, toolkit_from_slug,
+        catalog_for_toolkit, classify_unknown, find_curated, toolkit_from_slug,
     };
 
     let toolkit = toolkit_from_slug(slug)?;
-    match get_provider(&toolkit)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(&toolkit))
-    {
+    match catalog_for_toolkit(&toolkit) {
         // A static catalog exists for this toolkit — only a genuinely
         // curated entry's scope is trustworthy; an uncurated slug fails
         // closed rather than being guessed via the verb heuristic.

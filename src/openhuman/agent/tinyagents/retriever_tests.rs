@@ -1,6 +1,6 @@
 use super::*;
 use async_trait::async_trait;
-use tinyagents::harness::events::{EventListener, EventRecord};
+use tinyagents_harness::events::{EventListener, EventRecord};
 
 use crate::openhuman::memory::{MemoryCategory, MemoryEntry, NamespaceSummary};
 

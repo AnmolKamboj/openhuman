@@ -18,7 +18,7 @@
 //! * the session builder
 //!   ([`Agent::from_config`](crate::openhuman::agent::Agent::from_config)),
 //!   which turns it into the turn's
-//!   [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+//!   [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 //!   so acting tools (shell, file, git) resolve their default cwd there; and
 //! * [`SecurityPolicy::is_within_trusted_root`](crate::openhuman::security::SecurityPolicy::is_within_trusted_root),
 //!   which treats the scoped root as a read/write trusted root for the
@@ -68,7 +68,7 @@ pub async fn with_workspace<F: std::future::Future>(root: PathBuf, fut: F) -> F:
 /// The workspace root scoped for the current turn, when an embedder set one.
 ///
 /// `None` — the default everywhere — means "no per-turn root": the session
-/// binds no [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// binds no [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 /// of its own and the path policy grants nothing beyond its configured roots.
 pub fn current() -> Option<PathBuf> {
     AGENT_TURN_WORKSPACE.try_with(|root| root.clone()).ok()

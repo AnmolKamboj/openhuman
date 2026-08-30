@@ -8,7 +8,7 @@ use super::cloud::{
 };
 use super::provider_trait::{EmbeddingProvider, TinyAgentsEmbeddingProvider};
 use crate::openhuman::config::Config;
-use tinyagents::harness::embeddings::{
+use tinyinference::embeddings::{
     CohereEmbeddingModel, NoopEmbeddingModel, OllamaEmbeddingModel, OpenAiEmbeddingModel,
     VoyageEmbeddingModel,
 };
@@ -77,7 +77,7 @@ pub fn create_embedding_provider(
                 "",
                 model,
                 dims,
-                tinyagents::harness::embeddings::VOYAGE_API_BASE,
+                tinyinference::embeddings::VOYAGE_API_BASE,
             ),
         )),
         "ollama" => {
@@ -133,7 +133,7 @@ pub fn create_embedding_provider_with_credentials(
                 api_key,
                 model,
                 dims,
-                tinyagents::harness::embeddings::VOYAGE_API_BASE,
+                tinyinference::embeddings::VOYAGE_API_BASE,
             ),
         )),
         "ollama" => {

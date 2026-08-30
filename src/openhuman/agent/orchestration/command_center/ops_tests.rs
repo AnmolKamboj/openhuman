@@ -5,7 +5,7 @@ use serde_json::json;
 fn run_with(id: &str, status: AgentRunStatus, updated_secs: i64) -> AgentRun {
     AgentRun {
         id: id.to_string(),
-        kind: tinyagents::session::run_ledger::AgentRunKind::Subagent,
+        kind: tinyagents_session::run_ledger::AgentRunKind::Subagent,
         parent_run_id: None,
         parent_thread_id: Some("thread-1".to_string()),
         agent_id: Some("researcher".to_string()),

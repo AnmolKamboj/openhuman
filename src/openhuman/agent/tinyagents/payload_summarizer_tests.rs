@@ -46,7 +46,7 @@ const TEST_THRESHOLD_TOKENS: usize = 500_000;
 const TEST_MAX_TOKENS: usize = 2_000_000;
 
 fn dummy_parent_ctx() -> RunContext<()> {
-    RunContext::new(tinyagents::harness::context::RunConfig::new("test"), ())
+    RunContext::new(tinyagents_harness::context::RunConfig::new("test"), ())
 }
 
 #[tokio::test]

@@ -15,9 +15,10 @@ use crate::openhuman::tools::traits::{
 
 use super::client::{create_composio_client, direct_list_connections, ComposioClientKind};
 use super::providers::{
-    catalog_for_toolkit, classify_unknown, find_curated, get_provider, load_user_scope_or_default,
-    toolkit_from_slug, ToolScope, UserScopePref,
+    catalog_for_toolkit, classify_unknown, find_curated, toolkit_from_slug, ToolScope,
+    UserScopePref,
 };
+use super::ops::load_user_scope_pref;
 use super::types::ComposioToolsResponse;
 
 pub use direct::{ComposioAction, ComposioConnectedAccount, ComposioTool};
@@ -49,9 +50,7 @@ pub(super) async fn resolve_action_scope(slug: &str) -> ToolScope {
     let Some(toolkit) = toolkit_from_slug(slug) else {
         return ToolScope::Write;
     };
-    let catalog = get_provider(&toolkit)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(&toolkit));
+    let catalog = catalog_for_toolkit(&toolkit);
     if let Some(cat) = catalog {
         if let Some(entry) = find_curated(cat, slug) {
             return entry.scope;
@@ -63,18 +62,17 @@ pub(super) async fn resolve_action_scope(slug: &str) -> ToolScope {
 /// Decide whether a Composio action slug should be visible / executable
 /// for the current user, given the registered provider's curated list
 /// (if any) and the user's stored scope preference.
-async fn evaluate_tool_visibility(slug: &str) -> ToolDecision {
+async fn evaluate_tool_visibility(config: &Config, slug: &str) -> ToolDecision {
     let Some(toolkit) = toolkit_from_slug(slug) else {
         // Unparseable slug — let the backend return its own error.
         return ToolDecision::Allow;
     };
-    let pref = load_user_scope_or_default(&toolkit).await;
-    // Prefer a registered provider's curated list; fall back to the
-    // static toolkit→catalog map so toolkits without a native provider
-    // (e.g. github) still get whitelist enforcement.
-    let catalog = get_provider(&toolkit)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(&toolkit));
+    let pref = load_user_scope_pref(config, &toolkit).await;
+    // The catalog covers every catalogued toolkit directly now — the
+    // engine's `get_provider(toolkit).curated_tools()` hop this used to
+    // prefer was pure indirection, verified identical to `catalog_for_toolkit`
+    // for every toolkit that had a native provider.
+    let catalog = catalog_for_toolkit(&toolkit);
     match catalog {
         Some(catalog) => match find_curated(catalog, slug) {
             Some(curated) if pref.allows(curated.scope) => ToolDecision::Allow,
@@ -132,12 +130,7 @@ fn normalized_scope_toolkits(
 fn uncatalogued_toolkits(toolkits: &[String]) -> Vec<String> {
     toolkits
         .iter()
-        .filter(|toolkit| {
-            get_provider(toolkit)
-                .and_then(|provider| provider.curated_tools())
-                .or_else(|| catalog_for_toolkit(toolkit))
-                .is_none()
-        })
+        .filter(|toolkit| catalog_for_toolkit(toolkit).is_none())
         .cloned()
         .collect()
 }
@@ -163,7 +156,10 @@ fn empty_uncurated_toolkits_message(toolkits: &[String]) -> Option<String> {
 /// Filter a freshly-fetched [`super::types::ComposioToolsResponse`] in
 /// place: drop tools that aren't curated for their toolkit and tools
 /// whose scope is disabled in the user's pref.
-async fn filter_list_tools_response(resp: &mut super::types::ComposioToolsResponse) {
+async fn filter_list_tools_response(
+    config: &Config,
+    resp: &mut super::types::ComposioToolsResponse,
+) {
     let before = resp.tools.len();
     // Compute keep/drop decisions sequentially (the await means we
     // can't fold this into a single sync `retain` closure). Then zip
@@ -171,7 +167,7 @@ async fn filter_list_tools_response(resp: &mut super::types::ComposioToolsRespon
     // than juggling a parallel index alongside `Vec::retain`.
     let mut keep: Vec<bool> = Vec::with_capacity(before);
     for t in &resp.tools {
-        let decision = evaluate_tool_visibility(&t.function.name).await;
+        let decision = evaluate_tool_visibility(config, &t.function.name).await;
         keep.push(matches!(
             decision,
             ToolDecision::Allow | ToolDecision::PassthroughCheckScope { .. }

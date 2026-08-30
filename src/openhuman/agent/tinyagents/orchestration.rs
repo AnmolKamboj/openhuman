@@ -22,19 +22,19 @@ use std::sync::OnceLock;
 
 // Re-export the tinyagents task-orchestration primitives so the detached
 // sub-agent control plane imports lifecycle types from one openhuman path.
-pub(crate) use tinyagents::graph::orchestration::OrchestrationTaskStatus;
+pub(crate) use tinyagents_graph::orchestration::OrchestrationTaskStatus;
 #[allow(unused_imports)]
-pub(crate) use tinyagents::graph::orchestration::SteeringRegistry;
-pub(crate) use tinyagents::graph::orchestration::{
+pub(crate) use tinyagents_graph::orchestration::SteeringRegistry;
+pub(crate) use tinyagents_graph::orchestration::{
     open_jsonl_task_store_or_memory, reconcile_orphaned_tasks, DetachedTaskRegistry,
     DetachedTaskRegistryError, DetachedTaskWaitOutcome, InMemoryTaskStore, OrchestrationTaskFilter,
     OrchestrationTaskKind, OrchestrationTaskRecord, OrchestrationTaskResult, OrchestrationTaskSpec,
     TaskStore, TaskStoreRegistry,
 };
 #[allow(unused_imports)]
-pub(crate) use tinyagents::harness::ids::TaskId;
+pub(crate) use tinyagents_harness::ids::TaskId;
 #[allow(unused_imports)]
-pub(crate) use tinyagents::harness::steering::{
+pub(crate) use tinyagents_harness::steering::{
     SteeringCommand, SteeringCommandKind, SteeringHandle, SteeringPolicy,
 };
 

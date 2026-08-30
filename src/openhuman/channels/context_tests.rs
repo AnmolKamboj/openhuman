@@ -40,8 +40,8 @@ fn memory_entry(key: &str, content: &str, score: Option<f64>) -> MemoryEntry {
 }
 
 fn runtime_context() -> ChannelRuntimeContext {
-    let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
-        Arc::new(tinyagents::harness::testkit::ScriptedModel::replies(vec![
+    let model: Arc<dyn tinyinference::model::ChatModel<()>> =
+        Arc::new(tinyagents_harness::testkit::ScriptedModel::replies(vec![
             "ok",
         ]));
     ChannelRuntimeContext {

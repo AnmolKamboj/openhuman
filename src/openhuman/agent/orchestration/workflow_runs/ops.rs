@@ -2,15 +2,15 @@
 //!
 //! PR1 scope: expose the builtin [`WorkflowDefinition`]s, validate them
 //! (structure + agent existence), and read durable [`WorkflowRun`]s from
-//! `tinyagents::session::run_ledger`. No execution engine yet — starting / stopping /
+//! `tinyagents_session::run_ledger`. No execution engine yet — starting / stopping /
 //! resuming runs lands in a follow-up PR.
 
 use anyhow::Result;
 
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::config::Config;
-use tinyagents::graph::dag::{validate_dag, DagIssue, DagNode};
-use tinyagents::session::run_ledger::{
+use tinyagents_graph::dag::{validate_dag, DagIssue, DagNode};
+use tinyagents_session::run_ledger::{
     get_workflow_run, list_workflow_runs, WorkflowRun, WorkflowRunListRequest,
     WorkflowRunListResponse,
 };
@@ -108,7 +108,7 @@ pub fn validate_structure(def: &WorkflowDefinition) -> Vec<DefinitionError> {
     }
 
     // Unique names, landed `depends_on` edges and acyclicity are the shared
-    // dependency-DAG question; `tinyagents::graph::dag` owns the algorithm and
+    // dependency-DAG question; `tinyagents_graph::dag` owns the algorithm and
     // this maps its structural issues back onto the host's error vocabulary.
     // A self-dependency arrives as `DagIssue::Cycle`, which is what the
     // hand-rolled Kahn pass here reported too.

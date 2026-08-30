@@ -42,7 +42,7 @@ use crate::openhuman::agent::tinyagents::orchestration::{
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tinyagents::CancellationToken;
+use tinyagents_harness::CancellationToken;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant};
 

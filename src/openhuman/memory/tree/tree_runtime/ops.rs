@@ -175,7 +175,7 @@ pub(crate) fn create_provider(
     config: &Config,
 ) -> Result<
     (
-        std::sync::Arc<dyn tinyagents::harness::model::ChatModel<()>>,
+        std::sync::Arc<dyn tinyinference::model::ChatModel<()>>,
         String,
     ),
     String,

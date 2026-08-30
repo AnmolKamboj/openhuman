@@ -6,8 +6,8 @@
 //! (rate-limit + retry). This adapter is a **thin seam**: it wraps an
 //! `Arc<dyn EmbeddingProvider>` and re-exposes it as the crate's provider-neutral
 //! [`EmbeddingModel`] so the harness's retrieval surface
-//! ([`Retriever`](tinyagents::harness::embeddings::Retriever) /
-//! [`VectorStore`](tinyagents::harness::embeddings::VectorStore)) can drive
+//! ([`Retriever`](tinyinference::embeddings::Retriever) /
+//! [`VectorStore`](tinyinference::embeddings::VectorStore)) can drive
 //! OpenHuman embeddings without cloning provider logic.
 //!
 //! The only real work here is bridging the batch signature: the crate trait
@@ -22,8 +22,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::harness::embeddings::EmbeddingModel as TaEmbeddingModel;
-use tinyagents::{Result as TaResult, TinyAgentsError};
+use tinyinference::embeddings::EmbeddingModel as TaEmbeddingModel;
+use tinyinference::{Error as TiError, Result as TaResult};
 
 use crate::openhuman::inference::embeddings::EmbeddingProvider;
 
@@ -91,7 +91,7 @@ impl TaEmbeddingModel for ProviderEmbeddingModel {
             // OpenHuman providers surface `anyhow::Error`; the crate expects its
             // own error type. Carry the full chain into the crate's embedding
             // error variant so nothing is lost.
-            TinyAgentsError::Embedding(format!("{e:#}"))
+            TiError::Embedding(format!("{e:#}"))
         })?;
         tracing::debug!(
             provider = self.provider.name(),

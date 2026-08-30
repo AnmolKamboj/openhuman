@@ -4,17 +4,17 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tinyagents::graph::export::GraphTopology;
-use tinyagents::graph::parallel::{
+use tinyagents_graph::export::GraphTopology;
+use tinyagents_graph::parallel::{
     map_reduce, parse_relative_claim_paths, plan_shared_workspace_dispatch, ClaimConflict,
     ClaimPathError, DispatchMode, FailurePolicy, ParallelOptions, WorkspaceClaim,
 };
-use tinyagents::graph::{
+use tinyagents_graph::{
     ClosureStateReducer, CompiledGraph, GraphBuilder, NodeContext, NodeResult,
 };
-use tinyagents::harness::retry::RetryPolicy;
-use tinyagents::harness::workspace::{WorkspaceDescriptor, WorkspaceIsolation};
-use tinyagents::{CancellationToken, TinyAgentsError};
+use tinyagents_harness::retry::RetryPolicy;
+use tinyagents_harness::workspace::{WorkspaceDescriptor, WorkspaceIsolation};
+use tinyagents_harness::{CancellationToken, TinyAgentsError};
 
 use crate::openhuman::agent::file_state;
 use crate::openhuman::agent::harness::definition::{
@@ -312,9 +312,9 @@ async fn create_spawn_parallel_worktree(
         ParallelWorktreeRequest::Isolated { base_ref } => match action_root {
             Some(repo_root) => {
                 let sandbox = match definition.sandbox_mode {
-                    SandboxMode::Sandboxed => tinyagents::harness::tool::SandboxMode::Required,
+                    SandboxMode::Sandboxed => tinyagents_harness::tool::SandboxMode::Required,
                     SandboxMode::None | SandboxMode::ReadOnly => {
-                        tinyagents::harness::tool::SandboxMode::Inherit
+                        tinyagents_harness::tool::SandboxMode::Inherit
                     }
                 };
                 let isolation = worktree::OpenHumanWorktreeIsolation::new(repo_root)

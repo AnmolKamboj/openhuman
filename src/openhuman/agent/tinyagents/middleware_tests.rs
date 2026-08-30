@@ -1,10 +1,10 @@
 use super::*;
 use serde_json::json;
-use tinyagents::harness::context::{RunConfig, RunContext};
-use tinyagents::harness::model::ModelRequest;
-use tinyagents::harness::no_progress::{
+use tinyagents_harness::context::{RunConfig, RunContext};
+use tinyagents_harness::no_progress::{
     DEFAULT_REPEAT_CALL_THRESHOLD, DEFAULT_REPEAT_OUTPUT_THRESHOLD,
 };
+use tinyinference::model::ModelRequest;
 
 fn ctx() -> RunContext<()> {
     RunContext::new(RunConfig::new("mw-test"), ())
@@ -269,7 +269,7 @@ fn body_failure_result(name: &str, extra: serde_json::Value) -> TaToolResult {
 
 fn repeated_success_response(tool: &str, args: serde_json::Value) -> ModelResponse {
     ModelResponse {
-        message: tinyagents::harness::message::AssistantMessage {
+        message: tinyinference::message::AssistantMessage {
             id: None,
             content: vec![ContentBlock::Text("working".to_string())],
             tool_calls: vec![TaToolCall::new("repeat-1", tool, args)],

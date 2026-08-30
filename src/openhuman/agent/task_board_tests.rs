@@ -203,7 +203,7 @@ async fn board_for_thread_returns_empty_board_when_file_is_missing() {
 /// operation cannot replace the authoritative row with an empty board.
 #[tokio::test]
 async fn undecodable_board_value_returns_error_without_overwriting_row() {
-    use tinyagents::graph::todos::store::TODOS_NAMESPACE;
+    use tinyagents_graph::todos::store::TODOS_NAMESPACE;
 
     let dir = tempdir().expect("tempdir");
     let store = todos_store(dir.path());

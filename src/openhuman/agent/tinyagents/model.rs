@@ -3,12 +3,12 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock, MessageDelta};
-use tinyagents::harness::model::{
+use tinyinference::message::{AssistantMessage, ContentBlock, MessageDelta};
+use tinyinference::model::{
     ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
 };
-use tinyagents::harness::tool::{ToolCall as TaToolCall, ToolDelta};
-use tinyagents::harness::usage::Usage;
+use tinyinference::tool::{ToolCall as TaToolCall, ToolDelta};
+use tinyinference::usage::Usage;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::openhuman::agent::messages::ChatMessage;
@@ -200,7 +200,7 @@ pub(crate) fn prompt_guided_text_response(text: String, request: &ModelRequest) 
     }
 
     let response =
-        tinyagents::harness::tool::apply_prompt_tool_calls(ModelResponse::assistant(text.clone()));
+        tinyagents_harness::tool::apply_prompt_tool_calls(ModelResponse::assistant(text.clone()));
     if !response.message.tool_calls.is_empty() {
         return response;
     }
@@ -440,12 +440,20 @@ impl ChatModel<()> for RouteRecordingModel {
         self.inner.profile()
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.record_route();
         self.inner.invoke(state, request).await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.record_route();
         self.inner.stream(state, request).await
     }
@@ -488,13 +496,21 @@ impl ChatModel<()> for ProfileOverrideModel {
         Some(&self.profile)
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.inner
             .invoke(state, self.pin_request_options(request))
             .await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.inner
             .stream(state, self.pin_request_options(request))
             .await
@@ -522,11 +538,19 @@ impl ChatModel<()> for MaxTokensModel {
         self.inner.profile()
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.inner.invoke(state, self.cap(request)).await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.inner.stream(state, self.cap(request)).await
     }
 }

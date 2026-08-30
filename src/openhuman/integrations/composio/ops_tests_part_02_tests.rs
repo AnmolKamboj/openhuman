@@ -232,15 +232,23 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
         MemoryClient::from_workspace_dir(config.workspace_dir.clone())
             .expect("memory client should initialise"),
     );
-    // `save` is the extension trait, not an inherent method: `SyncState` moved
-    // to the contract crate in v1.7.0, which stays free of I/O, so persistence
-    // stayed behind in the engine.
-    use tinymemory_core::sync::composio::providers::sync_state::PersistedSyncState;
-    let mut state = SyncState::new("notion", "conn-1");
+    // tinymemory v1.13.4 deleted the whole in-process Composio pipeline —
+    // `sync_state::PersistedSyncState`/`HostSyncAdapter` included — so there is
+    // no extension trait to save through any more. `memory_cleanup.rs`'s reader
+    // deserialises this row as `tinycortex::memory::sync::SyncState` (the same
+    // shape tinycortex's own sync layer writes), so the test writes that type
+    // straight through the KV store instead.
+    let mut state = tinycortex::memory::sync::SyncState::new("notion", "conn-1");
     state.mark_synced("page-a@2026-01-01T00:00:00Z");
     state.mark_synced("page-b");
-    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(std::sync::Arc::clone(&memory));
-    state.save(&adapter).await.expect("sync state should save");
+    memory
+        .kv_set(
+            Some(tinycortex::memory::sync::state::STATE_NAMESPACE),
+            "notion:conn-1",
+            &serde_json::to_value(&state).expect("sync state should serialize"),
+        )
+        .await
+        .expect("sync state should save");
 
     let targets = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
         .await
@@ -280,7 +288,7 @@ async fn notion_cleanup_targets_surface_corrupt_sync_state() {
     );
     memory
         .kv_set(
-            Some(super::super::super::providers::sync_state::KV_NAMESPACE),
+            Some(tinycortex::memory::sync::state::STATE_NAMESPACE),
             "notion:conn-1",
             &serde_json::json!({ "toolkit": 42 }),
         )
@@ -343,8 +351,6 @@ async fn composio_get_user_profile_via_mock_returns_provider_profile() {
     // that mutate the same process-global var under the crate-wide lock —
     // TEST_ENV_LOCK alone does not serialize against those. Hold both.
     let _backend_env_guard = crate::api::config::backend_env_test_lock();
-
-    crate::openhuman::integrations::composio::providers::init_default_providers();
 
     let app = Router::new()
         .route(
@@ -498,8 +504,6 @@ async fn composio_sync_gmail_via_mock_ingests_records_and_updates_outcome() {
     // crate-wide lock to serialize against api::config / core::cli_tests /
     // medulla's tests on the same process-global var.
     let _backend_env_guard = crate::api::config::backend_env_test_lock();
-
-    crate::openhuman::integrations::composio::providers::init_default_providers();
 
     let app = Router::new()
         .route(

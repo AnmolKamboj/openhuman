@@ -31,8 +31,8 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tinyagents::graph::export::GraphTopology;
-use tinyagents::graph::{
+use tinyagents_graph::export::GraphTopology;
+use tinyagents_graph::{
     ClosureStateReducer, Command, CompiledGraph, GraphBuilder, NodeContext, NodeResult,
 };
 
@@ -40,8 +40,8 @@ use crate::openhuman::agent::tinyagents::observability::GraphTracingSink;
 
 /// Lift an injected effect's `anyhow` error into the graph's error type so it
 /// fails the run (and propagates back out via [`run_member_execution_graph`]).
-fn graph_err(e: anyhow::Error) -> tinyagents::TinyAgentsError {
-    tinyagents::TinyAgentsError::Graph(e.to_string())
+fn graph_err(e: anyhow::Error) -> tinyagents_harness::TinyAgentsError {
+    tinyagents_harness::TinyAgentsError::Graph(e.to_string())
 }
 
 /// Terminal classification of a teammate worker run, produced by the `execute`

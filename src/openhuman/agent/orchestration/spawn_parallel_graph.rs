@@ -10,7 +10,7 @@
 //! an OpenHuman decision — it reads sandbox mode, tool permissions and the
 //! isolation request. Whether the claims of a whole batch can be granted
 //! together is not, and goes through
-//! [`plan_shared_workspace_dispatch`](tinyagents::graph::parallel::plan_shared_workspace_dispatch).
+//! [`plan_shared_workspace_dispatch`](tinyagents_graph::parallel::plan_shared_workspace_dispatch).
 //! The rejection sentences stay here, which is why the crate reports conflicts
 //! as data.
 

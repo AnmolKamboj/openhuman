@@ -2,10 +2,9 @@
 
 use anyhow::Context;
 use async_trait::async_trait;
-use tinyagents::error::TinyAgentsError;
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinyagents::harness::tool::{coalesce_prompt_tool_results, with_prompt_tool_instructions};
+use tinyagents_harness::tool::{coalesce_prompt_tool_results, with_prompt_tool_instructions};
+use tinyinference::message::Message;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -259,7 +258,7 @@ impl ChatModel<()> for ClaudeAgentSdkProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let messages = coalesce_prompt_tool_results(&request.messages);
         let messages = with_prompt_tool_instructions(&messages, &request.tools);
         let system = messages.iter().find_map(|message| match message {
@@ -282,7 +281,7 @@ impl ChatModel<()> for ClaudeAgentSdkProvider {
         let output = self
             .invoke_cli(system.as_deref(), &last_user, model)
             .await
-            .map_err(|error| TinyAgentsError::Model(error.to_string()))?;
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))?;
 
         Ok(
             crate::openhuman::agent::tinyagents::model::prompt_guided_text_response(

@@ -155,9 +155,9 @@ async fn flow_tool_allowed(
     slug: &str,
     connected_toolkits: Option<&[String]>,
 ) -> bool {
+    use crate::openhuman::integrations::composio::ops::load_user_scope_pref;
     use crate::openhuman::integrations::composio::providers::{
-        catalog_for_toolkit, classify_unknown, find_curated, get_provider,
-        load_user_scope_or_default, toolkit_from_slug,
+        catalog_for_toolkit, classify_unknown, find_curated, toolkit_from_slug,
     };
 
     let Some(toolkit) = toolkit_from_slug(slug) else {
@@ -167,15 +167,12 @@ async fn flow_tool_allowed(
 
     // Path A: a toolkit OpenHuman ships a static curated catalog for keeps its
     // strict curated-action + per-user scope gating (unchanged from B2).
-    if let Some(catalog) = get_provider(&toolkit)
-        .and_then(|p| p.curated_tools())
-        .or_else(|| catalog_for_toolkit(&toolkit))
-    {
+    if let Some(catalog) = catalog_for_toolkit(&toolkit) {
         let Some(curated) = find_curated(catalog, slug) else {
             tracing::debug!(target: "flows", %slug, %toolkit, "[flows] tool_call curation: reject — slug is not a curated action of this toolkit");
             return false;
         };
-        let pref = load_user_scope_or_default(&toolkit).await;
+        let pref = load_user_scope_pref(config, &toolkit).await;
         let allowed = pref.allows(curated.scope);
         tracing::debug!(target: "flows", %slug, %toolkit, allowed, "[flows] tool_call curation: static curated catalog decision");
         return allowed;
@@ -217,7 +214,7 @@ async fn flow_tool_allowed(
     // classify_unknown heuristic (mirrors
     // `providers::is_action_visible_with_pref`'s uncurated branch), which the
     // pre-fix Path B never applied at all.
-    let pref = load_user_scope_or_default(&toolkit).await;
+    let pref = load_user_scope_pref(config, &toolkit).await;
     let allowed = pref.allows(classify_unknown(slug));
     tracing::debug!(target: "flows", %slug, %toolkit, allowed, "[flows] tool_call curation: live catalog + scope decision");
     allowed
@@ -229,13 +226,10 @@ async fn flow_tool_allowed(
 /// for a connected-set fetch.
 fn slug_needs_connected_set(slug: &str) -> bool {
     use crate::openhuman::integrations::composio::providers::{
-        catalog_for_toolkit, get_provider, toolkit_from_slug,
+        catalog_for_toolkit, toolkit_from_slug,
     };
     match toolkit_from_slug(slug) {
-        Some(toolkit) => get_provider(&toolkit)
-            .and_then(|p| p.curated_tools())
-            .or_else(|| catalog_for_toolkit(&toolkit))
-            .is_none(),
+        Some(toolkit) => catalog_for_toolkit(&toolkit).is_none(),
         None => false,
     }
 }

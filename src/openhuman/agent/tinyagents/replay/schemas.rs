@@ -32,8 +32,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use tinyagents::harness::events::HarnessRunStatus;
-use tinyagents::harness::observability::AgentObservation;
+use tinyagents_harness::events::HarnessRunStatus;
+use tinyagents_harness::observability::AgentObservation;
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use tinymemory_api::host::{MemoryConfig, DEFAULT_CLOUD_LLM_MODEL};
-use tinymemory_core::sync::composio::providers::{ComposioUsageHandle, ProviderContext};
 
 use crate::openhuman::config::Config;
 
@@ -148,16 +145,20 @@ fn local_ai_off_reports_no_provider_without_cloud_opt_in() {
 }
 
 #[tokio::test]
-async fn provider_context_execute_resolves_via_factory_at_call_time() {
-    // These assert the *real* seam implementations, so they need them
-    // installed — that is the whole point of living on this side.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    // Build a context against a direct-mode config (no backend
-    // session token, only the inline direct api_key). The factory
-    // must pick the `Direct` variant on `execute` — pre-fix the
-    // `client: ComposioClient` field was always backend, so this
-    // path would have surfaced a backend session lookup error
-    // even with `mode = "direct"`.
+async fn direct_mode_config_resolves_via_module_config_at_call_time() {
+    // The seam this pinned moved. `ProviderContext::execute` — the engine's
+    // Composio dispatch, which routed through the host's `ComposioHost` seam
+    // to decide backend vs. direct — was deleted outright by tinymemory
+    // v1.13.4 along with the rest of the in-process Composio pipeline (see
+    // `memory::host_impls`'s module docs). The equivalent decision now lives
+    // entirely on this side: `modules::connectors::module_config` builds the
+    // route the `tinyconnectors` module is configured with, and it is the
+    // one and only place `composio.mode` gets turned into "which tenant".
+    //
+    // This asserts the same property the deleted test did — a direct-mode
+    // config with an inline api_key resolves to the direct route without
+    // needing (or surfacing an error about) a backend session token, which
+    // was the pre-#1710 bug this area guards against.
     let tmp = tempfile::tempdir().expect("tempdir");
 
     let mut config = Config::default();
@@ -168,23 +169,16 @@ async fn provider_context_execute_resolves_via_factory_at_call_time() {
     config.composio.api_key = Some("test-direct-key".to_string());
     config.save().await.expect("save fake config to disk");
 
-    let ctx = ProviderContext {
-        config: Arc::new(config) as Arc<tinymemory_core::Config>,
-        toolkit: "gmail".to_string(),
-        connection_id: None,
-        usage: ComposioUsageHandle::default(),
-        max_items: None,
-        sync_depth_days: None,
-    };
-    let res = ctx.execute("GMAIL_FETCH_EMAILS", None).await;
-    // The actual HTTP call will fail in the unit-test sandbox, but
-    // the error must come from the direct path — never a backend
-    // session lookup, which is the smoking gun for the pre-fix bug.
-    if let Err(e) = res {
-        let msg = e.to_string();
-        assert!(
-            !msg.contains("no backend session"),
-            "direct-mode execute must not surface backend session artifacts: {msg}"
-        );
-    }
+    let route = crate::openhuman::modules::connectors::module_config(&config)
+        .expect("direct mode with an inline api_key must resolve a route");
+    assert_eq!(
+        route.get("route").and_then(|v| v.as_str()),
+        Some("direct"),
+        "a direct-mode config must resolve the direct route, not fall back to backend: {route:?}"
+    );
+    assert_eq!(
+        route.get("api_key").and_then(|v| v.as_str()),
+        Some("test-direct-key"),
+        "the direct route must carry the configured api_key: {route:?}"
+    );
 }

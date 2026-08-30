@@ -335,6 +335,7 @@ async fn render_integrations_agent(config: &Config, toolkit: &str) -> Result<Dum
     match &client_kind {
         ComposioClientKind::Backend(composio_client) => {
             match crate::openhuman::integrations::composio::fetch_toolkit_actions(
+                config,
                 composio_client,
                 &integration.toolkit,
                 None,

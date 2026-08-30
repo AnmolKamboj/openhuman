@@ -176,7 +176,7 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
                     context.arguments = arguments;
                 }
                 crate::openhuman::agent::hooks::ToolHookDecision::Deny(reason) => {
-                    return Err(tinyagents::error::TinyAgentsError::Tool(format!(
+                    return Err(tinyagents_harness::error::TinyAgentsError::Tool(format!(
                         "tool hook '{}' denied {}: {reason}",
                         hook.name(),
                         context.tool_name
@@ -194,7 +194,7 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
                         "[tinyagents::mw] tool hook requested approval; denying in a \
                          non-interactive middleware"
                     );
-                    return Err(tinyagents::error::TinyAgentsError::Tool(format!(
+                    return Err(tinyagents_harness::error::TinyAgentsError::Tool(format!(
                         "tool hook '{}' requires approval for {}: {reason}",
                         hook.name(),
                         context.tool_name

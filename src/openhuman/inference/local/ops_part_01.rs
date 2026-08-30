@@ -216,7 +216,7 @@ pub async fn agent_chat(
             // that read `ToolExecutionContext::workspace` (shell) resolve their
             // default cwd here, and so spawned sub-agents inherit the same root.
             agent.set_workspace_descriptor(Some(
-                tinyagents::harness::workspace::WorkspaceDescriptor::new(root.clone()),
+                tinyagents_harness::workspace::WorkspaceDescriptor::new(root.clone()),
             ));
             agent
         }
@@ -294,8 +294,8 @@ pub async fn agent_chat_simple(
     );
     let run = model.invoke(
         &(),
-        tinyagents::harness::model::ModelRequest::new(vec![
-            tinyagents::harness::message::Message::user(message.to_string()),
+        tinyinference::model::ModelRequest::new(vec![
+            tinyinference::message::Message::user(message.to_string()),
         ])
         .with_model(default_model.clone())
         .with_temperature(effective.default_temperature),

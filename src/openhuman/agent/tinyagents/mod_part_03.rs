@@ -1,10 +1,10 @@
 
 fn tinyagents_depth_error(
-    err: &tinyagents::TinyAgentsError,
+    err: &tinyagents_harness::TinyAgentsError,
 ) -> Option<crate::openhuman::agent::harness::subagent_runner::SubagentRunError> {
     match err {
-        tinyagents::TinyAgentsError::SubAgentDepth(max_depth)
-        | tinyagents::TinyAgentsError::RecursionLimit(max_depth) => {
+        tinyagents_harness::TinyAgentsError::SubAgentDepth(max_depth)
+        | tinyagents_harness::TinyAgentsError::RecursionLimit(max_depth) => {
             Some(
                 crate::openhuman::agent::harness::subagent_runner::SubagentRunError::SpawnDepthExceeded {
                     attempted_depth: max_depth.saturating_add(1),
@@ -16,7 +16,7 @@ fn tinyagents_depth_error(
     }
 }
 
-/// The per-turn crate [`ChatModel`](tinyagents::harness::model::ChatModel) set,
+/// The per-turn crate [`ChatModel`](tinyinference::model::ChatModel) set,
 /// built once from an openhuman [`Provider`] by [`build_turn_models`] — the
 /// single place a turn's `native model adapters are constructed (issue #4249, Phase 5).
 ///
@@ -251,7 +251,7 @@ impl TurnModelSource {
     /// does not expose (common for deterministic scripted tests).
     pub(crate) fn from_model_with_profile(
         model: TurnChatModel,
-        profile: tinyagents::harness::model::ModelProfile,
+        profile: tinyinference::model::ModelProfile,
     ) -> Self {
         Self::from_model(Arc::new(ProfileOverrideModel::new(model, profile)))
     }
@@ -429,7 +429,7 @@ impl TurnModelSource {
         Err(anyhow::anyhow!("turn model source is missing a model"))
     }
 
-    /// Build a standalone summarizer [`ChatModel`](tinyagents::harness::model::ChatModel)
+    /// Build a standalone summarizer [`ChatModel`](tinyinference::model::ChatModel)
     /// over this source's provider — a fresh adapter (own error slot) for one-off
     /// summary calls outside the main turn (e.g. the sub-agent cap-hit checkpoint),
     /// so the caller can `invoke` without naming the `Provider` trait. The output
@@ -438,7 +438,7 @@ impl TurnModelSource {
         &self,
         model: &str,
         temperature: f64,
-    ) -> anyhow::Result<Arc<dyn tinyagents::harness::model::ChatModel<()>>> {
+    ) -> anyhow::Result<Arc<dyn tinyinference::model::ChatModel<()>>> {
         if let Some(direct) = &self.direct_model {
             let profile = direct.profile().cloned().unwrap_or_default();
             return Ok(Arc::new(
@@ -512,7 +512,7 @@ struct AssembledTurnHarness {
     tool_result_artifact_index: Option<Arc<ToolResultArtifactIndexStore>>,
     /// Concrete handle to the installed [`ContextCompressionMiddleware`], when the
     /// summarization step is active. Drained after the run to surface each
-    /// compaction's [`CompressionProvenance`][tinyagents::harness::summarization::CompressionProvenance]
+    /// compaction's [`CompressionProvenance`][tinyagents_harness::summarization::CompressionProvenance]
     /// (source ids + before/after token estimates) via the observability path.
     compression_mw: Option<Arc<ContextCompressionMiddleware>>,
     /// Crate prompt-cache guard (issue #4249, 03.2). Records a `CacheLayoutEvent`

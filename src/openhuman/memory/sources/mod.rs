@@ -72,7 +72,16 @@ pub use types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, Sourc
 //
 // Named rather than globbed, so `grep tinymemory_core` in this domain is an
 // honest inventory of what is left. See the module docs for what blocks each.
-pub use tinymemory_core::sources::{reconcile, status, sync};
+pub use tinymemory_core::sources::{status, sync};
+
+// `reconcile` used to be entirely the engine's too. tinymemory v1.13.4
+// deleted `ensure_composio_sources` along with the rest of the in-process
+// Composio pipeline it scanned (`sync::composio::scan_active_sync_targets`),
+// so this host now carries its own — built on
+// `memory::sync::composio::scan_active_sync_targets`, the tinyconnectors
+// replacement — while `apply_composio_source_caps_migration` (which never
+// touched the deleted pipeline) stays the engine's.
+pub mod reconcile;
 
 // The controller aggregators this domain's RPC surface defines. Aliased
 // exactly as the pre-extraction module exported them.

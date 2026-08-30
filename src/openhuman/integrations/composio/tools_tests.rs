@@ -1,36 +1,6 @@
 use super::*;
-use crate::openhuman::integrations::composio::providers::{
-    register_provider, ComposioProvider, CuratedTool, ProviderContext, ProviderUserProfile,
-    ToolScope,
-};
-use async_trait::async_trait;
 use std::path::Path;
 use std::sync::Arc;
-
-static PROVIDER_ONLY_CURATED: &[CuratedTool] = &[CuratedTool {
-    slug: "PROVIDERONLY_LIST_ITEMS",
-    scope: ToolScope::Read,
-}];
-
-struct ProviderOnlyCatalog;
-
-#[async_trait]
-impl ComposioProvider for ProviderOnlyCatalog {
-    fn toolkit_slug(&self) -> &'static str {
-        "provideronly"
-    }
-
-    fn curated_tools(&self) -> Option<&'static [CuratedTool]> {
-        Some(PROVIDER_ONLY_CURATED)
-    }
-
-    async fn fetch_user_profile(
-        &self,
-        _ctx: &ProviderContext,
-    ) -> Result<ProviderUserProfile, String> {
-        Ok(ProviderUserProfile::default())
-    }
-}
 
 struct WorkspaceEnvGuard {
     previous: Option<std::ffi::OsString>,

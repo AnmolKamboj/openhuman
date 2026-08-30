@@ -1,7 +1,7 @@
 //! Read-only command-center projection over the durable run ledger.
 //!
 //! [`list_agent_work`] fetches recent background agent runs from
-//! `tinyagents::session::run_ledger` and projects them into a [`CommandCenterView`]
+//! `tinyagents_session::run_ledger` and projects them into a [`CommandCenterView`]
 //! grouped by normalized [`AgentWorkBucket`]. The projection is split so the
 //! pure grouping logic ([`build_view`]) is unit-testable without a database,
 //! while [`list_agent_work`] owns the one ledger read.
@@ -10,7 +10,7 @@ use anyhow::Result;
 
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::config::Config;
-use tinyagents::session::run_ledger::{
+use tinyagents_session::run_ledger::{
     list_agent_runs, AgentRun, AgentRunListRequest, AgentRunStatus,
 };
 

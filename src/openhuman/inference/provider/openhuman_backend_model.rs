@@ -28,12 +28,12 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::{
+use tinyinference::message::Message;
+use tinyinference::model::{
     ChatModel, Modalities, ModelProfile, ModelRequest, ModelResponse, ModelStream, ProviderError,
 };
-use tinyagents::harness::providers::openai::OpenAiModel;
-use tinyagents::{Result as TaResult, TinyAgentsError};
+use tinyinference::providers::openai::OpenAiModel;
+use tinyinference::Error as TiError;
 
 use super::ProviderRuntimeOptions;
 use crate::api::config::effective_api_url;
@@ -155,10 +155,10 @@ impl OpenHumanBackendModel {
 
     /// Resolve the current JWT + base URL and build a fresh crate `OpenAiModel`
     /// (Bearer). Rebuilt per call because the session JWT rotates.
-    fn build_wire_model(&self) -> TaResult<OpenAiModel> {
+    fn build_wire_model(&self) -> tinyinference::Result<OpenAiModel> {
         let token = self
             .resolve_bearer()
-            .map_err(|e| TinyAgentsError::Model(e.to_string()))?;
+            .map_err(|e| TiError::Model(e.to_string()))?;
         let base_url = self.base_url();
         // The hosted API is chat-completions only (no `/v1/responses`); auth is a
         // plain bearer JWT. The tier/model rides `request.model`, which the backend
@@ -234,7 +234,7 @@ impl OpenHumanBackendModel {
                 );
                 Ok(())
             }
-            Err(TinyAgentsError::Provider(err)) => {
+            Err(TiError::Provider(err)) => {
                 if is_provider_not_configured_error(&err) {
                     log::warn!(
                         "[flows][inference-probe] model={} backend reports no provider configured: {}",
@@ -428,8 +428,8 @@ fn maybe_publish_local_session_expiry() {
 /// model call with `401`/`403` Unauthorized — mirroring the check in
 /// [`CrateBackedProvider::invoke`](super::CrateBackedProvider) which the
 /// crate-native path bypasses.
-fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
-    if let TinyAgentsError::Provider(pe) = err {
+fn maybe_publish_session_expired(err: &TiError, operation: &str) {
+    if let TiError::Provider(pe) = err {
         if pe.provider.as_str() == "OpenHuman" && matches!(pe.status, Some(401 | 403)) {
             let reason =
                 crate::openhuman::inference::provider::ops::sanitize_api_error(&pe.message);
@@ -454,9 +454,9 @@ fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
 /// where the diagnostic belongs. Structured fields (`status`/`code`/`provider`/
 /// `retryable`) are low-cardinality; the message is secret-scrubbed and capped
 /// by [`sanitize_api_error`] before it's logged — no tokens, no full PII.
-fn log_managed_dispatch_error(err: &TinyAgentsError, operation: &str) {
+fn log_managed_dispatch_error(err: &TiError, operation: &str) {
     match err {
-        TinyAgentsError::Provider(pe) => {
+        TiError::Provider(pe) => {
             log::warn!(
                 "[providers][openhuman-backend] managed {operation} failed: status={:?} code={:?} provider={} retryable={} detail={}",
                 pe.status,
@@ -481,7 +481,11 @@ impl ChatModel<()> for OpenHumanBackendModel {
         Some(&self.profile)
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> TaResult<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         let model = self.build_wire_model()?;
         let response = match model.invoke(state, with_thread_id(request)).await {
             Ok(response) => response,
@@ -494,7 +498,11 @@ impl ChatModel<()> for OpenHumanBackendModel {
         Ok(project_managed_usage(response))
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> TaResult<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let model = self.build_wire_model()?;
         // NOTE (streaming billing parity): the crate SSE parser sets `raw: None`
         // on the terminal `Completed` response, so the `openhuman.billing` envelope

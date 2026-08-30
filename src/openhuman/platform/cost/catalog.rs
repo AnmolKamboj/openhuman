@@ -459,8 +459,8 @@ fn per_token(rate_per_mtok: f64) -> Option<f64> {
 /// derives live runtime capability flags (tools, vision, streaming) from the
 /// provider adapter at construction time, because the static cost catalog does
 /// not yet encode those fields authoritatively for every provider/model.
-pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::ModelCatalogEntry {
-    tinyagents::registry::ModelCatalogEntry {
+pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents_registry::ModelCatalogEntry {
+    tinyagents_registry::ModelCatalogEntry {
         provider: price.provider.to_string(),
         model_id: price.model_id.to_string(),
         aliases: Vec::new(),
@@ -468,7 +468,7 @@ pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::Mod
         max_input_tokens: Some(u64::from(price.context_window)),
         max_output_tokens: None,
         deprecation_date: None,
-        pricing: tinyagents::registry::ModelPricing {
+        pricing: tinyagents_registry::ModelPricing {
             input_per_token: per_token(price.input_per_mtok_usd),
             output_per_token: per_token(price.output_per_mtok_usd),
             cache_read_input_per_token: per_token(price.cached_input_per_mtok_usd),
@@ -476,9 +476,9 @@ pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::Mod
             input_audio_per_token: None,
             output_reasoning_per_token: None,
         },
-        capabilities: tinyagents::registry::ModelCapabilities {
+        capabilities: tinyagents_registry::ModelCapabilities {
             prompt_caching: price.cached_input_per_mtok_usd > 0.0,
-            ..tinyagents::registry::ModelCapabilities::default()
+            ..tinyagents_registry::ModelCapabilities::default()
         },
         source: TINYAGENTS_CATALOG_SOURCE.to_string(),
         source_url: None,
@@ -489,7 +489,7 @@ pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::Mod
 /// Resolve a model id and return its TinyAgents catalog projection.
 pub fn tinyagents_catalog_entry_for_model(
     model: &str,
-) -> Option<tinyagents::registry::ModelCatalogEntry> {
+) -> Option<tinyagents_registry::ModelCatalogEntry> {
     lookup(model).map(tinyagents_catalog_entry)
 }
 
@@ -521,8 +521,8 @@ pub struct LocalCatalogModel {
 }
 
 /// Project one runtime-discovered local model into a TinyAgents catalog entry.
-fn local_catalog_entry(model: &LocalCatalogModel) -> tinyagents::registry::ModelCatalogEntry {
-    tinyagents::registry::ModelCatalogEntry {
+fn local_catalog_entry(model: &LocalCatalogModel) -> tinyagents_registry::ModelCatalogEntry {
+    tinyagents_registry::ModelCatalogEntry {
         provider: model.provider.clone(),
         model_id: model.model_id.clone(),
         aliases: Vec::new(),
@@ -532,11 +532,11 @@ fn local_catalog_entry(model: &LocalCatalogModel) -> tinyagents::registry::Model
         deprecation_date: None,
         // Local runtimes are not billed per token; leave every price unset (not
         // zero — `None` means "not applicable", not "free of charge").
-        pricing: tinyagents::registry::ModelPricing::default(),
-        capabilities: tinyagents::registry::ModelCapabilities {
+        pricing: tinyagents_registry::ModelPricing::default(),
+        capabilities: tinyagents_registry::ModelCapabilities {
             streaming: model.streaming,
             tool_calling: model.tool_calling,
-            ..tinyagents::registry::ModelCapabilities::default()
+            ..tinyagents_registry::ModelCapabilities::default()
         },
         source: TINYAGENTS_LOCAL_SOURCE.to_string(),
         source_url: None,
@@ -547,8 +547,8 @@ fn local_catalog_entry(model: &LocalCatalogModel) -> tinyagents::registry::Model
 /// Upsert `entry` into `models` keyed by `(provider, model_id)`: replace an
 /// existing row for that key, otherwise append. Later overlays win.
 fn upsert_catalog_entry(
-    models: &mut Vec<tinyagents::registry::ModelCatalogEntry>,
-    entry: tinyagents::registry::ModelCatalogEntry,
+    models: &mut Vec<tinyagents_registry::ModelCatalogEntry>,
+    entry: tinyagents_registry::ModelCatalogEntry,
 ) {
     if let Some(existing) = models
         .iter_mut()
@@ -567,7 +567,7 @@ fn upsert_catalog_entry(
 /// increasing precedence, so a later layer overrides an earlier one for the same
 /// `(provider, model_id)`:
 ///
-/// 1. **Crate seed** — `tinyagents::registry::ModelCatalog::seed()`, the crate's
+/// 1. **Crate seed** — `tinyagents_registry::ModelCatalog::seed()`, the crate's
 ///    checked-in offline catalog. This is the base/fallback set.
 /// 2. **OpenHuman static rows** — [`KNOWN_MODEL_PRICING`], projected via
 ///    [`tinyagents_catalog_entry`]. OpenHuman's published rates/windows are
@@ -592,9 +592,9 @@ fn upsert_catalog_entry(
 /// snapshot lookup is deferred until that lookup is proven numerically identical.
 pub fn unified_model_catalog(
     local_models: &[LocalCatalogModel],
-) -> tinyagents::registry::ModelCatalogSnapshot {
+) -> tinyagents_registry::ModelCatalogSnapshot {
     // 1. Crate seed as the base layer.
-    let (mut models, mut sources) = match tinyagents::registry::ModelCatalog::seed() {
+    let (mut models, mut sources) = match tinyagents_registry::ModelCatalog::seed() {
         Ok(catalog) => {
             let snapshot = catalog.snapshot();
             (snapshot.models.clone(), snapshot.sources.clone())
@@ -633,13 +633,13 @@ pub fn unified_model_catalog(
     }
 
     // Record OpenHuman's own provenance alongside the crate seed's sources.
-    sources.push(tinyagents::registry::ModelCatalogSource {
+    sources.push(tinyagents_registry::ModelCatalogSource {
         name: TINYAGENTS_CATALOG_SOURCE.to_string(),
         url: "repo:src/openhuman/platform/cost/catalog.rs".to_string(),
         retrieved_at: format!("{PRICING_AS_OF}-01T00:00:00Z"),
     });
 
-    tinyagents::registry::ModelCatalogSnapshot {
+    tinyagents_registry::ModelCatalogSnapshot {
         schema_version: 1,
         snapshot_id: format!("{TINYAGENTS_CATALOG_SOURCE}-unified-{PRICING_AS_OF}"),
         created_at: format!("{PRICING_AS_OF}-01T00:00:00Z"),
@@ -657,7 +657,7 @@ pub fn unified_model_catalog(
 /// models. Callers that cannot enumerate local runtimes (no config/network in
 /// hand) use this; callers that can pass discovered models to
 /// [`unified_model_catalog`] directly.
-pub fn tinyagents_catalog_snapshot() -> tinyagents::registry::ModelCatalogSnapshot {
+pub fn tinyagents_catalog_snapshot() -> tinyagents_registry::ModelCatalogSnapshot {
     unified_model_catalog(&[])
 }
 

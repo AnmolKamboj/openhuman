@@ -1,5 +1,5 @@
 //! Maps OpenHuman's config schema into the crate-owned
-//! [`tinyagents::harness::config`] structs.
+//! [`tinyagents_harness::config`] structs.
 //!
 //! This is the host half of `docs/specs/plan-agents.md` Phase 3. The agent
 //! runtime is being made generic over its host, so it cannot read
@@ -17,7 +17,7 @@
 //! `apply_*` functions layer the narrower pins on top in the order the runtime
 //! resolves them: team pins first, then the specific delegate's overrides.
 
-use tinyagents::harness::config::{
+use tinyagents_harness::config::{
     MemoryLimits, RequiredOutput, SessionConfig, ToolConfig, ToolDispatcher, TurnConfig,
 };
 

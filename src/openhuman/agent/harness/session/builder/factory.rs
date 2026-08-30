@@ -665,20 +665,19 @@ impl Agent {
                 let full_config = Arc::clone(&base_config);
                 // For cloud reflection, wrap the provider in an Arc.
                 // For local, no provider needed.
-                let reflection_provider: Option<
-                    Arc<dyn tinyagents::harness::model::ChatModel<()>>,
-                > = if config.learning.reflection_source
-                    == crate::openhuman::config::ReflectionSource::Cloud
-                {
-                    let (model, resolved_model) =
-                        provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
-                    log::debug!(
+                let reflection_provider: Option<Arc<dyn tinyinference::model::ChatModel<()>>> =
+                    if config.learning.reflection_source
+                        == crate::openhuman::config::ReflectionSource::Cloud
+                    {
+                        let (model, resolved_model) =
+                            provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
+                        log::debug!(
                         "[learning] built crate-native reflection model resolved_model={resolved_model}"
                     );
-                    Some(model)
-                } else {
-                    None
-                };
+                        Some(model)
+                    } else {
+                        None
+                    };
                 post_turn_hooks.push(Arc::new(
                     crate::openhuman::agent::learning::ReflectionHook::new(
                         config.learning.clone(),
@@ -1448,7 +1447,7 @@ mod provider_role_tests;
 /// descriptor. Shared by [`Agent::build_session_agent_inner`] and its unit tests
 /// so the two can never drift.
 ///
-/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// Returns a [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 /// rooted at `<action_dir>/profiles/<id>` when `profile` opts into
 /// `dedicated_workspace` and its id passes validation (via
 /// [`dedicated_workspace_dir`](crate::openhuman::agent::profiles::dedicated_workspace_dir)),
@@ -1460,7 +1459,7 @@ mod provider_role_tests;
 pub(crate) fn derive_profile_workspace_descriptor(
     action_dir: &std::path::Path,
     profile: Option<&crate::openhuman::agent::profiles::AgentProfile>,
-) -> Option<tinyagents::harness::workspace::WorkspaceDescriptor> {
+) -> Option<tinyagents_harness::workspace::WorkspaceDescriptor> {
     let (profile_id, dir) = profile.and_then(|p| {
         crate::openhuman::agent::profiles::dedicated_workspace_dir(action_dir, p)
             .map(|dir| (p.id.clone(), dir))
@@ -1483,7 +1482,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
         "[profiles] session bound to dedicated workspace as default cwd"
     );
     Some(
-        tinyagents::harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
+        tinyagents_harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
             crate::openhuman::agent::profiles::workspace_policy_id(&profile_id),
         ),
     )
@@ -1493,7 +1492,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
 /// per-turn root an embedder scoped via
 /// [`turn_workspace::with_workspace`](crate::openhuman::agent::turn_workspace::with_workspace).
 ///
-/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// Returns a [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 /// rooted at the scoped directory so this turn's acting tools (shell, file,
 /// git) resolve their default cwd there instead of the shared `action_dir`.
 /// `None` — every caller that scoped nothing — leaves the shared-`action_dir`
@@ -1507,7 +1506,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
 ///
 /// The policy id is a fixed label rather than the path: it is surfaced in tool
 /// logs, and a host's checkout path is not something to spread through them.
-fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::WorkspaceDescriptor>
+fn derive_turn_workspace_descriptor() -> Option<tinyagents_harness::workspace::WorkspaceDescriptor>
 {
     let root = crate::openhuman::agent::turn_workspace::current()?;
     if !root.is_dir() {
@@ -1523,7 +1522,7 @@ fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::
         "[turn_workspace] turn bound to the embedder's per-turn root as default cwd"
     );
     Some(
-        tinyagents::harness::workspace::WorkspaceDescriptor::new(root)
+        tinyagents_harness::workspace::WorkspaceDescriptor::new(root)
             .with_policy_id("turn-workspace"),
     )
 }

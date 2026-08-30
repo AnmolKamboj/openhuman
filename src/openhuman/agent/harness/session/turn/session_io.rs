@@ -13,6 +13,6 @@ use crate::openhuman::inference::provider::{
     ChatResponse, UsageInfo, AGENT_TURN_MAX_OUTPUT_TOKENS,
 };
 use futures::StreamExt;
-use tinyagents::harness::model::{ModelRequest, ModelStreamItem};
+use tinyinference::model::{ModelRequest, ModelStreamItem};
 include!("session_io_impl_01_part_01.rs");
 include!("session_io_impl_01_part_02.rs");

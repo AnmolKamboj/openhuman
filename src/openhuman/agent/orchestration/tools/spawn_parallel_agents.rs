@@ -128,7 +128,7 @@ impl Tool for SpawnParallelAgentsTool {
             tracing::debug!(
                 "[spawn_parallel_agents] no active tinyagents run cancellation token; using local token"
             );
-            tinyagents::CancellationToken::new()
+            tinyagents_harness::CancellationToken::new()
         });
         let outcome = run_spawn_parallel_graph_with_cancellation_and_workspace(
             args,

@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc::Sender;
 
-use tinyagents::graph::stream::{GraphEvent, GraphEventSink};
-use tinyagents::harness::cache::CacheLayoutEvent;
-use tinyagents::harness::events::{AgentEvent, EventListener, EventRecord};
-use tinyagents::harness::steering::{SteeringCommand, SteeringHandle};
-use tinyagents::harness::usage::Usage;
+use tinyagents_graph::stream::{GraphEvent, GraphEventSink};
+use tinyagents_harness::cache::CacheLayoutEvent;
+use tinyagents_harness::events::{AgentEvent, EventListener, EventRecord};
+use tinyagents_harness::steering::{SteeringCommand, SteeringHandle};
+use tinyinference::usage::Usage;
 
 use crate::openhuman::agent::harness::turn_dispatch_guard::TurnDispatchState;
 use crate::openhuman::agent::progress::AgentProgress;

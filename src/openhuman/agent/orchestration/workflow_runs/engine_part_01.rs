@@ -4,12 +4,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
-use tinyagents::graph::parallel::{map_reduce, FailurePolicy, ParallelOptions};
-use tinyagents::{CancellationToken, TinyAgentsError};
+use tinyagents_graph::parallel::{map_reduce, FailurePolicy, ParallelOptions};
+use tinyagents_harness::{CancellationToken, TinyAgentsError};
 
 use crate::openhuman::agent::orchestration::parent_context::with_root_parent;
 use crate::openhuman::config::Config;
-use tinyagents::session::run_ledger::{
+use tinyagents_session::run_ledger::{
     get_workflow_run, upsert_workflow_run, WorkflowRun, WorkflowRunStatus, WorkflowRunUpsert,
 };
 

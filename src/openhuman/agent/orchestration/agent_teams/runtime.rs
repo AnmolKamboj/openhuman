@@ -35,7 +35,7 @@ use crate::openhuman::agent::orchestration::{
     AgentOrchestrationSession, OrchestrationTaskStatus, SpawnAgentRequest, WaitAgentOptions,
 };
 use crate::openhuman::config::Config;
-use tinyagents::session::run_ledger::{
+use tinyagents_session::run_ledger::{
     self, AgentTeamMemberStatus, AgentTeamTask, AgentTeamTaskStatus, ClaimOutcome, RunEvent,
     RunEventAppend, RunEventListRequest,
 };

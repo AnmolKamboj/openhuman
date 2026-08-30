@@ -84,9 +84,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::{Result as TaResult, TinyAgentsError};
-use tinyagents::harness::host::{AgentMemory, MemoryId, MemoryItem, NewMemory, RecallRequest};
-use tinyagents::harness::ids::ThreadId;
+use tinyagents_harness::error::{Result as TaResult, TinyAgentsError};
+use tinyagents_harness::host::{AgentMemory, MemoryId, MemoryItem, NewMemory, RecallRequest};
+use tinyagents_harness::ids::ThreadId;
 
 use crate::openhuman::memory::agent::memory_loader::MemoryCitation;
 use crate::openhuman::memory::safety::sanitize_text;

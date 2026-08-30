@@ -20,8 +20,8 @@
 
 use std::sync::Arc;
 
-use tinyagents::harness::model::ChatModel;
-use tinyagents::harness::providers::openai::{AuthStyle as CrateAuthStyle, OpenAiModel};
+use tinyinference::model::ChatModel;
+use tinyinference::providers::openai::{AuthStyle as CrateAuthStyle, OpenAiModel};
 
 use super::auth::AuthStyle as HostAuthStyle;
 

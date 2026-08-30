@@ -8,21 +8,21 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use futures::StreamExt;
-use tinyagents::harness::agent_loop::AgentStreamItem;
-use tinyagents::harness::cache::InMemoryResponseCache;
-use tinyagents::harness::context::{RunConfig, RunContext};
-use tinyagents::harness::events::EventSink;
-use tinyagents::harness::middleware::{
+use tinyagents_harness::agent_loop::AgentStreamItem;
+use tinyagents_harness::cache::InMemoryResponseCache;
+use tinyagents_harness::context::{RunConfig, RunContext};
+use tinyagents_harness::events::EventSink;
+use tinyagents_harness::middleware::{
     BudgetLimits, BudgetMiddleware, ContextCompressionMiddleware, PromptCacheGuardMiddleware,
     ToolPolicyMiddleware as TaToolPolicyMiddleware,
 };
-use tinyagents::harness::model::CapabilitySet;
-use tinyagents::harness::retry::RetryPolicy;
-use tinyagents::harness::runtime::{AgentHarness, InvalidArgsPolicy, RunPolicy, UnknownToolPolicy};
-use tinyagents::harness::steering::SteeringHandle;
-use tinyagents::harness::store::StoreRegistry;
-use tinyagents::harness::workspace::WorkspaceDescriptor;
-use tinyagents::registry::{
+use tinyinference::model::CapabilitySet;
+use tinyagents_harness::retry::RetryPolicy;
+use tinyagents_harness::runtime::{AgentHarness, InvalidArgsPolicy, RunPolicy, UnknownToolPolicy};
+use tinyagents_harness::steering::SteeringHandle;
+use tinyagents_harness::store::StoreRegistry;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
+use tinyagents_registry::{
     CapabilityRegistry, ComponentKind, DiagnosticSeverity, RegistryDiagnostic, RegistrySnapshot,
 };
 
@@ -211,7 +211,7 @@ fn run_policy_for(max_iterations: usize, response_cache_enabled: bool) -> RunPol
     // already persists full conversations + tool output), and the Langfuse
     // exporter withholds all content unless
     // `observability.agent_tracing.capture_content` is on.
-    policy.capture = tinyagents::harness::runtime::PayloadCapture::all();
+    policy.capture = tinyagents_harness::runtime::PayloadCapture::all();
     policy
 }
 

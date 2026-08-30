@@ -13,7 +13,7 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, To
 use async_trait::async_trait;
 use serde_json::json;
 use std::fmt::Write as _;
-use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
 use tinytools::ToolRunContext;
 
 /// The sub-agent archetype this tool drives.

@@ -1,10 +1,10 @@
 use super::*;
 use crate::openhuman::tools::ToolResult;
 use async_trait::async_trait;
-use tinyagents::harness::message::AssistantMessage;
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelResponse};
-use tinyagents::harness::testkit::ScriptedModel;
-use tinyagents::harness::tool::ToolCall;
+use tinyagents_harness::testkit::ScriptedModel;
+use tinyinference::message::AssistantMessage;
+use tinyinference::model::{ChatModel, ModelProfile, ModelResponse};
+use tinyinference::tool::ToolCall;
 
 struct PingTool;
 #[async_trait]

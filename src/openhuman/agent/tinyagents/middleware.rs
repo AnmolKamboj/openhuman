@@ -10,7 +10,7 @@
 //! - [`MicrocompactMiddleware`] (`before_model`) — clear the bodies of older
 //!   tool-result messages (keeping the N most recent) so a long tool-heavy
 //!   thread stays cheap without dropping chat history. This is now the crate
-//!   [`tinyagents::harness::middleware::MicrocompactMiddleware`], constructed
+//!   [`tinyagents_harness::middleware::MicrocompactMiddleware`], constructed
 //!   with OpenHuman's [`CLEARED_PLACEHOLDER`] wording; the in-house copy was
 //!   upstreamed (see `99-deletion-ledger.md`).
 //! - [`ToolOutputMiddleware`] (`after_tool`) — apply the per-tool-result byte

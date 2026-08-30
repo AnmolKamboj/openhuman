@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::integrations::composio::providers::sync_state::KV_NAMESPACE;
 use crate::openhuman::memory::api::provider::ForgetSelector;
 use crate::rpc::RpcOutcome;
+use tinycortex::memory::sync::state::STATE_NAMESPACE as KV_NAMESPACE;
 use tinymemory_api::chunks::SourceKind;
 
 use super::types::{

@@ -24,9 +24,8 @@
 use std::time::Duration;
 
 use serde_json::{json, Map};
-use tinyagents::{
-    GraphLangfuseExporter, GraphObservation, LangfuseAuth, LangfuseClient, LangfuseTraceConfig,
-};
+use tinyagents_graph::{GraphLangfuseExporter, GraphObservation};
+use tinyagents_harness::{LangfuseAuth, LangfuseClient, LangfuseTraceConfig};
 use tinyflows::engine::GraphObservation as FlowObservation;
 
 use crate::api::config::effective_backend_api_url;

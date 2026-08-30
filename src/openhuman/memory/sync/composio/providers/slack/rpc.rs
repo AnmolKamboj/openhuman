@@ -4,11 +4,32 @@
 //! entire Slack integration lives under `composio::providers::slack`.
 //!
 //! Public JSON-RPC surface:
-//! - `openhuman.slack_memory_sync_trigger` — run `SlackProvider::sync()`
-//!   once for each active Slack connection (or just one, if
-//!   `connection_id` is supplied).
-//! - `openhuman.slack_memory_sync_status` — list the per-connection
-//!   sync cursors + last-synced timestamps.
+//! - `openhuman.slack_memory_sync_trigger` — read each active Slack
+//!   connection through the `tinyconnectors` module and ingest what it
+//!   returns (or just one connection, if `connection_id` is supplied).
+//! - `openhuman.slack_memory_sync_status` — list the connections a trigger
+//!   would act on.
+//!
+//! # Where the sync actually happens now
+//!
+//! tinymemory v1.13.4 deleted the in-process `SlackProvider` along with the
+//! rest of the Composio pipeline: `MemorySourceSync::run_connection_sync` and
+//! `::source_sync_state` now unconditionally refuse for every toolkit,
+//! because reaching a connected account needs a credential the engine must
+//! not hold. `sync_trigger_rpc` below reads through the connector module and
+//! writes into the bound memory driver via `MemorySourceSink::accept_source_items`
+//! instead — the same `run_sync_pass` helper
+//! `integrations::composio::ops::composio_sync` uses, called synchronously
+//! here rather than fired into a background task, because this RPC's
+//! contract is "return the outcome", not "return that a run started".
+//!
+//! `sync_status_rpc` genuinely lost capability it cannot honestly recover:
+//! the module keeps its sync cursor and daily-request budget internally and
+//! exposes neither outside of a `Sync` call, so the per-connection detail
+//! `ConnectionStatus` used to report (cursor JSON, synced-id count, requests
+//! used today) has no source any more. The rows below still report which
+//! connections a trigger would act on, with the detail fields at their zero
+//! value rather than removed from the wire shape.
 
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +37,9 @@ use crate::openhuman::config::Config;
 use crate::openhuman::integrations::composio::client::{
     create_composio_client, direct_list_connections, ComposioClientKind,
 };
+use crate::openhuman::integrations::composio::ops::run_sync_pass;
+use crate::openhuman::integrations::composio::providers::SyncOutcome;
 use crate::openhuman::integrations::composio::types::ComposioConnectionsResponse;
-use crate::openhuman::memory::sync::composio::providers::SyncOutcome;
 use crate::rpc::RpcOutcome;
 
 /// Optional connection-id override for the trigger. When absent, all
@@ -91,38 +113,30 @@ pub async fn sync_trigger_rpc(
     let considered = candidates.len();
     let mut outcomes: Vec<SyncOutcome> = Vec::with_capacity(considered);
 
-    // Resolved once, outside the loop: the binding is cached per workspace, but
-    // a driver that serves no sync should refuse the whole request rather than
-    // once per connection.
-    let binding = crate::openhuman::memory::binding::for_config(config)?;
-    let sync = binding.provider().as_source_sync().ok_or_else(|| {
-        format!(
-            "the bound memory driver '{}' does not serve source sync",
-            binding.driver_id()
-        )
-    })?;
-
     for conn in candidates {
         let started_at_ms = now_ms();
-        match sync
-            .run_connection_sync("slack", &conn.id)
+        // Reads through the `tinyconnectors` module and ingests through the
+        // bound driver's `MemorySourceSink` — see the module doc comment for
+        // why this no longer goes through `MemorySourceSync::run_connection_sync`.
+        match run_sync_pass(config, "slack", &conn.id, "manual")
             .await
             .map_err(|error| error.to_string())
         {
-            Ok(outcome) => outcomes.push(SyncOutcome {
+            Ok(pass) => outcomes.push(SyncOutcome {
                 toolkit: "slack".to_string(),
                 connection_id: Some(conn.id.clone()),
                 reason: "manual".to_string(),
-                items_ingested: outcome.records_ingested as usize,
+                items_ingested: pass.records_read,
                 started_at_ms,
                 finished_at_ms: now_ms(),
-                summary: outcome
-                    .note
-                    .unwrap_or_else(|| "Slack sync completed".to_string()),
+                summary: format!(
+                    "Slack sync completed ({} written, {} already ingested)",
+                    pass.written, pass.already_ingested
+                ),
                 details: serde_json::json!({
-                    "more_pending": outcome.more_pending,
-                    "actions_called": outcome.actions_called,
-                    "provider_cost_usd": outcome.provider_cost_usd,
+                    "more_pending": pass.more_pending,
+                    "written": pass.written,
+                    "already_ingested": pass.already_ingested,
                 }),
             }),
             Err(err) => {
@@ -176,8 +190,19 @@ pub struct ConnectionStatus {
     pub daily_request_limit: u32,
 }
 
-/// Report one row per active Slack Composio connection, pulled from
-/// the Composio sync-state KV store.
+/// List every active Slack Composio connection a trigger would act on.
+///
+/// **Degraded read, and honestly so.** This used to pull the per-connection
+/// cursor/dedup/budget snapshot the engine's `SlackProvider` kept in the
+/// sync-state KV, through `MemorySourceSync::source_sync_state`. That member
+/// now unconditionally refuses for every toolkit (tinymemory v1.13.4 deleted
+/// the in-process pipeline it read), and the `tinyconnectors` module keeps its
+/// cursor and daily-request budget internally — neither crosses the bus
+/// outside of an actual `Sync` call, so there is nothing left to poll for a
+/// passive status read. Rather than dropping the fields (a wire-shape change
+/// every existing caller of `slack_memory_sync_status` would have to handle),
+/// this reports the connections a trigger would consider with the
+/// once-populated detail fields at their zero value.
 pub async fn sync_status_rpc(
     config: &Config,
     _req: SyncStatusRequest,
@@ -187,17 +212,6 @@ pub async fn sync_status_rpc(
     // backend tenant's (#1710).
     let connections = list_slack_connections(config).await?;
 
-    // The state rows come from the driver now. Resolved once for the whole
-    // report rather than per connection: a driver that serves no sync has
-    // nothing to say about any of them.
-    let binding = crate::openhuman::memory::binding::for_config(config)?;
-    let sync = binding.provider().as_source_sync().ok_or_else(|| {
-        format!(
-            "the bound memory driver '{}' does not serve source sync",
-            binding.driver_id()
-        )
-    })?;
-
     let mut rows = Vec::new();
     for conn in connections.connections {
         if conn.normalized_toolkit() != "slack" {
@@ -206,39 +220,22 @@ pub async fn sync_status_rpc(
         if !conn.is_active() {
             continue;
         }
-        let state = match sync.source_sync_state("slack", &conn.id).await {
-            Ok(s) => s,
-            Err(err) => {
-                log::warn!(
-                    "[slack_ingest] load_state connection={} failed: {err:#}",
-                    conn.id
-                );
-                continue;
-            }
-        };
-        // `None` is a connection that has never synced. The engine call this
-        // replaced returned a freshly defaulted state for that case, so the row
-        // it produced was all zeroes and an empty cursor — which is what
-        // `unwrap_or_default` reproduces exactly. Skipping the row instead
-        // would drop a connected source from the report the moment it was
-        // connected and before its first sync.
-        let state = state.unwrap_or_default();
         rows.push(ConnectionStatus {
             connection_id: conn.id.clone(),
-            per_channel_cursors: state.cursor.clone().unwrap_or_else(|| "{}".to_string()),
-            // The contract carries the count where the engine carried the set
-            // itself. Same number, and the set was never read here for anything
-            // but its length.
-            synced_ids_count: usize::try_from(state.synced_item_count).unwrap_or(usize::MAX),
-            requests_used_today: state.daily_requests_used,
-            daily_request_limit: state.daily_request_limit,
+            per_channel_cursors: "{}".to_string(),
+            synced_ids_count: 0,
+            requests_used_today: 0,
+            daily_request_limit: 0,
         });
     }
 
     let count = rows.len();
     Ok(RpcOutcome::single_log(
         SyncStatusResponse { connections: rows },
-        format!("slack_ingest: status connections={count}"),
+        format!(
+            "slack_ingest: status connections={count} (per-connection sync detail is no \
+             longer available — the connector module keeps its cursor internally)"
+        ),
     ))
 }
 

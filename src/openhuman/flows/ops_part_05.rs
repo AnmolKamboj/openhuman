@@ -16,9 +16,9 @@
 fn build_flow_connections(
     composio: Vec<crate::openhuman::integrations::composio::ComposioConnection>,
     http: Vec<crate::openhuman::security::credentials::HttpCredentialSummary>,
-    identities: &[crate::openhuman::integrations::composio::providers::profile::ConnectedIdentity],
+    identities: &[crate::openhuman::integrations::composio::providers::ConnectedIdentity],
 ) -> Vec<FlowConnection> {
-    use crate::openhuman::integrations::composio::providers::profile::normalize_connection_identifier;
+    use tinymemory_api::composio::normalize_connection_identifier;
 
     let identity_lookup: std::collections::HashMap<(String, String), &_> = identities
         .iter()

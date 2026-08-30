@@ -4,7 +4,7 @@ use super::super::module_client::{self as connectors, methods};
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 
-use super::super::providers::{agent_ready_toolkits, capability_matrix};
+use super::super::providers::agent_ready_toolkits;
 use super::super::types::{ComposioCapabilitiesResponse, ComposioToolkitsResponse};
 use super::error_utils::{report_composio_op_error, OpResult};
 
@@ -46,16 +46,21 @@ pub async fn composio_list_toolkits(
 }
 
 pub async fn composio_list_capabilities(
-    _config: &Config,
+    config: &Config,
 ) -> OpResult<RpcOutcome<ComposioCapabilitiesResponse>> {
     tracing::debug!("[composio] rpc list_capabilities");
-    // The matrix is still built from `tinymemory`'s provider registry, whose
-    // capability type is the parallel copy — see
-    // `integrations::composio::types::reencode`. Phase 4 moves the registry
-    // into the connector module and this conversion goes away.
-    let resp = ComposioCapabilitiesResponse {
-        capabilities: super::super::types::reencode(&capability_matrix())?,
-    };
+    // Used to be built host-side from `tinymemory`'s engine provider
+    // registry via `capability_matrix()`, deleted with the rest of the
+    // in-process pipeline by tinymemory v1.13.4. The connector module now
+    // answers this directly — `ListCapabilities` already returns exactly
+    // this reply shape, so there is no host-side matrix or conversion left.
+    let resp =
+        connectors::call_bare::<ComposioCapabilitiesResponse>(config, methods::LIST_CAPABILITIES)
+            .await
+            .map_err(|error| {
+                report_composio_op_error("list_capabilities", &anyhow::anyhow!("{error}"));
+                format!("[composio] list_capabilities failed: {error}")
+            })?;
     let count = resp.capabilities.len();
     Ok(RpcOutcome::new(
         resp,

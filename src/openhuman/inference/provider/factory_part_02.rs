@@ -213,7 +213,7 @@ struct DefaultTemperatureChatModel {
 
 #[async_trait::async_trait]
 impl ChatModel<()> for DefaultTemperatureChatModel {
-    fn profile(&self) -> Option<&tinyagents::harness::model::ModelProfile> {
+    fn profile(&self) -> Option<&tinyinference::model::ModelProfile> {
         self.inner.profile()
     }
 
@@ -221,7 +221,7 @@ impl ChatModel<()> for DefaultTemperatureChatModel {
         &self,
         state: &(),
         mut request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         if request.temperature.is_none() {
             request.temperature = Some(self.temperature);
         }
@@ -232,7 +232,7 @@ impl ChatModel<()> for DefaultTemperatureChatModel {
         &self,
         state: &(),
         mut request: ModelRequest,
-    ) -> tinyagents::Result<ModelStream> {
+    ) -> tinyinference::Result<ModelStream> {
         if request.temperature.is_none() {
             request.temperature = Some(self.temperature);
         }
@@ -563,11 +563,11 @@ pub(crate) fn make_openhuman_backend_model(
     role: &str,
     config: &Config,
 ) -> anyhow::Result<(
-    std::sync::Arc<dyn tinyagents::harness::model::ChatModel<()>>,
+    std::sync::Arc<dyn tinyinference::model::ChatModel<()>>,
     String,
 )> {
     let (model_client, model) = resolve_managed_backend(role, config)?;
-    let chat: std::sync::Arc<dyn tinyagents::harness::model::ChatModel<()>> =
+    let chat: std::sync::Arc<dyn tinyinference::model::ChatModel<()>> =
         std::sync::Arc::new(model_client);
     Ok((chat, model))
 }

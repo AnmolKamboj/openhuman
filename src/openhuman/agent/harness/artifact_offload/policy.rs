@@ -1,6 +1,6 @@
 //! OpenHuman's implementations of the two artifact-offload host policies.
 //!
-//! `tinyagents::harness::artifacts` owns the mechanics — thresholds, path
+//! `tinyagents_harness::artifacts` owns the mechanics — thresholds, path
 //! resolution, pointer rendering, the symlink re-check. It deliberately knows
 //! nothing about `SecurityPolicy` or about which byte patterns are credentials,
 //! because neither has any meaning in a redistributed crate. Those two
@@ -13,7 +13,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tinyagents::harness::artifacts::{ArtifactPathPolicy, ArtifactRedactor, Redacted};
+use tinyagents_harness::artifacts::{ArtifactPathPolicy, ArtifactRedactor, Redacted};
 
 use crate::openhuman::memory::safety::sanitize_text;
 use crate::openhuman::security::SecurityPolicy;

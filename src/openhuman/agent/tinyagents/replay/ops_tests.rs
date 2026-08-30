@@ -1,9 +1,9 @@
 use super::*;
 use std::sync::Arc;
 
-use tinyagents::harness::events::{AgentEvent, EventSink};
-use tinyagents::harness::ids::{ComponentId, HarnessPhase, ThreadId};
-use tinyagents::harness::observability::{FanOutSink, JournalSink, StoreEventJournal};
+use tinyagents_harness::events::{AgentEvent, EventSink};
+use tinyagents_harness::ids::{ComponentId, HarnessPhase, ThreadId};
+use tinyagents_harness::observability::{FanOutSink, JournalSink, StoreEventJournal};
 
 use crate::openhuman::agent::tinyagents::journal::mint_run_id;
 

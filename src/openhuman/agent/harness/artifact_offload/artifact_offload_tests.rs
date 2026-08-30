@@ -1,6 +1,6 @@
 //! Tests for OpenHuman's half of the artifact-offload convention (#3883).
 //!
-//! The mechanics moved to `tinyagents::harness::artifacts` and are tested
+//! The mechanics moved to `tinyagents_harness::artifacts` and are tested
 //! there — path resolution, thresholds, abstracts, pointer parsing, the
 //! symlink re-check. What is tested here is what stayed:
 //!
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use super::*;
 use crate::openhuman::security::{AutonomyLevel, SecurityPolicy, TrustedAccess, TrustedRoot};
-use tinyagents::harness::artifacts::ArtifactPathPolicy;
+use tinyagents_harness::artifacts::ArtifactPathPolicy;
 
 /// Policy with disjoint action/workspace roots, the shipped default layout
 /// (`~/OpenHuman/projects` vs `~/.openhuman/users/<id>/workspace`).

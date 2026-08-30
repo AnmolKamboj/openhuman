@@ -2,7 +2,7 @@
 //! OpenHuman's richer [`AgentProgress`] events.
 //!
 //! Adapts `crate::openhuman::agent::progress` (the `AgentProgress` UI contract)
-//! for `tinyagents::harness::host::ProgressSink`. This is Phase 4 of
+//! for `tinyagents_harness::host::ProgressSink`. This is Phase 4 of
 //! `docs/specs/plan-agents.md`.
 //!
 //! # Why this file is the boundary
@@ -107,7 +107,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::Sender;
 
-use tinyagents::harness::host::{ProgressEvent, ProgressSink};
+use tinyagents_harness::host::{ProgressEvent, ProgressSink};
 
 use crate::openhuman::agent::progress::AgentProgress;
 

@@ -9,12 +9,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use tinyagents::harness::steering::{SteeringCommand, SteeringHandle};
-use tinyagents::harness::tool::{
-    SandboxMode, Tool, ToolAccess, ToolCall as TaToolCall, ToolExecutionContext, ToolPolicy,
-    ToolResult as TaToolResult, ToolRuntime, ToolSchema, ToolSideEffects,
-    ToolTimeout as TaToolTimeout, WorkspaceAccess,
+use tinyagents_harness::steering::{SteeringCommand, SteeringHandle};
+use tinyagents_harness::tool::{
+    SandboxMode, Tool, ToolAccess, ToolExecutionContext, ToolPolicy, ToolResult as TaToolResult,
+    ToolRuntime, ToolSideEffects, ToolTimeout as TaToolTimeout, WorkspaceAccess,
 };
+use tinyinference::tool::{ToolCall as TaToolCall, ToolSchema};
 use tinytools::ToolRunContext;
 
 /// A captured early-exit: a sub-agent invoked an early-exit tool (e.g.
@@ -108,7 +108,11 @@ impl Tool<()> for ToolAdapter {
         tool_policy_from_openhuman_tool(self.inner.as_ref())
     }
 
-    async fn call(&self, _state: &(), call: TaToolCall) -> tinyagents::Result<TaToolResult> {
+    async fn call(
+        &self,
+        _state: &(),
+        call: TaToolCall,
+    ) -> tinyagents_harness::Result<TaToolResult> {
         Ok(execute_openhuman_tool(self.inner.as_ref(), call, None).await)
     }
 
@@ -117,7 +121,7 @@ impl Tool<()> for ToolAdapter {
         _state: &(),
         call: TaToolCall,
         context: ToolExecutionContext,
-    ) -> tinyagents::Result<TaToolResult> {
+    ) -> tinyagents_harness::Result<TaToolResult> {
         Ok(execute_openhuman_tool(self.inner.as_ref(), call, Some(&context)).await)
     }
 }
@@ -376,7 +380,11 @@ impl Tool<()> for SharedToolAdapter {
         self.policy.clone()
     }
 
-    async fn call(&self, _state: &(), call: TaToolCall) -> tinyagents::Result<TaToolResult> {
+    async fn call(
+        &self,
+        _state: &(),
+        call: TaToolCall,
+    ) -> tinyagents_harness::Result<TaToolResult> {
         self.call_openhuman_tool(call, None).await
     }
 
@@ -385,7 +393,7 @@ impl Tool<()> for SharedToolAdapter {
         _state: &(),
         call: TaToolCall,
         context: ToolExecutionContext,
-    ) -> tinyagents::Result<TaToolResult> {
+    ) -> tinyagents_harness::Result<TaToolResult> {
         self.call_openhuman_tool(call, Some(&context)).await
     }
 }
@@ -395,7 +403,7 @@ impl SharedToolAdapter {
         &self,
         call: TaToolCall,
         context: Option<&dyn ToolRunContext>,
-    ) -> tinyagents::Result<TaToolResult> {
+    ) -> tinyagents_harness::Result<TaToolResult> {
         let found = self
             .sets
             .iter()

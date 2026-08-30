@@ -553,7 +553,7 @@ fn local_catalog_models_from_config(
 
 fn handle_registry_snapshot(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async {
-        use tinyagents::registry::{ComponentKind, ComponentMetadata, RegistrySnapshot};
+        use tinyagents_registry::{ComponentKind, ComponentMetadata, RegistrySnapshot};
 
         let mut components: Vec<ComponentMetadata> = Vec::new();
 

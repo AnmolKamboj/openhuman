@@ -1,5 +1,5 @@
 use super::*;
-use crate::openhuman::integrations::composio::providers::profile_md::{block_end, block_start};
+use crate::openhuman::integrations::composio::profile_md::{block_end, block_start};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tinymemory_api::provider::{FacetState, FacetType, ProfileFacet, UserState};

@@ -7,7 +7,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use tinyagents::graph::todos::dispatch::select;
+use tinyagents_graph::todos::dispatch::select;
 
 use crate::openhuman::agent::task_board::{TaskApprovalMode, TaskBoardCard};
 use crate::openhuman::config::Config;
@@ -33,7 +33,7 @@ const POLLER_MAX_BACKOFF_SECONDS: u64 = 15 * 60;
 const POLLER_IDLE_GRACE_TICKS: u32 = 2;
 
 /// The backoff curve itself lives in the crate
-/// ([`select::PollCadence`](tinyagents::graph::todos::dispatch::select::PollCadence));
+/// ([`select::PollCadence`](tinyagents_graph::todos::dispatch::select::PollCadence));
 /// this is OpenHuman's tuning of it (issue #4090).
 const POLLER_CADENCE: select::PollCadence = select::PollCadence {
     base: Duration::from_secs(POLLER_TICK_SECONDS),
@@ -225,7 +225,7 @@ async fn poll_board(location: &BoardLocation, agent_assigned_only: bool) -> Resu
 /// agent-generated tasks and never picks up a human's manually-created card.
 ///
 /// The selection policy itself is
-/// [`select::pick_next_card`](tinyagents::graph::todos::dispatch::select::pick_next_card).
+/// [`select::pick_next_card`](tinyagents_graph::todos::dispatch::select::pick_next_card).
 pub(super) fn pick_next_todo(
     cards: &[TaskBoardCard],
     agent_assigned_only: bool,
@@ -244,7 +244,7 @@ pub(super) fn pick_next_todo(
 /// plan would execute before the user ever saw the review card.
 ///
 /// The rule itself is
-/// [`select::requires_plan_approval`](tinyagents::graph::todos::dispatch::select::requires_plan_approval).
+/// [`select::requires_plan_approval`](tinyagents_graph::todos::dispatch::select::requires_plan_approval).
 pub(super) fn requires_plan_approval(
     global_required: bool,
     approval_mode: Option<&TaskApprovalMode>,

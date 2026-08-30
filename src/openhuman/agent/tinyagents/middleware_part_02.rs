@@ -197,7 +197,7 @@ impl Middleware<()> for ToolOutputMiddleware {
                             "preview_bytes".to_string(),
                             serde_json::Value::from(outcome.final_bytes as u64),
                         );
-                        let index_result: tinyagents::Result<()> =
+                        let index_result: tinyagents_harness::Result<()> =
                             store.put("tool_results", &key, fields.into()).await;
                         if let Err(err) = index_result {
                             tracing::warn!(

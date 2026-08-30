@@ -53,32 +53,36 @@ use crate::openhuman::integrations::composio::FetchConnectedIntegrationsStatus;
 
 /// Whether a Composio `toolkit` may be auto-registered as a memory source.
 ///
-/// A toolkit is registrable iff a native memory-sync provider exists for it in
-/// the registry (the single source of truth shared with the
-/// `memory_sources.supported_toolkits` RPC). A toolkit with no provider has no
-/// `build_pipeline` arm, so registering it would report ACTIVE and then fail
-/// every sync with "tinycortex sync does not support toolkit" — the silent lie
-/// of #4957. Both auto-register sites in the connection-created handler skip
-/// non-registrable toolkits. Extracted as a pure predicate so the skip decision
-/// is unit-testable without driving the async event handler.
+/// A toolkit is registrable iff a native sync provider exists for it AND the
+/// bound driver can accept what it returns. A toolkit with no provider has
+/// nothing that would ever call `accept_source_items` for it, so registering
+/// it would report ACTIVE and then never sync — the silent lie of #4957.
+/// Both auto-register sites in the connection-created handler skip
+/// non-registrable toolkits. Extracted as a pure predicate so the skip
+/// decision is unit-testable without driving the async event handler.
 ///
-/// # Asked of the driver, not of a list read across the seam
+/// # Asked of the catalog, not of the driver
 ///
-/// This was `get_provider(toolkit).is_some()`, reaching the engine's provider
-/// registry through the `memory::sync::composio::providers` re-export. The
-/// driver answers it now (tinymemory#106), which matters because the answer
-/// depends on a normalisation the driver owns — it trims and lower-cases
-/// before matching. A host matching its own copy of the list would have been
-/// right until that rule changed, and silently wrong after.
+/// This used to ask `MemorySourceSync::is_toolkit_syncable`, a driver method
+/// tinymemory v1.13.4 made unconditionally answer `Ok(false)` for every
+/// toolkit — the in-process pipeline it answered from is gone, and the
+/// contract kept the member rather than removing it out from under every
+/// implementor. Asking it now would silently disable every Composio memory
+/// source. `has_native_provider` is the answer that is still real: it names
+/// the six toolkits `tinyconnectors-sync` (the module's own sync provider
+/// tree) actually knows how to read — gmail, notion, slack, clickup, github,
+/// linear — the same list `catalog_for_toolkit`'s callers already trust.
 ///
-/// `Unsupported` and a binding failure both read as "not registrable". That is
-/// the safe direction: registering a source that then fails every sync is the
-/// #4957 lie, whereas declining to register one leaves the connection working
-/// as an ordinary agent-tool integration.
+/// A binding with no `Sources` family reads as "not registrable" for the same
+/// reason a driver with no provider used to: nothing here would ever be able
+/// to call `accept_source_items` for it.
 async fn toolkit_is_memory_source_registrable(
     config: &crate::openhuman::config::Config,
     toolkit: &str,
 ) -> bool {
+    if !crate::openhuman::integrations::composio::providers::has_native_provider(toolkit) {
+        return false;
+    }
     let Ok(binding) = crate::openhuman::memory::binding::for_config(config) else {
         tracing::warn!(
             toolkit = %toolkit,
@@ -86,26 +90,15 @@ async fn toolkit_is_memory_source_registrable(
         );
         return false;
     };
-    let Some(sync) = binding.provider().as_source_sync() else {
+    if binding.provider().as_sources().is_none() {
         tracing::debug!(
             toolkit = %toolkit,
             driver = %binding.driver_id(),
-            "[composio:bus] driver does not serve SourceSync; treating toolkit as not registrable"
+            "[composio:bus] driver does not serve Sources; treating toolkit as not registrable"
         );
         return false;
-    };
-    match sync.is_toolkit_syncable(toolkit).await {
-        Ok(answer) => answer,
-        Err(error) => {
-            tracing::warn!(
-                toolkit = %toolkit,
-                error = %error,
-                "[composio:bus] driver could not answer is_toolkit_syncable; \
-                 treating toolkit as not registrable"
-            );
-            false
-        }
     }
+    true
 }
 
 /// Env var that **disables** the triage pipeline. The pipeline is

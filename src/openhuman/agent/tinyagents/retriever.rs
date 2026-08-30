@@ -43,10 +43,10 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
 use serde_json::json;
-use tinyagents::harness::embeddings::{
+use tinyagents_harness::events::{AgentEvent, EventSink};
+use tinyinference::embeddings::{
     EmbeddingModel as TaEmbeddingModel, InMemoryVectorStore, Retriever, ScoredDoc,
 };
-use tinyagents::harness::events::{AgentEvent, EventSink};
 
 use super::ProviderEmbeddingModel;
 use crate::openhuman::inference::embeddings::EmbeddingProvider;
@@ -56,7 +56,7 @@ use crate::openhuman::memory::{Memory, MemoryEntry, RecallOpts};
 /// onto.
 ///
 /// OpenHuman assembles its recall/context block *before* the tinyagents
-/// [`RunContext`](tinyagents::harness::context::RunContext) (and its per-run
+/// [`RunContext`](tinyagents_harness::context::RunContext) (and its per-run
 /// `EventSink`) exist — the block is prepended to the user message that then
 /// seeds the harness turn. There is therefore no run-scoped sink in scope at
 /// recall time, so memory loading has historically emitted **zero**

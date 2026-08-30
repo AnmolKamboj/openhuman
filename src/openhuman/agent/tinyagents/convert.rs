@@ -4,7 +4,7 @@
 //! OpenHuman transcript record it adapts. This module remains until WP-4
 //! decides the host tool-trait boundary.
 
-use tinyagents::harness::tool::ToolSchema;
+use tinyinference::tool::ToolSchema;
 
 use crate::openhuman::tools::ToolSpec;
 

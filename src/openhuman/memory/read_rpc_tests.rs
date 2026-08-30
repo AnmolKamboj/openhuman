@@ -1,11 +1,11 @@
 use super::*;
 use crate::openhuman::inference::embeddings::NoopEmbedding;
-use crate::openhuman::integrations::composio::providers::sync_state::KV_NAMESPACE;
 use chrono::{TimeZone, Utc};
 use rusqlite::params;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinycortex::memory::sync::state::STATE_NAMESPACE as KV_NAMESPACE;
 use tinymemory_core::ingest_pipeline::ingest_chat;
 use tinymemory_core::queue::drain_until_idle;
 use tinymemory_core::store::content::raw::{write_raw_items, RawItem, RawKind};

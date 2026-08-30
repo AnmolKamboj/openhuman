@@ -1,7 +1,7 @@
 //! Host implementation of the TinyAgents **agent catalogue** seam.
 //!
 //! Adapts two OpenHuman domains onto
-//! [`tinyagents::harness::host::DefinitionRegistry`]:
+//! [`tinyagents_harness::host::DefinitionRegistry`]:
 //!
 //! * [`crate::openhuman::agent::harness::definition::AgentDefinitionRegistry`] —
 //!   the harness registry of built-in ([`load_builtins`](crate::openhuman::agent::registry::agents::load_builtins)-parsed
@@ -76,8 +76,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::Result;
-use tinyagents::harness::host::{AgentDefinition, DefinitionRegistry};
+use tinyagents_harness::error::Result;
+use tinyagents_harness::host::{AgentDefinition, DefinitionRegistry};
 
 use crate::openhuman::agent::harness::definition::{
     AgentDefinition as HostAgentDefinition, AgentDefinitionRegistry, AgentTier, ModelSpec,

@@ -1,4 +1,4 @@
-//! Host adapter: [`tinyagents::harness::host::ContextComposer`] backed by
+//! Host adapter: [`tinyagents_harness::host::ContextComposer`] backed by
 //! OpenHuman's prompt pipeline.
 //!
 //! # Which OpenHuman domains this adapts
@@ -69,9 +69,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::{Result as TinyAgentsResult, TinyAgentsError};
-use tinyagents::harness::host::{ContextComposer, TurnContextRequest};
-use tinyagents::harness::message::Message;
+use tinyagents_harness::error::{Result as TinyAgentsResult, TinyAgentsError};
+use tinyagents_harness::host::{ContextComposer, TurnContextRequest};
+use tinyinference::message::Message;
 
 use crate::openhuman::agent::prompts::{
     load_agents_md_layers, render_connected_identities, AgentsMdContent, ConnectedIntegration,

@@ -6,7 +6,7 @@ fn min_context_tracks_embedder_request() {
     // requests; this guards against the two drifting apart.
     assert_eq!(
         MIN_CONTEXT_TOKENS,
-        tinyagents::harness::embeddings::RECOMMENDED_OLLAMA_CONTEXT_TOKENS as u64
+        tinyinference::embeddings::RECOMMENDED_OLLAMA_CONTEXT_TOKENS as u64
     );
     assert_eq!(MIN_CONTEXT_TOKENS, 8_192);
 }

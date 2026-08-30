@@ -477,7 +477,7 @@ impl Tool for ComposioListToolsTool {
             .await
         {
             Ok(mut resp) => {
-                filter_list_tools_response(&mut resp).await;
+                filter_list_tools_response(&live_config, &mut resp).await;
                 let mut connected_toolkits: Option<HashSet<String>> = None;
 
                 if !include_unconnected {

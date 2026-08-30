@@ -10,15 +10,14 @@ use super::super::connected_integrations::{
     fetch_connected_integrations_status, invalidate_connected_integrations_cache,
     sync_cache_with_connections, FetchConnectedIntegrationsStatus,
 };
-use super::super::providers::profile::{
-    load_connected_identities, normalize_connection_identifier,
-};
+use super::super::identity_store::{delete_connected_identity_facets, load_connected_identities};
 use super::super::types::{
     ComposioAuthorizeRequest, ComposioAuthorizeResponse, ComposioConnectionsResponse,
     ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
 use super::error_utils::{direct_mode_without_key, report_composio_op_error, OpResult};
 use super::memory_cleanup::composio_memory_targets_for_connection;
+use tinymemory_api::composio::normalize_connection_identifier;
 
 pub async fn composio_list_connections(
     config: &Config,
@@ -50,7 +49,7 @@ pub async fn composio_list_connections(
     let active = resp.connections.iter().filter(|c| c.is_active()).count();
     let total = resp.connections.len();
     sync_cache_with_connections(&resp.connections);
-    let resp = enrich_connections_with_identity(resp);
+    let resp = enrich_connections_with_identity(config, resp).await;
     Ok(RpcOutcome::new(
         resp,
         vec![format!(
@@ -163,17 +162,24 @@ pub async fn composio_delete_connection(
     }
     resp.memory_chunks_deleted = memory_chunks_deleted;
     if let Some(toolkit) = toolkit.as_deref() {
-        let deleted = super::super::providers::profile::delete_connected_identity_facets(
-            toolkit,
-            connection_id,
-        );
+        let deleted = delete_connected_identity_facets(config, toolkit, connection_id)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    toolkit = %toolkit,
+                    connection_id = %connection_id,
+                    %error,
+                    "[composio] delete_connected_identity_facets failed (non-fatal)"
+                );
+                0
+            });
         tracing::debug!(
             toolkit = %toolkit,
             connection_id = %connection_id,
             facets_deleted = deleted,
             "[composio] deleted connected identity facets after connection removal"
         );
-        if let Err(e) = super::super::providers::profile_md::remove_provider_from_profile_md(
+        if let Err(e) = super::super::profile_md::remove_provider_from_profile_md(
             &config.workspace_dir,
             toolkit,
             connection_id,
@@ -264,10 +270,19 @@ pub(super) async fn resolve_toolkit_for_connection(
 /// "Gmail · user@example.com" instead of a generic "Account N" label.
 ///
 /// This is best-effort — no live API calls are made (one SQLite read per poll).
-pub(crate) fn enrich_connections_with_identity(
+pub(crate) async fn enrich_connections_with_identity(
+    config: &Config,
     mut resp: ComposioConnectionsResponse,
 ) -> ComposioConnectionsResponse {
-    let identities = load_connected_identities();
+    let identities = load_connected_identities(config)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::debug!(
+                %error,
+                "[composio] enrich_connections_with_identity: load_connected_identities failed"
+            );
+            Vec::new()
+        });
     if identities.is_empty() {
         tracing::debug!(
             "[composio] enrich_connections_with_identity: no cached identities yet \

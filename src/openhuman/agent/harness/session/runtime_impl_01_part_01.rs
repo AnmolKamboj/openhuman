@@ -107,7 +107,7 @@ impl Agent {
         self.runtime_config.is_some()
     }
 
-    /// OpenHuman's [`AgentMemory`](tinyagents::harness::host::AgentMemory)
+    /// OpenHuman's [`AgentMemory`](tinyagents_harness::host::AgentMemory)
     /// capability over this session's memory backend.
     ///
     /// Built on demand rather than stored: it is a thin adapter over an `Arc`
@@ -120,7 +120,7 @@ impl Agent {
         crate::openhuman::agent::tinyagents::host::OpenHumanAgentMemory::new(self.memory_arc())
     }
 
-    /// OpenHuman's [`ExperienceStore`](tinyagents::harness::host::ExperienceStore)
+    /// OpenHuman's [`ExperienceStore`](tinyagents_harness::host::ExperienceStore)
     /// capability, scoped to this session's agent profile.
     ///
     /// Writes go to this session's own `memory`; recall additionally consults
@@ -312,7 +312,7 @@ impl Agent {
     /// from a config whose `action_dir` already permits it.
     pub fn set_workspace_descriptor(
         &mut self,
-        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+        descriptor: Option<tinyagents_harness::workspace::WorkspaceDescriptor>,
     ) {
         self.workspace_descriptor = descriptor;
     }

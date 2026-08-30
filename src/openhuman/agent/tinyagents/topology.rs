@@ -7,7 +7,7 @@
 //! UI / debug endpoint can render the orchestration graphs as JSON or Mermaid
 //! and surface any structural defects.
 
-use tinyagents::graph::export::{self, GraphTopology};
+use tinyagents_graph::export::{self, GraphTopology};
 
 /// A rendered topology for one graph.
 pub(crate) struct GraphTopologyReport {

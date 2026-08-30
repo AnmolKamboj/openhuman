@@ -125,22 +125,28 @@ pub struct SupportedToolkitsResponse {
     pub toolkits: Vec<String>,
 }
 
-/// Toolkit slugs the memory-sync layer can actually run, sourced from the
-/// provider registry (`all_providers()`) — the single source of truth shared
-/// with `scan_active_sync_targets`. Exposed so the Add Source picker can
-/// disable connections whose toolkit has no provider instead of letting the
-/// user add a dead source. See issue #3352.
+/// Toolkit slugs the memory-sync layer can actually run, sourced from
+/// [`NATIVE_PROVIDERS`](crate::openhuman::integrations::composio::providers::NATIVE_PROVIDERS)
+/// — the single source of truth shared with `scan_active_sync_targets`
+/// (via `has_native_provider`). Exposed so the Add Source picker can disable
+/// connections whose toolkit has no provider instead of letting the user add
+/// a dead source. See issue #3352.
+///
+/// Was sourced from the engine's provider registry
+/// (`all_providers().iter().map(|p| p.toolkit_slug())`); tinymemory v1.13.4
+/// deleted that registry along with the rest of the in-process pipeline.
+/// `NATIVE_PROVIDERS` names the same six toolkits by construction — the
+/// catalog was always kept in step with the registry it described — so no
+/// registration step (`init_default_composio_sync_providers`) is needed any
+/// more either: this is now a `&'static` table read, not a process-global
+/// `HashMap` that has to be primed first.
 pub async fn supported_toolkits_rpc() -> Result<RpcOutcome<SupportedToolkitsResponse>, String> {
     tracing::debug!("[memory_sources] supported_toolkits_rpc: entry");
-    // Ensure the built-in providers are registered before we snapshot the
-    // registry — in CLI / fresh-process contexts the startup hook that calls
-    // this may not have run yet.
-    crate::openhuman::memory::sync::composio::init_default_composio_sync_providers();
 
     let mut toolkits: Vec<String> =
-        crate::openhuman::memory::sync::composio::all_composio_sync_providers()
+        crate::openhuman::integrations::composio::providers::NATIVE_PROVIDERS
             .iter()
-            .map(|p| p.toolkit_slug().to_string())
+            .map(|(slug, _interval_secs)| (*slug).to_string())
             .collect();
     toolkits.sort();
     toolkits.dedup();

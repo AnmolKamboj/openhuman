@@ -5,23 +5,22 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
-use tinyagents::error::Result as TaResult;
-use tinyagents::harness::context::RunContext;
-use tinyagents::harness::events::AgentEvent;
-use tinyagents::harness::message::{ContentBlock, Message as TaMessage};
-use tinyagents::harness::middleware::{
+use tinyagents_harness::error::Result as TaResult;
+use tinyagents_harness::context::RunContext;
+use tinyagents_harness::events::AgentEvent;
+use tinyinference::message::{ContentBlock, Message as TaMessage};
+use tinyagents_harness::middleware::{
     AgentRun, BudgetTracker, ContextualToolSelectionMiddleware, MicrocompactMiddleware, Middleware,
     MiddlewareToolOutcome, ToolAllowlistMiddleware, ToolHandler, ToolMiddleware,
 };
-use tinyagents::harness::model::{ModelRequest, ModelResponse, PromptSegment, SegmentRole};
-use tinyagents::harness::no_progress::{
+use tinyinference::model::{ModelRequest, ModelResponse, PromptSegment, SegmentRole};
+use tinyagents_harness::no_progress::{
     NoProgress, NoProgressTracker, SuccessfulRepeat, SuccessfulRepeatTracker, ToolAttempt,
 };
-use tinyagents::harness::runtime::AgentHarness;
-use tinyagents::harness::steering::{SteeringCommand, SteeringHandle};
-use tinyagents::harness::tool::{
-    ToolCall as TaToolCall, ToolPolicy as TaToolPolicy, ToolResult as TaToolResult, ToolSchema,
-};
+use tinyagents_harness::runtime::AgentHarness;
+use tinyagents_harness::steering::{SteeringCommand, SteeringHandle};
+use tinyagents_harness::tool::{ToolPolicy as TaToolPolicy, ToolResult as TaToolResult};
+use tinyinference::tool::{ToolCall as TaToolCall, ToolSchema};
 
 use crate::openhuman::agent::context::CLEARED_PLACEHOLDER;
 use crate::openhuman::agent::harness::tool_result_artifacts::{
@@ -490,7 +489,7 @@ fn stable_prefix_fingerprint(value: &serde_json::Value) -> String {
 /// **content-fingerprint ids**: an unchanged system prompt + full tool-schema set
 /// yields a stable prefix, while an injected timestamp/uuid/etc. or changed tool
 /// schema flips it and the guard records a
-/// [`CacheLayoutEvent`](tinyagents::harness::cache::CacheLayoutEvent). This is
+/// [`CacheLayoutEvent`](tinyagents_harness::cache::CacheLayoutEvent). This is
 /// the structured, crate-native replacement for the deleted warn-only
 /// `CacheAlignMiddleware` volatile-token scan (C3): the crate
 /// `PromptCacheGuardMiddleware` now owns KV-cache-prefix drift detection via

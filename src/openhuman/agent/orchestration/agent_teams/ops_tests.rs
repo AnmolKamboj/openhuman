@@ -81,7 +81,7 @@ fn assign_task_rejects_self_unknown_and_cycle() {
     // `assign_task`, which only ever creates new tasks and can never make
     // an existing one depend on something newer) with a synthetic fixture
     // list. Using ids distinct from every existing task matters here:
-    // `tinyagents::graph::dag::has_cycle` deliberately processes only the
+    // `tinyagents_graph::dag::has_cycle` deliberately processes only the
     // *first* declaration of a repeated id and ignores the rest (see its
     // doc comment on `DagIssue::DuplicateNode`), so reusing `a.id` for the
     // new candidate — as this test previously did — is silently ignored

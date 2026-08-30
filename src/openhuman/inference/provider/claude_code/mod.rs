@@ -23,8 +23,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::error::TinyAgentsError;
-use tinyagents::harness::model::{
+use tinyinference::model::{
     ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
 };
 use tokio::sync::Semaphore;
@@ -200,12 +199,12 @@ impl ClaudeCodeProvider {
     }
 }
 
-fn map_model_error(error: anyhow::Error) -> TinyAgentsError {
+fn map_model_error(error: anyhow::Error) -> tinyinference::Error {
     let message = format!("claude-code model call failed: {error}");
     if crate::openhuman::inference::provider::error_classify::is_non_retryable(&error) {
-        TinyAgentsError::Validation(message)
+        tinyinference::Error::Validation(message)
     } else {
-        TinyAgentsError::Model(message)
+        tinyinference::Error::Model(message)
     }
 }
 
@@ -219,7 +218,7 @@ impl ChatModel<()> for ClaudeCodeProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let messages = crate::openhuman::agent::tinyagents::model::native_chat_messages(&request);
         let response = self
             .run_chat(
@@ -236,7 +235,11 @@ impl ChatModel<()> for ClaudeCodeProvider {
         Ok(crate::openhuman::agent::tinyagents::model::native_model_response(&response))
     }
 
-    async fn stream(&self, _state: &(), request: ModelRequest) -> tinyagents::Result<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let provider = self.clone();
         let label = self.model.clone();
         let (item_tx, item_rx) = tokio::sync::mpsc::unbounded_channel::<ModelStreamItem>();

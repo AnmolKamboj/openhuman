@@ -3,7 +3,7 @@
 //! ## Where the implementation lives
 //!
 //! The cache, placeholder renderer, and content-hygiene helpers are
-//! **TinyAgents'** ([`tinyagents::harness::handoff`]): host-agnostic and
+//! **TinyAgents'** ([`tinyagents_harness::handoff`]): host-agnostic and
 //! re-exported here under their historical OpenHuman names so call sites
 //! and the RPC/tool surface are unchanged. See that module's docs for the
 //! full picture — typed sub-agents (integrations_agent in particular)
@@ -34,7 +34,7 @@
 // itself) but are kept re-exported here for surface parity with the
 // pre-migration module and in case a future caller needs them directly.
 #[allow(unused_imports)]
-pub(crate) use tinyagents::harness::handoff::{
+pub(crate) use tinyagents_harness::handoff::{
     build_handoff_placeholder, chunk_content, clean_tool_output, CachedResult, ResultHandoffCache,
     HANDOFF_MAX_ENTRIES, HANDOFF_OVERSIZE_THRESHOLD_TOKENS, HANDOFF_PREVIEW_CHARS,
 };
@@ -43,7 +43,7 @@ pub(crate) use tinyagents::harness::handoff::{
 /// effective oversize threshold from `OPENHUMAN_TEST_HANDOFF_THRESHOLD_TOKENS`
 /// when set, falling back to [`HANDOFF_OVERSIZE_THRESHOLD_TOKENS`] otherwise,
 /// then delegates the cache/placeholder logic to
-/// [`tinyagents::harness::handoff::apply_handoff`].
+/// [`tinyagents_harness::handoff::apply_handoff`].
 pub(crate) fn apply_handoff(
     cache: &ResultHandoffCache,
     tool_name: &str,
@@ -55,7 +55,7 @@ pub(crate) fn apply_handoff(
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(HANDOFF_OVERSIZE_THRESHOLD_TOKENS);
-    tinyagents::harness::handoff::apply_handoff(
+    tinyagents_harness::handoff::apply_handoff(
         cache,
         tool_name,
         task_id,

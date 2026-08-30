@@ -17,7 +17,7 @@ use tinyflows_sqlite::checkpoint::SqliteCheckpointer;
 fn schema_is_identical_to_the_backend_it_replaced() {
     assert_eq!(
         SqliteCheckpointer::<serde_json::Value>::schema_sql(),
-        tinyagents::graph::SqliteCheckpointer::<serde_json::Value>::schema_sql(),
+        tinyagents_graph::SqliteCheckpointer::<serde_json::Value>::schema_sql(),
         "the ported schema drifted from the tinyagents backend that wrote every \
      checkpoints.db in the field — an existing database would stop resuming"
     );
@@ -34,18 +34,18 @@ async fn reads_a_database_written_by_the_previous_backend() {
 
     // Fully qualified: the two `Checkpointer` traits share a method set, so
     // importing both here would make every call in this file ambiguous.
-    use tinyagents::Checkpointer as LegacyCheckpointer;
+    use tinyagents_graph::Checkpointer as LegacyCheckpointer;
 
-    let old = tinyagents::graph::SqliteCheckpointer::<serde_json::Value>::open(&db).unwrap();
-    let written = tinyagents::graph::Checkpoint {
+    let old = tinyagents_graph::SqliteCheckpointer::<serde_json::Value>::open(&db).unwrap();
+    let written = tinyagents_graph::Checkpoint {
         thread_id: "flow:f1:run-a".to_string(),
         checkpoint_id: "cp-1".to_string(),
         run_id: Some("run-1".to_string()),
         parent_checkpoint_id: None,
         namespace: Vec::new(),
         state: json!({ "counter": 7 }),
-        next_nodes: vec![tinyagents::harness::ids::NodeId::new("next")],
-        completed_tasks: vec![tinyagents::harness::ids::NodeId::new("done")],
+        next_nodes: vec![tinyagents_harness::ids::NodeId::new("next")],
+        completed_tasks: vec![tinyagents_harness::ids::NodeId::new("done")],
         pending_writes: Vec::new(),
         interrupts: Vec::new(),
         pending_activations: None,
