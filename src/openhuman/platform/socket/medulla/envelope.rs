@@ -256,7 +256,6 @@ pub fn envelope_for_kind(session_id: &str, seq: i64, kind: &HarnessEventKind) ->
             scope_type: "session".to_string(),
             wrapper_session_id: session_id.to_string(),
             harness_session_id: session_id.to_string(),
-            ..Default::default()
         },
         event: HarnessEvent {
             id: format!("{session_id}-{seq}"),
@@ -265,9 +264,7 @@ pub fn envelope_for_kind(session_id: &str, seq: i64, kind: &HarnessEventKind) ->
             role: AGENT_ROLE.to_string(),
             kind: kind_str,
             payload,
-            ..Default::default()
         },
-        ..Default::default()
     }
 }
 
