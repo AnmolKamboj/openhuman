@@ -202,3 +202,56 @@ Google ones and OneDrive — had been rendering the generic
 capability matrix and in the orchestrator's connected-integration prompt. Fixed
 by aliasing; `toolkit_description_is_populated_for_every_capability_toolkit`
 pins it.
+
+
+## The sources migration (landed)
+
+`memory::sources` went from `pub use tinymemory_core::sources::*;` to **one**
+named engine line.
+
+- `Cargo.toml` takes `tinymemory-sources` directly (`features = ["network"]`,
+  matching what `tinymemory-core` enables).
+- `memory/sources/registry.rs` — the config-path + write-lock layer, ported
+  function for function over `tinymemory_sources::registry::SourceRegistry`.
+  Same locking, same error stringification, same on-disk format. The `_in`
+  variants keep taking an explicit config, because reading the process-global
+  path from a workspace-bound caller is the cross-workspace leak the binding map
+  exists to prevent.
+- `memory/sources/readers/` — the `SourceReader` trait (product-shaped, takes a
+  `&Config`) plus seven readers. Five are adapters over
+  `tinymemory_sources::readers`; `composio` and `twitter` came home from the
+  engine unchanged, with their tests.
+- `memory/sources/types` re-exports the crate's vocabulary.
+
+Still the engine's, named rather than globbed: `sync`, `status`, `reconcile`.
+
+**`MemoryChunks::source_totals` is not a substitute for `status`.** It looks
+like one. `SourceTotal` carries `chunk_count` and `most_recent_ms` but **no
+`chunks_pending`** — and pending ("has no embedding, was not dropped, was not
+skipped for re-embed") is the whole point of a sync-status row. It also omits a
+source with zero chunks entirely, where `status_list` returns a row per
+*configured* source. Migrating onto it would compile and quietly report a
+healthy store. Upstream ask: a pending count on `SourceTotal`.
+
+### `reader_for` hands out network readers — do not reuse it from a loop
+
+`tinymemory_sources::readers::reader_for` returns `None` for the network kinds
+deliberately, so that the host stays in charge of egress, OAuth and cost. The
+host's `reader_for` hands out all seven, matching the engine's, because its
+callers are RPC handlers acting on an explicit user request naming one source
+id. That is written into the module docs. A polling loop must construct a
+network reader deliberately instead.
+
+## The kernel-floor ratchet is already red on `main`
+
+`scripts/check-kernel-floor.sh` fails with **289 packages / 271 names against a
+288 / 270 limit**, and it fails **identically on `main`** — verified by running
+it in both checkouts and diffing the resolved package lists, which are the same
+271 names with and without this branch's `tinymemory-sources` line. That
+dependency was already in the kernel graph transitively through
+`tinymemory-core`, so taking it directly costs nothing.
+
+Do **not** raise `scripts/kernel-floor.limits` as part of this work: the growth
+is not this branch's, and raising it here would launder someone else's
+regression into a memory-migration PR. It needs finding and justifying on its
+own.
