@@ -3,6 +3,31 @@
 //! Everything here is local: temp workspaces, loopback HTTP, and a fake `gh`
 //! binary. Run with `--test-threads=1` because config and PATH are process
 //! globals.
+//!
+//! # What changed here
+//!
+//! tinymemory v1.13.4 deleted the entire in-process Composio provider
+//! registry — `ComposioProvider`, `ProviderContext`, the concrete
+//! `GitHubProvider`/`ClickUpProvider`/`GmailProvider`/`SlackProvider` structs,
+//! `run_backfill_via_search`, and the registry functions
+//! (`init_default_composio_sync_providers`/`get_composio_sync_provider`/
+//! `all_composio_sync_providers`) — see
+//! `crate::openhuman::integrations::composio::providers`'s module docs. None
+//! of that moved anywhere reachable from this crate: fetching a profile,
+//! normalizing a task, and post-processing a toolkit's response now happen
+//! inside the separately-versioned `tinyconnectors` module, reachable only
+//! over the module bus (a real download + `dlopen`), which this file's own
+//! "everything here is local" design rules out.
+//! `composio_providers_fetch_profiles_tasks_and_cover_error_branches` tested
+//! exactly that deleted, now-relocated behaviour — genuinely untestable from
+//! here, reported as a gap rather than dropped.
+//!
+//! What *is* still real, current, and network-free: the curated catalog table
+//! (`NATIVE_PROVIDERS`/`has_native_provider`, unchanged, now re-exported from
+//! `integrations::composio::providers` instead of
+//! `memory::sync::composio::providers`) and the bus subscribers
+//! (`memory::sync::composio::bus::*`, untouched). Both are preserved below in
+//! `composio_provider_catalog_and_bus_subscribers_expose_stable_metadata`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -17,6 +42,9 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
+use openhuman_core::openhuman::integrations::composio::providers::{
+    has_native_provider, SyncReason, NATIVE_PROVIDERS,
+};
 use openhuman_core::openhuman::memory::sources::readers::SourceReader;
 use openhuman_core::openhuman::memory::sources::registry::{
     add_source, get_source, list_enabled_by_kind, remove_composio_source_by_connection_id,
@@ -27,18 +55,6 @@ use openhuman_core::openhuman::memory::sources::{
 };
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
-};
-use openhuman_core::openhuman::memory::sync::composio::providers::clickup::ClickUpProvider;
-use openhuman_core::openhuman::memory::sync::composio::providers::github::GitHubProvider;
-use openhuman_core::openhuman::memory::sync::composio::providers::gmail::GmailProvider;
-use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
-    run_backfill_via_search, SlackProvider,
-};
-use openhuman_core::openhuman::memory::sync::composio::providers::{
-    ComposioProvider, ProviderContext, SyncReason, TaskFetchFilter,
-};
-use openhuman_core::openhuman::memory::sync::composio::{
-    all_composio_sync_providers, get_composio_sync_provider, init_default_composio_sync_providers,
 };
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
