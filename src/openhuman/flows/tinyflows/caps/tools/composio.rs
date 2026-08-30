@@ -263,21 +263,24 @@ impl ToolBackend for ComposioToolBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use axum::{routing::post, Json, Router};
     use serde_json::{json, Value};
 
     use super::*;
-    use crate::openhuman::integrations::composio::ComposioClient;
-    use crate::openhuman::integrations::IntegrationClient;
+    use crate::openhuman::integrations::composio::module_client::module_guard;
 
     /// Regression for #5751: the flow adapter used to parse and log the chosen
     /// account, then call `execute_tool` without it. The request therefore ran
     /// against the ambient account. Pin the final backend JSON body so that
     /// dropping the id at any point in this seam fails the test.
+    ///
+    /// The seam is longer now — the id crosses the bus into the module before
+    /// it reaches a request — which is exactly why this still asserts on the
+    /// body the backend receives rather than on anything in between.
     #[tokio::test]
     async fn backend_dispatch_forwards_the_workflow_connection_id() {
+        let _serialised = module_guard().await;
+
         let app = Router::new().route(
             "/agent-integrations/composio/execute",
             post(|Json(body): Json<Value>| async move {
@@ -305,15 +308,25 @@ mod tests {
                 .expect("serve mock backend");
         });
 
-        let client = ComposioClient::new(Arc::new(IntegrationClient::new(
-            format!("http://{addr}"),
-            "test-token".to_string(),
-        )));
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().join("workspace");
+        config.config_path = tmp.path().join("config.toml");
+        config.api_url = Some(format!("http://{addr}"));
+        crate::openhuman::security::credentials::AuthService::from_config(&config)
+            .store_provider_token(
+                crate::openhuman::security::credentials::APP_SESSION_PROVIDER,
+                crate::openhuman::security::credentials::DEFAULT_AUTH_PROFILE_NAME,
+                "test-token",
+                std::collections::HashMap::new(),
+                true,
+            )
+            .expect("store test session token");
+
         let response = execute_for_connection(
-            ComposioClientKind::Backend(client),
+            &config,
             "GITHUB_LIST_REPOSITORY_ISSUES",
             Some(json!({ "owner": "tinyhumansai" })),
-            "unused-in-backend-mode",
             Some("ca_target_account"),
         )
         .await
