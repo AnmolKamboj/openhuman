@@ -203,7 +203,7 @@ impl ToolBackend for ComposioToolBackend {
         tracing::debug!(
             target: "flows",
             %slug,
-            mode = kind.mode(),
+            mode = live_config.composio.mode.as_str(),
             has_connection_ref = connection_id.is_some(),
             "[flows] tool_call: invoking composio tool"
         );
@@ -214,14 +214,14 @@ impl ToolBackend for ComposioToolBackend {
                 %slug,
                 connection_id = %id,
                 %toolkit,
-                mode = kind.mode(),
+                mode = live_config.composio.mode.as_str(),
                 "[flows] tool_call: executing against the resolved connected account"
             ),
             Some((id, None)) => tracing::warn!(
                 target: "flows",
                 %slug,
                 connection_id = %id,
-                mode = kind.mode(),
+                mode = live_config.composio.mode.as_str(),
                 "[flows] tool_call: connection_ref connection_id not found among the user's live \
                  connected accounts (stale cache or foreign id) — forwarding the exact id so the \
                  provider can reject it rather than falling back to an ambient account"
@@ -229,7 +229,7 @@ impl ToolBackend for ComposioToolBackend {
             None => tracing::debug!(
                 target: "flows",
                 %slug,
-                mode = kind.mode(),
+                mode = live_config.composio.mode.as_str(),
                 "[flows] tool_call: no connection_ref — using the ambient signed-in account"
             ),
         }
