@@ -35,7 +35,7 @@ use openhuman_core::openhuman::memory::sync::composio::bus::{
 // what moved where.
 use tinymemory_api::composio::state::{extract_item_id, DailyBudget, SyncState};
 use openhuman_core::openhuman::integrations::composio::providers::{
-    agent_ready_toolkits, capability_matrix, catalog_for_toolkit, classify_unknown, find_curated,
+    agent_ready_toolkits, catalog_for_toolkit, classify_unknown, find_curated, has_native_provider,
     is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ToolScope, UserScopePref,
 };
 use openhuman_core::openhuman::memory::tree::score::extract::{EntityKind, ExtractedEntities};
