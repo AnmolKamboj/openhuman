@@ -3912,13 +3912,13 @@ mod tests {
             // Bare, as the wallet layer produces it.
             sentinel.to_string(),
             // The wrap that #5805 actually observed.
-            format!("self_identity key_status: {sentinel}"),
+            format!("wallet status: {sentinel}"),
             // Two layers — a wrapper wrapping a wrapper. Exact equality and a
             // single-prefix strip both fail here; substring matching does not.
-            format!("orchestration.self_identity failed: self_identity key_status: {sentinel}"),
+            format!("wallet transfer failed: wallet status: {sentinel}"),
             // A different domain entirely, to show the fix is not scoped to the
             // one call site the issue was found through.
-            format!("tinyplace signal seed: {sentinel}"),
+            format!("wallet balance failed: {sentinel}"),
         ] {
             assert_eq!(
                 expected_error_kind(&msg),
@@ -3928,7 +3928,7 @@ mod tests {
         }
         // Full demotion path (classifier -> report arm) must not panic.
         report_error_or_expected(
-            &format!("self_identity key_status: {sentinel}"),
+            &format!("wallet status: {sentinel}"),
             "rpc",
             "invoke_method",
             &[],

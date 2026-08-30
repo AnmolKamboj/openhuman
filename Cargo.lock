@@ -4168,7 +4168,6 @@ dependencies = [
  "tinymemory-bus",
  "tinymemory-core",
  "tinymemory-tinycortex",
- "tinyplace",
  "tinyruntime-bus",
  "tinytools",
  "tinyvoice-bus",
@@ -6685,33 +6684,6 @@ dependencies = [
  "tinymemory-core",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "tinyplace"
-version = "2.0.4"
-dependencies = [
- "aes",
- "async-trait",
- "base64 0.22.1",
- "bs58",
- "cbc",
- "chrono",
- "curve25519-dalek",
- "ed25519-dalek",
- "futures-util",
- "hkdf",
- "hmac 0.12.1",
- "rand 0.8.6",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.29.0",
- "url",
- "x25519-dalek",
 ]
 
 [[package]]

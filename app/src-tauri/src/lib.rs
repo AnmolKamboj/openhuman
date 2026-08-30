@@ -2120,10 +2120,8 @@ fn append_platform_cef_gpu_workarounds(
     //
     // The original workaround disabled the GPU path with `--disable-gpu`, but
     // that shuts the GPU process down entirely — and with it every WebGL
-    // surface. That regressed Tiny Place (#4193): the world renderer needs a
-    // WebGL2 context, so on every packaged Linux build it failed to initialise
-    // and the world page showed a black screen with "Could not start the world
-    // renderer" (the Rive mascot on the Human tab is collateral damage too).
+    // surface. That regressed WebGL rendering (#4193), including the Rive
+    // mascot on the Human tab.
     //
     // Instead of killing the GPU process, pin it to ANGLE's SwiftShader
     // software backend. SwiftShader is a pure-software rasteriser that needs no
@@ -2143,7 +2141,7 @@ fn append_platform_cef_gpu_workarounds(
         } else {
             push_swiftshader_software_gl(args);
             log::info!(
-                "[cef-startup] Linux detected: forcing ANGLE/SwiftShader software GL so WebGL surfaces (Tiny Place world renderer, Rive mascot) render without the crash-prone hardware GPU process (issues #1697/#4193); set OPENHUMAN_FORCE_GPU=1 for hardware acceleration"
+                "[cef-startup] Linux detected: forcing ANGLE/SwiftShader software GL so WebGL surfaces render without the crash-prone hardware GPU process (issues #1697/#4193); set OPENHUMAN_FORCE_GPU=1 for hardware acceleration"
             );
         }
     }

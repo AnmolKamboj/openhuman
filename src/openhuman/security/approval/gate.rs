@@ -2798,7 +2798,7 @@ mod tests {
 
     /// Regression for #5508 / #5499: an external-effect scheduling tool
     /// (`cron_add`) that runs on a freshly-spawned, turn-less task — the exact
-    /// shape of `hosted::orchestration::effect_executor::run_local_agent`, which
+    /// shape of a hosted effect executor, which
     /// fires the local sub-agent from a bare `tokio::spawn` with no agent turn on
     /// the stack — must NOT be `Unknown`-denied once the spawn site scopes an
     /// explicit `AgentTurnOrigin::Cli` (the residual site PR #5465 did not cover).

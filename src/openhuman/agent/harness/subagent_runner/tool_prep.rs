@@ -229,14 +229,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn custom_tinyplace_delegate_is_treated_as_spawn_tool() {
+    fn custom_delegate_is_treated_as_spawn_tool() {
         assert!(is_subagent_spawn_tool("spawn_subagent"));
         assert!(is_subagent_spawn_tool("delegate_researcher"));
         // Context scouting is top-level only — never visible to sub-agents
         // (incl. wildcard agents), which would otherwise scout the wrong
         // parent context. See #3949 review.
         assert!(is_subagent_spawn_tool("agent_prepare_context"));
-        assert!(!is_subagent_spawn_tool("tinyplace_directory_resolve"));
+        assert!(!is_subagent_spawn_tool("directory_resolve"));
     }
 
     #[test]

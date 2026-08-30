@@ -273,7 +273,7 @@ mod tests {
         let args = json!({
             "recipient": "@alice",
             "plaintext": "meet me at the usual spot",
-            "associatedData": { "topic": "tinyplace dm" }
+            "associatedData": { "topic": "private message" }
         });
         let red = redact_args(&args);
 
@@ -293,7 +293,7 @@ mod tests {
             "got {:?}",
             red["recipient"]
         );
-        assert_eq!(red["associatedData"]["topic"], "tinyplace dm");
+        assert_eq!(red["associatedData"]["topic"], "private message");
     }
 
     #[test]
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn tinyplace_write_content_fields_are_redacted() {
+    fn network_write_content_fields_are_redacted() {
         let args = json!({
             "title": "Build my thing",
             "description": "Long private task brief",
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn tinyplace_profile_update_fields_are_redacted() {
+    fn profile_update_fields_are_redacted() {
         let args = json!({
             "cryptoId": "did:example:alice",
             "update": {

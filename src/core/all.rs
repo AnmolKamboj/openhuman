@@ -134,12 +134,9 @@ pub enum DomainGroup {
     /// Desktop-shell-facing surfaces a headless or embedded host has no use for
     /// (`desktop/`).
     Desktop,
-    /// Clients of the hosted TinyHumans backend — billing, team, referral,
-    /// announcements, the hosted orchestration brain (`hosted/`). A self-hosted
-    /// build drops these as a unit.
+    /// Clients of the hosted TinyHumans backend — billing, team, referral, and
+    /// announcements (`hosted/`). A self-hosted build drops these as a unit.
     Hosted,
-    /// The multi-agent relay surface (`tinyplace/`).
-    Relay,
     /// Loadable native modules: the module host, its registry, and the `modules`
     /// RPC surface (`modules/`).
     Modules,
@@ -149,7 +146,7 @@ pub enum DomainGroup {
 
 impl DomainGroup {
     /// Number of variants. Kept in sync by `domain_group_all_lists_every_variant`.
-    pub const COUNT: usize = 22;
+    pub const COUNT: usize = 21;
 
     /// Every variant, for exhaustive iteration in drift guards.
     ///
@@ -180,7 +177,6 @@ impl DomainGroup {
         DomainGroup::Runtimes,
         DomainGroup::Desktop,
         DomainGroup::Hosted,
-        DomainGroup::Relay,
         DomainGroup::Modules,
         DomainGroup::Platform,
     ];
@@ -209,9 +205,8 @@ impl DomainGroup {
             DomainGroup::Runtimes => 16,
             DomainGroup::Desktop => 17,
             DomainGroup::Hosted => 18,
-            DomainGroup::Relay => 19,
-            DomainGroup::Modules => 20,
-            DomainGroup::Platform => 21,
+            DomainGroup::Modules => 19,
+            DomainGroup::Platform => 20,
         }
     }
 }
@@ -1036,28 +1031,6 @@ fn build_internal_only_controllers() -> Vec<GroupedController> {
         DomainGroup::Modules,
         crate::openhuman::modules::all_registered_controllers(),
     );
-    // tiny.place A2A social-network integration: renderer-callable via core_rpc_relay
-    // but NOT advertised to agents in tool listings or schema discovery.
-    push(
-        &mut controllers,
-        DomainGroup::Relay,
-        crate::openhuman::tinyplace::all_tinyplace_registered_controllers(),
-    );
-    // User-consented tiny.place pairing for wrapped agent sessions: UI-callable
-    // via core_rpc_relay, but excluded from agent tool listings/schema discovery.
-    push(
-        &mut controllers,
-        DomainGroup::Agent,
-        crate::openhuman::agent::orchestration::all_pairing_registered_controllers(),
-    );
-    // Orchestration read surface (stage 7): the TinyPlaceOrchestrationTab reads
-    // sessions/messages, sends Master steering DMs, marks read, and polls status.
-    // Renderer-only — not advertised to agents.
-    push(
-        &mut controllers,
-        DomainGroup::Hosted,
-        crate::openhuman::hosted::orchestration::all_registered_controllers(),
-    );
     controllers
 }
 
@@ -1175,12 +1148,6 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         "agent_team" => Some(
             "Durable agent-team coordination: teams, members, dependency-aware task claiming, and teammate messaging.",
         ),
-        "orchestration_pairing" => Some(
-            "User-consented tiny.place contact pairing for wrapped agent sessions.",
-        ),
-        "orchestration" => Some(
-            "Subconscious-orchestration read surface: chat windows (master/subconscious/per-session), message history, Master steering DMs, read state, and steering status.",
-        ),
         "billing" => Some("Subscription plan, payment links, and credit top-up via the backend."),
         "announcements" => {
             Some("Latest active product announcement surfaced on harness init, via the backend.")
@@ -1224,9 +1191,6 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         ),
         "subsystems" => Some(
             "Kernel subsystem slots and their bound drivers: class, health, contract version, and advertised capabilities.",
-        ),
-        "tinyplace" => Some(
-            "tiny.place A2A social-network integration: directory, explorer, and search over the agent network.",
         ),
         _ => None,
     }

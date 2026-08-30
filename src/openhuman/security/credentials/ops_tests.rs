@@ -1390,13 +1390,10 @@ async fn start_login_gated_services_completes_with_all_services_disabled() {
     let mut config = Config::default();
     // Every service is disabled so each `start_if_enabled` is a no-op: the test
     // exercises the concurrent spawn/await machinery (the changed code) without
-    // touching the mic, a model, the screen, or the network. orchestration
-    // defaults ENABLED, so it must be turned off explicitly; the rest are set
-    // too, independent of future default changes.
+    // touching the mic, a model, the screen, or the network.
     config.local_ai.runtime_enabled = false;
     config.voice_server.auto_start = false;
     config.voice_server.always_on_enabled = false;
-    config.orchestration.enabled = false;
 
     // Bound the wait so a serial-blocking regression (or a hung join) fails the
     // test instead of hanging CI. Every service no-ops, so this resolves almost
