@@ -1,7 +1,7 @@
 //! Tests for the surrounding module.
 
 use super::*;
-use crate::sources::types::MemorySourceEntry;
+use crate::openhuman::memory::sources::types::MemorySourceEntry;
 
 fn test_source() -> MemorySourceEntry {
     MemorySourceEntry {

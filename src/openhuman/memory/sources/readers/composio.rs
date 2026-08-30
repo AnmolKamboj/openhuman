@@ -14,6 +14,12 @@ use crate::openhuman::config::Config;
 
 use crate::openhuman::memory::sources::readers::SourceReader;
 
+/// Lists a Composio connection as a single sync target.
+///
+/// Composio data arrives through the provider sync pipeline rather than
+/// item-by-item, so `read_item` returns a description of that rather than
+/// content. The reader exists so the registry can query every source kind
+/// uniformly.
 pub struct ComposioReader;
 
 #[async_trait]

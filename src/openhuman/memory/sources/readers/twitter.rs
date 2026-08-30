@@ -14,6 +14,11 @@ use crate::openhuman::memory::sources::readers::SourceReader;
 
 const DEFAULT_SINCE_DAYS: u32 = 7;
 
+/// Reads `twitter_query` sources.
+///
+/// Unimplemented: the Twitter API v2 search endpoint needs a bearer token and
+/// that credential wiring has not landed, so both methods validate the source
+/// and return an error naming what is missing.
 pub struct TwitterReader;
 
 #[async_trait]
