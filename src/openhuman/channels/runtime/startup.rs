@@ -972,3 +972,47 @@ mod email_secret_tests {
         );
     }
 }
+
+/// Supplies `tinychannels`' provider factory with this host's HTTP clients.
+///
+/// The factory is transport-agnostic on purpose: proxy configuration, TLS
+/// backend and timeouts are the embedding host's business. This is where
+/// OpenHuman's runtime proxy settings get applied, per channel, using the same
+/// `channel.<name>` identifiers the config UI shows.
+struct RuntimeProxyClients;
+
+impl tinychannels::HttpClientFactory for RuntimeProxyClients {
+    fn client_for(&self, channel: &str) -> reqwest::Client {
+        crate::openhuman::config::build_runtime_proxy_client(channel)
+    }
+
+    /// Signal talks to a local `signal-cli` HTTP bridge that may simply not be
+    /// running. Without a connect timeout that presents as a hang at startup
+    /// rather than an error, so the default is overridden to keep the 10s bound
+    /// this host has always used.
+    fn signal_client(&self) -> reqwest::Client {
+        crate::openhuman::config::apply_runtime_proxy_to_builder(
+            reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)),
+            "channel.signal",
+        )
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+    }
+}
+
+/// Resolve channel secrets that live outside the config file.
+///
+/// `tinychannels::build_channels` cannot do this: secrets may sit in the
+/// keyring, an environment variable or the config, and only this host knows
+/// which. It therefore expects an already-hydrated config, and this is where
+/// that happens — on a clone, so the persisted config is never mutated.
+fn hydrate_channel_credentials(config: &Config) -> tinychannels::ChannelsConfig {
+    let mut hydrated = config.channels_config.clone();
+    if let Some(email_cfg) = hydrated.email.take() {
+        hydrated.email = Some(resolve_email_password(email_cfg, config));
+    }
+    if let Some(yb_cfg) = hydrated.yuanbao.take() {
+        hydrated.yuanbao = Some(resolve_yuanbao_app_secret(yb_cfg, config));
+    }
+    hydrated
+}
