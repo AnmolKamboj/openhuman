@@ -591,15 +591,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "block-padding"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
-dependencies = [
- "generic-array",
-]
-
-[[package]]
 name = "block2"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -749,15 +740,6 @@ checksum = "374b7c592d9c00c1f4972ea58390ac6b18cbb6ab79011f3bdc90a0b82ca06b77"
 dependencies = [
  "serde",
  "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "cbc"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26b52a9543ae338f279b96b0b9fed9c8093744685043739079ce85cd58f289a6"
-dependencies = [
- "cipher",
 ]
 
 [[package]]
@@ -2937,7 +2919,6 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
- "block-padding",
  "generic-array",
 ]
 
@@ -4341,6 +4322,7 @@ dependencies = [
  "tinyagents",
  "tinybus",
  "tinychannels",
+ "tinychannels-bus",
  "tinycortex",
  "tinycortex-api",
  "tinydocs-bus",
@@ -4358,7 +4340,6 @@ dependencies = [
  "tinymemory-bus",
  "tinymemory-core",
  "tinymemory-tinycortex",
- "tinyplace",
  "tinyruntime-bus",
  "tinytools",
  "tinyvoice-bus",
@@ -7017,6 +6998,7 @@ dependencies = [
  "sha1",
  "sha2 0.10.9",
  "thiserror 2.0.20",
+ "tinychannels-bus",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite 0.29.0",
@@ -7025,6 +7007,28 @@ dependencies = [
  "urlencoding",
  "uuid",
  "webpki-roots 1.0.9",
+]
+
+[[package]]
+name = "tinychannels-bus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "hex",
+ "hmac",
+ "parking_lot",
+ "rand 0.10.2",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -7314,33 +7318,6 @@ dependencies = [
  "tinymemory-core",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "tinyplace"
-version = "2.0.4"
-dependencies = [
- "aes",
- "async-trait",
- "base64 0.22.1",
- "bs58",
- "cbc",
- "chrono",
- "curve25519-dalek",
- "ed25519-dalek",
- "futures-util",
- "hkdf",
- "hmac",
- "rand 0.8.7",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "tokio",
- "tokio-tungstenite 0.29.0",
- "url",
- "x25519-dalek",
 ]
 
 [[package]]

@@ -10,7 +10,6 @@
 //!
 //! - **endpoint resolution**, including the `OPENHUMAN_WALLET_RPC_<CHAIN>`
 //!   overrides the e2e tests point at a mock;
-//! - **failover** across the tiny.place Solana endpoint list;
 //! - **URL redaction**, so an endpoint carrying an API key never reaches a log;
 //! - the shared `reqwest` client and its connection pool.
 //!

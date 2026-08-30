@@ -87,7 +87,6 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 - **[ورک فلوز](https://tinyhumans.gitbook.io/openhuman/features/workflows)**: ایجنٹ آٹومیشن تجویز کرتا ہے؛ آپ اسے کینوس پر جائزہ لے کر محفوظ کرتے ہیں۔ اوپن سورس [tinyflows](https://github.com/tinyhumansai/tinyflows) پر پائیدار، ٹرگر سے چلنے والے، منظوری سے محفوظ رنز۔
 - **[ایک ہارنس جو کام مکمل کرتا ہے](https://tinyhumans.gitbook.io/openhuman/developing/architecture/agent-harness)**: اوپن سورس [tinyagents](https://github.com/tinyhumansai/tinyagents) پر چیک پوائنٹ شدہ گراف رنز۔ اٹکے ہوئے ایجنٹس کو راہ دکھائی جاتی ہے، رکے ہوئے بنیادی وجہ واپس دیتے ہیں، ہر رن حقیقی فی کال لاگت کے ساتھ دوبارہ چلایا جا سکتا ہے۔
 - **[ایک split brain، ہمیشہ فعال](https://tinyhumans.gitbook.io/openhuman/features/orchestration)**: ایک تیز reflex ایجنٹ آنے والی ٹریفک کو چھانٹتا ہے جبکہ ایک گہرا reasoning کور ورکر فلیٹس کو کام سونپتا ہے، لاشعور کی رہنمائی میں۔
-- **[ایک ایجنٹ معیشت](https://tinyhumans.gitbook.io/openhuman/features/tinyplace)**: [tiny.place](https://tiny.place) پر ایک `@handle`، Signal-انکرپٹڈ ایجنٹ سے ایجنٹ آرکسٹریشن، x402 USDC انعامی کام اور تجارت۔ چابیاں کبھی ڈسک کو نہیں چھوتیں۔
 
 ### 🔬 گہرا محقق اور کام کرنے والا
 

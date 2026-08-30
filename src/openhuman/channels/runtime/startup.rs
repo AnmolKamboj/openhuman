@@ -11,25 +11,7 @@ use crate::openhuman::channels::context::{
     effective_channel_message_timeout_secs, ChannelRuntimeContext,
     DEFAULT_CHANNEL_INITIAL_BACKOFF_SECS, DEFAULT_CHANNEL_MAX_BACKOFF_SECS,
 };
-use crate::openhuman::channels::dingtalk::DingTalkChannel;
-use crate::openhuman::channels::discord::DiscordChannel;
-use crate::openhuman::channels::email_channel::EmailChannel;
-use crate::openhuman::channels::imessage::IMessageChannel;
-use crate::openhuman::channels::irc;
-use crate::openhuman::channels::irc::IrcChannel;
-use crate::openhuman::channels::lark::LarkChannel;
-use crate::openhuman::channels::linq::LinqChannel;
-use crate::openhuman::channels::mattermost::MattermostChannel;
-use crate::openhuman::channels::qq::QQChannel;
-use crate::openhuman::channels::signal::SignalChannel;
-use crate::openhuman::channels::slack::SlackChannel;
-use crate::openhuman::channels::telegram::TelegramChannel;
 use crate::openhuman::channels::traits;
-use crate::openhuman::channels::whatsapp::WhatsAppChannel;
-#[cfg(feature = "whatsapp-web")]
-use crate::openhuman::channels::whatsapp_web::WhatsAppWebChannel;
-use crate::openhuman::channels::yuanbao::YuanbaoChannel;
-use crate::openhuman::channels::Channel;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
 use crate::openhuman::security::SecurityPolicy;
@@ -439,216 +421,21 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     let channel_host =
         crate::openhuman::channels::host::build_channel_host(Arc::new(config.clone()));
 
-    // Collect active channels
-    let mut channels: Vec<Arc<dyn Channel>> = Vec::new();
-
-    if let Some(ref tg) = config.channels_config.telegram {
-        tracing::info!(
-            channel = "telegram",
-            allowed_users_count = tg.allowed_users.len(),
-            mention_only = tg.mention_only,
-            stream_mode = ?tg.stream_mode,
-            draft_update_interval_ms = tg.draft_update_interval_ms,
-            "[channels] telegram enabled in core config (bot token not logged)"
-        );
-        let mut telegram = TelegramChannel::new(
-            tg.bot_token.clone(),
-            tg.allowed_users.clone(),
-            tg.mention_only,
-        )
-        .with_streaming(
-            tg.stream_mode,
-            tg.draft_update_interval_ms,
-            tg.silent_streaming,
-        )
-        .with_chat_id(tg.chat_id.clone())
-        .with_http_client(crate::openhuman::config::build_runtime_proxy_client(
-            "channel.telegram",
-        ));
-        // Inject host capabilities: voice STT, persisted allowlist, reaction
-        // event fan-out. Each is optional — telegram degrades gracefully.
-        if let Some(transcriber) = channel_host.transcriber() {
-            telegram = telegram.with_transcriber(transcriber);
-        }
-        if let Some(allowlist) = channel_host.allowlist() {
-            telegram = telegram.with_allowlist(allowlist);
-        }
-        if let Some(events) = channel_host.events() {
-            telegram = telegram.with_events(events);
-        }
-        channels.push(Arc::new(telegram));
-    } else {
-        tracing::info!(
-            "[channels] telegram not configured (no channels_config.telegram in saved config)"
-        );
-    }
-
-    if let Some(ref dc) = config.channels_config.discord {
-        channels.push(Arc::new(DiscordChannel::with_http_client(
-            dc.bot_token.clone(),
-            dc.guild_id.clone(),
-            dc.channel_id.clone(),
-            dc.allowed_users.clone(),
-            dc.listen_to_bots,
-            dc.mention_only,
-            crate::openhuman::config::build_runtime_proxy_client("channel.discord"),
-        )));
-    }
-
-    if let Some(ref sl) = config.channels_config.slack {
-        channels.push(Arc::new(SlackChannel::with_http_client(
-            sl.bot_token.clone(),
-            sl.channel_id.clone(),
-            sl.allowed_users.clone(),
-            crate::openhuman::config::build_runtime_proxy_client("channel.slack"),
-        )));
-        // Memory-tree ingestion is handled by the Composio-backed
-        // `SlackProvider`, which runs inside `composio::periodic` and
-        // fires per-connection on its own 15-minute cadence. No spawn
-        // required here.
-    }
-
-    if let Some(ref mm) = config.channels_config.mattermost {
-        channels.push(Arc::new(MattermostChannel::with_http_client(
-            mm.url.clone(),
-            mm.bot_token.clone(),
-            mm.channel_id.clone(),
-            mm.allowed_users.clone(),
-            mm.thread_replies.unwrap_or(true),
-            mm.mention_only.unwrap_or(false),
-            crate::openhuman::config::build_runtime_proxy_client("channel.mattermost"),
-        )));
-    }
-
-    if let Some(ref im) = config.channels_config.imessage {
-        channels.push(Arc::new(IMessageChannel::new(im.allowed_contacts.clone())));
-    }
-
-    if config.channels_config.matrix.is_some() {
-        tracing::warn!(
-            "Matrix channel is configured but Matrix support was removed from this build; skipping Matrix runtime startup."
-        );
-    }
-
-    if let Some(ref sig) = config.channels_config.signal {
-        channels.push(Arc::new(SignalChannel::with_http_client(
-            sig.http_url.clone(),
-            sig.account.clone(),
-            sig.group_id.clone(),
-            sig.allowed_from.clone(),
-            sig.ignore_attachments,
-            sig.ignore_stories,
-            crate::openhuman::config::apply_runtime_proxy_to_builder(
-                reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)),
-                "channel.signal",
-            )
-            .build()
-            .expect("Signal HTTP client should build"),
-        )));
-    }
-
-    if let Some(ref wa) = config.channels_config.whatsapp {
-        // Runtime negotiation: detect backend type from config
-        match wa.backend_type() {
-            "cloud" => {
-                // Cloud API mode: requires phone_number_id, access_token, verify_token
-                if wa.is_cloud_config() {
-                    channels.push(Arc::new(WhatsAppChannel::with_http_client(
-                        wa.access_token.clone().unwrap_or_default(),
-                        wa.phone_number_id.clone().unwrap_or_default(),
-                        wa.verify_token.clone().unwrap_or_default(),
-                        wa.allowed_numbers.clone(),
-                        crate::openhuman::config::build_runtime_proxy_client("channel.whatsapp"),
-                    )));
-                } else {
-                    tracing::warn!("WhatsApp Cloud API configured but missing required fields (phone_number_id, access_token, verify_token)");
-                }
-            }
-            "web" => {
-                // Web mode: requires session_path
-                #[cfg(feature = "whatsapp-web")]
-                if wa.is_web_config() {
-                    let mut wa_channel = WhatsAppWebChannel::new(
-                        wa.session_path.clone().unwrap_or_default(),
-                        wa.pair_phone.clone(),
-                        wa.pair_code.clone(),
-                        wa.allowed_numbers.clone(),
-                    );
-                    if let Some(lifecycle) = channel_host.lifecycle() {
-                        wa_channel = wa_channel.with_lifecycle(lifecycle);
-                    }
-                    channels.push(Arc::new(wa_channel));
-                } else {
-                    tracing::warn!("WhatsApp Web configured but session_path not set");
-                }
-                #[cfg(not(feature = "whatsapp-web"))]
-                {
-                    tracing::warn!("WhatsApp Web backend requires 'whatsapp-web' feature. Enable with: cargo build --features whatsapp-web");
-                }
-            }
-            _ => {
-                tracing::warn!("WhatsApp config invalid: neither phone_number_id (Cloud API) nor session_path (Web) is set");
-            }
-        }
-    }
-
-    if let Some(ref lq) = config.channels_config.linq {
-        channels.push(Arc::new(LinqChannel::new(
-            lq.api_token.clone(),
-            lq.from_phone.clone(),
-            lq.allowed_senders.clone(),
-        )));
-    }
-
-    if let Some(ref email_cfg) = config.channels_config.email {
-        let hydrated = resolve_email_password(email_cfg.clone(), &config);
-        channels.push(Arc::new(EmailChannel::new(hydrated)));
-    }
-
-    if let Some(ref irc) = config.channels_config.irc {
-        channels.push(Arc::new(IrcChannel::new(irc::IrcChannelConfig {
-            server: irc.server.clone(),
-            port: irc.port,
-            nickname: irc.nickname.clone(),
-            username: irc.username.clone(),
-            channels: irc.channels.clone(),
-            allowed_users: irc.allowed_users.clone(),
-            server_password: irc.server_password.clone(),
-            nickserv_password: irc.nickserv_password.clone(),
-            sasl_password: irc.sasl_password.clone(),
-            verify_tls: irc.verify_tls.unwrap_or(true),
-        })));
-    }
-
-    if let Some(ref lk) = config.channels_config.lark {
-        channels.push(Arc::new(LarkChannel::from_config(lk)));
-    }
-
-    if let Some(ref dt) = config.channels_config.dingtalk {
-        channels.push(Arc::new(DingTalkChannel::with_http_client(
-            dt.client_id.clone(),
-            dt.client_secret.clone(),
-            dt.allowed_users.clone(),
-            crate::openhuman::config::build_runtime_proxy_client("channel.dingtalk"),
-        )));
-    }
-
-    if let Some(ref qq) = config.channels_config.qq {
-        channels.push(Arc::new(QQChannel::with_http_client(
-            qq.app_id.clone(),
-            qq.app_secret.clone(),
-            qq.allowed_users.clone(),
-            crate::openhuman::config::build_runtime_proxy_client("channel.qq"),
-        )));
-    }
-
-    if let Some(ref yb) = config.channels_config.yuanbao {
-        let yb_cfg = resolve_yuanbao_app_secret(yb.clone(), &config);
-        match YuanbaoChannel::new(yb_cfg) {
-            Ok(ch) => channels.push(Arc::new(ch)),
-            Err(e) => tracing::warn!("[channels] yuanbao config invalid: {e}"),
-        }
-    }
+    // Provider construction lives in `tinychannels::factory` so that this host
+    // and the `tinychannels-module` cdylib build the same providers from the
+    // same config. It used to be ~200 lines inline here; a second copy is how
+    // the two drift, and only one of them would have been the one under test.
+    //
+    // Three things stay on this side because they are host policy, and the
+    // factory's docs say so explicitly:
+    //   - credential hydration (below) reads OpenHuman's keyring,
+    //   - `RuntimeProxyClients` applies the configured HTTP proxy,
+    //   - `channel_host` is the capability surface assembled just above.
+    let channels = tinychannels::build_channels(
+        &hydrate_channel_credentials(&config),
+        &channel_host,
+        &RuntimeProxyClients,
+    );
 
     let relay_config = config
         .channels_config
@@ -1166,4 +953,48 @@ mod email_secret_tests {
             "stale profile for old username must not hydrate the new account",
         );
     }
+}
+
+/// Supplies `tinychannels`' provider factory with this host's HTTP clients.
+///
+/// The factory is transport-agnostic on purpose: proxy configuration, TLS
+/// backend and timeouts are the embedding host's business. This is where
+/// OpenHuman's runtime proxy settings get applied, per channel, using the same
+/// `channel.<name>` identifiers the config UI shows.
+struct RuntimeProxyClients;
+
+impl tinychannels::HttpClientFactory for RuntimeProxyClients {
+    fn client_for(&self, channel: &str) -> reqwest::Client {
+        crate::openhuman::config::build_runtime_proxy_client(channel)
+    }
+
+    /// Signal talks to a local `signal-cli` HTTP bridge that may simply not be
+    /// running. Without a connect timeout that presents as a hang at startup
+    /// rather than an error, so the default is overridden to keep the 10s bound
+    /// this host has always used.
+    fn signal_client(&self) -> reqwest::Client {
+        crate::openhuman::config::apply_runtime_proxy_to_builder(
+            reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10)),
+            "channel.signal",
+        )
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+    }
+}
+
+/// Resolve channel secrets that live outside the config file.
+///
+/// `tinychannels::build_channels` cannot do this: secrets may sit in the
+/// keyring, an environment variable or the config, and only this host knows
+/// which. It therefore expects an already-hydrated config, and this is where
+/// that happens — on a clone, so the persisted config is never mutated.
+fn hydrate_channel_credentials(config: &Config) -> tinychannels::ChannelsConfig {
+    let mut hydrated = config.channels_config.clone();
+    if let Some(email_cfg) = hydrated.email.take() {
+        hydrated.email = Some(resolve_email_password(email_cfg, config));
+    }
+    if let Some(yb_cfg) = hydrated.yuanbao.take() {
+        hydrated.yuanbao = Some(resolve_yuanbao_app_secret(yb_cfg, config));
+    }
+    hydrated
 }

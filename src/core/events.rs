@@ -126,15 +126,6 @@ pub enum DomainEvent {
         orchestration_id: String,
         reason: Option<String>,
     },
-    /// A tiny.place contact edge changed for a wrapped orchestration session.
-    /// Payload is intentionally metadata only; contact graph details stay behind
-    /// the signed tiny.place API.
-    OrchestrationPairingChanged {
-        agent_id: String,
-        status: String,
-        source: String,
-    },
-
     // ── Subconscious orchestrator ───────────────────────────────────────
     /// A subconscious trigger finished gate evaluation (promote or drop).
     /// Observability only — lets dashboards see ingestion volume and the
@@ -390,7 +381,7 @@ pub enum DomainEvent {
         thread_ts: Option<String>,
         /// Provider-neutral envelope projected from the inbound channel message.
         /// Legacy publishers may omit it until they adopt TinyChannels.
-        inbound_envelope: Option<tinychannels::ChannelInboundEnvelope>,
+        inbound_envelope: Option<tinychannels_bus::ChannelInboundEnvelope>,
         /// Workspace directory active when this event was published.
         /// Subscribers that persist data must reject events whose
         /// `workspace_dir` does not match their own workspace binding.
@@ -1257,27 +1248,6 @@ pub enum DomainEvent {
     },
     /// A thread's goal was cleared (deleted).
     ThreadGoalCleared { thread_id: String },
-
-    /// A JSON message arrived on a tinyplace WebSocket stream.
-    /// Published by the stream manager's recv loop. Carries the raw
-    /// server-sent JSON value (inbox item, conversation message, etc.)
-    /// so the Socket.IO bridge can forward it to the renderer.
-    TinyPlaceStreamMessage {
-        /// Stream identifier (e.g. `"inbox"`, `"conversation:abc123"`).
-        stream_id: String,
-        /// Stream kind for routing.
-        kind: String,
-        /// The raw JSON message from the tinyplace server.
-        message: serde_json::Value,
-    },
-    /// A tinyplace WebSocket stream changed lifecycle status.
-    /// Published by the stream manager on connect, disconnect, and failure.
-    TinyPlaceStreamStatusChanged {
-        /// Stream identifier.
-        stream_id: String,
-        /// New status: `"connecting"`, `"connected"`, `"disconnected"`, `"failed"`.
-        status: String,
-    },
 }
 
 impl DomainEvent {
@@ -1295,7 +1265,6 @@ impl DomainEvent {
             | Self::AgentOrchestrationCompleted { .. }
             | Self::AgentOrchestrationFailed { .. }
             | Self::AgentOrchestrationClosed { .. }
-            | Self::OrchestrationPairingChanged { .. }
             | Self::RunQueueMessageQueued { .. }
             | Self::RunQueueFollowupDispatched { .. }
             | Self::RunQueueInterrupted { .. }
@@ -1427,10 +1396,6 @@ impl DomainEvent {
             | Self::McpClientToolExecuted { .. }
             | Self::McpSetupSecretRequested { .. }
             | Self::McpToolRejected { .. } => "mcp_client",
-
-            Self::TinyPlaceStreamMessage { .. } | Self::TinyPlaceStreamStatusChanged { .. } => {
-                "tinyplace"
-            }
         }
     }
 
@@ -1448,7 +1413,6 @@ impl DomainEvent {
             Self::AgentOrchestrationCompleted { .. } => "AgentOrchestrationCompleted",
             Self::AgentOrchestrationFailed { .. } => "AgentOrchestrationFailed",
             Self::AgentOrchestrationClosed { .. } => "AgentOrchestrationClosed",
-            Self::OrchestrationPairingChanged { .. } => "OrchestrationPairingChanged",
             Self::SubconsciousTriggerProcessed { .. } => "SubconsciousTriggerProcessed",
             Self::RunQueueMessageQueued { .. } => "RunQueueMessageQueued",
             Self::RunQueueFollowupDispatched { .. } => "RunQueueFollowupDispatched",
@@ -1560,8 +1524,6 @@ impl DomainEvent {
             Self::TaskRunReclaimed { .. } => "TaskRunReclaimed",
             Self::ThreadGoalUpdated { .. } => "ThreadGoalUpdated",
             Self::ThreadGoalCleared { .. } => "ThreadGoalCleared",
-            Self::TinyPlaceStreamMessage { .. } => "TinyPlaceStreamMessage",
-            Self::TinyPlaceStreamStatusChanged { .. } => "TinyPlaceStreamStatusChanged",
             Self::Voice(_) => "Voice",
         }
     }

@@ -190,11 +190,6 @@ pub struct Config {
     #[serde(default)]
     pub scheduler_gate: SchedulerGateConfig,
 
-    /// tiny.place harness session-DM ingest layer. See
-    /// [`crate::openhuman::hosted::orchestration`].
-    #[serde(default)]
-    pub orchestration: OrchestrationConfig,
-
     /// User-facing activity-level knob (0–4) controlling how proactive
     /// background AI work is. Maps into scheduler_gate mode, periodic sync
     /// cadence, heartbeat/subconscious toggles. See issue #3117.
@@ -808,7 +803,6 @@ impl Default for Config {
             reliability: ReliabilityConfig::default(),
             scheduler: SchedulerConfig::default(),
             scheduler_gate: SchedulerGateConfig::default(),
-            orchestration: OrchestrationConfig::default(),
             agent_activity_level: AgentActivityLevel::default(),
             memory_sync_interval_secs: None,
             agent: AgentConfig::default(),

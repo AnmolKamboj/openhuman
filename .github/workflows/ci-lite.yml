@@ -279,7 +279,10 @@ jobs:
           persist-credentials: false
 
       # The RPC-catalog drift-guard test (rpcMethods.test.ts) reads
-      # vendor/tinychannels/src/controllers/schemas.rs at test time. This lane
+      # vendor/tinychannels/crates/tinychannels-bus/src/controllers/schemas.rs
+      # at test time (controller metadata is contract, so it lives in the bus
+      # crate). Still one submodule — the bus crate is a workspace member of
+      # vendor/tinychannels, not a submodule of its own. This lane
       # otherwise checks out without submodules, so init just that one — not
       # `submodules: recursive`, which would also pull the large tauri-cef fork
       # this job never builds. Mirrors the same fix in test-reusable.yml's
@@ -591,7 +594,7 @@ jobs:
         # it is a second source of truth for the same Linux name count and is
         # not derived from that file. Bump both in the same PR that raises
         # (or lowers) the floor.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 273
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 271
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -619,7 +622,6 @@ jobs:
           openhuman/memory/people/mod.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
-          openhuman/tinyplace/manifest.rs
           openhuman/tools/registry/ops_tests.rs
           openhuman/tools/registry/schemas.rs
           openhuman/tools/ops_tests.rs

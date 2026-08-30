@@ -203,7 +203,9 @@ pub(super) const WORKSPACE_INTERNAL_DIRS: &[&str] = &[
     // internal index. Keep legacy state inaccessible to agent file tools.
     "codegraph",
     ".openhuman",
-    "tinyplace", // Signal session store + future tinyplace state; agent-write forbidden
+    // A removed relay domain may leave encrypted identity/session state in an
+    // upgraded workspace. Keep that legacy directory private.
+    "tinyplace",
 ];
 
 /// Files directly under `workspace_dir` that hold secrets or persona config

@@ -127,10 +127,6 @@ crate-type = ["rlib"]
 # upstream in the SDK repo, not re-implemented in `src/api/`.
 # After cloning: `git submodule update --init vendor/tinyhumans-sdk`.
 tinyhumans-sdk = { path = "vendor/tinyhumans-sdk", default-features = false }
-# tiny.place A2A social network SDK — published on crates.io and patched below
-# to the vendored tiny.place submodule so OpenHuman can test SDK changes before
-# publishing.
-tinyplace = "2.0"
 # tinyflows — host-agnostic workflow engine (typed node graph → validate → compile →
 # run on tinyagents). Powers the "Workflows" feature via the seam in
 # `src/openhuman/tinyflows/` + the `flows::` domain. Pulls tinyagents 2.1 transitively
@@ -330,7 +326,20 @@ tinymcp = { path = "vendor/tinymcp/crates/tinymcp", default-features = false, fe
     "rustls-tls",
 ] }
 tinymcp-bus = { path = "vendor/tinymcp/crates/tinymcp-bus", features = ["schemars"] }
-tinychannels = { version = "0.1", features = ["relay-websocket"] }
+# The transport-free channel vocabulary: inbound envelopes, outbound intents,
+# the config schema, controller metadata, relay frames and the session-key
+# rules. UNCONDITIONAL, and deliberately so — `DomainEvent` embeds
+# `ChannelInboundEnvelope`, `config/schema/channels.rs` re-exports the config
+# types and `security/pairing.rs` re-exports the pairing helpers, so this
+# vocabulary is always-on kernel surface. It costs serde/schemars and nothing
+# this build did not already have.
+tinychannels-bus = { version = "0.1", path = "vendor/tinychannels/crates/tinychannels-bus" }
+# The provider stack that IMPLEMENTS that vocabulary — Telegram, Discord,
+# Slack, IMAP, WhatsApp, the relay transport loop. Optional: it owns the
+# `reqwest` / `rusqlite` / `rustls` / `tokio-tungstenite` cohort, which a
+# workflow-only build has no use for. Enabled by `channels`, and by `voice`
+# for `EmailChannel` alone.
+tinychannels = { version = "0.1", features = ["relay-websocket"], optional = true }
 # tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
 # pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the
 # in-process zero-serialization request registry (`NativeRegistry`), and peer
@@ -918,7 +927,10 @@ voice = [
     "dep:enigo",
     "dep:rdev",
     # `audio_toolkit::ops` delivers generated podcasts through tinychannels'
-    # EmailChannel, so the provider has to exist even in a channels-less build.
+    # EmailChannel, so the provider — and therefore the implementation crate —
+    # has to exist even in a channels-less build. This is the ONE reason a
+    # channels-less build still links the provider stack.
+    "dep:tinychannels",
     "tinychannels/email",
 ]
 # Web3 family: openhuman::web3 + web3::wallet + web3::x402 — the
@@ -930,22 +942,14 @@ voice = [
 # off-curve ATA) + `ethers-core` / `ethers-signers` / `coins-bip39` (EVM/mnemonic
 # signing, used by the multi-chain wallet's EVM path) dependencies. Composes
 # with the runtime `DomainSet::Web3` flag (#4796): the feature narrows the
-# compile-time surface, `DomainSet` gates it at runtime. When off, tinyplace
-# payments degrade to graceful "wallet disabled" errors via the wallet/web3/x402
-# stub facades.
-#
-# `bs58` and `ed25519-dalek` deliberately stay always-on: `orchestration/ingest`
-# and `tinyplace/payment` use them for agent-network identity, which has nothing
-# to do with the wallet. Measured: excluding them costs 0, because tinyplace
-# pulls them in regardless.
+# compile-time surface, `DomainSet` gates it at runtime.
 # `k256` and `coins-bip39` are gone from this list: nothing in the shipped
 # binary derives a key or signs with secp256k1 any more — the wallet module
 # does both. Both crates remain under [dev-dependencies], where test fixtures
 # still derive a known account and check a signature against a fixed vector.
 #
 # `curve25519-dalek` stays: `associated_token_account` needs the off-curve check
-# to derive a Solana ATA, which is address arithmetic rather than signing, and
-# tinyplace pulls it in through `ed25519-dalek` regardless.
+# to derive a Solana ATA, which is address arithmetic rather than signing.
 web3 = [
     "dep:tinywallet-bus",
     "dep:curve25519-dalek",
@@ -1150,14 +1154,26 @@ medulla = []
 # `DomainSet::Channels` flag (#4796): this feature narrows the compile-time
 # surface, `DomainSet` gates it at runtime.
 #
-# INTENTIONALLY EMPTY — do NOT "fix" this by adding `dep:` entries. This gate
-# sheds ZERO dependencies: `tinychannels` stays load-bearing regardless
-# (`config/schema/channels.rs` re-exports its config types, `event_bus/events.rs`
-# `DomainEvent` embeds `tinychannels::ChannelInboundEnvelope`, and
-# `security/pairing.rs` re-exports its pairing helpers), so it is always
-# compiled. The gate's value is compile-time surface + binary size, not the dep
-# tree. (`whatsapp-web` refines this gate — see below — forwarding to the
-# `tinychannels/whatsapp-web` provider feature.)
+# This gate now owns the `tinychannels` CRATE, not just two of its providers.
+# The three always-on pins that used to make the crate unconditional
+# (`config/schema/channels.rs` re-exporting the config types, `DomainEvent`
+# embedding `ChannelInboundEnvelope`, `security/pairing.rs` re-exporting the
+# pairing helpers) now resolve through `tinychannels-bus`, the transport-free
+# contract crate, which stays unconditional. What is left behind this gate is
+# the provider stack and the relay transport loop.
+#
+# It sheds NO dependencies and is not meant to: measured, the kernel profile is
+# 288 packages / 270 names / 2 native both before and after, and the package-list
+# diff is one line (`tinychannels` out, `tinychannels-bus` in). Every heavy crate
+# tinychannels carried is shared with kernel surface. What the gate buys is
+# compile surface — ~31.7k lines a channels-less build no longer compiles — plus
+# the contract crate the eventual module extraction needs.
+#
+# ONE caveat, and it is the reason a channels-less product build still links
+# the crate: `voice` enables `dep:tinychannels` for `EmailChannel` alone
+# (`audio_toolkit::ops` mails generated podcasts). A build with neither
+# `channels` nor `voice` drops it entirely. (`whatsapp-web` refines this gate —
+# see below — forwarding to the `tinychannels/whatsapp-web` provider feature.)
 #
 # NOTE: the in-app web chat (`openhuman::web_chat`, RPC namespace `channel`) is
 # NOT gated by this feature even though its runtime tag is
@@ -1166,14 +1182,11 @@ medulla = []
 # carve-outs also stay ungated — `traits` is a 1-line tinychannels re-export and
 # `cli::CliChannel` is the dep-free local REPL used by the always-on agent
 # harness interactive loop. See AGENTS.md "channels gate" + `channels/mod.rs`.
-# Provider modules inside tinychannels are now feature-gated there, so this
-# gate finally sheds crates instead of being surface-only: `email` owns the
-# lettre/async-imap/mail-parser stack and `lark` owns axum + prost — 27 crates
-# that a workflow-only build has no use for. The crate itself still cannot be
-# dropped (DomainEvent embeds its inbound envelope, config re-exports its
-# provider types, security::pairing re-exports its helpers), which is why
-# gating the providers rather than the crate is the right seam.
-channels = ["tinychannels/email", "tinychannels/lark"]
+# The crate itself is now droppable, which it was not before: splitting
+# `tinychannels-bus` out moved every always-on pin into a contract crate. That
+# is a compile-surface and architecture win, NOT a dependency win — see the
+# measured note above before claiming otherwise.
+channels = ["dep:tinychannels", "tinychannels/email", "tinychannels/lark"]
 sandbox-landlock = ["dep:landlock"]
 sandbox-bubblewrap = []
 peripheral-rpi = ["dep:rppal"]
@@ -1276,7 +1289,7 @@ motosan-ai-oauth = { path = "vendor/motosan-ai-oauth" }
 # version in lockstep with the `tinyagents` requirement above. After cloning:
 # `git submodule update --init vendor/tinyagents` (worktrees included).
 tinyagents = { path = "vendor/tinyagents" }
-# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, and TinyChannels are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "vendor/tinyflows/crates/tinyflows" }
@@ -1286,7 +1299,6 @@ tinycortex = { path = "vendor/tinycortex" }
 # copy of the contract types and the trait identities unify.
 tinycortex-api = { path = "vendor/tinycortex/api" }
 tinychannels = { path = "vendor/tinychannels" }
-tinyplace = { path = "vendor/tinyplace/sdk/rust" }
 
 # Emit just enough DWARF in release builds for Sentry to symbolicate Rust
 # panics + render surrounding source lines. `line-tables-only` keeps the

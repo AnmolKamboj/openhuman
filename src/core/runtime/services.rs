@@ -213,9 +213,6 @@ pub(crate) struct BootstrapJobPlan {
     /// Workspace memory-source periodic sync — repos, folders, RSS, web pages
     /// (`memory_sync::workspace::start_workspace_periodic_sync`).
     pub workspace_memory_sync: bool,
-    /// Orchestration relay-mailbox drain supervisor
-    /// (`orchestration::start_message_drain_supervisor`).
-    pub orchestration_drain: bool,
     /// Proactive task pollers (`task_sources::start_periodic_poll` +
     /// `agent::task_dispatcher::start_board_poller`).
     pub proactive_task_pollers: bool,
@@ -232,7 +229,6 @@ pub(crate) fn bootstrap_job_plan(services: &ServiceSet) -> BootstrapJobPlan {
         memory_queue: services.memory_queue,
         composio_integration_sync: services.integrations,
         workspace_memory_sync: services.memory_sync,
-        orchestration_drain: services.orchestration,
         proactive_task_pollers: services.cron,
     }
 }
@@ -247,7 +243,7 @@ pub(crate) fn bootstrap_job_plan(services: &ServiceSet) -> BootstrapJobPlan {
 /// behind its own concern flag. The four non-channel jobs used to ride
 /// `services.channels` — a channels-off + memory/integrations-on embedder
 /// silently lost all of them (#5028) — so they now sit behind `integrations` /
-/// `memory_sync` / `orchestration` instead.
+/// `memory_sync` instead.
 ///
 /// `config` is unread as of openhuman#5560 — the engine's `queue::start` was
 /// this function's only consumer of it, and the loaded TinyMemory module starts
@@ -338,14 +334,6 @@ pub fn start_bootstrap_jobs(services: ServiceSet, _config: &Config) {
         log::debug!("[runtime.bootstrap] workspace periodic sync disabled by ServiceSet");
     }
 
-    // Orchestration — relay-mailbox drain supervisor.
-    if plan.orchestration_drain {
-        log::debug!("[runtime.bootstrap] starting orchestration message drain supervisor");
-        crate::openhuman::hosted::orchestration::start_message_drain_supervisor();
-    } else {
-        log::debug!("[runtime.bootstrap] message drain supervisor disabled by ServiceSet");
-    }
-
     if plan.proactive_task_pollers {
         log::debug!("[runtime.bootstrap] starting proactive task pollers (task sources + board)");
         crate::openhuman::integrations::task_sources::start_periodic_poll();
@@ -396,6 +384,14 @@ pub async fn start_boot_once_jobs(services: ServiceSet, config: &Config) {
 }
 
 async fn run_legacy_migrations(config: &Config) {
+    match crate::openhuman::cron::seed::prune_retired_jobs(config) {
+        Ok(count) if count > 0 => {
+            log::info!("[cron] removed {count} retired autopilot job(s)");
+        }
+        Ok(_) => {}
+        Err(e) => log::warn!("[cron] failed to prune retired jobs: {e}"),
+    }
+
     // These used to run as detached tasks, allowing a user/API write to land
     // between a migration's `get(None)` check and its later `put`. Await each
     // copy in startup order so the crate stores are authoritative before
@@ -551,7 +547,6 @@ mod tests {
                 memory_queue: true,
                 composio_integration_sync: true,
                 workspace_memory_sync: true,
-                orchestration_drain: true,
                 proactive_task_pollers: true,
             }
         );
@@ -564,7 +559,6 @@ mod tests {
             memory_queue: false,
             composio_integration_sync: false,
             workspace_memory_sync: false,
-            orchestration_drain: false,
             proactive_task_pollers: false,
         };
         assert_eq!(bootstrap_job_plan(&ServiceSet::none()), empty);
@@ -580,7 +574,6 @@ mod tests {
         let plan = bootstrap_job_plan(&integrations);
         assert!(plan.composio_integration_sync);
         assert!(!plan.workspace_memory_sync);
-        assert!(!plan.orchestration_drain);
         assert!(!plan.memory_queue);
         assert!(!plan.proactive_task_pollers);
 
@@ -589,14 +582,6 @@ mod tests {
         let plan = bootstrap_job_plan(&memory_sync);
         assert!(plan.workspace_memory_sync);
         assert!(!plan.composio_integration_sync);
-        assert!(!plan.orchestration_drain);
-
-        let mut orchestration = ServiceSet::none();
-        orchestration.orchestration = true;
-        let plan = bootstrap_job_plan(&orchestration);
-        assert!(plan.orchestration_drain);
-        assert!(!plan.composio_integration_sync);
-        assert!(!plan.workspace_memory_sync);
     }
 
     /// From desktop(), disabling exactly one concern flag disables only its job.
@@ -607,7 +592,6 @@ mod tests {
         let plan = bootstrap_job_plan(&services);
         assert!(!plan.composio_integration_sync);
         assert!(plan.workspace_memory_sync);
-        assert!(plan.orchestration_drain);
         assert!(plan.memory_queue);
         assert!(plan.proactive_task_pollers);
 
@@ -616,14 +600,6 @@ mod tests {
         let plan = bootstrap_job_plan(&services);
         assert!(!plan.workspace_memory_sync);
         assert!(plan.composio_integration_sync);
-        assert!(plan.orchestration_drain);
-
-        let mut services = ServiceSet::desktop();
-        services.orchestration = false;
-        let plan = bootstrap_job_plan(&services);
-        assert!(!plan.orchestration_drain);
-        assert!(plan.composio_integration_sync);
-        assert!(plan.workspace_memory_sync);
     }
 
     /// The #5028 regression: `channels` gates NO bootstrap job. Turning channels

@@ -13,7 +13,7 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
-#   291/273/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
+#   287/271/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
 #                      the copilot's authoring prompts upstream split the
 #                      `tinyflows` crate's catalog/storage/copilot surface into
 #                      three sibling crates in the SAME vendored workspace:
@@ -40,7 +40,9 @@
 #                      "dep:tinyflows-copilot", "dep:tinyflows-sqlite"]`, so a
 #                      slim build without `flows` drops all four together, same
 #                      as before this PR.
-#
+#   283/267/2  2026-08-30  removed TinyPlace from the core and app, shedding
+#                      five packages and three unique crate names from the
+#                      workflow-only profile.
 #   288/270/2  2026-08-29  the tool vocabulary moved into its own crate
 #                      (+1 package, +1 NAME: `tinytools`). This entry is the
 #                      CURRENT limit; the tinyjuice entry below it left the
@@ -438,8 +440,8 @@
 #   304/281/5  2026-08-08  tokio-tungstenite unified on 0.29 (-6 packages/-2
 #                      names). Root Cargo.toml's two per-target
 #                      tokio-tungstenite entries and
-#                      vendor/tinyplace/sdk/rust/Cargo.toml were pinned at
-#                      "0.24"; bumped all three to "0.29" (same feature names:
+#                      the relevant manifests were pinned at "0.24"; bumped
+#                      all entries to "0.29" (same feature names:
 #                      connect/handshake/native-tls/rustls-tls-webpki-roots).
 #                      Sheds the duplicate tungstenite 0.24 + thiserror 1.x +
 #                      thiserror-impl 1.x majors from the `flows` profile
@@ -451,7 +453,6 @@
 #                      `String` — `.into()` at each send call site in
 #                      src/openhuman/platform/socket/ws_loop.rs (+ its test
 #                      double server in ws_loop_tests.rs) and
-#                      vendor/tinyplace/sdk/rust/src/websocket.rs.
 #                      NOTE: the DEFAULT (full-feature) profile still shows
 #                      both tungstenite 0.24 and 0.29 — socketioxide 0.15.2 /
 #                      engineioxide 0.15.2 (pulled in by the default-ON
@@ -500,8 +501,8 @@
 #                      join the `web3` gate, unblocked by giving Polymarket its
 #                      own `prediction-markets` feature that implies it (-67 —
 #                      the largest single shed in the program). bs58 and
-#                      ed25519-dalek stay always-on (orchestration + tinyplace
-#                      identity), and curve25519-dalek survives under them.
+#                      ed25519-dalek stay always-on, and curve25519-dalek
+#                      survives under them.
 #   375/6  2026-08-01  M2 step 4: tracing-appender + tracing-log behind
 #                      default-ON `file-logging` (-9). Off-state keeps stderr
 #                      and Sentry but writes nothing to disk, and drops the
@@ -521,4 +522,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:291:273:2
+flows:287:271:2

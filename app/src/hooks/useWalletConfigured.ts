@@ -3,8 +3,8 @@
  *
  * ## Why this exists
  *
- * Several core RPCs derive a key from the local wallet before they can run
- * (the tiny.place signer seed, EVM signing, balances, deBridge quotes). When no
+ * Several core RPCs require the local wallet before they can run
+ * (EVM signing, balances, deBridge quotes). When no
  * wallet is set up they reject with the core's `WALLET_NOT_CONFIGURED_MESSAGE`.
  * That is an *expected* state — a wallet is optional and most users never
  * create one — but it still travels as an `Err`, so every such call becomes an
@@ -17,13 +17,8 @@
  * question and resolves normally for a wallet-less user, so the gate costs one
  * non-erroring RPC and removes an erroring one.
  *
- * This pairs prevention-at-source with boundary classification, which is the
- * shape the same bug was fixed in for the tiny.place home feed in #3964
- * (commits `1d42c766e` + `02f9769bc`). That gate lived privately inside
- * `agentworld/pages/FeedSection.tsx` and was deleted wholesale with the
- * `agentworld` module in `779aa2f3a`, leaving only the classifier half — which
- * is part of why the same class recurred as #5805. It is shared here so the
- * next wallet-gated caller inherits it instead of re-deriving it.
+ * This pairs prevention-at-source with boundary classification so the next
+ * wallet-gated caller inherits the guard instead of re-deriving it.
  *
  * ## The `unknown` state is load-bearing
  *
@@ -57,10 +52,8 @@ export type WalletConfigured = 'resolving' | 'no' | 'yes' | 'unknown';
 /**
  * Resolve the wallet-configured state once, outside React.
  *
- * Exposed for callers that are not components — `useTinyPlaceIdentity` drives a
- * module-level singleton and cannot use a hook. Never rejects: a failed status
- * fetch becomes `unknown`, so a caller can always `await` it inline before
- * deciding whether to make its wallet-gated call.
+ * Exposed for callers that are not components. Never rejects: a failed status
+ * fetch becomes `unknown`.
  */
 export async function resolveWalletConfigured(): Promise<Exclude<WalletConfigured, 'resolving'>> {
   try {

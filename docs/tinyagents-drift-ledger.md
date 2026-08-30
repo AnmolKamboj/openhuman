@@ -179,14 +179,6 @@ struct with the old field. Because no PR existed pre-#4769, this was never
 CI-tested; the lib-test target (`cargo test --lib`) did not compile, which would
 fail CI `rust-core-coverage`. Fixed by wrapping each site in
 `TurnModelSource::new(provider)` and correcting the `AgentBuilder` field access.
-Touching `agent_orchestration/` test files pulled the orchestration domain into
-CI `rust-core-coverage`'s scope, which surfaced a **separate pre-existing**
-upstream breakage: `tests/orchestration_effect_executor_e2e.rs` (added by #4738)
-still called `dispatch_device_tool`/`handle_tool_call` with the old sync 2-arg
-signatures after #4753 made them `async`/3-arg — broken identically on
-`upstream/main`. Fixed the two tests to `#[tokio::test]` + `.await` + the
-`cycle_id` arg (gate-bypassed for non-local-exec tools).
-
 **Behavior-level test failures (5, surfaced once the suite compiled): all stale
 tests, no code regression.** Motion A's "zero behavior change" holds for the
 actual runtime contract — the failing tests were written against pre-migration
