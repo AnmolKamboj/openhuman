@@ -10,6 +10,49 @@ use crate::openhuman::agent::progress::AgentProgress;
 // TinyPlace crate.
 const MEDULLA_ENVELOPE_VERSION: &str = "tinyplace.harness.session.v2";
 
+pub type HarnessBucketUnit = String;
+pub type HarnessProvider = String;
+pub type HarnessEnvelopeScope = String;
+pub type HarnessEventRole = String;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HarnessBucket {
+    #[serde(default)]
+    pub unit: HarnessBucketUnit,
+    #[serde(default)]
+    pub start: String,
+    #[serde(default)]
+    pub end: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HarnessInfo {
+    #[serde(default)]
+    pub provider: HarnessProvider,
+    #[serde(default)]
+    pub command: String,
+    #[serde(default)]
+    pub argv: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HarnessSource {
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub record_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_role: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct UserPromptPayload {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub source: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TextPayload {
     #[serde(default)]
@@ -69,6 +112,12 @@ pub struct StatusPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct LifecyclePayload {
+    #[serde(default)]
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ErrorPayload {
     #[serde(default)]
     pub message: String,
@@ -76,23 +125,35 @@ pub struct ErrorPayload {
     pub fatal: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct UnknownPayload {
+    #[serde(default)]
+    pub raw: serde_json::Value,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "snake_case")]
 pub enum HarnessEventKind {
+    UserPrompt(UserPromptPayload),
     AgentMessage(TextPayload),
     AgentThinking(TextPayload),
     ToolCall(ToolCallPayload),
     ToolResult(ToolResultPayload),
     ApprovalRequest(ApprovalRequestPayload),
     Status(StatusPayload),
+    Lifecycle(LifecyclePayload),
     Error(ErrorPayload),
-    Unknown(serde_json::Value),
+    Unknown(UnknownPayload),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HarnessScope {
     #[serde(rename = "type", default)]
-    pub scope_type: String,
+    pub scope_type: HarnessEnvelopeScope,
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub cwd: String,
     #[serde(default)]
     pub wrapper_session_id: String,
     #[serde(default)]
@@ -107,8 +168,12 @@ pub struct HarnessEvent {
     pub seq: i64,
     #[serde(default)]
     pub ts: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     #[serde(default)]
-    pub role: String,
+    pub role: HarnessEventRole,
     #[serde(default)]
     pub kind: String,
     #[serde(default)]
@@ -121,7 +186,11 @@ impl HarnessEvent {
             "kind": self.kind,
             "payload": self.payload,
         }))
-        .unwrap_or_else(|_| HarnessEventKind::Unknown(self.payload.clone()))
+        .unwrap_or_else(|_| {
+            HarnessEventKind::Unknown(UnknownPayload {
+                raw: self.payload.clone(),
+            })
+        })
     }
 }
 
@@ -132,9 +201,15 @@ pub struct HarnessEnvelope {
     #[serde(default)]
     pub version: u32,
     #[serde(default)]
+    pub bucket: HarnessBucket,
+    #[serde(default)]
     pub scope: HarnessScope,
     #[serde(default)]
+    pub harness: HarnessInfo,
+    #[serde(default)]
     pub event: HarnessEvent,
+    #[serde(default)]
+    pub source: HarnessSource,
 }
 
 impl HarnessEnvelope {
@@ -255,11 +330,14 @@ pub fn envelope_for_kind(session_id: &str, seq: i64, kind: &HarnessEventKind) ->
     HarnessEnvelope {
         envelope_version: MEDULLA_ENVELOPE_VERSION.to_string(),
         version: 2,
+        bucket: HarnessBucket::default(),
         scope: HarnessScope {
             scope_type: "session".to_string(),
             wrapper_session_id: session_id.to_string(),
             harness_session_id: session_id.to_string(),
+            ..Default::default()
         },
+        harness: HarnessInfo::default(),
         event: HarnessEvent {
             id: format!("{session_id}-{seq}"),
             seq,
@@ -267,7 +345,9 @@ pub fn envelope_for_kind(session_id: &str, seq: i64, kind: &HarnessEventKind) ->
             role: AGENT_ROLE.to_string(),
             kind: kind_str,
             payload,
+            ..Default::default()
         },
+        source: HarnessSource::default(),
     }
 }
 
@@ -344,12 +424,63 @@ mod tests {
         assert_eq!(env.event.seq, 7);
 
         // Serialize and parse back through the Medulla decoder.
+        let wire_value = serde_json::to_value(&env).unwrap();
+        assert_eq!(
+            wire_value["bucket"],
+            serde_json::json!({"unit":"","start":"","end":""})
+        );
+        assert_eq!(
+            wire_value["harness"],
+            serde_json::json!({"provider":"","command":"","argv":[]})
+        );
+        assert_eq!(
+            wire_value["source"],
+            serde_json::json!({"path":"","record_type":""})
+        );
+        assert_eq!(wire_value["scope"]["type"], "session");
+        assert_eq!(wire_value["event"]["kind"], "agent_message");
+        let wrapper = super::super::payloads::TaskEnvelope {
+            task_id: "task-1".to_string(),
+            envelope: wire_value.clone(),
+        };
+        let wrapper_wire = serde_json::to_value(wrapper).unwrap();
+        assert_eq!(wrapper_wire["taskId"], "task-1");
+        assert_eq!(wrapper_wire["envelope"], wire_value);
+
         let wire = serde_json::to_string(&env).unwrap();
         let parsed = HarnessEnvelope::parse(&wire).expect("valid Medulla wire");
         match parsed.event.decoded() {
             HarnessEventKind::AgentMessage(t) => assert_eq!(t.text, "done"),
             other => panic!("unexpected decoded kind: {other:?}"),
         }
+    }
+
+    #[test]
+    fn established_event_tags_and_unknown_fallback_are_preserved() {
+        let user = serde_json::to_value(HarnessEventKind::UserPrompt(UserPromptPayload {
+            text: "hello".to_string(),
+            source: "human".to_string(),
+        }))
+        .unwrap();
+        assert_eq!(user["kind"], "user_prompt");
+        assert_eq!(user["payload"]["source"], "human");
+
+        let lifecycle = serde_json::to_value(HarnessEventKind::Lifecycle(LifecyclePayload {
+            phase: "turn_end".to_string(),
+        }))
+        .unwrap();
+        assert_eq!(lifecycle["kind"], "lifecycle");
+
+        let raw = serde_json::json!({"future": true});
+        let event = HarnessEvent {
+            kind: "future_kind".to_string(),
+            payload: raw.clone(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            event.decoded(),
+            HarnessEventKind::Unknown(UnknownPayload { raw: value }) if value == raw
+        ));
     }
 
     #[test]
