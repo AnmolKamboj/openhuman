@@ -170,6 +170,7 @@ pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
 // because this module's tests assert on them by name — which is the point of a
 // stable code, and what keeps a rename upstream a compile error here rather
 // than a silently-passing `contains`.
+#[cfg(test)]
 pub(crate) use tinyflows::compat::{
     UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN, UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN,
 };
