@@ -16,7 +16,7 @@ use super::super::providers::profile::{
 };
 use super::super::types::{
     ComposioAuthorizeRequest, ComposioAuthorizeResponse, ComposioConnectionsResponse,
-    ComposioDeleteResponse,
+    ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
 use super::error_utils::{
     direct_mode_without_key, report_composio_op_error, resolve_client, OpResult,
@@ -106,8 +106,7 @@ pub async fn composio_delete_connection(
     clear_memory: bool,
 ) -> OpResult<RpcOutcome<ComposioDeleteResponse>> {
     tracing::debug!(connection_id = %connection_id, "[composio] rpc delete_connection");
-    let client = resolve_client(config)?;
-    let toolkit = match resolve_toolkit_for_connection(&client, connection_id).await {
+    let toolkit = match resolve_toolkit_for_connection(config, connection_id).await {
         Ok(toolkit) => Some(toolkit),
         Err(error) if clear_memory => {
             return Err(format!(
@@ -133,9 +132,22 @@ pub async fn composio_delete_connection(
     } else {
         Vec::new()
     };
-    let mut resp = client.delete_connection(connection_id).await.map_err(|e| {
-        report_composio_op_error("delete_connection", &e);
-        format!("[composio] delete_connection failed: {e:#}")
+    // Only the Composio-side removal crosses the bus. Everything around it —
+    // the memory targets, the identity facets, PROFILE.md, the memory_sources
+    // row — is this host's own bookkeeping about a connection it no longer has,
+    // and the module knows nothing about any of it.
+    let mut resp = connectors::call::<_, ComposioDeleteResponse>(
+        config,
+        methods::DELETE_CONNECTION,
+        ComposioDeleteConnectionRequest {
+            connection_id: connection_id.to_string(),
+            clear_memory,
+        },
+    )
+    .await
+    .map_err(|error| {
+        report_composio_op_error("delete_connection", &anyhow::anyhow!("{error}"));
+        format!("[composio] delete_connection failed: {error}")
     })?;
     let mut memory_chunks_deleted = 0;
     let mut memory_clear_errors = Vec::new();
@@ -227,13 +239,18 @@ pub async fn composio_delete_connection(
 
 /// Look up the toolkit slug for an existing connection.
 pub(super) async fn resolve_toolkit_for_connection(
-    client: &ComposioClient,
+    config: &Config,
     connection_id: &str,
 ) -> OpResult<String> {
     tracing::debug!(connection_id = %connection_id, "[composio] resolve_toolkit_for_connection");
-    let resp = client.list_connections().await.map_err(|e| {
-        report_composio_op_error("resolve_toolkit_for_connection", &e);
-        format!("[composio] list_connections failed: {e:#}")
+    let resp = connectors::call_bare::<ComposioConnectionsResponse>(
+        config,
+        methods::LIST_CONNECTIONS,
+    )
+    .await
+    .map_err(|error| {
+        report_composio_op_error("resolve_toolkit_for_connection", &anyhow::anyhow!("{error}"));
+        format!("[composio] list_connections failed: {error}")
     })?;
     let conn = resp
         .connections
