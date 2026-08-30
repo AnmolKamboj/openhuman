@@ -80,12 +80,7 @@
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",
-    "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-collapsible": "^1.1.20",
-    "@radix-ui/react-dialog": "^1.1.23",
-    "@radix-ui/react-popover": "^1.1.23",
-    "@radix-ui/react-slot": "^1.3.3",
-    "@radix-ui/react-tooltip": "^1.2.16",
     "@reduxjs/toolkit": "^2.11.2",
     "@rive-app/react-webgl2": "^4.28.6",
     "@scure/base": "^2.2.0",
@@ -131,7 +126,6 @@
     "three": "^0.183.2",
     "tw-animate-css": "^1.4.0",
     "util": "^0.12.5",
-    "zod": "4.3.6",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
