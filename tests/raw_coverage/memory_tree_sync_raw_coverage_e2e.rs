@@ -6,7 +6,7 @@
 
 use std::ffi::OsString;
 use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
