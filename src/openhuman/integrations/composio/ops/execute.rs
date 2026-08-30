@@ -9,12 +9,8 @@ use super::error_utils::{report_composio_op_error, OpResult};
 
 /// The prefix the module puts on an error it has already classified.
 ///
-/// Matched with `contains` rather than `starts_with`: the bus prefixes a
-/// member failure with the member's name, so a tag that used to lead the string
-/// now sits inside it. A `starts_with` here would silently stop recognising
-/// every classified error and re-wrap them all as unclassified, which is
-/// exactly the information the UI uses to tell "reconnect your account" from
-/// "the provider is down".
+/// The domain module client removes TinyBus's member-name prefix so this stays
+/// at byte zero, matching the frontend formatter's parsing contract.
 const CLASSIFIED: &str = "[composio:error:";
 
 /// Run one Composio action.
@@ -82,7 +78,7 @@ pub async fn composio_execute(
                 },
             );
             report_composio_op_error("execute", &anyhow::anyhow!("{e}"));
-            let is_classified = e.contains(CLASSIFIED);
+            let is_classified = e.starts_with(CLASSIFIED);
             tracing::debug!(
                 tool = %tool,
                 elapsed_ms,

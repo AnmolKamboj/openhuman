@@ -225,7 +225,16 @@ async fn revise_workflow_proposal_is_marked_unpersisted() {
 /// naming a tool that no longer exists.
 #[test]
 fn module_doc_tool_table_matches_registered_tools() {
-    const SOURCE: &str = include_str!("builder_tools.rs");
+    const SOURCE: &str = concat!(
+        include_str!("builder_tools.rs"),
+        include_str!("builder_tools_part_01.rs"),
+        include_str!("builder_tools_part_02.rs"),
+        include_str!("builder_tools_part_03.rs"),
+        include_str!("builder_tools_part_04.rs"),
+        include_str!("builder_tools_part_05.rs"),
+        include_str!("builder_tools_part_06.rs"),
+        include_str!("builder_tools_part_07.rs"),
+    );
 
     let module_doc: String = SOURCE
         .lines()
@@ -244,7 +253,7 @@ fn module_doc_tool_table_matches_registered_tools() {
         .collect();
     assert!(
         !registered.is_empty(),
-        "sanity: expected at least one `impl Tool for` in builder_tools.rs"
+        "sanity: expected at least one `impl Tool for` in the builder_tools module"
     );
 
     for tool in &registered {

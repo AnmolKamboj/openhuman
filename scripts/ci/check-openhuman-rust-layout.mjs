@@ -28,7 +28,8 @@ const failures = [];
 for (const file of rustFiles(ROOT)) {
   const source = fs.readFileSync(file, "utf8");
   const lineCount = source.split("\n").length - (source.endsWith("\n") ? 1 : 0);
-  const legacyLimit = LEGACY_LIMITS.get(file);
+  const portableFile = file.split(path.sep).join("/");
+  const legacyLimit = LEGACY_LIMITS.get(portableFile);
   if (lineCount > (legacyLimit ?? LINE_LIMIT)) {
     failures.push(
       `${file}: ${lineCount} lines (limit ${legacyLimit ?? LINE_LIMIT})`,

@@ -36,6 +36,24 @@ pub fn is_unsupported_by_route(error: &str) -> bool {
     error.contains("is not available over the") && error.contains("route")
 }
 
+/// Keep the structured Composio classification at the start of the error.
+///
+/// TinyBus prefixes member failures (for example, `Execute: `), but the
+/// frontend parser intentionally requires the classification at byte zero.
+/// Other errors retain the member context unchanged.
+fn normalize_error(member: &str, error: String) -> String {
+    const CLASSIFIED: &str = "[composio:error:";
+    if let Some(module_error) = error
+        .strip_prefix(member)
+        .and_then(|remainder| remainder.strip_prefix(": "))
+    {
+        if module_error.starts_with(CLASSIFIED) {
+            return module_error.to_string();
+        }
+    }
+    error
+}
+
 /// The message a gates-off build answers every connector call with.
 #[cfg(not(feature = "modules"))]
 const WITHOUT_MODULES: &str =
@@ -62,7 +80,9 @@ where
     Request: serde::Serialize + Send,
     Reply: serde::de::DeserializeOwned,
 {
-    crate::openhuman::modules::connectors::call(config, member, request).await
+    crate::openhuman::modules::connectors::call(config, member, request)
+        .await
+        .map_err(|error| normalize_error(member, error))
 }
 
 /// Call one member with an argument. Always fails without the `modules` feature.
@@ -93,7 +113,9 @@ pub async fn call_bare<Reply: serde::de::DeserializeOwned>(
     config: &crate::openhuman::config::Config,
     member: &str,
 ) -> Result<Reply, String> {
-    crate::openhuman::modules::connectors::call_bare(config, member).await
+    crate::openhuman::modules::connectors::call_bare(config, member)
+        .await
+        .map_err(|error| normalize_error(member, error))
 }
 
 /// Call a member that takes no arguments. Always fails without `modules`.

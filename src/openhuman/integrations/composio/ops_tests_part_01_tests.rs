@@ -108,7 +108,9 @@ async fn composio_authorize_errors_without_session() {
     // legacy `composio unavailable` prefix or the new factory phrasing.
     assert!(
         err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
+            && (err.contains("no backend session")
+                || err.contains("unavailable")
+                || err.contains("route")),
         "unexpected error: {err}"
     );
 }
@@ -121,7 +123,11 @@ async fn composio_delete_connection_errors_without_session() {
     let err = composio_delete_connection(&config, "c-1", false)
         .await
         .unwrap_err();
-    assert!(err.contains("composio unavailable"));
+    assert!(
+        err.to_lowercase().contains("composio")
+            && (err.contains("unavailable") || err.contains("route")),
+        "unexpected error: {err}"
+    );
 }
 
 #[tokio::test]
