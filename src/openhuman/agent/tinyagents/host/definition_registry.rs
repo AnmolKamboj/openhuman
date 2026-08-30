@@ -365,7 +365,7 @@ impl OpenHumanDefinitionRegistry {
                 }
                 // Fail closed. Emitting the wildcard here would silently
                 // re-grant every denied tool — for shipped definitions that
-                // means specialist-only routes like `tinyplace_*` becoming
+                // means specialist-only routes becoming
                 // generally available. An agent with no tools is a visible,
                 // debuggable failure; a silently widened one is not.
                 None => {
@@ -792,7 +792,7 @@ mod tests {
     ///
     /// Written against a synthetic definition rather than a shipped one on
     /// purpose: the shipped denylists are product data and come and go (the
-    /// last one, `tools_agent`'s `tinyplace_*`, left with that tool family),
+    /// last specialist-only family left),
     /// while the projection rule this pins is permanent.
     #[test]
     fn a_wildcard_denylist_is_materialized_against_the_registered_tools() {

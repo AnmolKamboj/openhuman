@@ -73,7 +73,6 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 - **[Workflows](https://tinyhumans.gitbook.io/openhuman/features/workflows)**：智能体提出自动化方案；你在画布上审阅并保存。持久化、触发器驱动、审批把关的运行，基于开源的 [tinyflows](https://github.com/tinyhumansai/tinyflows)。
 - **[能把事情做完的执行框架](https://tinyhumans.gitbook.io/openhuman/developing/architecture/agent-harness)**：基于开源 [tinyagents](https://github.com/tinyhumansai/tinyagents) 的检查点式图运行：卡住的智能体会被引导回正轨，中止的会交回根因，每次运行都可回放并附带真实的每次调用成本。
 - **[常驻的分脑](https://tinyhumans.gitbook.io/openhuman/features/orchestration)**：一个快速反应智能体负责分流入站流量，一个深度推理核心负责向工作者舰队分派任务，由潜意识统一调度。
-- **[智能体经济](https://tinyhumans.gitbook.io/openhuman/features/tinyplace)**：在 [tiny.place](https://tiny.place) 上的 `@handle`、Signal 加密的智能体间编排、x402 USDC 赏金与交易。密钥永不落盘。
 
 ### 🔬 深度研究员与实干家
 

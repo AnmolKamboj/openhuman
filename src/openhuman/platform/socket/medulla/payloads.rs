@@ -4,8 +4,7 @@
 //!
 //! See `docs/specs/session-streaming-api-spec.md` §6 in the medulla repo. All
 //! payloads are camelCase on the wire to match the backend's Socket.IO
-//! conventions (the harness *envelope* they carry stays snake_case — that is
-//! the tinyplace v2 wire format, decoded/encoded by [`super::envelope`]).
+//! conventions (the harness envelope they carry stays snake_case).
 
 use serde::{Deserialize, Serialize};
 
@@ -54,14 +53,12 @@ pub struct TaskAbort {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// `medulla:task_envelope` — one live-stream frame for a task, carrying a
-/// `tinyplace.harness.session.v2` envelope (see [`super::envelope`]).
+/// native Medulla harness envelope (see [`super::envelope`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEnvelope {
     pub task_id: String,
-    /// A serialized [`tinyplace::types::SessionEnvelopeV2`]. Kept as raw JSON so
-    /// this struct stays a thin transport wrapper and never re-derives the
-    /// envelope kinds.
+    /// A serialized [`super::envelope::HarnessEnvelope`].
     pub envelope: serde_json::Value,
 }
 
@@ -140,10 +137,9 @@ pub struct CapabilitiesResult {
 /// One saved workflow graph as advertised to the backend — enough to choose it
 /// and explain the choice, never the graph itself.
 ///
-/// Field-compatible with the tiny.place `WorkflowAdvert`
-/// (`medulla-public/src/sdk/src/tinyplace/frames/types.rs`) and with the
-/// `WorkflowDescriptor` port in medulla-v1, so an advert crossing this boundary
-/// needs no translation layer on either side. `name`/`description` skip
+/// Field-compatible with the `WorkflowDescriptor` port in medulla-v1, so an
+/// advert crossing this boundary needs no translation layer on either side.
+/// `name`/`description` skip
 /// serialization when empty for exactly that reason: the Rust advert already
 /// omits its empty strings, the port therefore declares them optional, and the
 /// backend passes an absent key through as absent rather than fabricating `""`.

@@ -22,8 +22,6 @@ pub(crate) mod background_delivery;
 pub mod command_center;
 pub(crate) mod delegation;
 mod ops;
-pub mod pairing;
-mod pairing_schemas;
 pub(crate) mod parent_context;
 pub(crate) mod run_ledger_finalize;
 pub(crate) mod running_subagents;
@@ -45,10 +43,6 @@ pub use command_center::{
     all_command_center_controller_schemas, all_command_center_registered_controllers,
 };
 pub use ops::{AgentOrchestrationSession, OrchestrationError};
-pub use pairing_schemas::{
-    all_controller_schemas as all_pairing_controller_schemas,
-    all_registered_controllers as all_pairing_registered_controllers,
-};
 pub use subagent_control::{
     all_controller_schemas as all_subagent_control_controller_schemas,
     all_registered_controllers as all_subagent_control_registered_controllers,

@@ -275,7 +275,7 @@ tinyagents = { path = "../../vendor/tinyagents" }
 # match the one the core crate names, or cargo resolves two distinct packages
 # and the shell's `dyn Tool` stops being the core's. See the core manifest.
 tinytools = { path = "../../vendor/tinyagents/vendor/tinytools/crates/tinytools" }
-# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, and TinyChannels are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "../../vendor/tinyflows" }
@@ -286,7 +286,6 @@ tinycortex = { path = "../../vendor/tinycortex" }
 # tries to resolve it from crates.io and fails (it was never published).
 tinycortex-api = { path = "../../vendor/tinycortex/api" }
 tinychannels = { path = "../../vendor/tinychannels" }
-tinyplace = { path = "../../vendor/tinyplace/sdk/rust" }
 
 
 [dev-dependencies]

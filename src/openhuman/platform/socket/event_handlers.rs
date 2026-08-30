@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use serde_json::json;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use crate::api::models::socket::ConnectionStatus;
 use crate::core::bus::BUS;
@@ -25,7 +24,7 @@ use super::manager::{emit_server_event, emit_state_change, SharedState};
 pub(super) fn handle_sio_event(
     event_name: &str,
     data: serde_json::Value,
-    emit_tx: &mpsc::UnboundedSender<String>,
+    _emit_tx: &mpsc::UnboundedSender<String>,
     shared: &Arc<SharedState>,
 ) {
     // Log every incoming event for observability.
@@ -64,14 +63,6 @@ pub(super) fn handle_sio_event(
             super::medulla::workflows::begin_connection_generation();
             *shared.status.write() = ConnectionStatus::Connected;
             emit_state_change(shared);
-            // Declare the device-tool manifest so the hosted brain knows which
-            // tool calls to round-trip to this device (Phase 2). Sent every
-            // (re)connect so the server's view is rebuilt from scratch.
-            emit_via_channel(
-                emit_tx,
-                "orch:register_tools",
-                crate::openhuman::hosted::orchestration::effect_executor::device_tool_manifest(),
-            );
             // Advertise this core's agent roster to the backend so a medulla
             // operator can delegate `medulla:task_run` to a named agent. The
             // backend clears the roster on socket disconnect.
@@ -87,85 +78,6 @@ pub(super) fn handle_sio_event(
             log::error!("[socket] Server error event: {}", data);
             *shared.status.write() = ConnectionStatus::Error;
             emit_state_change(shared);
-        }
-        // Hosted-brain device effect: relay a reply over Signal, then ack. Runs
-        // async so the recv loop isn't blocked on the send; the ack rides back
-        // over the same socket. Device Signal keys never leave the machine.
-        "orch:effect:send_dm" => {
-            let tx = emit_tx.clone();
-            // Snapshotted before the spawn so the task is bound to the
-            // connection that asked for the work, not to whichever one happens
-            // to be live when it finishes.
-            let connection = super::medulla::workflows::connection_generation();
-            tokio::spawn(async move {
-                if let Some((call_id, ack)) =
-                    crate::openhuman::hosted::orchestration::effect_executor::handle_send_dm(&data)
-                        .await
-                {
-                    if emit_result_if_connected(
-                        &tx,
-                        &connection,
-                        "orch:effect:result",
-                        &call_id,
-                        ack,
-                    ) {
-                        log::debug!("[socket] orch:effect:send_dm acked call_id={call_id}");
-                    }
-                }
-            });
-        }
-        // Hosted-brain device tool call: run a local (read-only) device tool and
-        // return the result so the reasoning loop can continue.
-        "orch:tool_call" => {
-            let tx = emit_tx.clone();
-            let connection = super::medulla::workflows::connection_generation();
-            tokio::spawn(async move {
-                // Deliberately NOT a `select!` against the token, unlike the
-                // registration reads in `medulla::workflows`. Dropping this
-                // future mid-flight would abandon a side-effecting tool with
-                // its `call_id` still latched and no result — the exact failure
-                // this guard exists to prevent. Let it finish; gate the emit.
-                if let Some((call_id, result)) =
-                    crate::openhuman::hosted::orchestration::effect_executor::handle_tool_call(
-                        &data,
-                    )
-                    .await
-                {
-                    if emit_result_if_connected(
-                        &tx,
-                        &connection,
-                        "orch:tool_result",
-                        &call_id,
-                        result,
-                    ) {
-                        log::debug!("[socket] orch:tool_call result call_id={call_id}");
-                    }
-                }
-            });
-        }
-        // Hosted-brain context-guard eviction: fold the evicted compressed
-        // summaries into local memory RAG so they stay retrievable offline, then
-        // ack. Async so the recv loop isn't blocked on the RAG write; the ack
-        // rides back over the same socket (shared `orch:effect:result` channel).
-        "orch:effect:evict" => {
-            let tx = emit_tx.clone();
-            let connection = super::medulla::workflows::connection_generation();
-            tokio::spawn(async move {
-                if let Some((call_id, ack)) =
-                    crate::openhuman::hosted::orchestration::effect_executor::handle_evict(&data)
-                        .await
-                {
-                    if emit_result_if_connected(
-                        &tx,
-                        &connection,
-                        "orch:effect:result",
-                        &call_id,
-                        ack,
-                    ) {
-                        log::debug!("[socket] orch:effect:evict acked call_id={call_id}");
-                    }
-                }
-            });
         }
         // Webhook tunnel — publish to event bus for routing by WebhookRequestSubscriber
         "webhook:request" => {
@@ -518,82 +430,6 @@ fn base64_encode(input: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(input.as_bytes())
 }
 
-/// Emit a hosted-brain result, but only if the connection that asked for it is
-/// still the live one.
-///
-/// The emit channel outlives the socket: `emit_tx`/`emit_rx` is created once per
-/// [`connect`](super::manager::SocketManager::connect) and re-used by every
-/// reconnect attempt in the loop. So a result queued while the socket is down is
-/// not dropped — it is flushed onto the *next* connection, which has a different
-/// sid and whose roster the backend has already cleared. Nobody is waiting for
-/// it there, and the frame can only confuse whoever is.
-///
-/// # Why the `call_id` claim is deliberately left alone
-///
-/// The effect has already *happened* by the time this is reached — the claim is
-/// taken on entry and the work runs to completion before the result comes back.
-/// Releasing it so the backend's redelivery re-runs the call would re-execute a
-/// side effect that already succeeded: `handle_send_dm` sends over Signal with
-/// no `call_id` reaching that transport, so a peer would receive the message
-/// twice, and a local-execution `orch:tool_call` would spawn a second
-/// background agent. Both paths keep a successful id latched on purpose.
-///
-/// The cost of leaving it latched is that the redelivery is answered with the
-/// synthetic `{"accepted": true, "status": "running", "duplicate": true}` frame
-/// rather than the real result, so the brain's turn does not complete. That is
-/// unchanged from before this guard existed, and it is the lesser harm: a
-/// stalled turn is recoverable, a duplicate message to a human is not. Closing
-/// it properly needs the result cached for replay on the next connection, or a
-/// server-side deadline on the tool call — neither of which belongs here. The
-/// `warn!` below names the stranded `call_id` so the stall is diagnosable
-/// instead of silent.
-///
-/// # The check and the send are one step
-///
-/// Both happen inside `medulla::workflows::with_live_connection`, which holds
-/// the generation lock across them. Checked separately, the socket loop could
-/// end the generation and drain the channel in the gap, and the send would then
-/// sit in an empty channel waiting for the next connection — the very thing
-/// this exists to prevent.
-///
-/// Returns whether the result was emitted.
-pub(super) fn emit_result_if_connected(
-    tx: &mpsc::UnboundedSender<String>,
-    connection: &CancellationToken,
-    event: &str,
-    call_id: &str,
-    data: serde_json::Value,
-) -> bool {
-    let delivered = super::medulla::workflows::with_live_connection(connection, || {
-        emit_via_channel(tx, event, data);
-    })
-    .is_some();
-
-    if !delivered {
-        log::warn!(
-            "[socket] {event} undeliverable (the socket closed before the result was ready); \
-             dropped rather than sent on the next connection. The effect ran, so its claim \
-             stays latched and the turn will not complete: call_id={call_id}"
-        );
-    }
-    delivered
-}
-
-/// Send a Socket.IO event through the emit channel.
-///
-/// Format: `42["eventName", data]`
-pub(super) fn emit_via_channel(
-    tx: &mpsc::UnboundedSender<String>,
-    event: &str,
-    data: serde_json::Value,
-) {
-    let payload = serde_json::to_string(&json!([event, data])).unwrap_or_default();
-    let msg = format!("42{}", payload);
-    if let Err(e) = tx.send(msg) {
-        log::error!("[socket] emit_via_channel failed: {e}");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SIO event parsing
 // ---------------------------------------------------------------------------
@@ -624,95 +460,6 @@ mod tests {
             socket_id: RwLock::new(None),
             error: RwLock::new(None),
         })
-    }
-
-    // ── emit_result_if_connected ────────────────────────────────────
-
-    use crate::openhuman::hosted::orchestration::effect_executor::{
-        is_duplicate_call, release_call,
-    };
-
-    /// A `call_id` unique to this test process, so the tests do not collide
-    /// through the process-global `SEEN_CALL_IDS` set.
-    fn unique_call_id(tag: &str) -> String {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static COUNTER: AtomicUsize = AtomicUsize::new(0);
-        format!(
-            "emit-guard-{tag}-{}",
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        )
-    }
-
-    #[test]
-    fn a_result_is_emitted_while_its_connection_is_still_live() {
-        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let connection = CancellationToken::new();
-        let call_id = unique_call_id("live");
-
-        // Claim it the way the effect executor does on entry.
-        assert!(
-            !is_duplicate_call(&call_id),
-            "first claim is not a duplicate"
-        );
-
-        let emitted = emit_result_if_connected(
-            &tx,
-            &connection,
-            "orch:tool_result",
-            &call_id,
-            json!({"ok": true}),
-        );
-
-        assert!(emitted, "a live connection should take the result");
-        let msg = rx.try_recv().expect("the result should be on the wire");
-        assert!(msg.starts_with("42[\"orch:tool_result\""), "got: {msg}");
-        // The claim must survive: the result reached the socket, so a
-        // redelivery should be re-acked idempotently rather than re-run.
-        assert!(
-            is_duplicate_call(&call_id),
-            "a delivered result must leave its call_id latched"
-        );
-        release_call(&call_id);
-    }
-
-    #[test]
-    fn a_result_for_a_dead_connection_is_dropped_without_disturbing_its_claim() {
-        // The defect this guards: the emit channel outlives the socket, so an
-        // ungated emit lands on the *next* connection — a different sid, whose
-        // roster the backend has already cleared.
-        //
-        // The claim must survive. The effect already ran by the time the result
-        // exists, so releasing it would make the backend's redelivery re-execute
-        // a side effect that succeeded — a second Signal message to a peer, or a
-        // second background agent. See `emit_result_if_connected`.
-        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        let connection = CancellationToken::new();
-        let call_id = unique_call_id("dead");
-
-        assert!(
-            !is_duplicate_call(&call_id),
-            "first claim is not a duplicate"
-        );
-        connection.cancel();
-
-        let emitted = emit_result_if_connected(
-            &tx,
-            &connection,
-            "orch:tool_result",
-            &call_id,
-            json!({"ok": true}),
-        );
-
-        assert!(!emitted, "a dead connection must not take the result");
-        assert!(
-            rx.try_recv().is_err(),
-            "nothing should be queued for the next connection"
-        );
-        assert!(
-            is_duplicate_call(&call_id),
-            "an undeliverable result must not un-claim work that already ran"
-        );
-        release_call(&call_id);
     }
 
     // ── base64_encode ───────────────────────────────────────────────
@@ -854,37 +601,6 @@ mod tests {
         // Status should still be untouched. The dropped-empty branch is the
         // coverage target — this test validates we hit the early-return path.
         assert_eq!(*shared.status.read(), ConnectionStatus::Disconnected);
-    }
-
-    // ── emit_via_channel ────────────────────────────────────────────
-
-    #[test]
-    fn emit_via_channel_sends_socketio_event_frame() {
-        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        emit_via_channel(&tx, "hello", json!({"x": 1}));
-        let msg = rx.try_recv().expect("message should be sent");
-        assert!(
-            msg.starts_with("42"),
-            "expected SIO EVENT prefix, got: {msg}"
-        );
-        assert!(msg.contains("\"hello\""));
-        assert!(msg.contains("\"x\""));
-    }
-
-    #[test]
-    fn emit_via_channel_works_with_null_data() {
-        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-        emit_via_channel(&tx, "ping", serde_json::Value::Null);
-        let msg = rx.try_recv().expect("message should be sent");
-        assert_eq!(msg, r#"42["ping",null]"#);
-    }
-
-    #[test]
-    fn emit_via_channel_logs_but_does_not_panic_on_closed_receiver() {
-        let (tx, rx) = mpsc::unbounded_channel::<String>();
-        drop(rx); // receiver closed first
-                  // Must not panic — error path just logs.
-        emit_via_channel(&tx, "ping", json!({}));
     }
 
     // Regression: OPENHUMAN-TAURI-KC (#1814). A multi-byte UTF-8 char

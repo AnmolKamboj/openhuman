@@ -500,7 +500,7 @@ mod tests {
         assert!(observed.is_none());
     }
 
-    /// The `hosted::orchestration::effect_executor::run_local_agent` spawn site
+    /// A hosted effect-executor spawn site
     /// (#5508 / #5499): the device-tool bridge fires the local sub-agent from a
     /// bare `tokio::spawn` where there is **no ambient turn** to inherit — unlike
     /// the four sites PR #5465 fixed with `capture`/`propagate`, `capture()` here

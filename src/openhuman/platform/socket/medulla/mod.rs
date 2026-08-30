@@ -17,7 +17,7 @@
 //!
 //! Up (openhuman → backend):
 //! - `medulla:task_envelope` — the live session stream, as
-//!   `tinyplace.harness.session.v2` envelopes (see [`envelope`]).
+//!   native Medulla harness envelopes (see [`envelope`]).
 //! - `medulla:task_result`   — explicit completion.
 //! - `medulla:register_agents` — roster advertised on connect
 //!   ([`emit_register_agents`]); the backend clears it on disconnect.
@@ -461,7 +461,7 @@ fn usage_to_json(
 }
 
 /// Emit a `medulla:task_envelope` frame up the backend socket.
-fn emit_envelope(task_id: &str, env: tinyplace::types::SessionEnvelopeV2) {
+fn emit_envelope(task_id: &str, env: envelope::HarnessEnvelope) {
     let envelope = match serde_json::to_value(&env) {
         Ok(v) => v,
         Err(err) => {

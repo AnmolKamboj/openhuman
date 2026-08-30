@@ -61,8 +61,6 @@ pub struct ServiceSet {
     pub integrations: bool,
     /// Workspace memory-source periodic sync — repos, folders, RSS, web pages.
     pub memory_sync: bool,
-    /// Orchestration relay-mailbox drain supervisor.
-    pub orchestration: bool,
 }
 
 impl ServiceSet {
@@ -81,7 +79,6 @@ impl ServiceSet {
             mcp_boot: true,
             integrations: true,
             memory_sync: true,
-            orchestration: true,
         }
     }
 
@@ -101,7 +98,6 @@ impl ServiceSet {
             mcp_boot: false,
             integrations: false,
             memory_sync: false,
-            orchestration: false,
         }
     }
 
@@ -121,7 +117,6 @@ impl ServiceSet {
             mcp_boot: false,
             integrations: false,
             memory_sync: false,
-            orchestration: false,
         }
     }
 
@@ -151,7 +146,6 @@ impl ServiceSet {
             mcp_boot: false,
             integrations: false,
             memory_sync: true,
-            orchestration: false,
         }
     }
 }
@@ -218,8 +212,6 @@ pub struct DomainSet {
     pub desktop: bool,
     /// Clients of the hosted TinyHumans backend.
     pub hosted: bool,
-    /// The multi-agent relay surface (tinyplace).
-    pub relay: bool,
     /// Loadable native modules: the module host, registry and `modules` RPC.
     pub modules: bool,
     /// Everything not in a named family — always on in `full()`.
@@ -250,7 +242,6 @@ impl DomainSet {
             runtimes: true,
             desktop: true,
             hosted: true,
-            relay: true,
             modules: true,
             platform: true,
         }
@@ -280,7 +271,6 @@ impl DomainSet {
             runtimes: false,
             desktop: false,
             hosted: false,
-            relay: false,
             modules: false,
             platform: false,
         }
@@ -327,7 +317,6 @@ impl DomainSet {
             runtimes: true,
             desktop: false,
             hosted: false,
-            relay: false,
             modules: false,
             platform: true,
         }
@@ -363,7 +352,6 @@ impl DomainSet {
             runtimes: false,
             desktop: false,
             hosted: false,
-            relay: false,
             modules: false,
             platform: false,
         }
@@ -391,7 +379,6 @@ impl DomainSet {
             runtimes: false,
             desktop: false,
             hosted: false,
-            relay: false,
             modules: false,
             platform: false,
         }
@@ -419,7 +406,6 @@ impl DomainSet {
             DomainGroup::Runtimes => self.runtimes,
             DomainGroup::Desktop => self.desktop,
             DomainGroup::Hosted => self.hosted,
-            DomainGroup::Relay => self.relay,
             DomainGroup::Modules => self.modules,
             DomainGroup::Platform => self.platform,
         }
@@ -1093,7 +1079,6 @@ mod tests {
         assert!(!custom.mcp_boot);
         assert!(!custom.integrations);
         assert!(!custom.memory_sync);
-        assert!(!custom.orchestration);
 
         let desktop = ServiceSet::desktop();
         assert!(desktop.memory_queue);
@@ -1102,12 +1087,10 @@ mod tests {
         assert!(desktop.mcp_boot);
         assert!(desktop.integrations);
         assert!(desktop.memory_sync);
-        assert!(desktop.orchestration);
 
         // headless_api() runs no bootstrap jobs either.
         let headless = ServiceSet::headless_api();
         assert!(!headless.integrations);
         assert!(!headless.memory_sync);
-        assert!(!headless.orchestration);
     }
 }

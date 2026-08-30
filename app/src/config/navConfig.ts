@@ -30,10 +30,6 @@ export interface NavTab {
  * Ordered list of sidebar nav entries:
  *   chat → brain → flows → connections → rewards
  *
- * Orchestration (TinyPlace multi-agent coordination) is no longer a top-level
- * tab — it was folded back under Brain as the `/brain?tab=orchestration`
- * sub-tab, so the sidebar stays lean.
- *
  * Human has no primary tab: `/human` is reached from the chat composer, whose
  * primary button becomes the mascot when there is nothing to send (see
  * `ComposerIdleAction` in `AssistantUiChat`), so a sidebar row would be a

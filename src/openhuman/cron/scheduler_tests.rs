@@ -1027,14 +1027,6 @@ async fn cron_agent_job_uses_agent_definition_tool_scope() {
         !visible.is_empty(),
         "morning briefing has a wildcard scope plus a disallowlist, so the builder must materialize an explicit visible-tool filter"
     );
-    assert!(
-        !visible.contains("use_tinyplace"),
-        "morning briefing cron jobs must use the morning_briefing definition scope, not the orchestrator delegate surface"
-    );
-    assert!(
-        !visible.iter().any(|name| name.starts_with("tinyplace_")),
-        "morning briefing cron jobs must preserve tinyplace_* disallowlist"
-    );
 }
 
 #[tokio::test]
