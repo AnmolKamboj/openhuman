@@ -64,17 +64,29 @@ function withRunnerFunctions(functions, preamble, body) {
     ...functions.map(extractFunction),
     body,
   ].join("\n");
+  let result;
   try {
-    return {
+    result = {
       status: 0,
       output: execFileSync("bash", ["-c", script], { encoding: "utf8" }),
     };
   } catch (err) {
-    return {
+    result = {
       status: err.status,
       output: `${err.stdout ?? ""}${err.stderr ?? ""}`,
     };
   }
+  // A function that calls a helper this list did not lift out fails at runtime
+  // with `command not found`, and bash's 127 then flows into whatever branch the
+  // caller was testing — so the assertion fails for a reason that has nothing to
+  // do with the behaviour under test. Surface it as itself instead.
+  assert.doesNotMatch(
+    result.output,
+    /command not found/,
+    `the extracted functions call a helper that was not lifted out of the runner; ` +
+      `add it to the \`functions\` list:\n${result.output}`,
+  );
+  return result;
 }
 
 test("a failed raw coverage module fails the run even when a later module succeeds", () => {
@@ -82,8 +94,16 @@ test("a failed raw coverage module fails the run even when a later module succee
   // The loop's status is its last iteration's, so without an explicit `return`
   // the failure is discarded and CI goes green on a red suite.
   const res = withRunnerFunctions(
-    ["run_counted", "run_integration_target"],
+    // `target_features_satisfied` is not decoration: `run_integration_target`
+    // consults it on entry, so omitting it makes every target look unsatisfiable
+    // and the function returns early without running anything.
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
     [
+      // Inputs to `target_features_satisfied`. Empty reqs means "no target
+      // declares required-features", i.e. nothing is skipped — the condition
+      // this test needs in order to reach the loop it is actually about.
+      'TEST_TARGET_REQS=""',
+      'PRODUCT_FEATURES=""',
       "log() { printf '%s\\n' \"$*\"; }",
       "raw_coverage_modules() { printf 'first\\nsecond\\n'; }",
       // Fails for `first::`, succeeds otherwise.
