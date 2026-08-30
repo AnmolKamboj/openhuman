@@ -25,7 +25,8 @@ use super::{ToolBackend, ToolCallCtx};
 use crate::openhuman::config::ops as config_rpc;
 use crate::openhuman::config::Config;
 use crate::openhuman::integrations::composio::module_client::{self as connectors, methods};
-use crate::openhuman::integrations::composio::{ComposioExecuteRequest, ComposioExecuteResponse};
+use crate::openhuman::integrations::composio::types::ComposioExecuteRequest;
+use crate::openhuman::integrations::composio::ComposioExecuteResponse;
 use crate::openhuman::security::GateDecision;
 
 /// Dispatches a Composio action slug through the tier, curation, preflight and
