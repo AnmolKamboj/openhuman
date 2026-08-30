@@ -447,12 +447,7 @@ fn make_agent_with_builder_and_dispatcher(
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    // `create_memory` reaches the engine's embedding seam, which fails loudly
-    // when unwired rather than degrading — a deliberate choice, so an unwired
-    // host cannot corrupt an embedding space quietly. Nothing in a unit test
-    // runs the startup wiring that installs it, so the helper installs it
-    // itself. `install_for_tests` is idempotent (a `Once`), so every helper in
-    // this file calling it costs one install for the whole binary.
+    // The embedding seam, as above.
     crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
         Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
@@ -1011,12 +1006,7 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    // `create_memory` reaches the engine's embedding seam, which fails loudly
-    // when unwired rather than degrading — a deliberate choice, so an unwired
-    // host cannot corrupt an embedding space quietly. Nothing in a unit test
-    // runs the startup wiring that installs it, so the helper installs it
-    // itself. `install_for_tests` is idempotent (a `Once`), so every helper in
-    // this file calling it costs one install for the whole binary.
+    // The embedding seam, as above.
     crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
         Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
@@ -1193,12 +1183,7 @@ async fn turn_override_suppress_memory_agent_skips_memory_trigger() {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    // `create_memory` reaches the engine's embedding seam, which fails loudly
-    // when unwired rather than degrading — a deliberate choice, so an unwired
-    // host cannot corrupt an embedding space quietly. Nothing in a unit test
-    // runs the startup wiring that installs it, so the helper installs it
-    // itself. `install_for_tests` is idempotent (a `Once`), so every helper in
-    // this file calling it costs one install for the whole binary.
+    // The embedding seam, as above.
     crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
         Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
