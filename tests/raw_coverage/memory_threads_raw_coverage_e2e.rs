@@ -2359,37 +2359,19 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
     assert!(!forgot.is_error);
     assert!(forgot.output().contains("Forgot memory"));
 
-    let scoped_client: tinymemory_core::store::MemoryClientRef =
-        Arc::new(MemoryClient::from_workspace_dir(tmp.path().join("scope-prefs")).unwrap());
-    assert_eq!(
-        user_scopes::load(&scoped_client, " GMAIL ").await,
-        UserScopePref::default()
-    );
-    let pref = UserScopePref {
-        read: true,
-        write: false,
-        admin: true,
-    };
-    user_scopes::save(&scoped_client, " GMAIL ", pref)
-        .await
-        .expect("save user scope pref");
-    assert_eq!(user_scopes::load(&scoped_client, "gmail").await, pref);
-    scoped_client
-        .kv_set(Some("composio-user-scopes"), "gmail", &json!("bad pref"))
-        .await
-        .expect("write bad pref");
-    assert_eq!(
-        user_scopes::load(&scoped_client, "gmail").await,
-        UserScopePref::default()
-    );
-    assert!(user_scopes::save(&scoped_client, " ", pref)
-        .await
-        .unwrap_err()
-        .contains("toolkit must not be empty"));
-    assert_eq!(
-        user_scopes::load_or_default("not-ready-toolkit").await,
-        UserScopePref::default()
-    );
+    // The engine's `tinymemory_core::sync::composio::providers::user_scopes`
+    // module this used to drive (`load`/`save`/`load_or_default` against a
+    // `&MemoryClientRef`) is deleted with the rest of the in-process
+    // Composio pipeline — confirmed by an exhaustive grep of
+    // vendor/tinymemory, nothing under that name survives anywhere. Its
+    // host-side replacement, `integrations::composio::ops::user_scopes`, is
+    // real but `pub(crate)` (reached only via the `composio.get_user_scopes`
+    // / `composio.set_user_scopes` JSON-RPC handlers, which this file does
+    // not run a server for) and so is not reachable from an integration
+    // test in this crate. Genuine, unrecoverable coverage gap — reported
+    // rather than silently dropped. `UserScopePref` itself (the pure type)
+    // is still exercised elsewhere in this file via
+    // `memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases`.
 }
 
 #[tokio::test]
