@@ -13,7 +13,7 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
-#   287/271/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
+#   286/270/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
 #                      the copilot's authoring prompts upstream split the
 #                      `tinyflows` crate's catalog/storage/copilot surface into
 #                      three sibling crates in the SAME vendored workspace:
@@ -40,6 +40,9 @@
 #                      "dep:tinyflows-copilot", "dep:tinyflows-sqlite"]`, so a
 #                      slim build without `flows` drops all four together, same
 #                      as before this PR.
+#                      Measured on CI's Linux target; macOS resolves one extra
+#                      target-specific package/name (287/271/2), matching the
+#                      host skew already recorded below.
 #   283/267/2  2026-08-30  removed TinyPlace from the core and app, shedding
 #                      five packages and three unique crate names from the
 #                      workflow-only profile.
@@ -522,4 +525,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:287:271:2
+flows:286:270:2
