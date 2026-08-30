@@ -157,7 +157,11 @@ impl ChatModel<()> for ScriptedProvider {
         Ok(self.take_response(request))
     }
 
-    async fn stream(&self, _state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.take_response(request);
         let reasoning = response
             .message

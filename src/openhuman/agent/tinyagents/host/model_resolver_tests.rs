@@ -138,7 +138,11 @@ struct EchoModel(&'static str);
 
 #[async_trait]
 impl ChatModel<()> for EchoModel {
-    async fn invoke(&self, _state: &(), _request: ModelRequest) -> tinyinference::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        _state: &(),
+        _request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         Ok(ModelResponse::assistant(self.0))
     }
 }

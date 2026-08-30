@@ -1,9 +1,9 @@
 use super::*;
 use crate::openhuman::tools::ToolResult;
 use async_trait::async_trait;
+use tinyagents_harness::testkit::ScriptedModel;
 use tinyinference::message::AssistantMessage;
 use tinyinference::model::{ChatModel, ModelProfile, ModelResponse};
-use tinyagents_harness::testkit::ScriptedModel;
 use tinyinference::tool::ToolCall;
 
 struct PingTool;

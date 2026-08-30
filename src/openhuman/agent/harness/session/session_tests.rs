@@ -56,7 +56,11 @@ impl ChatModel<()> for MockProvider {
         )
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.invoke(state, request).await?;
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,
@@ -121,7 +125,11 @@ impl ChatModel<()> for RecordingProvider {
         )
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.invoke(state, request).await?;
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,
@@ -366,7 +374,11 @@ impl tinyagents_harness::memory::ChatHistory for FakeSessionHistory {
     async fn append(&self, _thread_id: &str, _message: Message) -> tinyagents_harness::Result<()> {
         Ok(())
     }
-    async fn replace(&self, _thread_id: &str, _messages: Vec<Message>) -> tinyagents_harness::Result<()> {
+    async fn replace(
+        &self,
+        _thread_id: &str,
+        _messages: Vec<Message>,
+    ) -> tinyagents_harness::Result<()> {
         Ok(())
     }
     async fn clear(&self, _thread_id: &str) -> tinyagents_harness::Result<()> {

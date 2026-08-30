@@ -104,9 +104,7 @@ impl ChatModel<()> for FailingProvider {
         _state: &(),
         _request: ModelRequest,
     ) -> tinyinference::Result<ModelResponse> {
-        Err(tinyinference::Error::Model(
-            "provider error".to_string(),
-        ))
+        Err(tinyinference::Error::Model("provider error".to_string()))
     }
 }
 

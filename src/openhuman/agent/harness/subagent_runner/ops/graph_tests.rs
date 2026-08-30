@@ -146,7 +146,11 @@ impl ChatModel<()> for ThinkingStreamProvider {
         Ok(ModelResponse::assistant("Hello"))
     }
 
-    async fn stream(&self, _state: &(), _request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &(),
+        _request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = ModelResponse::assistant("Hello");
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,

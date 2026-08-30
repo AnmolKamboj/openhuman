@@ -11,9 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use tinyagents_graph::export::GraphTopology;
-use tinyagents_graph::{
-    ClosureStateReducer, CompiledGraph, GraphBuilder, NodeContext, NodeResult,
-};
+use tinyagents_graph::{ClosureStateReducer, CompiledGraph, GraphBuilder, NodeContext, NodeResult};
 use tokio::sync::Mutex;
 
 use crate::openhuman::agent::harness::agent_graph::{
@@ -43,8 +41,9 @@ enum ResearcherGraphUpdate {
     PhaseEntered(&'static str),
 }
 
-type ResearcherGraphNodeFuture =
-    Pin<Box<dyn Future<Output = tinyagents_harness::Result<NodeResult<ResearcherGraphUpdate>>> + Send>>;
+type ResearcherGraphNodeFuture = Pin<
+    Box<dyn Future<Output = tinyagents_harness::Result<NodeResult<ResearcherGraphUpdate>>> + Send>,
+>;
 
 fn phase_node(
     phase: &'static str,

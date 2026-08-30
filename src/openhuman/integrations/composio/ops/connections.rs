@@ -11,13 +11,13 @@ use super::super::connected_integrations::{
     sync_cache_with_connections, FetchConnectedIntegrationsStatus,
 };
 use super::super::identity_store::{delete_connected_identity_facets, load_connected_identities};
-use tinymemory_api::composio::normalize_connection_identifier;
 use super::super::types::{
     ComposioAuthorizeRequest, ComposioAuthorizeResponse, ComposioConnectionsResponse,
     ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
 use super::error_utils::{direct_mode_without_key, report_composio_op_error, OpResult};
 use super::memory_cleanup::composio_memory_targets_for_connection;
+use tinymemory_api::composio::normalize_connection_identifier;
 
 pub async fn composio_list_connections(
     config: &Config,
@@ -274,13 +274,15 @@ pub(crate) async fn enrich_connections_with_identity(
     config: &Config,
     mut resp: ComposioConnectionsResponse,
 ) -> ComposioConnectionsResponse {
-    let identities = load_connected_identities(config).await.unwrap_or_else(|error| {
-        tracing::debug!(
-            %error,
-            "[composio] enrich_connections_with_identity: load_connected_identities failed"
-        );
-        Vec::new()
-    });
+    let identities = load_connected_identities(config)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::debug!(
+                %error,
+                "[composio] enrich_connections_with_identity: load_connected_identities failed"
+            );
+            Vec::new()
+        });
     if identities.is_empty() {
         tracing::debug!(
             "[composio] enrich_connections_with_identity: no cached identities yet \

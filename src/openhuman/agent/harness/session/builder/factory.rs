@@ -665,20 +665,19 @@ impl Agent {
                 let full_config = Arc::clone(&base_config);
                 // For cloud reflection, wrap the provider in an Arc.
                 // For local, no provider needed.
-                let reflection_provider: Option<
-                    Arc<dyn tinyinference::model::ChatModel<()>>,
-                > = if config.learning.reflection_source
-                    == crate::openhuman::config::ReflectionSource::Cloud
-                {
-                    let (model, resolved_model) =
-                        provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
-                    log::debug!(
+                let reflection_provider: Option<Arc<dyn tinyinference::model::ChatModel<()>>> =
+                    if config.learning.reflection_source
+                        == crate::openhuman::config::ReflectionSource::Cloud
+                    {
+                        let (model, resolved_model) =
+                            provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
+                        log::debug!(
                         "[learning] built crate-native reflection model resolved_model={resolved_model}"
                     );
-                    Some(model)
-                } else {
-                    None
-                };
+                        Some(model)
+                    } else {
+                        None
+                    };
                 post_turn_hooks.push(Arc::new(
                     crate::openhuman::agent::learning::ReflectionHook::new(
                         config.learning.clone(),

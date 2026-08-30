@@ -39,11 +39,11 @@ use crate::openhuman::agent::pformat::PFormatRegistry;
 use crate::openhuman::inference::provider::{ChatResponse, ToolCall};
 use crate::openhuman::tools::{Tool, ToolSpec};
 use serde_json::Value;
-use tinyinference::tool::ToolSchema;
 use tinyagents_harness::tool_calling::dialect::{
     DialectMessage, DialectResponse, DialectRole, NativeDialect, NativeToolCall, PFormatDialect,
     ToolDialect, ToolOutcome, ToolResultEntry, TranscriptEntry, XmlDialect,
 };
+use tinyinference::tool::ToolSchema;
 
 /// A parsed tool call representation after being extracted from an LLM response.
 #[derive(Debug, Clone)]

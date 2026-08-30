@@ -28,10 +28,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use tinyagents_harness::error::{Result as TaResult, TinyAgentsError};
-use tinyinference::message::Message as TaMessage;
 use tinyagents_harness::summarization::{
     estimate_tokens, CompressionProvenance, SummarizationPolicy, Summarizer, SummaryRecord,
 };
+use tinyinference::message::Message as TaMessage;
 
 use tinyinference::message::Message as HarnessMessage;
 use tinyinference::model::{ChatModel, ModelRequest};

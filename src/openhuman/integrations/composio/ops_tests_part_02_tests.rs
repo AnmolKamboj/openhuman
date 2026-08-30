@@ -352,7 +352,6 @@ async fn composio_get_user_profile_via_mock_returns_provider_profile() {
     // TEST_ENV_LOCK alone does not serialize against those. Hold both.
     let _backend_env_guard = crate::api::config::backend_env_test_lock();
 
-
     let app = Router::new()
         .route(
             "/agent-integrations/composio/connections",
@@ -505,7 +504,6 @@ async fn composio_sync_gmail_via_mock_ingests_records_and_updates_outcome() {
     // crate-wide lock to serialize against api::config / core::cli_tests /
     // medulla's tests on the same process-global var.
     let _backend_env_guard = crate::api::config::backend_env_test_lock();
-
 
     let app = Router::new()
         .route(

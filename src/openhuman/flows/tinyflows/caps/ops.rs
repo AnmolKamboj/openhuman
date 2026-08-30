@@ -225,7 +225,9 @@ async fn flow_tool_allowed(
 /// offline (a registry lookup) so the common cataloged-toolkit path never pays
 /// for a connected-set fetch.
 fn slug_needs_connected_set(slug: &str) -> bool {
-    use crate::openhuman::integrations::composio::providers::{catalog_for_toolkit, toolkit_from_slug};
+    use crate::openhuman::integrations::composio::providers::{
+        catalog_for_toolkit, toolkit_from_slug,
+    };
     match toolkit_from_slug(slug) {
         Some(toolkit) => catalog_for_toolkit(&toolkit).is_none(),
         None => false,

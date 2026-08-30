@@ -104,7 +104,11 @@ impl ChatModel<()> for SequenceProvider {
         }
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         // The legacy fixture implemented `chat` but did not write provider
         // deltas. Preserve that non-streaming wire behavior: the harness still
         // receives the authoritative completed response, while turn-owned

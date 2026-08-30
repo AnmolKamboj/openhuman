@@ -54,15 +54,13 @@ pub async fn composio_list_capabilities(
     // in-process pipeline by tinymemory v1.13.4. The connector module now
     // answers this directly — `ListCapabilities` already returns exactly
     // this reply shape, so there is no host-side matrix or conversion left.
-    let resp = connectors::call_bare::<ComposioCapabilitiesResponse>(
-        config,
-        methods::LIST_CAPABILITIES,
-    )
-    .await
-    .map_err(|error| {
-        report_composio_op_error("list_capabilities", &anyhow::anyhow!("{error}"));
-        format!("[composio] list_capabilities failed: {error}")
-    })?;
+    let resp =
+        connectors::call_bare::<ComposioCapabilitiesResponse>(config, methods::LIST_CAPABILITIES)
+            .await
+            .map_err(|error| {
+                report_composio_op_error("list_capabilities", &anyhow::anyhow!("{error}"));
+                format!("[composio] list_capabilities failed: {error}")
+            })?;
     let count = resp.capabilities.len();
     Ok(RpcOutcome::new(
         resp,

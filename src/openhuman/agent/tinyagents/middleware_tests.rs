@@ -1,10 +1,10 @@
 use super::*;
 use serde_json::json;
 use tinyagents_harness::context::{RunConfig, RunContext};
-use tinyinference::model::ModelRequest;
 use tinyagents_harness::no_progress::{
     DEFAULT_REPEAT_CALL_THRESHOLD, DEFAULT_REPEAT_OUTPUT_THRESHOLD,
 };
+use tinyinference::model::ModelRequest;
 
 fn ctx() -> RunContext<()> {
     RunContext::new(RunConfig::new("mw-test"), ())

@@ -22,7 +22,10 @@
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::FacetType;
-use tinymemory_api::composio::{canonicalize, normalize_connection_identifier, ConnectedIdentity, IdentityKind, ProviderUserProfile};
+use tinymemory_api::composio::{
+    canonicalize, normalize_connection_identifier, ConnectedIdentity, IdentityKind,
+    ProviderUserProfile,
+};
 
 /// Persist one [`ProviderUserProfile`] as identity facets, returning how many
 /// rows were written.
@@ -62,7 +65,15 @@ pub async fn persist_provider_profile(
         let key = format!("skill:{toolkit}:{identifier}:{}", kind.as_str());
         let facet_id = format!("skill-{toolkit}-{identifier}-{}", kind.as_str());
         match profile_family
-            .upsert_provider_facet(&facet_id, FacetType::Workflow, &key, &value, kind.confidence(), None, now)
+            .upsert_provider_facet(
+                &facet_id,
+                FacetType::Workflow,
+                &key,
+                &value,
+                kind.confidence(),
+                None,
+                now,
+            )
             .await
         {
             Ok(()) => written += 1,
@@ -92,7 +103,10 @@ pub async fn persist_provider_profile(
 /// Expand a [`ProviderUserProfile`] (and provider-specific `extras`) into the
 /// canonical `(kind, value)` rows. **All per-toolkit quirks live here**; the
 /// matcher only sees normalized tuples.
-fn expand_identity_rows(toolkit: &str, profile: &ProviderUserProfile) -> Vec<(IdentityKind, String)> {
+fn expand_identity_rows(
+    toolkit: &str,
+    profile: &ProviderUserProfile,
+) -> Vec<(IdentityKind, String)> {
     let mut rows: Vec<(IdentityKind, String)> = Vec::new();
     let mut push = |kind: IdentityKind, raw: Option<&str>| {
         if let Some(v) = raw.and_then(|s| canonicalize(kind, s)) {

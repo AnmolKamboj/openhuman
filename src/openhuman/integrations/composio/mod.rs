@@ -48,10 +48,10 @@ pub mod execute_dispatch;
 pub mod execute_prepare;
 pub mod googlecalendar_args;
 pub mod identity;
+pub mod identity_store;
 pub mod module_client;
 pub mod oauth_handoff;
 pub mod ops;
-pub mod identity_store;
 pub mod periodic;
 pub mod profile_md;
 pub mod providers;
@@ -62,12 +62,13 @@ pub mod trigger_history;
 pub mod types;
 
 pub use crate::openhuman::agent::prompts::types::ConnectedIntegration;
-pub use crate::openhuman::integrations::composio::providers::{ProviderUserProfile, SyncOutcome, SyncReason};
+pub use crate::openhuman::integrations::composio::providers::{
+    ProviderUserProfile, SyncOutcome, SyncReason,
+};
 pub use crate::openhuman::memory::sync::composio::bus::{
     register_composio_trigger_subscriber, ComposioConfigChangedSubscriber,
     ComposioTriggerSubscriber,
 };
-pub use periodic::{record_sync_success, start_periodic_sync};
 pub use action_tool::ComposioActionTool;
 pub use client::ComposioClient;
 pub use identity::connection_identity;
@@ -76,6 +77,7 @@ pub use ops::{
     fetch_connected_integrations, fetch_connected_integrations_status, fetch_toolkit_actions,
     invalidate_connected_integrations_cache, FetchConnectedIntegrationsStatus,
 };
+pub use periodic::{record_sync_success, start_periodic_sync};
 pub use schemas::{
     all_controller_schemas as all_composio_controller_schemas,
     all_registered_controllers as all_composio_registered_controllers,

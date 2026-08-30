@@ -69,10 +69,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use tinyagents_harness::error::TinyAgentsError;
 use tinyagents_harness::host::{ModelResolveRequest, ModelResolver};
-use tinyinference::model::{
-    ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream,
-};
 use tinyagents_harness::Result as TaResult;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream};
 
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider::{create_chat_model_with_model_id, role_for_model_tier};

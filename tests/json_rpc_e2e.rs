@@ -10785,7 +10785,11 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
         .as_array()
         .expect("tasks array")
         .clone();
-    assert_eq!(tasks_arr.len(), 0, "nothing can be routed without fetch_tasks");
+    assert_eq!(
+        tasks_arr.len(),
+        0,
+        "nothing can be routed without fetch_tasks"
+    );
 
     // A second fetch refuses identically — the refusal is not a one-shot
     // fluke, it is the pipeline's steady state for every toolkit.

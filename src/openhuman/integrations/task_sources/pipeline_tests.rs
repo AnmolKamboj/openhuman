@@ -100,7 +100,10 @@ async fn refusal_records_a_fetch_history_entry() {
     // source has never ingested anything, rather than looking silently idle.
     let sources = store::list_sources(&config).unwrap();
     let recorded = sources.iter().find(|s| s.id == source.id);
-    assert!(recorded.is_some(), "source must still be listed after a refused fetch");
+    assert!(
+        recorded.is_some(),
+        "source must still be listed after a refused fetch"
+    );
 }
 
 #[tokio::test]

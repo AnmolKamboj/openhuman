@@ -87,7 +87,8 @@ pub async fn ensure_composio_sources() -> Option<HashSet<String>> {
     // Run the one-time caps migration after the reconcile loop so any
     // sources upserted just above are also considered. Still the engine's —
     // it only ever read the registry, never the deleted pipeline.
-    if let Err(e) = tinymemory_core::sources::reconcile::apply_composio_source_caps_migration().await
+    if let Err(e) =
+        tinymemory_core::sources::reconcile::apply_composio_source_caps_migration().await
     {
         tracing::warn!(
             error = %e,

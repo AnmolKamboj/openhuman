@@ -43,10 +43,10 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
 use serde_json::json;
+use tinyagents_harness::events::{AgentEvent, EventSink};
 use tinyinference::embeddings::{
     EmbeddingModel as TaEmbeddingModel, InMemoryVectorStore, Retriever, ScoredDoc,
 };
-use tinyagents_harness::events::{AgentEvent, EventSink};
 
 use super::ProviderEmbeddingModel;
 use crate::openhuman::inference::embeddings::EmbeddingProvider;

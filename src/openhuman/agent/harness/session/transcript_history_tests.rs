@@ -43,9 +43,7 @@ fn history(dir: &TempDir) -> SessionTranscriptHistory {
 
 fn user(text: &str) -> Message {
     Message::User(tinyinference::message::UserMessage {
-        content: vec![tinyinference::message::ContentBlock::Text(
-            text.to_string(),
-        )],
+        content: vec![tinyinference::message::ContentBlock::Text(text.to_string())],
     })
 }
 

@@ -9,9 +9,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tinyinference::model::{
-    ChatModel, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
-};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse, ModelStream, ModelStreamItem};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{sleep, Duration};
 
@@ -44,7 +42,11 @@ impl ChatModel<()> for StaticModel {
         }
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let response = self.invoke(state, request).await?;
         Ok(Box::pin(futures::stream::iter(vec![
             ModelStreamItem::Started,
@@ -93,9 +95,7 @@ impl ChatModel<()> for PersistentErrModel {
         _state: &(),
         _request: ModelRequest,
     ) -> tinyinference::Result<ModelResponse> {
-        Err(tinyinference::Error::Model(
-            self.build_error().to_string(),
-        ))
+        Err(tinyinference::Error::Model(self.build_error().to_string()))
     }
 }
 

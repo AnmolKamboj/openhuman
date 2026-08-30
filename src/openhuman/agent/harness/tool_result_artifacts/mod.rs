@@ -136,7 +136,12 @@ impl Store for ToolResultArtifactIndexStore {
         Ok(guard.get(namespace).and_then(|ns| ns.get(key).cloned()))
     }
 
-    async fn put(&self, namespace: &str, key: &str, value: Value) -> tinyagents_harness::Result<()> {
+    async fn put(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: Value,
+    ) -> tinyagents_harness::Result<()> {
         let mut guard = self.data.lock().map_err(|_| {
             tinyagents_harness::TinyAgentsError::Memory("tool artifact index poisoned".into())
         })?;

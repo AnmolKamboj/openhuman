@@ -481,7 +481,11 @@ impl ChatModel<()> for OpenHumanBackendModel {
         Some(&self.profile)
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         let model = self.build_wire_model()?;
         let response = match model.invoke(state, with_thread_id(request)).await {
             Ok(response) => response,
@@ -494,7 +498,11 @@ impl ChatModel<()> for OpenHumanBackendModel {
         Ok(project_managed_usage(response))
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let model = self.build_wire_model()?;
         // NOTE (streaming billing parity): the crate SSE parser sets `raw: None`
         // on the terminal `Completed` response, so the `openhuman.billing` envelope

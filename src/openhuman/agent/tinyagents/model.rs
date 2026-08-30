@@ -440,12 +440,20 @@ impl ChatModel<()> for RouteRecordingModel {
         self.inner.profile()
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.record_route();
         self.inner.invoke(state, request).await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.record_route();
         self.inner.stream(state, request).await
     }
@@ -488,13 +496,21 @@ impl ChatModel<()> for ProfileOverrideModel {
         Some(&self.profile)
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.inner
             .invoke(state, self.pin_request_options(request))
             .await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.inner
             .stream(state, self.pin_request_options(request))
             .await
@@ -522,11 +538,19 @@ impl ChatModel<()> for MaxTokensModel {
         self.inner.profile()
     }
 
-    async fn invoke(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelResponse> {
+    async fn invoke(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.inner.invoke(state, self.cap(request)).await
     }
 
-    async fn stream(&self, state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         self.inner.stream(state, self.cap(request)).await
     }
 }

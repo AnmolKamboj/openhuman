@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use tinyagents_harness::context::RunContext;
 use tinyagents_harness::middleware::Middleware;
-use tinyinference::model::ModelResponse;
 use tinyagents_harness::steering::{SteeringCommand, SteeringHandle};
+use tinyinference::model::ModelResponse;
 
 use crate::openhuman::agent::cost::TurnCost;
 use crate::openhuman::agent::stop_hooks::{StopDecision, StopHook, TurnState};

@@ -12,9 +12,9 @@ use parking_lot::Mutex;
 use serde_json::json;
 use std::path::Path;
 use std::sync::Arc;
+use tinycortex::memory::conversations;
 use tinyinference::message::Message;
 use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinycortex::memory::conversations;
 
 const SPAWN_SUBAGENT_CANARY: &str = "tool-e2e-spawn-subagent-canary";
 const ARCHETYPE_DELEGATION_CANARY: &str = "tool-e2e-archetype-delegation-canary";

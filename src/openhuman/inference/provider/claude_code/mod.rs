@@ -235,7 +235,11 @@ impl ChatModel<()> for ClaudeCodeProvider {
         Ok(crate::openhuman::agent::tinyagents::model::native_model_response(&response))
     }
 
-    async fn stream(&self, _state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+    async fn stream(
+        &self,
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelStream> {
         let provider = self.clone();
         let label = self.model.clone();
         let (item_tx, item_rx) = tokio::sync::mpsc::unbounded_channel::<ModelStreamItem>();

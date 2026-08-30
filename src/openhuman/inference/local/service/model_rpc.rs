@@ -152,9 +152,7 @@ fn model_outcome(
             .content
             .iter()
             .filter_map(|block| match block {
-                tinyinference::message::ContentBlock::Thinking { text, .. } => {
-                    Some(text.as_str())
-                }
+                tinyinference::message::ContentBlock::Thinking { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()

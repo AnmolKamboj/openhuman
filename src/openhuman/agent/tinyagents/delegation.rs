@@ -112,8 +112,7 @@ where
     F: Fn(DelegationStage, DelegationState) -> Fut + Clone + Send + Sync + 'static,
     Fut: Future<Output = Result<DelegationStageOutput, String>> + Send + 'static,
 {
-    tinyagents_graph::delegation::run_delegation_durable(with_tracing_sink(config), run_stage)
-        .await
+    tinyagents_graph::delegation::run_delegation_durable(with_tracing_sink(config), run_stage).await
 }
 
 /// Resume a delegation graph parked on a durable human-approval interrupt,

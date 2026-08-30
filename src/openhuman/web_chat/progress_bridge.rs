@@ -142,8 +142,7 @@ pub(super) fn ledger_append_event(
     config: &crate::openhuman::config::Config,
     event: tinyagents_session::run_ledger::RunEventAppend,
 ) {
-    if let Err(err) =
-        tinyagents_session::run_ledger::append_run_event(&config.workspace_dir, event)
+    if let Err(err) = tinyagents_session::run_ledger::append_run_event(&config.workspace_dir, event)
     {
         log::warn!("[run_ledger][web_channel] failed to append event: {err}");
     }
