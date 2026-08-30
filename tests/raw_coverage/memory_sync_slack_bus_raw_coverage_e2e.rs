@@ -232,6 +232,7 @@ async fn composio_bus_subscribers_wire_up_and_auto_register_despite_no_loaded_mo
         .handle(&DomainEvent::ComposioConnectionCreated {
             toolkit: "slack".to_string(),
             connection_id: "conn-slack-round19".to_string(),
+            connect_url: "https://round19.slack.com/connect".to_string(),
         })
         .await;
 
