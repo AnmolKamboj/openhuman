@@ -34,5 +34,5 @@ pub use tools::{PackRegistryHandle, LOAD_SKILL, USE_SKILL};
 pub use types::ToolPack;
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "toolpacks_tests.rs"]
 mod tests;

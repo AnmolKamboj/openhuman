@@ -250,4 +250,5 @@ pub async fn recall_related_preferences(
 }
 
 #[cfg(test)]
+#[path = "preferences_tests.rs"]
 mod tests;

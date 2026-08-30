@@ -77,4 +77,5 @@ pub(crate) use parse::parse_tool_calls_with_pformat;
 #[cfg(test)]
 mod harness_gap_tests;
 #[cfg(test)]
+#[path = "harness_tests.rs"]
 mod tests;

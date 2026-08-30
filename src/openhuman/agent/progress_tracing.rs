@@ -1478,4 +1478,5 @@ pub(crate) async fn export_run_trace_from_journal(
 }
 
 #[cfg(test)]
+#[path = "progress_tracing/progress_tracing_tests.rs"]
 mod tests;

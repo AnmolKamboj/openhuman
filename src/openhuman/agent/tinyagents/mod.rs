@@ -2414,4 +2414,5 @@ fn record_unobserved_turn_usage(
 }
 
 #[cfg(test)]
+#[path = "tinyagents_tests.rs"]
 mod tests;
