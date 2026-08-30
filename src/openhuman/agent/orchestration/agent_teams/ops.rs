@@ -518,18 +518,52 @@ mod tests {
         let a = assign_task(&config, &team_id, "A", None, None, &[]).unwrap();
         let b = assign_task(&config, &team_id, "B", None, None, &[a.id.clone()]).unwrap();
 
-        // Self-dependency.
-        let err = assign_task(&config, &team_id, "self", None, None, &["task-xyz".into()]);
-        // self id is generated, so simulate via an existing-task edit path instead:
-        // unknown id path already covered; ensure self check fires when dep == new id.
-        // We can't predict the new id; verify cycle path instead.
-        let _ = err;
-
-        // Cycle: try to make A depend_on B (A already an upstream of B).
-        // Re-upserting A with depends_on [B] would close the loop; assign_task
-        // only creates new tasks, so emulate the cycle check directly.
+        // No cycle: a fresh candidate depending on B is a plain extension of
+        // the existing chain (A -> B -> C).
         let existing = run_ledger::list_agent_team_tasks(&config.workspace_dir, &team_id).unwrap();
-        assert!(has_task_cycle(&a.id, &[b.id.clone()], &existing));
+        assert!(!has_task_cycle("C", &[b.id.clone()], &existing));
+
+        // Cycle: `has_task_cycle` is exercised directly (rather than through
+        // `assign_task`, which only ever creates new tasks and can never make
+        // an existing one depend on something newer) with a synthetic fixture
+        // list. Using ids distinct from every existing task matters here:
+        // `tinyagents::graph::dag::has_cycle` deliberately processes only the
+        // *first* declaration of a repeated id and ignores the rest (see its
+        // doc comment on `DagIssue::DuplicateNode`), so reusing `a.id` for the
+        // new candidate — as this test previously did — is silently ignored
+        // by the crate rather than fabricating a cycle, and the assertion
+        // that depended on the old host-side Kahn implementation's
+        // duplicate-merging behaviour no longer holds. A three-node chain
+        // with unique ids (x depends on z, y depends on x, and a new z
+        // depending on y) closes a real x -> z -> y -> x loop without ever
+        // repeating an id.
+        let fixture_existing = vec![
+            task_fixture(&team_id, "x", &["z"]),
+            task_fixture(&team_id, "y", &["x"]),
+        ];
+        assert!(has_task_cycle("z", &["y".to_string()], &fixture_existing));
+    }
+
+    fn task_fixture(team_id: &str, id: &str, depends_on: &[&str]) -> AgentTeamTask {
+        let now = Utc::now();
+        AgentTeamTask {
+            id: id.to_string(),
+            team_id: team_id.to_string(),
+            title: id.to_string(),
+            objective: None,
+            status: AgentTeamTaskStatus::Todo,
+            owner_member_id: None,
+            claimed_by_member_id: None,
+            claim_token: None,
+            depends_on: depends_on.iter().map(|d| d.to_string()).collect(),
+            gate_status: "pending".to_string(),
+            gate_reason: None,
+            evidence: Vec::new(),
+            source_run_id: None,
+            order_index: 0,
+            created_at: now,
+            updated_at: now,
+        }
     }
 
     #[test]
