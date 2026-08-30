@@ -335,10 +335,6 @@ export function providerToggleAriaLabel(
   );
 }
 
-export function humanizeModelId(id: string): string {
-  return id.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
 export function appendTemperatureToProviderString(
   provider: string,
   temperature: number | null
