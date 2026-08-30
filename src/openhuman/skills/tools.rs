@@ -86,6 +86,11 @@ pub struct WorkflowListTool {
     /// (`<workspace>/personalities/<id>/skills/`). `None` for the profile-less
     /// session and other profiles, so the listed set is byte-identical to today.
     profile_skills_root: Option<PathBuf>,
+    /// User-scope root to scan, when it must not be the real `$HOME`.
+    ///
+    /// `None` — production — resolves `dirs::home_dir()` at call time, exactly
+    /// as before. See [`Self::with_home_dir`].
+    home_dir: Option<PathBuf>,
 }
 
 impl WorkflowListTool {
@@ -94,7 +99,30 @@ impl WorkflowListTool {
             workspace_dir: config.workspace_dir.clone(),
             skill_allowlist: None,
             profile_skills_root: None,
+            home_dir: None,
         }
+    }
+
+    /// Scan `home` as the user scope instead of `dirs::home_dir()`.
+    ///
+    /// Every other layer of discovery already takes the home directory as a
+    /// parameter — `discover_workflows_inner`, `discover_workflows_with_profile`
+    /// and `install_workflow_from_url_with_home` all do — and this tool was the
+    /// one place that resolved it internally, which made it the one place a test
+    /// could not isolate.
+    ///
+    /// That is not a hypothetical: a test seeding one project-scope workflow
+    /// into a tempdir also picked up every skill the developer had installed
+    /// under their real `~/.openhuman/skills` and `~/.agents/skills`. The result
+    /// is one JSON blob, the harness caps a tool result at 16 KiB
+    /// (`ContextConfig::tool_result_budget_bytes`), and fifteen real bundles
+    /// push past that — so the seeded workflow was discovered correctly and then
+    /// truncated back out before the assertion could see it. The failure looked
+    /// like broken discovery and was a non-hermetic fixture.
+    #[must_use]
+    pub fn with_home_dir(mut self, home: Option<PathBuf>) -> Self {
+        self.home_dir = home;
+        self
     }
 
     /// Scope the listed workflows to a per-profile allowlist of `dir_name`
@@ -133,7 +161,7 @@ impl Tool for WorkflowListTool {
 
     async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
         log::debug!("[tool][workflows] list invoked");
-        let home = dirs::home_dir();
+        let home = self.home_dir.clone().or_else(dirs::home_dir);
         let trusted = is_workspace_trusted(&self.workspace_dir);
         let mut workflows = discover_workflows_with_profile(
             home.as_deref(),
