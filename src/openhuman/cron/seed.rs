@@ -33,6 +33,11 @@ const MORNING_BRIEFING_JOB_NAME: &str = "morning_briefing";
 /// finds the migration path.
 const LEGACY_WELCOME_JOB_NAME: &str = "welcome";
 
+/// Name used by the retired TinyPlace autopilot schedule. This migration
+/// marker must remain until upgraded workspaces have had the persisted job
+/// removed.
+const RETIRED_TINYPLACE_AUTOPILOT_JOB_NAME: &str = "tinyplace_autopilot";
+
 /// Delivery config for proactive agents. The channels module decides
 /// which channel(s) to deliver to based on the user's active channel
 /// preference — no channel is specified here.
@@ -76,6 +81,25 @@ pub fn seed_proactive_agents(config: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Remove schedules whose implementation and management UI no longer exist.
+///
+/// Runs on every core boot (and is idempotent) so existing installations cannot
+/// keep executing an enabled TinyPlace autopilot row after upgrading.
+pub fn prune_retired_jobs(config: &Config) -> Result<usize> {
+    let existing = list_jobs(config)?;
+    let stale_ids: Vec<String> = existing
+        .iter()
+        .filter(|job| job.name.as_deref() == Some(RETIRED_TINYPLACE_AUTOPILOT_JOB_NAME))
+        .map(|job| job.id.clone())
+        .collect();
+
+    for id in &stale_ids {
+        remove_job(config, id)?;
+    }
+
+    Ok(stale_ids.len())
 }
 
 /// Remove any persisted cron job named `"welcome"` from a prior build.
@@ -186,6 +210,7 @@ mod tests {
         assert!(!MORNING_BRIEFING_JOB_NAME.is_empty());
         assert!(!LEGACY_WELCOME_JOB_NAME.is_empty());
         assert_ne!(MORNING_BRIEFING_JOB_NAME, LEGACY_WELCOME_JOB_NAME);
+        assert!(!RETIRED_TINYPLACE_AUTOPILOT_JOB_NAME.is_empty());
     }
 
     #[test]
@@ -288,5 +313,34 @@ mod tests {
                 .any(|j| j.name.as_deref() == Some(MORNING_BRIEFING_JOB_NAME)),
             "morning_briefing should have been seeded, got: {remaining:?}"
         );
+    }
+
+    #[test]
+    fn startup_prune_removes_retired_tinyplace_autopilot_jobs() {
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+
+        add_agent_job_with_definition(
+            &config,
+            Some(RETIRED_TINYPLACE_AUTOPILOT_JOB_NAME.to_string()),
+            Schedule::Cron {
+                expr: "*/5 * * * *".to_string(),
+                tz: None,
+                active_hours: None,
+            },
+            "retired autopilot prompt",
+            SessionTarget::Isolated,
+            None,
+            Some(proactive_delivery()),
+            false,
+            Some(RETIRED_TINYPLACE_AUTOPILOT_JOB_NAME.to_string()),
+            true,
+            None,
+        )
+        .expect("seed retired autopilot");
+
+        assert_eq!(prune_retired_jobs(&config).unwrap(), 1);
+        assert_eq!(prune_retired_jobs(&config).unwrap(), 0);
+        assert!(list_jobs(&config).unwrap().is_empty());
     }
 }

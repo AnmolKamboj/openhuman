@@ -384,6 +384,14 @@ pub async fn start_boot_once_jobs(services: ServiceSet, config: &Config) {
 }
 
 async fn run_legacy_migrations(config: &Config) {
+    match crate::openhuman::cron::seed::prune_retired_jobs(config) {
+        Ok(count) if count > 0 => {
+            log::info!("[cron] removed {count} retired autopilot job(s)");
+        }
+        Ok(_) => {}
+        Err(e) => log::warn!("[cron] failed to prune retired jobs: {e}"),
+    }
+
     // These used to run as detached tasks, allowing a user/API write to land
     // between a migration's `get(None)` check and its later `put`. Await each
     // copy in startup order so the crate stores are authoritative before
