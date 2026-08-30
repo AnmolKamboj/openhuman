@@ -26,6 +26,14 @@ use tinyconnectors_bus::records::{ConnectorSyncRequest, ConnectorSyncResponse};
 use super::connections::resolve_toolkit_for_connection;
 use super::error_utils::{report_composio_op_error, OpResult};
 
+/// The source kind every connector record is ingested under.
+///
+/// The memory driver parses this — it is `SourceKind::Composio`'s wire string —
+/// and answers `Invalid` for a kind it does not know, so it is a literal here
+/// rather than something derived from the toolkit. Records from Gmail and from
+/// Slack are both Composio records; the *toolkit* lives in the source id.
+const SOURCE_KIND: &str = "composio";
+
 /// Aggregate result of [`composio_refresh_all_identities`].
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefreshIdentitiesReport {
@@ -297,19 +305,30 @@ async fn run_sync_pass(
     let outcome = sink
         .accept_source_items(
             &response.batch.source_id,
-            &response.batch.source_kind,
+            SOURCE_KIND,
             items,
             MemoryTaint::ExternalSync,
         )
         .await
         .map_err(|error| format!("ingesting {toolkit} records failed: {error}"))?;
 
+    if !response.batch.complete {
+        // The module keeps its own cursor, so the next call resumes where this
+        // one stopped. Saying so is worth a line: a partial run that looked
+        // complete is how a user concludes half their mail is missing.
+        tracing::info!(
+            toolkit = %toolkit,
+            "[composio] sync pass stopped short of the end; the next run resumes"
+        );
+    }
+
     tracing::debug!(
         toolkit = %toolkit,
         stage = ?response.stage,
         pages_read = response.pages_read,
         records_skipped = response.records_skipped,
-        accepted = outcome.accepted,
+        written = outcome.written,
+        already_ingested = outcome.already_ingested,
         "[composio] sync pass ingested"
     );
     Ok(count)
