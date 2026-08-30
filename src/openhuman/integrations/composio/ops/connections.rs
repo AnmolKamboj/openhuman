@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
+use super::super::module_client::{self as connectors, methods};
 use crate::openhuman::config::Config;
-use crate::openhuman::modules::connectors::{self, methods};
 use crate::rpc::RpcOutcome;
 
 use super::super::client::ComposioClient;

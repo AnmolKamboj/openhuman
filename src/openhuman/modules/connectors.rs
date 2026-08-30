@@ -177,22 +177,6 @@ pub async fn call_bare<Reply: DeserializeOwned>(
         .map_err(|error| format!("{member}: {error}"))
 }
 
-/// Whether a member failure is the module refusing an operation the live route
-/// does not offer.
-///
-/// The two routes are not equivalent, and the module says so by name rather
-/// than by returning an empty result. A host that wants to render its own
-/// message for that case — "direct mode has no curated allowlist" — needs to
-/// tell the refusal apart from a real failure, and this is how.
-///
-/// Matched on the message because that is what crosses the bus: `TinyBus`
-/// carries an error name and a string, not a typed enum, so the structure of
-/// [`tinyconnectors_bus`]'s error is flattened by the time it arrives.
-#[must_use]
-pub fn is_unsupported_by_route(error: &str) -> bool {
-    error.contains("is not available over the") && error.contains("route")
-}
-
 #[cfg(test)]
 #[path = "connectors_tests.rs"]
 mod tests;

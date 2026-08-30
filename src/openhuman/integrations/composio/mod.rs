@@ -48,6 +48,7 @@ pub mod execute_dispatch;
 pub mod execute_prepare;
 pub mod googlecalendar_args;
 pub mod identity;
+pub mod module_client;
 pub mod oauth_handoff;
 pub mod ops;
 pub mod periodic;

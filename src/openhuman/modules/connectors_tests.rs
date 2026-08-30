@@ -1,6 +1,6 @@
 //! Tests for the connector module client.
 
-use super::{is_unsupported_by_route, methods, module_config, MODULE_ID};
+use super::{methods, module_config, MODULE_ID};
 use crate::openhuman::config::schema::{COMPOSIO_MODE_BACKEND, COMPOSIO_MODE_DIRECT};
 use crate::openhuman::config::Config;
 use crate::openhuman::modules::registry;
@@ -144,31 +144,4 @@ fn the_backend_route_needs_a_session() {
 
     let error = module_config(&config).expect_err("no session token");
     assert!(error.contains("Sign in"), "{error}");
-}
-
-#[test]
-fn recognises_the_module_refusing_a_member_its_route_cannot_serve() {
-    // The two routes are not equivalent, and the module says so by name rather
-    // than returning an empty result. A host rendering its own message for that
-    // case has to tell the refusal apart from a real failure.
-    assert!(is_unsupported_by_route(
-        "ListToolkits: ListToolkits is not available over the direct route"
-    ));
-    assert!(is_unsupported_by_route(
-        "DeleteConnection is not available over the direct route"
-    ));
-}
-
-#[test]
-fn does_not_mistake_a_real_failure_for_a_route_refusal() {
-    // Getting this wrong would render "no curated allowlist" over a genuine
-    // outage, and the user would never learn their integration was broken.
-    for error in [
-        "ListToolkits: request to /agent-integrations/composio/toolkits failed: 502 bad gateway",
-        "ListToolkits: response did not match the contract",
-        "unknown module 'tinyconnectors'",
-        "the module runtime is unavailable",
-    ] {
-        assert!(!is_unsupported_by_route(error), "{error}");
-    }
 }

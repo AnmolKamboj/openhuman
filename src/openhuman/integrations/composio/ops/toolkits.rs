@@ -1,7 +1,7 @@
 //! Toolkit and capability listing ops.
 
+use super::super::module_client::{self as connectors, methods};
 use crate::openhuman::config::Config;
-use crate::openhuman::modules::connectors::{self, methods};
 use crate::rpc::RpcOutcome;
 
 use super::super::providers::{agent_ready_toolkits, capability_matrix};
