@@ -1771,21 +1771,18 @@ mod fast_path_tests {
         RetrievalHit, RetrievalNodeKind, RetrievalResponse,
     };
     use chrono::Utc;
-    // `RetrievalHit::tree_kind` is TinyCortex's own enum. `tinymemory_core::
-    // store::trees::types::TreeKind` was a re-export of exactly this item
-    // (`tinymemory_core::store::trees::types` → `engine::backend::tree::store`
-    // → `tinycortex::memory::tree::store`), so naming the owning crate here
-    // changes no type — only which crate alias holds it, which is what #5560
-    // is removing from the production graph. Same precedent as
-    // `memory/tools/flavour.rs`, which already imports it from this path.
-    use tinycortex::memory::tree::store::TreeKind;
 
+    // The contract's hit, not the engine's. `tree_kind` is an open `String`
+    // here where the engine's is a `TreeKind` enum; the module serialises that
+    // enum with `rename_all = "snake_case"`, so `"source"` is the same value
+    // the engine's `TreeKind::Source` encodes to — no fixture drift, and one
+    // fewer `tinycortex::` import in the tree (#5560).
     fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {
         RetrievalHit {
             node_id: "n1".into(),
-            node_kind: NodeKind::Summary,
+            node_kind: RetrievalNodeKind::Summary,
             tree_id: "t1".into(),
-            tree_kind: TreeKind::Source,
+            tree_kind: Some("source".into()),
             tree_scope: scope.into(),
             level: 1,
             content: content.into(),
@@ -1818,19 +1815,20 @@ mod fast_path_tests {
     fn format_returns_none_for_no_hits() {
         // Empty response → None so the caller falls back to the full sub-agent
         // (the empty/degraded case is #4655's territory, not this fast path).
-        let resp = QueryResponse::new(vec![], 0);
+        let resp = RetrievalResponse::default();
         assert!(format_deterministic_memory_hits(&resp).is_none());
     }
 
     #[test]
     fn format_renders_hits_with_scope_content_and_score() {
-        let resp = QueryResponse::new(
-            vec![
+        let resp = RetrievalResponse {
+            hits: vec![
                 hit("Q3 OKR is to ship memory v2", "notes", 0.91),
                 hit("prefers concise replies", "profile", 0.80),
             ],
-            2,
-        );
+            total: 2,
+            truncated: false,
+        };
         let out = format_deterministic_memory_hits(&resp).expect("hits present → Some");
         assert!(out.contains("Retrieved 2 relevant memories"), "{out}");
         assert!(out.contains("[notes] Q3 OKR is to ship memory v2"), "{out}");
@@ -1842,7 +1840,11 @@ mod fast_path_tests {
 
     #[test]
     fn format_singular_wording_for_one_hit() {
-        let resp = QueryResponse::new(vec![hit("only one", "memory", 0.5)], 1);
+        let resp = RetrievalResponse {
+            hits: vec![hit("only one", "memory", 0.5)],
+            total: 1,
+            truncated: false,
+        };
         let out = format_deterministic_memory_hits(&resp).unwrap();
         assert!(out.contains("Retrieved 1 relevant memory"), "{out}");
     }
@@ -1850,7 +1852,11 @@ mod fast_path_tests {
     #[test]
     fn format_truncates_oversized_hit_body() {
         let big = "x".repeat(5_000);
-        let resp = QueryResponse::new(vec![hit(&big, "memory", 0.42)], 1);
+        let resp = RetrievalResponse {
+            hits: vec![hit(&big, "memory", 0.42)],
+            total: 1,
+            truncated: false,
+        };
         let out = format_deterministic_memory_hits(&resp).unwrap();
         assert!(
             out.contains(" …"),
