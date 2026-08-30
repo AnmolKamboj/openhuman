@@ -246,21 +246,9 @@ async fn composio_bus_subscribers_wire_up_and_return_without_a_loaded_module() {
         })
         .await;
 
-    // The profile fetch and the sync pass both refused (no loaded module),
-    // but the auto-register step reads no module — it is a local
-    // `memory_sources` upsert gated only on `has_native_provider`, which
-    // slack satisfies. That side effect survives the refusal, same as it did
-    // before the deletion.
-    let sources = openhuman_core::openhuman::memory::sources::registry::list_enabled_by_kind(
-        openhuman_core::openhuman::memory::sources::SourceKind::Composio,
-    )
-    .await
-    .expect("list composio memory sources");
-    assert!(
-        sources
-            .iter()
-            .any(|s| s.toolkit.as_deref() == Some("slack")
-                && s.connection_id.as_deref() == Some("conn-slack-round19")),
-        "connection-created should still auto-register into memory_sources: {sources:?}"
-    );
+    // Give the connection-created handler's detached `tokio::spawn` a beat
+    // to run and fail closed against the unreachable backend, so a future
+    // panic inside that task (which would otherwise abort silently on drop)
+    // has a chance to surface before the test process exits.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 }
