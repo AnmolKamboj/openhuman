@@ -57,30 +57,39 @@ use tinymemory_core::store::{
     MemoryClient, NamespaceDocumentInput, UnifiedMemory,
 };
 use openhuman_core::openhuman::memory::sync::composio;
-use openhuman_core::openhuman::memory::sync::composio::providers::profile::{
-    canonicalize, delete_connected_identity_facets, is_self_identity, is_self_identity_any_toolkit,
-    load_connected_identities, render_connected_identities_section, ConnectedIdentity,
-    IdentityKind,
+// `memory::sync::composio::providers::slack::schemas` is this host's own real,
+// current RPC schema module (`openhuman.slack_memory_sync_trigger` /
+// `_status`) — unrelated to the deleted per-action `post_process` (see below).
+use openhuman_core::openhuman::memory::sync::composio::providers::slack::schemas as slack_memory_schemas;
+// Everything below moved off `memory::sync::composio::providers::*` onto
+// `integrations::composio::providers`/`integrations::composio::identity_store`/
+// `integrations::composio::profile_md` (host code) or `tinymemory_api::composio`
+// (contract-crate vocabulary) — see `crate::openhuman::integrations::composio::providers`'s
+// module docs for the full account of what replaced each deleted piece.
+use openhuman_core::openhuman::integrations::composio::identity_store::{
+    delete_connected_identity_facets, load_connected_identities,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::profile_md::{
+use openhuman_core::openhuman::integrations::composio::profile_md::{
     block_end, block_start, merge_provider_into_profile_md, remove_provider_from_profile_md,
     replace_managed_block,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
-    post_process as slack_post_process, schemas as slack_memory_schemas,
+use openhuman_core::openhuman::integrations::composio::providers::{
+    agent_ready_toolkits, capability_matrix, catalog_for_toolkit, classify_unknown,
+    curated_scope_for, find_curated, is_action_visible_with_pref, toolkit_from_slug,
+    toolkit_has_scope, CuratedTool, NormalizedTask, ProviderUserProfile,
+    SyncOutcome as ComposioSyncOutcome, SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::sync_state::{
-    extract_item_id, DailyBudget, PersistedSyncState, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
+use tinymemory_api::composio::{
+    canonicalize, extract_item_id, render_connected_identities_section, ConnectedIdentity,
+    DailyBudget, IdentityKind, SyncState, DEFAULT_DAILY_REQUEST_LIMIT,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::user_scopes;
-use openhuman_core::openhuman::memory::sync::composio::providers::{
-    agent_ready_toolkits, all_providers as all_composio_providers, capability_matrix,
-    catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated, get_provider,
-    init_default_providers as init_default_composio_providers, is_action_visible_with_pref,
-    register_provider, toolkit_from_slug, toolkit_has_scope, ComposioProvider, CuratedTool,
-    NormalizedTask, ProviderContext, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome,
-    SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
-};
+// The deleted engine's per-toolkit `is_self_identity(prefix, kind, value)` has
+// no replacement anywhere (confirmed by exhaustive grep of vendor/tinymemory) —
+// only the cross-toolkit matcher survived, because the memory tree's entity
+// indexer was never scoped to one toolkit to begin with. Note this is a
+// DIFFERENT (structurally identical) `IdentityKind` than
+// `tinymemory_api::composio::IdentityKind` above.
+use tinymemory_core::store::identity::is_self_identity_any_toolkit;
 use openhuman_core::openhuman::memory::sync::sync_status::{
     rpc as memory_sync_status_rpc, schemas as memory_sync_status_schemas,
 };
