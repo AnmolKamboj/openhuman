@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

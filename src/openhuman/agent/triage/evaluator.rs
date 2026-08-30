@@ -28,7 +28,6 @@
 //! sending no tool schemas to the backend — the turn degrades to a plain
 //! chat completion.
 
-
 #[cfg(test)]
 #[path = "evaluator_tests.rs"]
 mod tests;

@@ -5,7 +5,6 @@
 //! microphone, transcribes via the configured STT engine, and inserts the result into the
 //! active text field.
 
-
 #[cfg(test)]
 #[path = "server_tests.rs"]
 mod tests;

@@ -1,6 +1,5 @@
 //! WebSocket Engine.IO / Socket.IO connection loop with automatic reconnection.
 
-
 #[cfg(test)]
 #[path = "ws_loop_tests.rs"]
 mod tests;

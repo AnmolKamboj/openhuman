@@ -24,7 +24,6 @@
 //! the right slug and supply valid arguments without a separate round
 //! trip.
 
-
 mod direct;
 
 // ── Tests ───────────────────────────────────────────────────────────

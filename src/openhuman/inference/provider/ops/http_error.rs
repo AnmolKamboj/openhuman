@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "http_error_tests.rs"]
 mod tests;

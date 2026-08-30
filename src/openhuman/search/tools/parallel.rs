@@ -18,7 +18,6 @@
 //!
 //! The backend handles Parallel API keys, billing, and rate limiting.
 
-
 #[cfg(test)]
 #[path = "parallel_tests.rs"]
 mod tests;

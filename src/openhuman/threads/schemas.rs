@@ -1,6 +1,5 @@
 //! RPC schemas and controller registration for conversation threads.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

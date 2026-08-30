@@ -21,7 +21,6 @@
 //! runtime — it is pure data so the model can be unit-tested in isolation
 //! and serialised straight from disk.
 
-
 #[cfg(test)]
 #[path = "definition_tests.rs"]
 mod tests;

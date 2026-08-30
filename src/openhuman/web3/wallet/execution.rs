@@ -9,7 +9,6 @@
 //!   Solana (native + SPL), and Tron (native + TRC20) all sign and broadcast.
 //!   Swap broadcast is still quote-only on every chain.
 
-
 #[cfg(test)]
 #[path = "execution_tests.rs"]
 mod tests;

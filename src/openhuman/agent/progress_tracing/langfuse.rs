@@ -17,7 +17,6 @@
 //! ride along only while `observability.agent_tracing.capture_content` is on;
 //! with the default off, content is withheld and export stays metadata-only.
 
-
 #[cfg(test)]
 #[path = "langfuse_tests.rs"]
 mod tests;

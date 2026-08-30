@@ -20,7 +20,6 @@
 //! [`TurnContextMiddleware`] bundles the config and installs whichever hooks are
 //! enabled onto a harness.
 
-
 #[cfg(test)]
 #[path = "middleware_tests.rs"]
 mod tests;

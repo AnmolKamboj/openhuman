@@ -64,7 +64,6 @@
 //! — this makes exactly one bounded real read to observe the actual shape
 //! instead. It can never send/create/update/delete anything.
 
-
 #[cfg(test)]
 #[path = "builder_tools_tests.rs"]
 mod tests;

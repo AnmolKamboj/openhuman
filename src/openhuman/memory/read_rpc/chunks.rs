@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::api::provider::{ChunkListRow, ChunkQuery};
 use crate::openhuman::memory::api::provider::retrieval::{
     RetrievalNodeKind, RetrievalResponse, SourceRetrievalQuery,
 };
+use crate::openhuman::memory::api::provider::{ChunkListRow, ChunkQuery};
 use crate::rpc::RpcOutcome;
 use tinymemory_api::chunks::SourceKind;
 

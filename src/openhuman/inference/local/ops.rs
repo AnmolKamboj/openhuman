@@ -4,7 +4,6 @@
 //! services such as agent chat, model downloads, summarization, and
 //! transcription. These functions are typically invoked via RPC or CLI.
 
-
 #[cfg(test)]
 #[path = "ops_tests.rs"]
 mod tests;

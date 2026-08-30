@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "connected_integrations_connectable_slug_tests_tests.rs"]
 mod connectable_slug_tests;

@@ -25,7 +25,6 @@
 //! Privacy: always-on is **opt-in** (`config.voice_server.always_on_enabled`,
 //! default false) and pauses when the screen is locked.
 
-
 #[cfg(test)]
 #[path = "always_on_tests.rs"]
 mod tests;

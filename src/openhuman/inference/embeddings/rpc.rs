@@ -1,6 +1,5 @@
 //! RPC handlers for the embeddings domain.
 
-
 #[cfg(test)]
 #[path = "rpc_tests.rs"]
 mod tests;

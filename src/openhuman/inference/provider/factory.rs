@@ -23,7 +23,6 @@
 //!
 //! Unknown slugs and missing-creds configurations produce actionable errors.
 
-
 /// Test-only seam: inject a mock [`ChatModel`] so e2e tests can drive the
 /// autonomous run paths (`spawn_workflow_run_background`, the task dispatcher)
 /// with a scripted LLM and no network. Process-global because those runs are

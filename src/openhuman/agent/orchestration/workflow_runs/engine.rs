@@ -40,7 +40,6 @@
 //! current between-phase cancellation bookkeeping is intentionally left in place
 //! until that phase kind lands, to keep stop/resume semantics unchanged.
 
-
 #[cfg(test)]
 #[path = "engine_tests.rs"]
 mod engine_tests;

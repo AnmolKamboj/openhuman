@@ -14,7 +14,6 @@
 //! flagged [`TurnLifecycle::Interrupted`] and persisted so the UI can
 //! surface a retry affordance.
 
-
 #[cfg(test)]
 #[path = "mirror_tests.rs"]
 mod tests;

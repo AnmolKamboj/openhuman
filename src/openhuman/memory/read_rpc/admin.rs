@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::api::provider::ForgetSelector;
 use crate::openhuman::integrations::composio::providers::sync_state::KV_NAMESPACE;
+use crate::openhuman::memory::api::provider::ForgetSelector;
 use crate::rpc::RpcOutcome;
 use tinymemory_api::chunks::SourceKind;
 

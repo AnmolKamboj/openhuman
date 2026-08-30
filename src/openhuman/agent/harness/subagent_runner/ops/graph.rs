@@ -27,7 +27,6 @@
 //! and a graceful model-call-cap checkpoint summary
 //! (`SubagentCheckpoint::summarize_cap_hit`).
 
-
 #[cfg(test)]
 #[path = "graph_tests.rs"]
 mod tests;

@@ -9,7 +9,6 @@
 //! Logging uses the `[composio]` grep-prefix so all sidecar output for
 //! this domain can be filtered in one shot.
 
-
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;

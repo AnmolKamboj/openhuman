@@ -11,7 +11,6 @@
 //! The scout's output is bounded by `context_scout`'s `max_result_chars`
 //! (≈1000 tokens) so the parent's context only grows by a bounded amount.
 
-
 #[cfg(test)]
 #[path = "agent_prepare_context_tests.rs"]
 mod tests;

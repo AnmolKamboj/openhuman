@@ -1,6 +1,5 @@
 //! Shared HTTP client for all integration tools.
 
-
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;

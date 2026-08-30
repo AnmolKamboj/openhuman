@@ -4,7 +4,6 @@
 //! shape. Every `handle_*` function deserialises params and delegates to
 //! `ops.rs`.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

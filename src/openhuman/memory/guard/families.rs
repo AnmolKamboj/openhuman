@@ -29,7 +29,6 @@
 //!
 //! [`MemoryGuard`]: super::MemoryGuard
 
-
 #[cfg(test)]
 #[path = "families_tests.rs"]
 mod tests;

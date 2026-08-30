@@ -8,7 +8,6 @@
 //! live tool timeline, streaming text, and the cost/token footer on the
 //! tinyagents path — and feeds per-call usage into the global cost tracker.
 
-
 #[cfg(test)]
 #[path = "observability_tests.rs"]
 mod tests;

@@ -92,7 +92,6 @@
 //! the session transcript can eventually replace the separate thread
 //! message log without losing message-level addressing.
 
-
 // ── Tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]

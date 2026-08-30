@@ -6,7 +6,6 @@
 //! the renderer; external calls still go through the core's auth / proxy
 //! layer). Anything **not** in this file remains agent-only.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

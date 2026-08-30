@@ -16,7 +16,6 @@
 //!   - `composio.refresh_all_identities` → `openhuman.composio_refresh_all_identities`
 //!   - `composio.sync`                → `openhuman.composio_sync`
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

@@ -10,7 +10,6 @@
 //! `flows::ops::flows_set_enabled` to bind/unbind a flow's automatic
 //! dispatch on enable/disable.
 
-
 #[cfg(test)]
 #[path = "bus_tests.rs"]
 mod tests;

@@ -56,7 +56,6 @@
 //! registry CRUD between them talks only to `registry` and `readers` and never
 //! resolves a binding at all.
 
-
 #[cfg(test)]
 #[path = "rpc_filter_tests_tests.rs"]
 mod filter_tests;

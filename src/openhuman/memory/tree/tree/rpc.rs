@@ -9,7 +9,6 @@
 //! - `openhuman.memory_tree_list_chunks` — listing with filters.
 //! - `openhuman.memory_tree_get_chunk` — single chunk fetch.
 
-
 #[cfg(test)]
 #[path = "rpc_tests.rs"]
 mod tests;

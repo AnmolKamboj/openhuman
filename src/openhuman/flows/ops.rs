@@ -3,7 +3,6 @@
 //! `schemas.rs`'s `handle_*` RPC/CLI handlers, mirroring
 //! `src/openhuman/cron/ops.rs`.
 
-
 #[cfg(test)]
 #[path = "ops_tests.rs"]
 mod tests;

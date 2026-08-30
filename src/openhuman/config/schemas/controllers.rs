@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "controllers_tests.rs"]
 mod tests;

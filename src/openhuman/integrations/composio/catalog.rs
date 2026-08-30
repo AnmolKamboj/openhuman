@@ -27,7 +27,6 @@
 //! for its primary array and its field names) is in
 //! [`crate::openhuman::json_schema`], owned by neither side.
 
-
 #[cfg(test)]
 #[path = "catalog_in_flight_tests_tests.rs"]
 mod in_flight_tests;

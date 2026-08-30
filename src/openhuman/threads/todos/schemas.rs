@@ -3,7 +3,6 @@
 //! agent-driven edits share the exact same persistence and rendering
 //! logic.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

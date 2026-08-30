@@ -24,7 +24,6 @@
 //! them from a local build — the point is to pin what the release publishes, and
 //! a locally recomputed digest would agree with itself no matter what was served.
 
-
 #[cfg(test)]
 #[path = "registry_tests.rs"]
 mod tests;

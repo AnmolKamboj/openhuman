@@ -1,6 +1,5 @@
 //! Controller-registry schemas for `openhuman.memory_sources_*`.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

@@ -4,7 +4,6 @@
 //! by the socket transport layer. It runs the agent inference loop via the web
 //! channel provider and sends the reply back through the REST API.
 
-
 #[cfg(test)]
 #[path = "bus_inbound_thread_id_tests_tests.rs"]
 mod inbound_thread_id_tests;

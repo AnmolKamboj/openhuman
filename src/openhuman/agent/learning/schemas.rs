@@ -1,6 +1,5 @@
 //! Controller schemas for the learning domain.
 
-
 #[cfg(test)]
 #[path = "schemas_tests.rs"]
 mod tests;

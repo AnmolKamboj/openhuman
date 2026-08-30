@@ -38,7 +38,6 @@
 //! named the inner modules; every item keeps its name, so the two copies stay
 //! diffable line for line.
 
-
 #[cfg(test)]
 #[path = "safety_tests.rs"]
 mod tests;

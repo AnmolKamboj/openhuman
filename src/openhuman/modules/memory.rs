@@ -39,7 +39,6 @@
 //! let a `PathEscape` arrive as an `Invalid`, silently reclassifying a sandbox
 //! escape as a caller mistake.
 
-
 #[cfg(test)]
 #[path = "memory_tests.rs"]
 mod tests;

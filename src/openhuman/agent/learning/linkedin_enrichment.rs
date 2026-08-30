@@ -11,7 +11,6 @@
 //! pass. Each stage logs progress so the caller (or a future frontend
 //! progress UI) can observe what happened.
 
-
 #[cfg(test)]
 #[path = "linkedin_enrichment_tests.rs"]
 mod tests;

@@ -46,7 +46,6 @@
 //! event bus dispatch loop is never blocked by a long-running provider
 //! call (sync can take seconds).
 
-
 #[cfg(test)]
 #[path = "bus_tests.rs"]
 mod tests;

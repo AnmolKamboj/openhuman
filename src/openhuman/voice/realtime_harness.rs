@@ -12,7 +12,6 @@
 //! arriving over a channel, so `external_effect` tools route through the
 //! audit-trail path rather than running with trusted-CLI semantics.
 
-
 #[cfg(test)]
 #[path = "realtime_harness_tests.rs"]
 mod tests;

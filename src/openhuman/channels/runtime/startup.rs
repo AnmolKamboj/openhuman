@@ -1,6 +1,5 @@
 //! Channel startup wiring.
 
-
 #[cfg(any(test, debug_assertions))]
 #[path = "startup_test_support_tests.rs"]
 pub mod test_support;

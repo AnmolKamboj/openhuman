@@ -34,7 +34,6 @@
 //! paths record `Cancelled`. This gives a typed, queryable lifecycle
 //! (`task_records`) alongside the crate-owned runtime registry.
 
-
 #[cfg(test)]
 #[path = "running_subagents_tests.rs"]
 mod tests;
