@@ -106,6 +106,7 @@ overlay/src-tauri/target/
 .claude/*.lock
 app/.claude/scheduled_tasks.lock
 target-test-run
+target-diag/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
 
