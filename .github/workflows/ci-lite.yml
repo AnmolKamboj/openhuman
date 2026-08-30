@@ -156,6 +156,7 @@ jobs:
               - 'scripts/ci/assert-coverage-presence.sh'
               - 'scripts/ci/coverage-presence-allowlist.txt'
               - 'scripts/ci/check-openhuman-rust-layout.mjs'
+              - 'scripts/ci/list-feature-gated-rust-tests.mjs'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'
@@ -611,21 +612,36 @@ jobs:
         run: |
           set -euo pipefail
           EXPECTED=$(cat <<'EOF'
+          core/all.rs
           core/all_tests.rs
           core/cli_tests.rs
           core/dispatch.rs
+          core/jsonrpc.rs
           core/jsonrpc_tests.rs
           core/legacy_aliases.rs
           core/runtime/services.rs
+          embed/harness/builder.rs
+          embed/harness/builder_tests.rs
           openhuman/agent/harness/builtin_definitions_tests.rs
           openhuman/agent/harness/definition_tests.rs
+          openhuman/agent/harness/mod.rs
           openhuman/agent/harness/session/session_tests_part_01_tests.rs
           openhuman/agent/harness/subagent_runner/tool_prep_tests.rs
+          openhuman/agent/registry/agents/loader.rs
           openhuman/agent/registry/agents/loader_tests_part_01_tests.rs
           openhuman/agent/registry/agents/loader_tests_part_02_tests.rs
           openhuman/agent/registry/agents/loader_tests_part_03_tests.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
+          openhuman/flows/mod.rs
+          openhuman/mcp/server/resources.rs
+          openhuman/mcp/server/tools/mod.rs
+          openhuman/memory/people/mod.rs
           openhuman/memory/people/mod_contacts_gate_tests_tests.rs
+          openhuman/platform/socket/event_handlers.rs
+          openhuman/platform/socket/ops.rs
+          openhuman/skills/mod.rs
+          openhuman/tools/impl/network/http_request.rs
+          openhuman/tools/ops.rs
           openhuman/tools/ops_tests.rs
           openhuman/tools/ops_tests_part_01_tests.rs
           openhuman/tools/ops_tests_part_03_tests.rs
@@ -633,13 +649,14 @@ jobs:
           openhuman/tools/registry/ops_tests.rs
           openhuman/tools/registry/schemas_tests.rs
           openhuman/voice/compile_status_tests.rs
+          openhuman/web3/mod.rs
+          openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
-          embed/harness/builder_tests.rs
+          openhuman/web3/x402/stub.rs
           tui/runner.rs
           EOF
           )
-          ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
-            | xargs grep -lE '#\[test\]|#\[tokio::test\]|fn .*_test' 2>/dev/null | sed 's|^src/||' | sort -u)
+          ACTUAL=$(node scripts/ci/list-feature-gated-rust-tests.mjs | sort -u)
           if ! diff <(echo "$EXPECTED" | sed 's/^ *//' | sort -u) <(echo "$ACTUAL"); then
             echo "::error::Gated-test file set changed. Update the EXPECTED allowlist in the rust-feature-gate-smoke lane, and extend the scoped 'cargo test' filter if the new module can carry an ungated-assert regression (see #5022)."
             exit 1

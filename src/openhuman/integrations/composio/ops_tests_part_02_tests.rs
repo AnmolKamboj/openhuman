@@ -475,10 +475,8 @@ async fn composio_execute_via_mock_propagates_backend_error() {
     // preserves that prefix so the frontend formatter can parse the class.
     // For an unrecognised tool slug and a 502-shaped envelope the only
     // signal we get is the backend error text, so assert on its contents.
-    assert!(
-        err.contains("[composio:error:") && err.contains("rate limited"),
-        "got: {err}"
-    );
+    assert!(err.starts_with("[composio:error:"), "got: {err}");
+    assert!(err.contains("rate limited"), "got: {err}");
 }
 
 #[tokio::test]

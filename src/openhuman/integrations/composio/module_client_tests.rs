@@ -3,6 +3,24 @@
 use super::{is_unsupported_by_route, methods};
 
 #[test]
+fn classified_errors_start_with_the_frontend_marker() {
+    assert_eq!(
+        super::normalize_error(
+            "Execute: [composio:error:rate_limited] Please retry later".to_string()
+        ),
+        "[composio:error:rate_limited] Please retry later"
+    );
+}
+
+#[test]
+fn unclassified_errors_keep_the_member_context() {
+    assert_eq!(
+        super::normalize_error("Execute: module unavailable".to_string()),
+        "Execute: module unavailable"
+    );
+}
+
+#[test]
 fn member_names_come_from_the_contract() {
     // Spelled through `tinyconnectors_bus` rather than as string literals, so a
     // renamed member is a compile error here instead of an "unknown method" at
