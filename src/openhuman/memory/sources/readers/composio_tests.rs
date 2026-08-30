@@ -32,7 +32,7 @@ fn test_source() -> MemorySourceEntry {
 #[tokio::test]
 async fn list_items_returns_connection_as_item() {
     let reader = ComposioReader;
-    let config = TestHostConfig::default();
+    let config = Config::default();
     let items = reader.list_items(&test_source(), &config).await.unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, "cmp_123");

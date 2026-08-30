@@ -32,7 +32,7 @@ fn twitter_source() -> MemorySourceEntry {
 async fn list_items_returns_not_configured_error() {
     let reader = TwitterReader;
     let result = reader
-        .list_items(&twitter_source(), &TestHostConfig::default())
+        .list_items(&twitter_source(), &Config::default())
         .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not yet configured"));

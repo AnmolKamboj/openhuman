@@ -4166,6 +4166,7 @@ dependencies = [
  "tinymemory-api",
  "tinymemory-bus",
  "tinymemory-core",
+ "tinymemory-sources",
  "tinymemory-tinycortex",
  "tinyplace",
  "tinyruntime-bus",
