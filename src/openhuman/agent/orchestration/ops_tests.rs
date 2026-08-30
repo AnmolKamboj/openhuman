@@ -474,9 +474,9 @@ async fn unit_wait_agents_rejects_an_unknown_child() {
     );
 }
 
-/// `abort_all` must publish a terminal `Cancelled` status on each live child's
-/// watch channel *before* the crate registry hard-aborts it, so a waiter in
-/// flight resolves with a cancellation rather than a closed status channel.
+/// `abort_all` must retain the terminal registry entry until a waiter observes
+/// it, including when cancellation lands before that waiter enters
+/// `DetachedTaskRegistry::wait`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn e2e_abort_all_cancels_an_in_flight_child_for_a_concurrent_waiter() {
     AgentDefinitionRegistry::init_global_builtins().unwrap();
@@ -509,34 +509,8 @@ async fn e2e_abort_all_cancels_an_in_flight_child_for_a_concurrent_waiter() {
         })
     };
 
-    // Readiness handshake instead of a fixed sleep: `cancel_all` removes the
-    // registry entry outright, so calling `abort_all` before the child has
-    // observably reached `Running` risks the waiter's own lookup racing the
-    // removal and surfacing `AgentNotFound` instead of `Cancelled`. Poll with
-    // short, non-terminal `wait_agents` calls (the crate only prunes a
-    // *terminal* entry, so polling a still-running child is side-effect-free)
-    // until `Running` is observed, bounded so a genuine regression fails fast
-    // rather than hanging.
-    let observed_running = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let response = session
-                .wait_agents(WaitAgentOptions {
-                    orchestration_ids: vec![spawned.orchestration_id.clone()],
-                    timeout_ms: Some(5),
-                })
-                .await
-                .expect("poll for readiness succeeds while the child is still live");
-            if response.agents[0].status == OrchestrationTaskStatus::Running {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await;
-    assert!(
-        observed_running.is_ok(),
-        "child never reached Running before the readiness timeout"
-    );
+    // No readiness handshake: the regression was specifically the gap between
+    // a caller knowing the id and entering the registry wait.
     session.abort_all().await;
 
     let response = waiter

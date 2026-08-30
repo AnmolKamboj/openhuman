@@ -1,10 +1,12 @@
 # Agent Orchestration
 
 `agent_orchestration` is the high-level control plane for agent-to-agent work.
-It owns parent/child lineage, lifecycle state, wait/close/follow-up semantics,
-and UI/diagnostic events. The lower-level `agent::harness` remains the execution
-engine for prompt construction, policy-filtered tools, model selection, and
-sub-agent loops.
+It owns parent/child lineage, lifecycle state, wait/cancel semantics, and
+UI/diagnostic events. Durable close, retry, and follow-up operations live in
+`command_center::control`; the removed process-local mirror is not part of this
+surface. The lower-level `agent::harness` remains the execution engine for
+prompt construction, policy-filtered tools, model selection, and sub-agent
+loops.
 
 ## Current Inventory
 
