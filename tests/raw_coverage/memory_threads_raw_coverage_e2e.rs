@@ -4647,47 +4647,29 @@ async fn memory_sources_types_registry_and_sync_state_cover_public_persistence_e
     assert_eq!(updated.max_issues, Some(6));
     assert_eq!(updated.max_prs, Some(7));
 
-    let memory = Arc::new(
-        MemoryClient::from_workspace_dir(tmp.path().join("memory-sync-state"))
-            .expect("memory client"),
-    );
-    let adapter =
-        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
-    let fresh = SyncState::load(&adapter, "gmail", "conn-raw")
-        .await
-        .expect("fresh state");
-    assert_eq!(fresh.toolkit, "gmail");
-    assert_eq!(fresh.connection_id, "conn-raw");
-
+    // `SyncState::load`/`::save` — the key/value persistence extension this
+    // block used to round-trip through `tinymemory_core::tinycortex::
+    // HostSyncAdapter` (a `SyncStateStore` impl) — no longer exist anywhere
+    // in `tinymemory-core`: `HostSyncAdapter` now offers only `new`, and
+    // `integrations::composio::ops::memory_cleanup`'s doc comments confirm
+    // this in passing, speaking of `SyncState::load` only in the past tense
+    // ("exactly as `SyncState::load` had them"). The connection-delete path
+    // that used to read a persisted `SyncState` was rewritten to work
+    // without it (`ForgetSelector`-based cleanup instead). This is a
+    // genuine, unrecoverable coverage gap for the persistence half — the
+    // pure in-memory `SyncState`/`DailyBudget` behaviour (construction,
+    // `advance_cursor`, `mark_synced`, `is_synced`, `budget_remaining`, …)
+    // is still exercised elsewhere in this file
+    // (`memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases`),
+    // so only the load/save round trip and its malformed-JSON recovery
+    // behaviour are lost.
     let mut saved = SyncState::new("gmail", "conn-raw");
     saved.advance_cursor("cursor-raw");
     saved.mark_synced("msg-1");
     saved.daily_budget.date = "2000-01-01".into();
     saved.daily_budget.requests_used = DEFAULT_DAILY_REQUEST_LIMIT;
-    saved.save(&adapter).await.expect("save state");
-
-    let loaded = SyncState::load(&adapter, "gmail", "conn-raw")
-        .await
-        .expect("load saved state");
-    assert_eq!(loaded.cursor.as_deref(), Some("cursor-raw"));
-    assert!(loaded.is_synced("msg-1"));
-    assert_eq!(loaded.daily_budget.requests_used, 0);
-    assert_eq!(loaded.budget_remaining(), DEFAULT_DAILY_REQUEST_LIMIT);
-
-    memory
-        .kv_set(
-            Some(tinymemory_core::tinycortex::HOST_SYNC_STATE_NAMESPACE),
-            "composio-sync-state:gmail:bad-json",
-            &json!("not a sync state"),
-        )
-        .await
-        .expect("write bad state");
-    let recovered = SyncState::load(&adapter, "gmail", "bad-json")
-        .await
-        .expect("malformed state recovers to defaults");
-    assert_eq!(recovered.toolkit, "gmail");
-    assert_eq!(recovered.connection_id, "bad-json");
-    assert!(recovered.cursor.is_none());
+    assert_eq!(saved.cursor.as_deref(), Some("cursor-raw"));
+    assert!(saved.is_synced("msg-1"));
 }
 
 #[test]
