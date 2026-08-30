@@ -18,10 +18,12 @@ use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use openhuman_core::openhuman::memory::sources::readers::SourceReader;
+use openhuman_core::openhuman::memory::sources::registry::{
+    add_source, get_source, list_enabled_by_kind, remove_composio_source_by_connection_id,
+    remove_source, update_source,
+};
 use openhuman_core::openhuman::memory::sources::{
-    add_source, get_source, list_enabled_by_kind, list_sources,
-    remove_composio_source_by_connection_id, remove_source, update_source, upsert_composio_source,
-    MemorySourceEntry, MemorySourcePatch, SourceKind,
+    list_sources, upsert_composio_source, MemorySourceEntry, MemorySourcePatch, SourceKind,
 };
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
