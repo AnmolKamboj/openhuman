@@ -63,7 +63,7 @@ use crate::openhuman::memory::api::provider::retrieval::{
     CoverWindowQuery, EntityMatch, RetrievalHit, RetrievalResponse, SourceRetrievalQuery,
 };
 use crate::openhuman::memory::source_scope::as_bus_scope;
-use crate::openhuman::memory::tree::score::extract::EntityKind;
+use crate::openhuman::memory::api::provider::retrieval::EntityKind;
 use crate::rpc::RpcOutcome;
 use tinymemory_api::chunks::SourceKind;
 

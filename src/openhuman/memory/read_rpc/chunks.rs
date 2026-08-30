@@ -400,13 +400,21 @@ pub async fn recall_rpc(
         limit
     );
 
-    // Explicit scope: `query_source` (unscoped) reads the *engine's* own
-    // task-local, which nothing on the host side ever sets — the host's
-    // per-turn allowlist lives in `memory::source_scope` instead (see its
-    // module docs). Calling the unscoped form here would always see `None`
-    // and recall would run unrestricted regardless of the active profile's
-    // `memory_sources` allowlist. Mirrors `query_source_rpc` in
-    // `tree/retrieval/rpc.rs`.
+    // Through the bound driver's `MemoryRetrieval` rather than the engine
+    // (#5560), and with an explicit scope.
+    //
+    // `binding.provider()` is the UNGUARDED driver: nothing between here and
+    // the store re-applies the active profile's `memory_sources` allowlist, so
+    // the scope this call passes is the gate. The engine's `*_scoped` entry
+    // points existed for the same reason — their ambient twins read the
+    // ENGINE's task-local, which a separately compiled module cannot see, and
+    // an absent scope means unrestricted, i.e. the gate failing open.
+    //
+    // `as_bus_scope()` renders this host's own task-local in the contract's
+    // vocabulary. `None` from it means genuinely unrestricted and must stay
+    // `None` — an *empty* `SourceScope` denies every source-attributed row, so
+    // mapping "no restriction" onto one would invert the policy. Mirrors
+    // `query_source_rpc` in `tree/retrieval/rpc.rs`.
     let scope = crate::openhuman::memory::source_scope::as_bus_scope();
     let binding = crate::openhuman::memory::binding::for_config(config)?;
     let resp = match binding.provider().as_retrieval() {
