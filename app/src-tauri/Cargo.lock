@@ -4341,6 +4341,7 @@ dependencies = [
  "tinyagents",
  "tinybus",
  "tinychannels",
+ "tinychannels-bus",
  "tinycortex",
  "tinycortex-api",
  "tinydocs-bus",
@@ -7014,6 +7015,7 @@ dependencies = [
  "sha1",
  "sha2 0.10.9",
  "thiserror 2.0.20",
+ "tinychannels-bus",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite 0.29.0",
@@ -7022,6 +7024,28 @@ dependencies = [
  "urlencoding",
  "uuid",
  "webpki-roots 1.0.9",
+]
+
+[[package]]
+name = "tinychannels-bus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "hex",
+ "hmac",
+ "parking_lot",
+ "rand 0.10.2",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
