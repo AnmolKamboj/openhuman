@@ -28,6 +28,8 @@
 //! preference: two sources of truth for a permission is how one of them ends up
 //! stale and permissive.
 
+use std::sync::Mutex;
+
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tinybus::Proxy;
@@ -111,6 +113,67 @@ pub fn module_config(config: &Config) -> Result<serde_json::Value, String> {
     }
 }
 
+/// The route description last sent to the module, as a fingerprint.
+///
+/// Only a hash is kept: comparing routes means comparing bearer tokens, and a
+/// process-lifetime static holding one in cleartext is a credential sitting
+/// somewhere nothing needs it.
+fn last_route() -> &'static Mutex<Option<u64>> {
+    static LAST: std::sync::OnceLock<Mutex<Option<u64>>> = std::sync::OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(None))
+}
+
+/// Hash a route description so it can be compared without being stored.
+fn fingerprint(route: &serde_json::Value) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    route.to_string().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Tell the module which route to use, if that answer has changed.
+///
+/// The module is registered `Lazy`, so it is commonly loaded the first time
+/// anything touches a connector — which for most sessions is *before* the user
+/// signs in. Its load-time configuration would then be routeless, and a module
+/// that only took a route at load would leave that user unable to reach
+/// Composio until they restarted the application. Sign-out is the same problem
+/// reversed: the module would keep a bearer that now answers 401 to everything.
+///
+/// So the route is reconciled on every call rather than only at load. In steady
+/// state that is a hash and a comparison; a bus round-trip happens only when the
+/// answer actually changed.
+///
+/// A config that cannot name a route — signed out, direct mode with no key —
+/// leaves the module as it is instead of clearing it. The member that then runs
+/// fails with the reason it fails, which is more use than a route the host
+/// removed on its own initiative.
+async fn ensure_routed(config: &Config, proxy: &Proxy) -> Result<(), String> {
+    let Ok(mut route) = module_config(config) else {
+        return Ok(());
+    };
+    // `state_dir` is load-time only: the trigger archive opens once, and moving
+    // it later would strand the history already written there.
+    if let Some(object) = route.as_object_mut() {
+        object.remove("state_dir");
+    }
+
+    let current = fingerprint(&route);
+    if *last_route().lock().unwrap_or_else(std::sync::PoisonError::into_inner) == Some(current) {
+        return Ok(());
+    }
+
+    proxy
+        .call::<serde_json::Value>(methods::CONFIGURE, (route,))
+        .await
+        .map_err(|error| format!("{}: {error}", methods::CONFIGURE))?;
+
+    // Recorded only after the module accepted it, so a failed reconfiguration
+    // is retried on the next call rather than remembered as done.
+    *last_route().lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(current);
+    Ok(())
+}
+
 /// A proxy to the connector module, loading it if this is the first call.
 ///
 /// The module is registered `Lazy`, so this is where a user with connected
@@ -130,9 +193,12 @@ pub async fn proxy(config: &Config) -> Result<Proxy, String> {
         .await
         .map_err(|error| format!("the module runtime is unavailable: {error}"))?;
 
-    runtime
+    let proxy = runtime
         .proxy(record.bus_name, record.object_path)
-        .map_err(|error| format!("could not reach '{MODULE_ID}': {error}"))
+        .map_err(|error| format!("could not reach '{MODULE_ID}': {error}"))?;
+
+    ensure_routed(config, &proxy).await?;
+    Ok(proxy)
 }
 
 /// Call one member with an argument and decode its reply.
