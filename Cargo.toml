@@ -1148,8 +1148,14 @@ medulla = []
 # embedding `ChannelInboundEnvelope`, `security/pairing.rs` re-exporting the
 # pairing helpers) now resolve through `tinychannels-bus`, the transport-free
 # contract crate, which stays unconditional. What is left behind this gate is
-# the provider stack and the relay transport loop — and with them `reqwest`,
-# `rusqlite`, `rustls`, `tokio-tungstenite` and the email/lark cohorts.
+# the provider stack and the relay transport loop.
+#
+# It sheds NO dependencies and is not meant to: measured, the kernel profile is
+# 288 packages / 270 names / 2 native both before and after, and the package-list
+# diff is one line (`tinychannels` out, `tinychannels-bus` in). Every heavy crate
+# tinychannels carried is shared with kernel surface. What the gate buys is
+# compile surface — ~31.7k lines a channels-less build no longer compiles — plus
+# the contract crate the eventual module extraction needs.
 #
 # ONE caveat, and it is the reason a channels-less product build still links
 # the crate: `voice` enables `dep:tinychannels` for `EmailChannel` alone
@@ -1165,8 +1171,9 @@ medulla = []
 # `cli::CliChannel` is the dep-free local REPL used by the always-on agent
 # harness interactive loop. See AGENTS.md "channels gate" + `channels/mod.rs`.
 # The crate itself is now droppable, which it was not before: splitting
-# `tinychannels-bus` out moved every always-on pin into a contract crate that
-# costs serde/schemars and nothing this build did not already have.
+# `tinychannels-bus` out moved every always-on pin into a contract crate. That
+# is a compile-surface and architecture win, NOT a dependency win — see the
+# measured note above before claiming otherwise.
 channels = ["dep:tinychannels", "tinychannels/email", "tinychannels/lark"]
 sandbox-landlock = ["dep:landlock"]
 sandbox-bubblewrap = []
