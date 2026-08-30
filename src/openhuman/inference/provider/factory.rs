@@ -540,32 +540,8 @@ pub(crate) fn resolve_byok_fallback_provider_string(config: &Config) -> Option<S
 /// is gated on `cfg(test)` or an off-by-default test/profiling feature,
 /// so the override is never consulted in shipped builds.
 #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
-pub mod test_provider_override {
-    use std::sync::{Arc, Mutex, OnceLock};
-    use tinyagents::harness::model::ChatModel;
-
-    static OVERRIDE: OnceLock<Mutex<Option<Arc<dyn ChatModel<()>>>>> = OnceLock::new();
-    fn cell() -> &'static Mutex<Option<Arc<dyn ChatModel<()>>>> {
-        OVERRIDE.get_or_init(|| Mutex::new(None))
-    }
-
-    pub(crate) fn current() -> Option<Arc<dyn ChatModel<()>>> {
-        cell().lock().unwrap().clone()
-    }
-
-    /// Install a crate-native mock model; the returned guard clears it on drop.
-    #[must_use]
-    pub fn install_model(model: Arc<dyn ChatModel<()>>) -> InstallGuard {
-        *cell().lock().unwrap() = Some(model);
-        InstallGuard
-    }
-    pub struct InstallGuard;
-    impl Drop for InstallGuard {
-        fn drop(&mut self) {
-            *cell().lock().unwrap() = None;
-        }
-    }
-}
+#[path = "factory_test_provider_override_tests.rs"]
+pub mod test_provider_override;
 
 /// Human-readable label for an *external* provider string, used in the
 /// LocalOnly privacy-mode block message so the user knows what was refused.
