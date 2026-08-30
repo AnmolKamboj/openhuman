@@ -266,3 +266,22 @@ async fn await_run_outcome_returns_terminal_footer_then_auto_detaches() {
         "a run with no terminal footer must auto-detach (None) past the wait budget"
     );
 }
+
+#[test]
+fn xdebug_discovery_probe() {
+    let ws = tempfile::tempdir().unwrap();
+    seed_project_workflow(ws.path(), "triage-inbox", "Summarise the inbox.");
+    let trusted = crate::openhuman::skills::ops_discover::is_workspace_trusted(ws.path());
+    eprintln!("XDEBUG trusted={trusted}");
+    eprintln!("XDEBUG marker exists={}", ws.path().join(".openhuman").join("trust").exists());
+    eprintln!("XDEBUG skill md exists={}", ws.path().join(".openhuman").join("skills").join("triage-inbox").join("SKILL.md").exists());
+    let no_home = crate::openhuman::skills::discover_workflows_with_profile(
+        None, Some(ws.path()), None, trusted,
+    );
+    eprintln!("XDEBUG home=None -> {:?}", no_home.iter().map(|w| (w.name.clone(), w.dir_name.clone())).collect::<Vec<_>>());
+    let with_home = crate::openhuman::skills::discover_workflows_with_profile(
+        dirs::home_dir().as_deref(), Some(ws.path()), None, trusted,
+    );
+    eprintln!("XDEBUG home=Some -> count={} has_triage={}", with_home.len(),
+        with_home.iter().any(|w| w.dir_name == "triage-inbox"));
+}
