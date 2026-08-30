@@ -228,12 +228,9 @@ impl AgentOrchestrationSession {
     /// later soft-cap sweep prunes it), so a concurrent `wait_agents` resolves
     /// with cancellation even when it starts after this method returns.
     pub async fn abort_all(&self) {
-        let cancelled = match self
-            .registry
-            .cancel_all_retaining(|metadata, _status| {
-                mark_cancelled(&metadata.status_tx);
-            })
-        {
+        let cancelled = match self.registry.cancel_all_retaining(|metadata, _status| {
+            mark_cancelled(&metadata.status_tx);
+        }) {
             Ok(cancelled) => cancelled,
             Err(err) => {
                 log::warn!("[agent_orchestration] abort_all could not drain registry: {err:?}");
@@ -458,10 +455,10 @@ impl AgentOrchestrationSession {
                 if !publish_terminal(
                     status_tx,
                     ChildState {
-                    status: OrchestrationTaskStatus::Completed,
-                    result_summary: Some(outcome.output.clone()),
-                    error: None,
-                    updated_at: now(),
+                        status: OrchestrationTaskStatus::Completed,
+                        result_summary: Some(outcome.output.clone()),
+                        error: None,
+                        updated_at: now(),
                     },
                 ) {
                     return;
