@@ -161,12 +161,20 @@ describe('rpcMethods catalog', () => {
         'utf8'
       ),
       // The channels_* namespace/function literals now live in the vendored
-      // tinychannels crate (`ChannelControllerSchema`), not in the thin
+      // tinychannels workspace (`ChannelControllerSchema`), not in the thin
       // `src/openhuman/channels/controllers/schemas.rs` adapter above, which
       // only converts from it (#4557 "Use tinychannels provider
       // implementations") — read both so this drift guard still sees them.
+      //
+      // Controller metadata is contract, so it lives in the `tinychannels-bus`
+      // crate rather than the implementation crate. `readFileSync` throws on a
+      // missing path, which is what we want: if this file moves again the guard
+      // fails loudly instead of silently checking a shorter corpus and passing.
       fs.readFileSync(
-        path.resolve(__dirname, '../../../../vendor/tinychannels/src/controllers/schemas.rs'),
+        path.resolve(
+          __dirname,
+          '../../../../vendor/tinychannels/crates/tinychannels-bus/src/controllers/schemas.rs'
+        ),
         'utf8'
       ),
     ].join('\n');
