@@ -29,7 +29,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::client::create_composio_client;
 use super::providers::ToolScope;
 use super::tools::resolve_action_scope;
 use crate::openhuman::agent::harness::current_sandbox_mode;
@@ -258,29 +257,7 @@ impl Tool for ComposioActionTool {
             &iana,
         );
 
-        // Resolve the client through the mode-aware factory on every call so a
-        // direct-mode toggle takes effect immediately (#1710), reusing the
-        // `live_config` snapshot reloaded above so the gate lookup and this
-        // dispatch share identical routing. The pre-baked-client variant routed
-        // all executions through the backend tinyhumans tenant regardless of mode.
-        let kind = match create_composio_client(&live_config) {
-            Ok(kind) => kind,
-            Err(e) => {
-                tracing::warn!(
-                    tool = %self.action_name,
-                    error = %e,
-                    "[composio] per-action execute: factory failed"
-                );
-                return Ok(ToolResult::error(format!("{}: {e}", self.action_name)));
-            }
-        };
-
         let started = std::time::Instant::now();
-        // Route through the centralized dispatcher (#1797) so both
-        // backend and direct variants share the same prepare/retry/error-
-        // mapping pipeline. The dispatcher applies `format_provider_error`
-        // to failures (transport + provider) so downstream consumers can
-        // parse `[composio:error:<class>] …`.
         // Allow the agent to override the baked-in connection_id via args
         let runtime_connection_id = args
             .as_ref()
@@ -292,12 +269,19 @@ impl Tool for ComposioActionTool {
         let effective_connection_id = runtime_connection_id
             .as_deref()
             .or(self.connection_id.as_deref());
-        let res = super::execute_dispatch::execute_composio_action_kind_with_connection(
-            kind,
-            &self.action_name,
-            args,
-            &live_config.composio.entity_id,
-            effective_connection_id,
+        // One call for both routes. The module owns the prepare/retry/error
+        // -mapping pipeline that `execute_dispatch` used to hold here, so a
+        // direct-mode toggle still takes effect immediately (#1710): the route
+        // is reconciled from `live_config` on the way through, rather than
+        // baked into a client this tool captured at construction.
+        let res = super::module_client::call::<_, super::types::ComposioExecuteResponse>(
+            &live_config,
+            super::module_client::methods::EXECUTE,
+            super::types::ComposioExecuteRequest {
+                tool: self.action_name.clone(),
+                arguments: args,
+                connection_id: effective_connection_id.map(str::to_string),
+            },
         )
         .await;
         let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -340,7 +324,7 @@ impl Tool for ComposioActionTool {
                     crate::core::events::DomainEvent::ComposioActionExecuted {
                         tool: self.action_name.clone(),
                         success: false,
-                        error: Some(e.to_string()),
+                        error: Some(e.clone()),
                         cost_usd: 0.0,
                         elapsed_ms,
                     },
@@ -502,6 +486,10 @@ mod tests {
         // config for compatibility with sibling config-loading tests.
         use crate::openhuman::config::TEST_ENV_LOCK;
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The module is one instance per process holding one route, and both
+        // halves below reconfigure it. Without this they race any other test
+        // that also points it somewhere.
+        let _serialised = super::super::module_client::module_guard().await;
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let _workspace_guard = WorkspaceEnvGuard::set(tmp.path());
@@ -686,6 +674,10 @@ mod tests {
         // halves while holding `TEST_ENV_LOCK`.
         use crate::openhuman::config::TEST_ENV_LOCK;
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The module is one instance per process holding one route, and both
+        // halves below reconfigure it. Without this they race any other test
+        // that also points it somewhere.
+        let _serialised = super::super::module_client::module_guard().await;
 
         // ── Backend half ────────────────────────────────────────────
         let tmp_backend = tempfile::tempdir().expect("tempdir backend");
@@ -706,10 +698,15 @@ mod tests {
         );
         let backend_result = backend_tool.execute(serde_json::json!({})).await.unwrap();
         let backend_msg = error_text(&backend_result);
-        // Backend tool's error must point at a backend session lookup.
+        // Backend mode with nothing signed in must *fail*, naming what is
+        // missing. The wording moved into the connector module along with the
+        // client — the host can no longer name a route, so the module reports
+        // it holds none — so this asserts the contract rather than the phrase.
         assert!(
-            backend_msg.contains("backend") || backend_msg.contains("session"),
-            "backend-mode tool should surface a backend session error, got: {backend_msg}"
+            backend_msg.contains("backend")
+                || backend_msg.contains("session")
+                || backend_msg.contains("route"),
+            "backend-mode tool should say what is missing, got: {backend_msg}"
         );
 
         // ── Direct half ─────────────────────────────────────────────

@@ -745,6 +745,76 @@ const TINYMCP: ModuleRecord = ModuleRecord {
     load: LoadPolicy::Lazy,
 };
 
+const TINYCONNECTORS: ModuleRecord = ModuleRecord {
+    id: "tinyconnectors",
+    description: "OAuth connector integrations: accounts, actions, triggers, and record sync",
+    bus_name: "ai.tinyhumans.connectors.Composio",
+    object_path: "/ai/tinyhumans/connectors/Composio",
+    version: "0.7.0",
+    release_url: "https://github.com/tinyhumansai/tinyconnectors/releases/tag/v0.7.0",
+    assets: &[
+        PlatformAsset {
+            host_key: "ubuntu-24.04-x86_64",
+            archive: "tinyconnectors-0.7.0-ubuntu-24.04-x86_64.tar.gz",
+            sha256: "881f31eecc1d91ace45a5211669ce0b575ead6a1cb86ca1a6d5608c9304a45c8",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-24.04-arm64",
+            archive: "tinyconnectors-0.7.0-ubuntu-24.04-arm64.tar.gz",
+            sha256: "1784e73ba56228772229035fc5f32ce0c4e012057e5fdd079ebf9ee5337d6229",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-x86_64",
+            archive: "tinyconnectors-0.7.0-ubuntu-22.04-x86_64.tar.gz",
+            sha256: "b73df16260dce3387f7de915dfa93f6c0f8c977cf21784b97b2a6b2dcdf961f7",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-arm64",
+            archive: "tinyconnectors-0.7.0-ubuntu-22.04-arm64.tar.gz",
+            sha256: "4e09ba65e7bd6cec8a3ddbcaabac01e156bacfd4aa83edca30e59bc4973eee8d",
+        },
+        PlatformAsset {
+            host_key: "macos-26-arm64",
+            archive: "tinyconnectors-0.7.0-macos-26-arm64.tar.gz",
+            sha256: "8b6dacbf22f32aa73eef512a6a5e50ca5def19a3d6ef948a2f3599b0ebe676e3",
+        },
+        PlatformAsset {
+            host_key: "macos-26-x86_64",
+            archive: "tinyconnectors-0.7.0-macos-26-x86_64.tar.gz",
+            sha256: "fc0fcab43797fb22fadba83af901b1fc5621b4b7486dcad5a6db474842d36396",
+        },
+        PlatformAsset {
+            host_key: "macos-15-arm64",
+            archive: "tinyconnectors-0.7.0-macos-15-arm64.tar.gz",
+            sha256: "45cab192ae57a3a1ab2550d41740986f74f1e2e582f3b336d0a6dbf35e10cfcb",
+        },
+        PlatformAsset {
+            host_key: "macos-15-x86_64",
+            archive: "tinyconnectors-0.7.0-macos-15-x86_64.tar.gz",
+            sha256: "d4a8b5e6833b56ad91bf1b2140e8cc04a38f1c9922e2fd2c08112d6b9f0c867d",
+        },
+        PlatformAsset {
+            host_key: "windows-2025-x86_64",
+            archive: "tinyconnectors-0.7.0-windows-2025-x86_64.zip",
+            sha256: "3ce794911a57d0f539fb63c4e0c7c3a3cd9775760e329af0146a2c3aff64a055",
+        },
+        PlatformAsset {
+            host_key: "windows-2022-x86_64",
+            archive: "tinyconnectors-0.7.0-windows-2022-x86_64.zip",
+            sha256: "a84c91732e432ef0ac7ffe81b639ddd4cdbbcad4d61e08694623d5201c8ee62f",
+        },
+        PlatformAsset {
+            host_key: "windows-11-arm64",
+            archive: "tinyconnectors-0.7.0-windows-11-arm64.zip",
+            sha256: "7034918df432aecfa1f402a5640ce5aff2ca051d8ced8f5622a0ce519f300284",
+        },
+    ],
+    // Lazy: a user with no connected accounts should not pay to load it, and
+    // most sessions never touch a connector. Safe even signed out — the module
+    // loads without configuration and still answers the capability members.
+    load: LoadPolicy::Lazy,
+};
+
 /// Every module this build can load.
 pub const ALL: &[ModuleRecord] = &[
     TINYDOCS,
@@ -756,6 +826,7 @@ pub const ALL: &[ModuleRecord] = &[
     TINYRUNTIME_NODEJS,
     TINYRUNTIME_PYTHON,
     TINYMCP,
+    TINYCONNECTORS,
 ];
 
 /// The record for `id`, if this build knows it.

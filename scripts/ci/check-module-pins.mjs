@@ -81,6 +81,7 @@ const PIN_MAP = {
   tinyvoice: { submodule: 'vendor/tinyvoice' },
   tinyruntime: { submodule: 'vendor/tinyruntime' },
   tinymcp: { submodule: 'vendor/tinymcp' },
+  tinyconnectors: { submodule: 'vendor/tinyconnectors' },
   'tinyruntime-nodejs': {
     submodule: null,
     sharesWith: 'vendor/tinyruntime',

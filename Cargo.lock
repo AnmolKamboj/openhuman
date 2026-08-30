@@ -4154,6 +4154,7 @@ dependencies = [
  "tinybus",
  "tinychannels",
  "tinychannels-bus",
+ "tinyconnectors-bus",
  "tinycortex",
  "tinycortex-api",
  "tinydocs-bus",
@@ -6434,6 +6435,14 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "tinyconnectors-bus"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

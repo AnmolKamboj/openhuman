@@ -28,6 +28,8 @@ fn parse_sync_reason_rejects_unknown_values() {
     assert!(parse_sync_reason(Some("")).is_err());
 }
 
+use crate::openhuman::integrations::composio::module_client::module_guard;
+
 // ── resolve_client / ops auth errors ──────────────────────────
 
 fn test_config(tmp: &tempfile::TempDir) -> Config {
@@ -52,16 +54,22 @@ fn resolve_client_errors_without_session() {
 
 #[tokio::test]
 async fn composio_list_toolkits_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_list_toolkits(&config).await.unwrap_err();
-    // Backend-mode (default) without a session — the mode-aware factory
-    // surfaces "no backend session token" so we accept either the
-    // legacy `composio unavailable` prefix or the new factory message.
+    // Backend mode (the default) with no session. What matters is that the
+    // call *fails* rather than quietly answering with an empty list, and that
+    // the message tells the user what to do about it. The wording moved into
+    // the connector module when the client did — it now reports the missing
+    // route — so this asserts the contract, not the phrasing.
     assert!(
-        err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
-        "unexpected error: {err}"
+        err.to_lowercase().contains("composio"),
+        "the error should name the domain: {err}"
+    );
+    assert!(
+        err.contains("no backend session") || err.contains("unavailable") || err.contains("route"),
+        "the error should say what is missing: {err}"
     );
 }
 
@@ -82,18 +90,25 @@ async fn composio_list_capabilities_does_not_require_session() {
 
 #[tokio::test]
 async fn composio_list_connections_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_list_connections(&config).await.unwrap_err();
+    // Same contract as `composio_list_toolkits_errors_without_session`: it
+    // fails rather than answering with an empty list, and says what is missing.
     assert!(
-        err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
-        "unexpected error: {err}"
+        err.to_lowercase().contains("composio"),
+        "the error should name the domain: {err}"
+    );
+    assert!(
+        err.contains("no backend session") || err.contains("unavailable") || err.contains("route"),
+        "the error should say what is missing: {err}"
     );
 }
 
 #[tokio::test]
 async fn composio_authorize_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_authorize(&config, "gmail", None)
@@ -112,6 +127,7 @@ async fn composio_authorize_errors_without_session() {
 
 #[tokio::test]
 async fn composio_delete_connection_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_delete_connection(&config, "c-1", false)
@@ -122,49 +138,66 @@ async fn composio_delete_connection_errors_without_session() {
 
 #[tokio::test]
 async fn composio_list_tools_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_list_tools(&config, None, None).await.unwrap_err();
-    // Same tolerance as `composio_list_toolkits_errors_without_session`.
+    // Same contract as `composio_list_toolkits_errors_without_session`.
     assert!(
-        err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
-        "unexpected error: {err}"
+        err.to_lowercase().contains("composio"),
+        "the error should name the domain: {err}"
+    );
+    assert!(
+        err.contains("no backend session") || err.contains("unavailable") || err.contains("route"),
+        "the error should say what is missing: {err}"
     );
 }
 
 #[tokio::test]
 async fn composio_execute_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_execute(&config, "GMAIL_SEND_EMAIL", None, None)
         .await
         .unwrap_err();
+    // What matters is that an action with no credential *fails* rather than
+    // reporting a send that never happened. The wording moved into the
+    // connector module with the client — it now names the missing route — so
+    // this asserts the contract, not the phrasing.
     assert!(
         err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
+            && (err.contains("no backend session")
+                || err.contains("unavailable")
+                || err.contains("route")),
         "unexpected error: {err}"
     );
 }
 
 #[tokio::test]
 async fn composio_get_user_profile_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_get_user_profile(&config, "c-1").await.unwrap_err();
-    assert!(err.contains("composio unavailable"));
+    // Fails while resolving which toolkit `c-1` belongs to, because that needs
+    // the connection list and the connection list needs a credential. Still a
+    // failure that names the domain, which is the contract here.
+    assert!(err.to_lowercase().contains("composio"), "{err}");
 }
 
 #[tokio::test]
 async fn composio_sync_errors_without_session() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_sync(&config, "c-1", None).await.unwrap_err();
-    assert!(err.contains("composio unavailable"));
+    assert!(err.to_lowercase().contains("composio"), "{err}");
 }
 
 #[tokio::test]
 async fn composio_sync_rejects_invalid_reason_before_client_check() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     // Invalid reason → should fail at parse step *before* touching the
@@ -177,19 +210,18 @@ async fn composio_sync_rejects_invalid_reason_before_client_check() {
 
 #[tokio::test]
 async fn composio_list_trigger_history_errors_when_store_not_init() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    // The trigger history store is a process-global singleton. If
-    // another test in the same binary already initialised it (e.g.
-    // via the archive-roundtrip test), skip rather than asserting on
-    // the uninitialised branch.
-    if super::super::trigger_history::global().is_some() {
-        return;
-    }
+    // The archive moved into the module, which is what writes to it as
+    // deliveries are dispatched. A module with no state directory has none, so
+    // reading history reports that rather than answering with an empty list —
+    // "no triggers have fired" and "nothing is recording them" are different
+    // things to tell someone debugging a trigger.
     let err = composio_list_trigger_history(&config, Some(10))
         .await
         .unwrap_err();
-    assert!(err.contains("archive store is not initialized"));
+    assert!(err.contains("list_trigger_history failed"), "{err}");
 }
 
 // ── cache_key / invalidate_connected_integrations_cache ───────
@@ -399,6 +431,7 @@ fn sample_memory_chunk_with_owner(
 
 #[tokio::test]
 async fn composio_list_toolkits_via_mock() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/toolkits",
         get(|| async { Json(json!({"success": true, "data": {"toolkits": ["gmail"]}})) }),
@@ -413,6 +446,7 @@ async fn composio_list_toolkits_via_mock() {
 
 #[tokio::test]
 async fn composio_list_connections_via_mock_counts_active() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/connections",
         get(|| async {
@@ -438,6 +472,7 @@ async fn composio_list_connections_via_mock_counts_active() {
 
 #[tokio::test]
 async fn composio_authorize_clears_pending_meta_connection_before_handoff() {
+    let _serialised = module_guard().await;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -492,6 +527,7 @@ async fn composio_authorize_clears_pending_meta_connection_before_handoff() {
 
 #[tokio::test]
 async fn composio_authorize_via_mock_publishes_event_and_returns_url() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/authorize",
         post(|Json(_b): Json<Value>| async move {
@@ -511,6 +547,7 @@ async fn composio_authorize_via_mock_publishes_event_and_returns_url() {
 
 #[tokio::test]
 async fn composio_delete_connection_via_mock() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/connections/{id}",
         axum::routing::delete(|Path(_id): Path<String>| async move {
@@ -528,6 +565,7 @@ async fn composio_delete_connection_via_mock() {
 
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_deletes_slack_source() {
+    let _serialised = module_guard().await;
     let app = Router::new()
         .route(
             "/agent-integrations/composio/connections",
@@ -583,6 +621,7 @@ async fn composio_delete_connection_clear_memory_deletes_slack_source() {
 /// content file sits at the production `content_path` location.
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_cascades_source_tree_and_content_file() {
+    let _serialised = module_guard().await;
     use rusqlite::params;
     use tinymemory_core::store::trees::store as tree_store;
     use tinymemory_core::store::trees::types::{SummaryNode, TreeKind};
@@ -707,6 +746,7 @@ async fn composio_delete_connection_clear_memory_cascades_source_tree_and_conten
 /// tree, the summary row, AND the seal-produced content file away.
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_cascades_live_sealed_tree_and_file() {
+    let _serialised = module_guard().await;
     use crate::openhuman::memory::tree::tree::bucket_seal::{seal_one_level, LabelStrategy};
     use tinymemory_core::store::chunks::store::{
         get_summary_content_pointers, upsert_staged_chunks_tx,
@@ -837,6 +877,7 @@ async fn composio_delete_connection_clear_memory_cascades_live_sealed_tree_and_f
 
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_keeps_other_gmail_connections() {
+    let _serialised = module_guard().await;
     let app = Router::new()
         .route(
             "/agent-integrations/composio/connections",
@@ -1027,6 +1068,7 @@ async fn drive_cleanup_targets_are_connection_scoped() {
 
 #[tokio::test]
 async fn composio_get_user_profile_via_mock_returns_provider_profile() {
+    let _serialised = module_guard().await;
     // The embedding seam fails loudly when unwired. Installed here rather
     // than relied upon from another test: `install_for_tests` is
     // `Once`-guarded, so a test that omits it passes only while some
@@ -1102,6 +1144,7 @@ async fn composio_get_user_profile_via_mock_returns_provider_profile() {
 
 #[tokio::test]
 async fn composio_list_tools_via_mock_with_filter() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/tools",
         get(|Query(_q): Query<HashMap<String, String>>| async move {
@@ -1125,6 +1168,7 @@ async fn composio_list_tools_via_mock_with_filter() {
 
 #[tokio::test]
 async fn composio_execute_via_mock_succeeds_and_logs_elapsed() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/execute",
         post(|Json(b): Json<Value>| async move {
@@ -1154,6 +1198,7 @@ async fn composio_execute_via_mock_succeeds_and_logs_elapsed() {
 
 #[tokio::test]
 async fn composio_execute_via_mock_propagates_backend_error() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/execute",
         post(|| async { Json(json!({"success": false, "error": "rate limited"})) }),
@@ -1176,7 +1221,8 @@ async fn composio_execute_via_mock_propagates_backend_error() {
 }
 
 #[tokio::test]
-async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome() {
+async fn composio_sync_gmail_via_mock_ingests_records_and_updates_outcome() {
+    let _serialised = module_guard().await;
     // The embedding seam fails loudly when unwired. Installed here rather
     // than relied upon from another test: `install_for_tests` is
     // `Once`-guarded, so a test that omits it passes only while some
@@ -1295,8 +1341,13 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
         outcome.value.summary
     );
 
-    // Poll for the spawned ingest task to persist the TinyCortex skill
-    // document. The mock backend is local, so this normally lands quickly.
+    // Poll for the spawned ingest task to write the records into memory.
+    //
+    // The namespace is `source:<source_id>` because the sync now hands its
+    // records to the bound driver's `accept_source_items` rather than writing a
+    // provider-shaped skill document itself. That is the whole point of the
+    // split — the module reads, this crate ingests — so reading them back the
+    // way memory files them is what proves the two halves met.
     let documents = {
         let mut documents = Vec::new();
         for _ in 0..50 {
@@ -1306,7 +1357,7 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
                 .provider()
                 .as_documents()
                 .expect("the bound driver serves documents")
-                .list_documents(Some("skill-gmail"))
+                .list_documents(Some("source:gmail:c1"))
                 .await
                 .unwrap()
                 .get("documents")
@@ -1323,11 +1374,13 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     assert_eq!(
         documents.len(),
         1,
-        "expected one ingested Gmail document after spawned task drains"
+        "expected one ingested Gmail record after the spawned task drains"
     );
     let document = &documents[0];
-    assert_eq!(document["documentId"], "gmail:gmail-msg-1");
     assert_eq!(document["title"], "Phoenix launch canary");
+    // `external_sync` is what stops a third party's words being treated later
+    // as the user's own. A sync that ingested without it would be worse than
+    // one that ingested nothing.
     assert_eq!(document["taint"], "external_sync");
 }
 
@@ -1751,6 +1804,7 @@ fn including_expired_serves_stale_snapshot_for_transient_fallback() {
 
 #[tokio::test]
 async fn composio_list_available_triggers_via_mock() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers/available",
         get(|Query(q): Query<HashMap<String, String>>| async move {
@@ -1786,6 +1840,7 @@ async fn composio_list_available_triggers_via_mock() {
 
 #[tokio::test]
 async fn composio_list_available_triggers_omits_connection_when_none() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers/available",
         get(|Query(q): Query<HashMap<String, String>>| async move {
@@ -1808,6 +1863,7 @@ async fn composio_list_available_triggers_omits_connection_when_none() {
 
 #[tokio::test]
 async fn composio_list_triggers_via_mock_with_filter() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers",
         get(|Query(_q): Query<HashMap<String, String>>| async move {
@@ -1839,6 +1895,7 @@ async fn composio_list_triggers_via_mock_with_filter() {
 
 #[tokio::test]
 async fn composio_list_triggers_without_filter() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers",
         get(|| async { Json(json!({"success": true, "data": {"triggers": []}})) }),
@@ -1853,6 +1910,7 @@ async fn composio_list_triggers_without_filter() {
 
 #[tokio::test]
 async fn composio_enable_trigger_via_mock() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers",
         post(|Json(body): Json<Value>| async move {
@@ -1888,6 +1946,7 @@ async fn composio_enable_trigger_via_mock() {
 
 #[tokio::test]
 async fn composio_disable_trigger_via_mock() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers/{id}",
         axum::routing::delete(|Path(id): Path<String>| async move {
@@ -1906,6 +1965,7 @@ async fn composio_disable_trigger_via_mock() {
 
 #[tokio::test]
 async fn composio_disable_trigger_propagates_backend_error() {
+    let _serialised = module_guard().await;
     let app = Router::new().route(
         "/agent-integrations/composio/triggers/{id}",
         axum::routing::delete(|Path(_id): Path<String>| async move {
@@ -1956,6 +2016,7 @@ fn direct_mode_config(tmp: &tempfile::TempDir) -> Config {
 
 #[tokio::test]
 async fn composio_list_toolkits_returns_empty_in_direct_mode() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = direct_mode_config(&tmp);
     let outcome = composio_list_toolkits(&config)
@@ -1974,6 +2035,7 @@ async fn composio_list_toolkits_returns_empty_in_direct_mode() {
 
 #[tokio::test]
 async fn composio_list_connections_routes_through_direct_mode() {
+    let _serialised = module_guard().await;
     let _guard = cache_guard();
     let tmp = tempfile::tempdir().unwrap();
     let config = direct_mode_config(&tmp);
@@ -2064,6 +2126,7 @@ fn direct_mode_without_key_is_false_when_key_in_keychain() {
 
 #[tokio::test]
 async fn composio_list_connections_returns_empty_when_direct_mode_no_key() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = direct_mode_no_key_config(&tmp);
     // RC of TAURI-RUST-R4: this MUST be Ok(empty), not Err — no error is
@@ -2203,6 +2266,7 @@ async fn composio_set_api_key_validates_candidate_key_even_when_stored_key_exist
 /// integration-style test only pins the failure-mode contract.
 #[tokio::test]
 async fn composio_list_tools_in_direct_mode_does_not_fall_back_to_backend() {
+    let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = direct_mode_config(&tmp);
     let result = composio_list_tools(&config, None, None).await;
@@ -2236,6 +2300,7 @@ async fn composio_list_tools_in_direct_mode_does_not_fall_back_to_backend() {
 
 #[tokio::test]
 async fn composio_authorize_routes_through_direct_mode() {
+    let _serialised = module_guard().await;
     // The direct-mode `authorize` path actually calls
     // `backend.composio.dev/api/v3/connected_accounts/link` over HTTPS.
     // We can't mock that endpoint at the URL-rewriter level in this
@@ -2262,6 +2327,7 @@ async fn composio_authorize_routes_through_direct_mode() {
 
 #[tokio::test]
 async fn composio_execute_routes_through_direct_mode() {
+    let _serialised = module_guard().await;
     // Same shape of assertion as
     // `composio_authorize_routes_through_direct_mode` — we can't mock
     // `backend.composio.dev` from a unit test, so we verify the factory

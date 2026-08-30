@@ -266,6 +266,21 @@ pub(super) fn load_local(
 /// Credentials are intentionally absent. TinyMemory calls back into the host
 /// for embedding and chat compute; the other modules need no host config.
 fn module_config(config: &Config, id: &str) -> serde_json::Value {
+    if id == super::connectors::MODULE_ID {
+        // The connector module takes its route and credential from here and
+        // reads one from nowhere else. A configuration that cannot be built —
+        // direct mode with no key, an unknown mode — loads the module with an
+        // empty blob rather than failing the load: the capability members need
+        // no route and must still answer, and every member that does need one
+        // reports the missing route when it is called.
+        return super::connectors::module_config(config).unwrap_or_else(|error| {
+            tracing::info!(
+                error = %error,
+                "[connectors] no route configured; loading with the capability surface only"
+            );
+            serde_json::json!({})
+        });
+    }
     if id != super::memory::MODULE_ID {
         return serde_json::json!({});
     }
