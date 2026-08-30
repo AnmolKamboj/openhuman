@@ -327,13 +327,16 @@ async fn composio_providers_sync_state_and_bus_surfaces_cover_read_write_edges()
     let _workspace = EnvVarGuard::set("OPENHUMAN_WORKSPACE", tmp.path());
     let _triage = EnvVarGuard::set_str("OPENHUMAN_TRIGGER_TRIAGE_DISABLED", "yes");
 
-    let matrix = capability_matrix();
-    assert!(matrix
-        .iter()
-        .any(|cap| cap.toolkit == "gmail" && cap.native_provider));
-    assert!(matrix
-        .iter()
-        .any(|cap| cap.toolkit == "googlecalendar" && cap.curated_tools));
+    // `capability_matrix()` — a pure host-side function that used to build
+    // this table from the engine's provider registry — was deleted by
+    // tinymemory v1.13.4 with no replacement here; `composio_list_capabilities`
+    // now answers the equivalent RPC directly from the connectors module's
+    // `ListCapabilities` member (module-mediated, not testable network-free
+    // from this crate). What the matrix reported per toolkit is still
+    // answerable from the two pure functions that fed it, though:
+    // `has_native_provider` and `catalog_for_toolkit(..).is_some()`.
+    assert!(has_native_provider("gmail"));
+    assert!(catalog_for_toolkit("googlecalendar").is_some());
     let ready = agent_ready_toolkits();
     assert!(ready.windows(2).all(|pair| pair[0] <= pair[1]));
     assert!(ready.contains(&"gmail"));
