@@ -166,6 +166,14 @@ pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
     tinyflows::compat::max_sub_workflow_depth(graph)
 }
 
+// The two refusal codes are `tinyflows::compat`'s, re-exported at `ops::` scope
+// because this module's tests assert on them by name — which is the point of a
+// stable code, and what keeps a rename upstream a compile error here rather
+// than a silently-passing `contains`.
+pub(crate) use tinyflows::compat::{
+    UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN, UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN,
+};
+
 fn to_compat_validation_error(
     error: tinyflows::compat::CompatibilityError,
 ) -> crate::openhuman::flows::FlowValidationError {
