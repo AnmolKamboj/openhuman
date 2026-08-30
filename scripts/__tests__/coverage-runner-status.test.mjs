@@ -218,3 +218,25 @@ test("an integration target whose required-features are all present still runs",
   assert.doesNotMatch(res.output, /skipping/, res.output);
   assert.match(res.output, /rc=0/, res.output);
 });
+
+test("required-features matching is exact, not substring — a superset name does not satisfy it", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      // `memory-git` is required, but the product set below only has
+      // `memory-github` — which contains `memory-git` as a substring — and
+      // `flows`. An implementation that matched by substring rather than by
+      // exact comma-delimited entry would wrongly consider this satisfied and
+      // run the target; a correct one must still skip it.
+      'PRODUCT_FEATURES="memory-github,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    ["run_integration_target memory_artifacts_e2e", 'echo "rc=$?"'].join("\n"),
+  );
+
+  assert.match(res.output, /skipping memory_artifacts_e2e/, res.output);
+  assert.doesNotMatch(res.output, /RAN-THE-TARGET/, res.output);
+  assert.match(res.output, /rc=0/, res.output);
+});
