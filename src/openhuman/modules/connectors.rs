@@ -145,13 +145,13 @@ fn fingerprint(route: &serde_json::Value) -> u64 {
 /// answer actually changed.
 ///
 /// A config that cannot name a route — signed out, direct mode with no key —
-/// leaves the module as it is instead of clearing it. The member that then runs
-/// fails with the reason it fails, which is more use than a route the host
-/// removed on its own initiative.
+/// sends `{"route": "none"}` rather than nothing. Leaving the old route in
+/// place would have the module answering 401 to everything with a bearer the
+/// user's session no longer owns, and "your account is broken" is a bad way to
+/// tell someone they are signed out.
 async fn ensure_routed(config: &Config, proxy: &Proxy) -> Result<(), String> {
-    let Ok(mut route) = module_config(config) else {
-        return Ok(());
-    };
+    let mut route = module_config(config)
+        .unwrap_or_else(|_| serde_json::json!({ "route": "none" }));
     // `state_dir` is load-time only: the trigger archive opens once, and moving
     // it later would strand the history already written there.
     if let Some(object) = route.as_object_mut() {
