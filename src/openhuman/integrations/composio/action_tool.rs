@@ -486,6 +486,10 @@ mod tests {
         // config for compatibility with sibling config-loading tests.
         use crate::openhuman::config::TEST_ENV_LOCK;
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The module is one instance per process holding one route, and both
+        // halves below reconfigure it. Without this they race any other test
+        // that also points it somewhere.
+        let _serialised = super::super::module_client::module_guard().await;
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let _workspace_guard = WorkspaceEnvGuard::set(tmp.path());
@@ -670,6 +674,10 @@ mod tests {
         // halves while holding `TEST_ENV_LOCK`.
         use crate::openhuman::config::TEST_ENV_LOCK;
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The module is one instance per process holding one route, and both
+        // halves below reconfigure it. Without this they race any other test
+        // that also points it somewhere.
+        let _serialised = super::super::module_client::module_guard().await;
 
         // ── Backend half ────────────────────────────────────────────
         let tmp_backend = tempfile::tempdir().expect("tempdir backend");
@@ -690,10 +698,15 @@ mod tests {
         );
         let backend_result = backend_tool.execute(serde_json::json!({})).await.unwrap();
         let backend_msg = error_text(&backend_result);
-        // Backend tool's error must point at a backend session lookup.
+        // Backend mode with nothing signed in must *fail*, naming what is
+        // missing. The wording moved into the connector module along with the
+        // client — the host can no longer name a route, so the module reports
+        // it holds none — so this asserts the contract rather than the phrase.
         assert!(
-            backend_msg.contains("backend") || backend_msg.contains("session"),
-            "backend-mode tool should surface a backend session error, got: {backend_msg}"
+            backend_msg.contains("backend")
+                || backend_msg.contains("session")
+                || backend_msg.contains("route"),
+            "backend-mode tool should say what is missing, got: {backend_msg}"
         );
 
         // ── Direct half ─────────────────────────────────────────────
