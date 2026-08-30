@@ -63,6 +63,19 @@ Genuinely missing from the contract, so upstream asks:
 - `MemoryTree` extension for the node store: `read_node`, `read_children`,
   `tree_status`, `write_node`, `buffer_write`, namespace/node-id validation
   (`tree_runtime::store::*`)
+- **A staged diagnostic report.** `MemoryMaintenance::doctor` looked like the
+  twin for `tree::health::async_run_doctor` and is not, so `memory/tools/doctor.rs`
+  was deliberately **not** migrated. The contract's `MaintenanceReport` is
+  `{operation, examined, changed, findings: Vec<String>}`; the engine's
+  `DoctorReport` is `{healthy, stages: Vec<StageHealth>, first_blocking_cause:
+  Option<PipelineFailure>, degraded: DegradedState, counters: DoctorCounters}`.
+  The whole point of the `memory_doctor` tool is the per-stage health and the
+  single first blocking cause, and `findings: Vec<String>` cannot carry either
+  without the model parsing prose back into structure. Swapping would compile,
+  return a plausible report, and quietly make the tool useless — the same shape
+  of trap as `recall_namespace_scored` vs recency recall. The ask is a
+  `DiagnosticReport` on `MemoryMaintenance` carrying stages and a blocking
+  cause.
 
 ### C. Sources (~4 files)
 
@@ -109,3 +122,47 @@ flavoured_root_abs_path, get_tree_by_scope}` (`memory/tools/flavour.rs`),
   engine's `sync/composio/providers/profile.rs:129` pushes into. Moving it home
   while `sync::composio` still resolves into the engine gives two buffers and a
   silently empty one.
+
+
+## Landed so far on `tinymemory-bus-only`
+
+Baseline was green; each step below left `cargo check --lib` green.
+
+**`tinymemory-bus`** — the curated Composio catalogs moved into the contract:
+`catalogs/{business,google,messaging,microsoft,productivity,social_media}.rs`
+plus the five provider-colocated tables (`gmail`, `notion`, `github`, `linear`,
+`clickup`), `descriptions.rs`, and a new `catalogs/mod.rs` carrying
+`catalog_for_toolkit`, `is_action_visible_with_pref`, `curated_scope_for`,
+`toolkit_has_scope`, `CAPABILITY_TOOLKITS`, `NATIVE_PROVIDERS` and the
+sync-interval helpers. `FastRetrieveQuery` gained a `Default` matching the
+engine's.
+
+**`tinymemory-api`** — `host::composio::capability_matrix()`, which needs
+`ComposioCapability` and so cannot live in the bus crate.
+
+**`tinymemory-core`** — `catalogs.rs`, `descriptions.rs`, `scope_lookup.rs` and
+the five `<provider>/tools.rs` files are now re-exports of the contract, so the
+engine and the host read one table. A drift guard in
+`tree/retrieval/fast_tests.rs` pins the two `Default`s together.
+
+**Host** — `integrations/composio/providers` stopped being a glob over the
+engine and is split by what each half is: the catalog/scope/capability surface
+from the contract, the provider registry and run types still from the engine and
+listed by name. Every host call site moved off
+`memory::sync::composio::providers::…` onto that path, so the shim is the only
+file naming the engine's composio tree. All three `fast_retrieve` callers
+(`memory/agent/ops.rs`, `memory/schema/handlers.rs`,
+`agent/harness/subagent_runner/ops/runner.rs`) now go through
+`binding.provider().as_retrieval()` with an explicit `as_bus_scope()`, and the
+runner's test fixtures dropped their `tinycortex::` import.
+
+### A pre-existing bug the new tests caught
+
+`toolkit_description` keyed on `google_calendar` / `google_docs` /
+`google_drive` / `google_sheets` / `onedrive`, while `CAPABILITY_TOOLKITS` and
+`catalog_for_toolkit` key on the underscore-free slugs. Five toolkits — the four
+Google ones and OneDrive — had been rendering the generic
+"Interact with this connected service via its available actions" fallback in the
+capability matrix and in the orchestrator's connected-integration prompt. Fixed
+by aliasing; `toolkit_description_is_populated_for_every_capability_toolkit`
+pins it.
