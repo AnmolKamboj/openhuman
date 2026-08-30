@@ -3023,228 +3023,53 @@ async fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_r
     );
 }
 
-#[test]
-fn gmail_post_processor_and_provider_registry_cover_public_edges() {
-    let gmail_provider =
-        openhuman_core::openhuman::memory::sync::composio::providers::gmail::GmailProvider::new();
-    let mut raw_html_passthrough = json!({
-        "messages": [{ "messageId": "m-raw", "messageText": "<b>keep raw</b>" }]
-    });
-    gmail_provider.post_process_action_result(
-        "GMAIL_FETCH_EMAILS",
-        Some(&json!({ "rawHtml": true })),
-        &mut raw_html_passthrough,
-    );
-    assert_eq!(
-        raw_html_passthrough["messages"][0]["messageText"],
-        "<b>keep raw</b>"
-    );
-
-    let mut response = json!({
-        "data": {
-            "messages": [
-                {
-                    "messageId": "m-1",
-                    "threadId": "t-1",
-                    "subject": "Launch Plan",
-                    "sender": "Alice <alice@example.com>",
-                    "to": "Bob <bob@example.com>",
-                    "messageText": "fallback one",
-                    "markdownFormatted": "Rendered body one",
-                    "labelIds": ["INBOX"],
-                    "payload": {
-                        "headers": [
-                            { "name": "Date", "value": "Fri, 29 May 2026 12:00:00 +0000" },
-                            { "name": "List-Unsubscribe", "value": "<mailto:leave@example.com>" }
-                        ]
-                    },
-                    "attachmentList": [
-                        { "filename": "plan.pdf", "mimeType": "application/pdf" },
-                        { "filename": "", "mimeType": "text/plain" }
-                    ]
-                },
-                {
-                    "messageId": "m-2",
-                    "threadId": "t-2",
-                    "subject": "Budget",
-                    "sender": "Cara <cara@example.com>",
-                    "to": "Alice <alice@example.com>",
-                    "messageText": "fallback two",
-                    "markdown_formatted": "Rendered body two"
-                }
-            ],
-            "nextPageToken": "page-2",
-            "resultSizeEstimate": 2
-        }
-    });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut response);
-    let messages = response["data"]["messages"].as_array().expect("messages");
-    assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0]["id"], "m-1");
-    assert_eq!(messages[0]["date"], "Fri, 29 May 2026 12:00:00 +0000");
-    assert_eq!(
-        messages[0]["list_unsubscribe"],
-        "<mailto:leave@example.com>"
-    );
-    assert_eq!(messages[0]["markdown"], "Rendered body one");
-    assert_eq!(messages[0]["attachments"][0]["filename"], "plan.pdf");
-    assert_eq!(messages[1]["markdown"], "Rendered body two");
-    assert_eq!(response["data"]["nextPageToken"], "page-2");
-    assert_eq!(response["data"]["resultSizeEstimate"], 2);
-
-    let mut no_container = json!({ "ok": true });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut no_container);
-    assert_eq!(no_container, json!({ "ok": true }));
-
-    let mut one = json!({ "messages": [{ "messageId": "m-3", "messageText": "plain" }] });
-    gmail_provider.post_process_action_result("GMAIL_FETCH_EMAILS", None, &mut one);
-    assert_eq!(one["messages"][0]["markdown"], "plain");
-
-    init_default_composio_providers();
-    assert!(get_provider(" gmail ").is_some());
-    assert!(get_provider("unknown_provider_slug").is_none());
-    assert!(all_composio_providers()
-        .iter()
-        .any(|provider| provider.toolkit_slug() == "slack"));
-    register_provider(Arc::new(RawCoverageProvider {
-        fail_profile: false,
-    }));
-    register_provider(Arc::new(RawCoverageProvider { fail_profile: true }));
-    assert_eq!(
-        get_provider("raw_coverage").unwrap().toolkit_slug(),
-        "raw_coverage"
-    );
-    let raw_count = all_composio_providers()
-        .iter()
-        .filter(|provider| provider.toolkit_slug() == "raw_coverage")
-        .count();
-    assert_eq!(raw_count, 1);
-    register_provider(Arc::new(EmptySlugProvider));
-    assert!(get_provider("").is_none());
-}
-
-struct RawCoverageProvider {
-    fail_profile: bool,
-}
-
-#[async_trait::async_trait]
-impl ComposioProvider for RawCoverageProvider {
-    fn toolkit_slug(&self) -> &'static str {
-        "raw_coverage"
-    }
-
-    async fn fetch_user_profile(
-        &self,
-        _ctx: &ProviderContext,
-    ) -> Result<ProviderUserProfile, String> {
-        if self.fail_profile {
-            Err("profile unavailable".into())
-        } else {
-            Ok(ProviderUserProfile {
-                toolkit: "raw_coverage".into(),
-                connection_id: Some("conn-1".into()),
-                display_name: Some("Raw Coverage".into()),
-                email: Some("raw@example.com".into()),
-                username: None,
-                avatar_url: None,
-                profile_url: None,
-                extras: json!({}),
-            })
-        }
-    }
-}
-
-struct EmptySlugProvider;
-
-#[async_trait::async_trait]
-impl ComposioProvider for EmptySlugProvider {
-    fn toolkit_slug(&self) -> &'static str {
-        ""
-    }
-
-    async fn fetch_user_profile(
-        &self,
-        _ctx: &ProviderContext,
-    ) -> Result<ProviderUserProfile, String> {
-        Ok(ProviderUserProfile::default())
-    }
-}
-
+/// The deleted engine's `ComposioProvider` trait, its per-toolkit structs
+/// (`GmailProvider` among them), `ProviderContext`, and the whole in-process
+/// registry (`register_provider`/`get_provider`/`all_providers`/
+/// `init_default_providers`) are genuinely gone with nothing in this crate to
+/// exercise them against — see
+/// `crate::openhuman::integrations::composio::providers`'s module docs and
+/// `memory_sync_providers_raw_coverage_e2e.rs`, which documents this same gap
+/// in detail for the sibling suite that covered these types most directly.
+///
+/// This test used to cover two things through that registry:
+/// Gmail's `post_process_action_result` (nested-payload flattening, raw-HTML
+/// opt-out, non-container passthrough) and the registry's own CRUD
+/// (register/get/list, empty-slug and duplicate-slug handling) plus the
+/// `ComposioProvider` trait's default method bodies (`sync_interval_secs`,
+/// `curated_tools`, `fetch_tasks`'s "no task-fetch surface" default,
+/// `on_trigger`'s no-op default, `identity_set`, `on_connection_created`
+/// writing `PROFILE.md`). None of it moved anywhere reachable from this
+/// crate — it now lives entirely inside the separately-versioned
+/// `tinyconnectors` module, reachable only via a live loaded module (real
+/// network + `dlopen`), which this suite's local-only design rules out. What
+/// remains honestly testable of "fetch a provider's profile" / "sync a
+/// connection" is `composio_get_user_profile` / `composio_sync`
+/// (`integrations::composio::ops`), which refuse cleanly, deterministically
+/// and without touching the network when no connectors module is loaded.
 #[tokio::test]
-async fn memory_sync_provider_trait_defaults_and_connection_hook_are_deterministic() {
+async fn composio_get_user_profile_and_sync_refuse_cleanly_without_a_loaded_module() {
+    let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
-    // Determinism (as this test's name promises): `identity_set` →
-    // `persist_provider_profile` writes through the PROCESS-GLOBAL memory client
-    // and returns 0 when it isn't ready. Other tests in this binary rebind that
-    // global, so under parallel execution this test could otherwise observe an
-    // unready client and see 0 instead of 1. Bind the global to this test's
-    // workspace up front so the assertion is independent of execution order.
-    ensure_memory_seams();
-    tinymemory_core::global::init(tmp.path().to_path_buf())
-        .expect("init global memory client");
-    let ctx = ProviderContext {
-        config: Arc::new(config_in(&tmp)),
-        toolkit: "raw_coverage".into(),
-        connection_id: Some("conn-1".into()),
-        usage: Default::default(),
-        max_items: None,
-        sync_depth_days: None,
-    };
-    let provider = RawCoverageProvider { fail_profile: true };
-    assert_eq!(provider.sync_interval_secs(), Some(15 * 60));
-    assert!(provider.curated_tools().is_none());
-    assert!(provider
-        .fetch_tasks(&ctx, &TaskFetchFilter::default())
-        .await
-        .unwrap_err()
-        .contains("provider has no task-fetch surface"));
+    let mut config = config_in(&tmp);
+    config.modules.enabled = false;
+    config.save().await.expect("save config");
 
-    let mut action_data = json!({ "ok": true });
-    provider.post_process_action_result("RAW_ACTION", None, &mut action_data);
-    assert_eq!(action_data, json!({ "ok": true }));
-    provider
-        .on_trigger(&ctx, "raw.trigger", &json!({ "payload": true }))
+    let error = composio_get_user_profile(&config, "conn-raw-coverage")
         .await
-        .expect("default trigger no-op");
-    assert_eq!(
-        provider.identity_set(&ProviderUserProfile {
-            toolkit: "raw_coverage".into(),
-            connection_id: Some("conn-1".into()),
-            display_name: Some("No client".into()),
-            ..Default::default()
-        }),
-        1
-    );
-    let memory_client = ctx.memory_client().expect("test memory client");
-    memory_client
-        .kv_set(Some("provider-context"), "covered", &json!(true))
-        .await
-        .expect("write through provider context memory client");
-    assert_eq!(
-        memory_client
-            .kv_get(Some("provider-context"), "covered")
-            .await
-            .expect("read provider context kv"),
-        Some(json!(true))
+        .expect_err("profile fetch must refuse without a loaded connectors module");
+    assert!(
+        error.contains("modules are disabled in configuration"),
+        "unexpected error: {error}"
     );
 
-    provider
-        .on_connection_created(&ctx)
-        .await
-        .expect("profile failure still syncs");
-    assert!(!tmp.path().join("PROFILE.md").exists());
-
-    let profile_provider = RawCoverageProvider {
-        fail_profile: false,
-    };
-    profile_provider
-        .on_connection_created(&ctx)
-        .await
-        .expect("profile success syncs");
-    let profile_md = std::fs::read_to_string(tmp.path().join("PROFILE.md")).expect("profile md");
-    assert!(profile_md.contains("Raw Coverage"));
-    assert!(profile_md.contains("raw@example.com"));
+    let outcome = composio_sync(&config, "conn-raw-coverage", None).await;
+    assert!(
+        outcome.is_err(),
+        "sync must refuse to resolve toolkit for an unregistered connection"
+    );
 }
+
 
 #[test]
 fn turn_state_mirror_persists_progress_edges_from_public_events() {
