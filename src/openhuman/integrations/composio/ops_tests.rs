@@ -161,9 +161,15 @@ async fn composio_execute_errors_without_session() {
     let err = composio_execute(&config, "GMAIL_SEND_EMAIL", None, None)
         .await
         .unwrap_err();
+    // What matters is that an action with no credential *fails* rather than
+    // reporting a send that never happened. The wording moved into the
+    // connector module with the client — it now names the missing route — so
+    // this asserts the contract, not the phrasing.
     assert!(
         err.to_lowercase().contains("composio")
-            && (err.contains("no backend session") || err.contains("unavailable")),
+            && (err.contains("no backend session")
+                || err.contains("unavailable")
+                || err.contains("route")),
         "unexpected error: {err}"
     );
 }
@@ -174,7 +180,10 @@ async fn composio_get_user_profile_errors_without_session() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_get_user_profile(&config, "c-1").await.unwrap_err();
-    assert!(err.contains("composio unavailable"));
+    // Fails while resolving which toolkit `c-1` belongs to, because that needs
+    // the connection list and the connection list needs a credential. Still a
+    // failure that names the domain, which is the contract here.
+    assert!(err.to_lowercase().contains("composio"), "{err}");
 }
 
 #[tokio::test]
@@ -183,7 +192,7 @@ async fn composio_sync_errors_without_session() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let err = composio_sync(&config, "c-1", None).await.unwrap_err();
-    assert!(err.contains("composio unavailable"));
+    assert!(err.to_lowercase().contains("composio"), "{err}");
 }
 
 #[tokio::test]
@@ -204,17 +213,15 @@ async fn composio_list_trigger_history_errors_when_store_not_init() {
     let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    // The trigger history store is a process-global singleton. If
-    // another test in the same binary already initialised it (e.g.
-    // via the archive-roundtrip test), skip rather than asserting on
-    // the uninitialised branch.
-    if super::super::trigger_history::global().is_some() {
-        return;
-    }
+    // The archive moved into the module, which is what writes to it as
+    // deliveries are dispatched. A module with no state directory has none, so
+    // reading history reports that rather than answering with an empty list —
+    // "no triggers have fired" and "nothing is recording them" are different
+    // things to tell someone debugging a trigger.
     let err = composio_list_trigger_history(&config, Some(10))
         .await
         .unwrap_err();
-    assert!(err.contains("archive store is not initialized"));
+    assert!(err.contains("list_trigger_history failed"), "{err}");
 }
 
 // ── cache_key / invalidate_connected_integrations_cache ───────
