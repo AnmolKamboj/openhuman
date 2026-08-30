@@ -2920,8 +2920,28 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert!(empty.hits.is_empty());
 }
 
-#[test]
-fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_rendering() {
+// The deleted engine's per-toolkit `is_self_identity(prefix, kind, value)`
+// has no replacement anywhere in `tinymemory-core` (confirmed by exhaustive
+// grep) — only the cross-toolkit `is_self_identity_any_toolkit` survived, and
+// it takes tinymemory-core's own `IdentityKind`, a distinct (structurally
+// identical) type from the contract crate's `IdentityKind` this test uses
+// everywhere else. Bridged here by name rather than imported directly at the
+// top of the file, so the two enums are never confused at a call site.
+fn to_core_identity_kind(kind: IdentityKind) -> tinymemory_core::store::identity::IdentityKind {
+    tinymemory_core::store::identity::IdentityKind::parse(kind.as_str())
+        .expect("every contract IdentityKind variant name parses on the core side too")
+}
+
+#[tokio::test]
+async fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_rendering() {
+    let _lock = env_lock();
+    let tmp = TempDir::new().expect("tempdir");
+    let _env_workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", module_workspace());
+    let mut config = config_in(&tmp);
+    use_module_workspace(&mut config);
+    wipe_shared_store(&config);
+    tinymemory_core::global::init(config.workspace_dir.clone()).expect("bind global memory client");
+
     assert_eq!(IdentityKind::parse("email"), Some(IdentityKind::Email));
     assert_eq!(IdentityKind::parse("missing"), None);
     assert!(IdentityKind::Email.is_matchable());
@@ -2946,22 +2966,23 @@ fn memory_sync_profile_identity_helpers_cover_public_no_client_paths_and_renderi
     );
     assert_eq!(canonicalize(IdentityKind::Email, "   "), None);
 
-    assert!(load_connected_identities().is_empty());
-    assert!(!is_self_identity(
-        "gmail",
-        IdentityKind::Email,
-        "alice@example.com"
-    ));
-    assert!(!is_self_identity(
-        "gmail",
-        IdentityKind::AvatarUrl,
-        "https://example.test/avatar.png"
-    ));
+    assert!(load_connected_identities(&config)
+        .await
+        .expect("load connected identities")
+        .is_empty());
+    // `is_self_identity("gmail", ...)` (per-toolkit) is the genuine gap noted
+    // above — no assertion here replaces it. `is_self_identity_any_toolkit`
+    // survives and is exercised with nothing persisted yet, same as before.
     assert!(!is_self_identity_any_toolkit(
-        IdentityKind::Email,
+        to_core_identity_kind(IdentityKind::Email),
         "alice@example.com"
     ));
-    assert_eq!(delete_connected_identity_facets("gmail", "conn-1"), 0);
+    assert_eq!(
+        delete_connected_identity_facets(&config, "gmail", "conn-1")
+            .await
+            .expect("delete connected identity facets"),
+        0
+    );
 
     let rendered = render_connected_identities_section(&[
         ConnectedIdentity {
