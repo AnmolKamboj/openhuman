@@ -6,6 +6,7 @@ use super::{is_unsupported_by_route, methods};
 fn classified_errors_start_with_the_frontend_marker() {
     assert_eq!(
         super::normalize_error(
+            methods::EXECUTE,
             "Execute: [composio:error:rate_limited] Please retry later".to_string()
         ),
         "[composio:error:rate_limited] Please retry later"
@@ -15,8 +16,18 @@ fn classified_errors_start_with_the_frontend_marker() {
 #[test]
 fn unclassified_errors_keep_the_member_context() {
     assert_eq!(
-        super::normalize_error("Execute: module unavailable".to_string()),
+        super::normalize_error(methods::EXECUTE, "Execute: module unavailable".to_string()),
         "Execute: module unavailable"
+    );
+}
+
+#[test]
+fn embedded_classification_text_is_not_promoted() {
+    let error =
+        "Execute: provider returned [composio:error:rate_limited] as plain text".to_string();
+    assert_eq!(
+        super::normalize_error(methods::EXECUTE, error.clone()),
+        error
     );
 }
 
