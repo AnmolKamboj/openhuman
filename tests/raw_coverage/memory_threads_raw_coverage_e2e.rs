@@ -3053,7 +3053,6 @@ async fn composio_get_user_profile_and_sync_refuse_cleanly_without_a_loaded_modu
     let tmp = TempDir::new().expect("tempdir");
     let mut config = config_in(&tmp);
     config.modules.enabled = false;
-    config.save().await.expect("save config");
 
     let error = composio_get_user_profile(&config, "conn-raw-coverage")
         .await
