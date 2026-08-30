@@ -687,47 +687,6 @@ pub async fn lookup_tx(hash: &str) -> Result<TxLookupInfo, String> {
     })
 }
 
-/// Returns the 32-byte Ed25519 seed for the tiny.place `LocalSigner`, derived
-/// from the user's primary Solana wallet key via the same SLIP-0010 path used
-/// for all Solana signing operations.
-///
-/// The seed is consumed immediately by the caller and **never logged, never
-/// returned across any IPC boundary, never persisted**.  Mirrors the exact
-/// derivation at `wallet/chains/solana.rs:369–376`.
-pub(crate) async fn tinyplace_signer_seed() -> Result<[u8; 32], String> {
-    log::debug!("[tinyplace] deriving signer seed from Solana wallet key");
-    let config = config_rpc::load_config_with_timeout().await?;
-    let secret = secret_material(WalletChain::Solana).await?;
-    let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
-        &config,
-        &secret.encrypted_mnemonic,
-    )
-    .await?
-    .value;
-    let signing_secret = tinywallet_bus::wire::SecretMaterial {
-        mnemonic,
-        derivation_path: secret.derivation_path.clone(),
-        chain: tinywallet_bus::Chain::Solana,
-    };
-
-    // The one path that brings a private key back into this process. Every
-    // other Solana operation signs inside the module and never sees one; this
-    // cannot, because tiny.place's `LocalSigner::from_seed` takes a seed and
-    // has no way to be handed a message to sign instead. Replacing that seam is
-    // what it would take to remove this call.
-    //
-    // The key travels as the reply to a confidential call, so it is delivered
-    // to this connection and never fanned out, monitored, or carried to a peer.
-    let exported = crate::openhuman::modules::wallet::export_key(&config, &signing_secret)
-        .await
-        .map_err(|e| format!("failed to export the Solana signer seed: {e}"))?;
-    let bytes = hex_to_bytes(&exported.secret_key_hex)?;
-    // Never logged: the log below omits the seed.
-    log::debug!("[tinyplace] signer seed derived (seed not logged)");
-    <[u8; 32]>::try_from(bytes.as_slice())
-        .map_err(|_| "the wallet module returned a malformed Solana seed".to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -21,7 +21,7 @@ const WALLET_STATE_FILENAME: &str = "wallet-state.json";
 ///
 /// This is an expected user-state (the user simply has not created a wallet),
 /// not an internal failure. Downstream boundaries that surface this condition
-/// — e.g. the `tinyplace` client builder — match against this constant to
+/// match against this constant to
 /// classify it as `expected_user_state` so it stays out of Sentry. Keep it a
 /// shared constant so the producer here and any classifier cannot drift apart.
 pub const WALLET_NOT_CONFIGURED_MESSAGE: &str = "wallet is not configured; run wallet setup first";

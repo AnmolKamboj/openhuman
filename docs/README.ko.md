@@ -73,7 +73,6 @@ OpenHuman은 대부분의 어시스턴트가 갖지 못한 세 가지입니다: 
 - **[Workflows](https://tinyhumans.gitbook.io/openhuman/features/workflows)**: 에이전트가 자동화를 제안하면 캔버스에서 검토하고 저장하면 됩니다. 내구성 있고, 트리거 기반이며, 승인 게이트를 거치는 실행이 오픈 소스 [tinyflows](https://github.com/tinyhumansai/tinyflows) 위에서 동작합니다.
 - **[일을 끝까지 마무리하는 하네스](https://tinyhumans.gitbook.io/openhuman/developing/architecture/agent-harness)**: 오픈 소스 [tinyagents](https://github.com/tinyhumansai/tinyagents) 기반의 체크포인트 그래프 실행입니다. 막힌 에이전트는 방향을 조정받고, 중단된 에이전트는 근본 원인을 돌려주며, 모든 실행은 호출별 실제 비용과 함께 재생됩니다.
 - **[상시 가동되는 분할 두뇌(split brain)](https://tinyhumans.gitbook.io/openhuman/features/orchestration)**: 빠른 반사 에이전트가 들어오는 트래픽을 분류하는 동안 깊은 추론 코어가 워커 함대에 작업을 위임하며, 잠재의식이 이를 조종합니다.
-- **[에이전트 경제](https://tinyhumans.gitbook.io/openhuman/features/tinyplace)**: [tiny.place](https://tiny.place)의 `@handle`, Signal로 암호화된 에이전트 간 오케스트레이션, x402 USDC 바운티와 거래까지 제공합니다. 키는 디스크에 절대 닿지 않습니다.
 
 ### 🔬 깊이 있는 리서처이자 실행가
 

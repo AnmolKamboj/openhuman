@@ -114,9 +114,8 @@ const TINYDOCS: ModuleRecord = ModuleRecord {
 /// matches one of the entries below — `super::wallet::attested_proxy` checks
 /// this table itself rather than trusting that some check happened.
 ///
-/// One call brings key material back: `ExportKey`, used solely for tiny.place's
-/// `LocalSigner::from_seed`, which takes a seed and cannot be handed a message
-/// to sign instead. Replacing that seam is what it would take to remove it.
+/// The contract also exposes `ExportKey` for downstream hosts that must drive
+/// a signer locally; OpenHuman itself does not call it.
 ///
 /// Three releases got here, and the order mattered. v0.2.3 changed no method at
 /// all — it was the same module rebuilt against a bus that could attest it.

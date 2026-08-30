@@ -1728,21 +1728,4 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         status: CapabilityStatus::Stable,
         privacy: LOCAL_RAW,
     },
-    Capability {
-        id: "intelligence.session_orchestration",
-        name: "Session Orchestration",
-        domain: "orchestration",
-        category: CapabilityCategory::Intelligence,
-        description: "Coordinate wrapped Claude Code / Codex sessions over tiny.place: the device \
-                      forwards session DMs to the hosted orchestration brain, which reasons, \
-                      replies, and steers on its own cadence server-side. The device executes the \
-                      effects the brain pushes back (send the reply, mirror an eviction into local \
-                      memory), renders the hosted read surface, and can run the paid Medulla API \
-                      directly with its local contact, session-history, and send-to-agent tools.",
-        how_to: "Intelligence > Orchestration (pair a wrapped session, then chat via the Master \
-                 window), or call openhuman.orchestration_run. Prompt, graph, and resource \
-                 overrides live under [orchestration.medulla] in config.toml.",
-        status: CapabilityStatus::Beta,
-        privacy: DERIVED_TO_BACKEND,
-    },
 ];

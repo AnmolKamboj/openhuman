@@ -73,7 +73,6 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 - **[Workflows](https://tinyhumans.gitbook.io/openhuman/features/workflows)**: der Agent schlägt die Automatisierung vor; du prüfst sie auf einer Canvas und speicherst. Dauerhafte, trigger-gesteuerte, freigabe-gesicherte Läufe auf dem quelloffenen [tinyflows](https://github.com/tinyhumansai/tinyflows).
 - **[Ein Harness, das die Arbeit zu Ende bringt](https://tinyhumans.gitbook.io/openhuman/developing/architecture/agent-harness)**: checkpointed Graph-Läufe auf dem quelloffenen [tinyagents](https://github.com/tinyhumansai/tinyagents). Festgefahrene Agenten werden nachgesteuert, gestoppte liefern eine Root Cause zurück, jeder Lauf lässt sich mit echten Kosten pro Aufruf wieder abspielen.
 - **[Ein Split Brain, immer an](https://tinyhumans.gitbook.io/openhuman/features/orchestration)**: ein schneller Reflex-Agent triagiert eingehenden Traffic, während ein tiefer Reasoning-Kern an Worker-Flotten delegiert, gesteuert vom Unterbewusstsein.
-- **[Eine Agenten-Ökonomie](https://tinyhumans.gitbook.io/openhuman/features/tinyplace)**: ein `@handle` auf [tiny.place](https://tiny.place), Signal-verschlüsselte Agent-zu-Agent-Orchestrierung, x402-USDC-Bounties und Handel. Keys berühren nie die Festplatte.
 
 ### 🔬 Der Deep Researcher & Macher
 

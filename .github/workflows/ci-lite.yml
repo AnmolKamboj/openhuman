@@ -614,7 +614,6 @@ jobs:
           openhuman/memory/people/mod.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
-          openhuman/tinyplace/manifest.rs
           openhuman/tools/registry/ops_tests.rs
           openhuman/tools/registry/schemas.rs
           openhuman/tools/ops_tests.rs

@@ -1274,7 +1274,6 @@ fn carved_out_families_report_their_own_group() {
         ("task_sources", DomainGroup::Integrations),
         ("billing", DomainGroup::Hosted),
         ("team", DomainGroup::Hosted),
-        ("tinyplace", DomainGroup::Relay),
         ("dashboard", DomainGroup::Desktop),
         ("notification", DomainGroup::Desktop),
         ("sandbox", DomainGroup::Runtimes),
@@ -1323,7 +1322,6 @@ fn platform_holds_only_kernel_surfaces() {
                     | "team"
                     | "referral"
                     | "announcements"
-                    | "tinyplace"
                     | "dashboard"
                     | "notification"
                     | "sandbox"
@@ -1383,7 +1381,6 @@ fn kernel_preset_is_the_floor() {
         ("runtimes", k.runtimes),
         ("desktop", k.desktop),
         ("hosted", k.hosted),
-        ("relay", k.relay),
         ("platform", k.platform),
     ] {
         assert!(!on, "kernel() must leave `{name}` off");
@@ -1401,7 +1398,6 @@ fn embedded_preset_excludes_desktop_and_hosted() {
         !e.hosted,
         "embedded() must not enable hosted-backend clients"
     );
-    assert!(!e.relay, "embedded() must not enable the relay surface");
     // Still needs these: skills run on the managed runtimes, and the session
     // loop is driven by cron.
     assert!(e.runtimes, "embedded() needs the code-execution runtimes");
@@ -1486,7 +1482,6 @@ fn every_domain_group_is_accounted_for_in_store_init_plan() {
         DomainGroup::Runtimes,
         DomainGroup::Desktop,
         DomainGroup::Hosted,
-        DomainGroup::Relay,
         // The registry is a compiled-in `const` table and the loaded-module set
         // lives in tinybus's own `ModuleHost`, so there is nothing for
         // `init_stores` to stand up.
@@ -1543,7 +1538,6 @@ fn every_domain_group_is_accounted_for_in_subscriber_plan() {
         DomainGroup::Automation,
         DomainGroup::Runtimes,
         DomainGroup::Hosted,
-        DomainGroup::Relay,
         // Modules run on their own in-process broker, so they cannot publish a
         // `DomainEvent` and there is nothing on the core bus to subscribe to.
         DomainGroup::Modules,

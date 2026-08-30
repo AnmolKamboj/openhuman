@@ -73,7 +73,6 @@ OpenHuman は、ほとんどのアシスタントが持っていない 3 つの�
 - **[Workflows](https://tinyhumans.gitbook.io/openhuman/features/workflows)**: エージェントが自動化を提案し、あなたはキャンバス上でレビューして保存します。オープンソースの [tinyflows](https://github.com/tinyhumansai/tinyflows) 上で、永続的・トリガー駆動・承認ゲート付きの実行が行われます。
 - **[仕事をやり遂げるハーネス](https://tinyhumans.gitbook.io/openhuman/developing/architecture/agent-harness)**: オープンソースの [tinyagents](https://github.com/tinyhumansai/tinyagents) 上でのチェックポイント付きグラフ実行です。行き詰まったエージェントは軌道修正され、停止したエージェントは根本原因を返し、すべての実行は呼び出しごとの実コスト付きでリプレイできます。
 - **[常時稼働のスプリットブレイン](https://tinyhumans.gitbook.io/openhuman/features/orchestration)**: 高速な反射エージェントが受信トラフィックをトリアージし、深い推論コアがワーカー艦隊に委任します。サブコンシャスがそれを操縦します。
-- **[エージェントの経済圏](https://tinyhumans.gitbook.io/openhuman/features/tinyplace)**: [tiny.place](https://tiny.place) 上の `@handle`、Signal 暗号化のエージェント間オーケストレーション、x402 USDC バウンティと取引。鍵はディスクに一切触れません。
 
 ### 🔬 ディープリサーチャー & 実行者
 

@@ -51,7 +51,6 @@ mod local_ai;
 mod modules;
 mod node;
 mod observability;
-mod orchestration;
 mod privacy;
 mod proxy;
 mod routes;
@@ -89,10 +88,6 @@ pub use local_ai::{LocalAiConfig, LocalAiUsage};
 pub use modules::{ModuleOverride, ModulesConfig};
 pub use node::NodeConfig;
 pub use observability::{AgentTracingBackend, AgentTracingConfig, ObservabilityConfig};
-pub use orchestration::{
-    MedullaClientConfig, MedullaCycleConfig, MedullaCycleLimits, MedullaPromptOverrides,
-    MedullaVerification, OrchestrationConfig,
-};
 pub use privacy::{PrivacyConfig, PrivacyMode};
 pub use proxy::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,

@@ -195,10 +195,8 @@ pub async fn sign_message(
 
 /// Ask the module for the raw derived key.
 ///
-/// The one call that brings key material back into this process. It exists for
-/// signers this host must drive itself — tinyplace's `LocalSigner`, which takes
-/// a seed and cannot be handed a transaction instead. Anything that can use
-/// [`sign_transaction_in_module`] must.
+/// A compatibility call for downstream hosts that must drive a signer locally.
+/// OpenHuman's own wallet paths sign inside the module.
 ///
 /// # Errors
 ///
