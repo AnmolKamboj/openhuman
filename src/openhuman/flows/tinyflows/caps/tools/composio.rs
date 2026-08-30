@@ -24,36 +24,39 @@ use tinyflows::error::{EngineError, Result};
 use super::{ToolBackend, ToolCallCtx};
 use crate::openhuman::config::ops as config_rpc;
 use crate::openhuman::config::Config;
-use crate::openhuman::integrations::composio::client::{
-    create_composio_client, direct_execute, ComposioClientKind,
-};
-use crate::openhuman::integrations::composio::ComposioExecuteResponse;
+use crate::openhuman::integrations::composio::module_client::{self as connectors, methods};
+use crate::openhuman::integrations::composio::{ComposioExecuteRequest, ComposioExecuteResponse};
 use crate::openhuman::security::GateDecision;
 
 /// Dispatches a Composio action slug through the tier, curation, preflight and
 /// approval gates.
 pub(crate) struct ComposioToolBackend;
 
-/// Dispatches through the selected Composio mode while preserving the
-/// workflow node's exact connected-account choice.
+/// Dispatches an action while preserving the workflow node's exact
+/// connected-account choice.
+///
+/// One call for both routes: the module owns the difference, so a flow no
+/// longer branches on which mode is live. `connection_id` is passed through
+/// rather than defaulted, because a workflow node that named an account meant
+/// that account — falling back to the ambient one would run the step against
+/// somebody else's inbox.
 async fn execute_for_connection(
-    kind: ComposioClientKind,
+    config: &Config,
     slug: &str,
     args: Option<Value>,
-    entity_id: &str,
     connection_id: Option<&str>,
 ) -> Result<ComposioExecuteResponse> {
-    match kind {
-        ComposioClientKind::Backend(client) => client
-            .execute_tool_with_connection(slug, args, connection_id)
-            .await
-            .map_err(|e| EngineError::Capability(e.to_string())),
-        ComposioClientKind::Direct(tool) => {
-            direct_execute(&tool, slug, args, entity_id, connection_id)
-                .await
-                .map_err(|e| EngineError::Capability(e.to_string()))
-        }
-    }
+    connectors::call::<_, ComposioExecuteResponse>(
+        config,
+        methods::EXECUTE,
+        ComposioExecuteRequest {
+            tool: slug.to_string(),
+            arguments: args,
+            connection_id: connection_id.map(str::to_string),
+        },
+    )
+    .await
+    .map_err(EngineError::Capability)
 }
 
 #[async_trait]
@@ -182,8 +185,6 @@ impl ToolBackend for ComposioToolBackend {
             return Err(EngineError::Capability(reason));
         }
 
-        let kind = create_composio_client(&live_config)
-            .map_err(|e| EngineError::Capability(e.to_string()))?;
         let args_opt = if args.is_null() { None } else { Some(args) };
         let connection_id = conn.and_then(super::super::composio_connection_id);
 
@@ -232,14 +233,7 @@ impl ToolBackend for ComposioToolBackend {
                 "[flows] tool_call: no connection_ref — using the ambient signed-in account"
             ),
         }
-        let response = execute_for_connection(
-            kind,
-            slug,
-            args_opt,
-            &live_config.composio.entity_id,
-            connection_id,
-        )
-        .await;
+        let response = execute_for_connection(&live_config, slug, args_opt, connection_id).await;
 
         // A successful HTTP round-trip can still carry a provider-side failure
         // (`{successful: false, error: "..."}`, e.g. a Slack 400 on
