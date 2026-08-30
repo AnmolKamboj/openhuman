@@ -12,7 +12,6 @@ use crate::openhuman::channels::context::{
     DEFAULT_CHANNEL_INITIAL_BACKOFF_SECS, DEFAULT_CHANNEL_MAX_BACKOFF_SECS,
 };
 use crate::openhuman::channels::traits;
-use crate::openhuman::channels::Channel;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
 use crate::openhuman::security::SecurityPolicy;
