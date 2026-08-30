@@ -87,10 +87,36 @@ Genuinely missing from the contract, so upstream asks:
   `DiagnosticReport` on `MemoryMaintenance` carrying stages and a blocking
   cause.
 
-### C. Sources (~4 files)
+### C. Sources (~4 files) — a crate the host can simply take
 
-`sources::{readers, registry, types, sync}` → `MemorySourceSink`,
-`MemorySourceSync`, `MemoryChunks::source_totals`.
+This one needs **no bus work and no upstream change**, which the first pass
+missed. `tinymemory_core::sources` is a thin layer over a separate crate:
+
+- `sources::types` is already `pub use tinymemory_sources::{…}`.
+- `sources::registry` is "the host's config path + a write lock" around
+  `tinymemory_sources::registry::SourceRegistry::new(config.config_path())` —
+  CRUD over the host's own `sources.toml`. The host owns that file; it does not
+  need the engine to read it.
+- `sources::readers` re-implements the reader dispatch over
+  `tinymemory_core::Config`, where `tinymemory_sources::readers` takes a plain
+  `workspace: &Path`.
+
+`tinymemory-sources` costs serde, schemars, serde_json, anyhow,
+`tinymemory-api`, async-trait, futures, regex, reqwest, walkdir, tracing,
+chrono, tokio, toml, uuid — every one of which the host already has. No
+`rusqlite`, no `tinycortex`, no engine.
+
+So: depend on `tinymemory-sources` directly and let `memory::sources` own the
+config-path and lock layer itself.
+
+**Read `tinymemory_sources::readers`' module docs before touching `reader_for`.**
+It returns `None` for the network kinds *deliberately* — "a network reader is
+constructed explicitly by a caller that has already decided the fetch is
+allowed; it is never handed out by the kind-dispatch that the workspace sync
+loop drives on a timer", which is what keeps the host in charge of egress,
+OAuth and cost. The engine's `reader_for` hands out all seven, so a literal
+port would quietly move that decision. `composio` and `twitter_query` have no
+reader in the crate at all (credentialed OAuth pipeline; unimplemented).
 
 ### D. `tinycortex` direct calls — the hard one
 
