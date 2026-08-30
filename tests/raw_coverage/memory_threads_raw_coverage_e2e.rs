@@ -1371,14 +1371,15 @@ fn memory_sync_composio_catalog_scope_and_state_helpers_cover_edge_cases() {
         .windows(2)
         .all(|pair| pair[0] <= pair[1]));
 
-    let matrix = capability_matrix();
-    let gmail = matrix.iter().find(|cap| cap.toolkit == "gmail").unwrap();
-    assert!(gmail.native_provider);
-    assert!(gmail.curated_tools);
-    assert!(gmail.curated_tool_count > 0);
-    let spotify = matrix.iter().find(|cap| cap.toolkit == "spotify").unwrap();
-    assert!(!spotify.native_provider);
-    assert!(spotify.curated_tools);
+    // `capability_matrix()` — the host-side static function this used to
+    // build from the curated catalogs — is itself gone, not just relocated:
+    // `composio_list_capabilities` (`integrations::composio::ops::toolkits`)
+    // now answers directly from the connector module's live
+    // `ListCapabilities` reply, with no host-side matrix or conversion left
+    // to call statically. Confirmed by that op's own doc comment. Genuine,
+    // unrecoverable coverage gap for this specific assertion; the
+    // `has_native_provider`/`catalog_for_toolkit` checks above already cover
+    // the same per-toolkit facts this matrix used to expose.
 
     let sync_target = composio::SyncTarget {
         toolkit: "gmail".into(),
