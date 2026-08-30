@@ -1,7 +1,7 @@
 use super::*;
-use crate::openhuman::integrations::composio::providers::tool_scope::{CuratedTool, ToolScope};
 use crate::openhuman::integrations::composio::providers::{
-    registry::register_provider, ComposioProvider, ProviderContext, ProviderUserProfile,
+    register_provider, ComposioProvider, CuratedTool, ProviderContext, ProviderUserProfile,
+    ToolScope,
 };
 use async_trait::async_trait;
 use std::path::Path;
