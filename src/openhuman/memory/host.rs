@@ -138,6 +138,14 @@ impl MemoryHostConfig for Config {
             entity_id: self.composio.entity_id.clone(),
             api_key: self.composio.api_key.clone(),
             triage_disabled: self.composio.triage_disabled,
+            // `None` = the whole inbox window, which is exactly what this host
+            // does today. The field is new on the contract (tinymemory#115-ish)
+            // and scopes the *background* Gmail sync to a search query;
+            // OpenHuman's `[integrations.composio]` has no such setting, so
+            // there is nothing to forward and inventing a default here would
+            // silently narrow what gets synced. Exposing it needs a config
+            // field, its schema and a migration — a follow-up, not this branch.
+            gmail_sync_query: None,
         }
     }
 
