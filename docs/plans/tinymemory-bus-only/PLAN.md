@@ -49,12 +49,22 @@ Do **not** ask upstream for tree-shaped twins. Map onto the existing families:
 | `tree::health::async_run_doctor` | `MemoryMaintenance::doctor` |
 | `tree::score::DEFAULT_DROP_THRESHOLD` consumer | `MemoryProfile::drop_facets_below` |
 
-Comes **home** rather than going to the bus, because both build an LLM chat
-provider and the host owns inference (same argument as `source_scope`,
-`memory::safety`, `util::redact`):
+**`summarise` does NOT come home — corrected 2026-08-30.** The first reading of
+this was "it builds an LLM chat provider, and the host owns inference, so it is
+host policy like `source_scope`". That is wrong, and the evidence is in
+`modules/memory_host.rs:45,406`: the **`ChatHost` seam already crosses the bus**
+(`ai.tinyhumans.tinymemory.ChatHost`), so the module can call the host's chat
+without the host owning the summariser. And `summarise` is not just a chat call
+— it is `prepare_summary_prompt` + `finish_provider_summary` +
+`fallback_summary` from `engine::backend::tree`, which know the summary tree's
+format and belong with the tree. Bringing them home would mean two copies of the
+tree's own prompt and parser, one of which the module keeps using.
 
-- `tree::summarise::{summarise, SummaryContext, SummaryInput}` — `crate::chat::build_chat_provider`
-- `tree_runtime::engine::{run_summarization, rebuild_tree}` — `tinyagents::harness::model::ChatModel`
+So this is an **upstream ask**, not a relocation: a summarise member taking
+`SummaryInput`s and a `SummaryContext`, so `agent/harness/archivist/recap.rs`
+can ask the module for a recap instead of linking the engine to build the
+prompt. `tree_runtime::engine::{run_summarization, rebuild_tree}` is the same
+shape (it drives `tinyagents::ChatModel` over the tree's own machinery).
 
 Genuinely missing from the contract, so upstream asks:
 
