@@ -4158,6 +4158,9 @@ dependencies = [
  "tinycortex-api",
  "tinydocs-bus",
  "tinyflows",
+ "tinyflows-catalog",
+ "tinyflows-copilot",
+ "tinyflows-sqlite",
  "tinyhosts",
  "tinyhumans-sdk",
  "tinyjuice-bus",
@@ -6497,6 +6500,42 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "tinyflows-catalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tinyflows",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "tinyflows-copilot"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "tinyflows-sqlite"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tinyflows",
+ "tinyflows-catalog",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

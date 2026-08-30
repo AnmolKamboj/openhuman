@@ -6345,7 +6345,12 @@ fn agent_prompt_prose_written_as_expression_is_rejected() {
     let errors = validate_binding_resolvability(&g);
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(errors[0].contains("classify"), "{}", errors[0]);
-    assert!(errors[0].contains("input_context"), "{}", errors[0]);
+    // The gate is `tinyflows::gates`', so the message says what is wrong with
+    // the graph and stops there. WHERE to put the data instead — this host's
+    // `input_context` node-config key, which its own LLM adapter reads and
+    // which the engine knows nothing about — is taught by the workflow_builder
+    // archetype, not by a crate-level error.
+    assert!(errors[0].contains("does not interpolate"), "{}", errors[0]);
 }
 
 #[test]

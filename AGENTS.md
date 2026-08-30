@@ -774,7 +774,7 @@ Two columns because there are two sets (see above): **Contrib** is `[features] d
 | `documents` | OFF | ON | the `generate_document` / `generate_presentation` agent tools and PDF text extraction during multimodal ingest. **The synthesis is not in this build** — all three run in the `tinydocs` TinyBus module (see below), so this gate turns on the tools and the host policy around them: the artifact pipeline, the deadlines, image resolution under the security policy. The dependency is `tinydocs-bus`, the wire contract crate, and nothing else from that repository. Implies `modules`. Off ⇒ both tools absent from the tool list rather than degraded, and PDF ingest degrades a file to a reference instead of extracted text | **39 crates**, and they leave `Cargo.lock` entirely: `docx-rs`, `ppt-rs`, `pdf-extract` plus `lopdf`, `syntect`, `pulldown-cmark`, `xml-rs`, `quick-xml`, `zip 0.6`, `zstd`, `bzip2`, `encoding_rs`, `euclid`, `ttf-parser`, the CFF/Type1/CMap parsers, … Product profile 505 → 448 names |
 | `modules` | ON | ON | `openhuman::modules` — the dynamic module host: the loader that admits a compiled `cdylib` through tinybus's ABI descriptor, manifest, dependency and SHA-256 gates, the compiled-in registry of modules this build trusts, and the `modules` RPC namespace. Implied by `documents`. Off ⇒ `modules.*` is unknown-method and nothing can load a native module | none in the product profile (`ureq`, `flate2`, `tar`, `zip 2`, `tempfile`, `toml` are already there) — **but see the kernel-floor note**: this feature exists so `tinybus/modules` is not enabled on the dependency itself, which would put a `dlopen` loader into the kernel profile where `tinybus` is always-on |
 | `skills` | ON | ON | `openhuman::skills` + `openhuman::skills::runtime` + `openhuman::skills::catalog` domains — SKILL.md discovery/parse/install, workflow execution + run logs, remote catalogs, the `skill_setup` / `skill_executor` builtin agents, and the 16 skill agent tools | none (see below) |
-| `flows` | ON | ON | `openhuman::flows` (saved automation graphs — create/run/schedule, the `workflow_builder` + `flow_discovery` agents), `openhuman::flows::tinyflows` (engine seam), `openhuman::flows::rhai` (`.ragsh` language-workflow tool) | `tinyflows`, `jaq-core`, `jaq-std`, `jaq-json`, `rhai` |
+| `flows` | ON | ON | `openhuman::flows` (saved automation graphs — create/run/schedule, the `workflow_builder` + `flow_discovery` agents), `openhuman::flows::tinyflows` (engine seam), `openhuman::flows::rhai` (`.ragsh` language-workflow tool). Pulls the four tinyflows workspace crates — see the seam note below | `tinyflows`, `tinyflows-catalog`, `tinyflows-copilot`, `tinyflows-sqlite`, `jaq-core`, `jaq-std`, `jaq-json`, `rhai` |
 | `mcp` | ON | ON | `openhuman::mcp::server` (the `openhuman mcp` stdio/HTTP server), `openhuman::mcp::registry` (dynamic Smithery installs — `mcp_clients` RPC namespace, SQLite, boot spawn, supervisor, OAuth), `openhuman::mcp::audit` (write-audit log), and the static config-declared server set in `openhuman::mcp::config_servers`. ~19 agent tools, ~20k LOC | **none** — and the `tinymcp` module extraction does not change that either; see the scope note |
 | `tui` | OFF | — | `openhuman::tui` — the tabbed ratatui/crossterm CLI UI (Logs, Chat, Config, Settings), auto-opened by bare `openhuman` on interactive non-container hosts and forced with `openhuman tui` (alias `chat`). Runs the core in-process. No controllers, no agent tools. **Intentionally NOT forwarded to the desktop shell** (allowlisted in `check-feature-forwarding.mjs`). | `ratatui`, `crossterm` |
 | `channels` | ON | ON | `openhuman::channels` (external-messaging providers — Telegram/Discord/Slack/Signal/WhatsApp/iMessage/IRC/… — plus the channel runtime, controllers, host, proactive messaging + inbound dispatch) and the `webview_notifications` bridge domain. **Carve-outs `channels::{traits, cli}` stay ungated.** The family now owns **no agent tool** — the three `whatsapp_data_*` tools were its only ones and went with the store (see below) — which is why `DomainGroup::Channels` is in `TOOL_LESS` in `tools/ops_tests.rs`. | **none in the kernel profile** — the gate swaps `tinychannels` for `tinychannels-bus` one-for-one, because every heavy dep it carried is shared. It buys ~31.7k lines of compile surface, not crates. The email + lark cohorts are shed only relative to a `channels`-ON build |
@@ -810,6 +810,47 @@ Two places the carve-out doesn't reach, and why they are `#[cfg]` at the call si
 When skills are off: the `skills` / `skill_runtime` / `skill_registry` controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), the 16 skill agent tools (incl. `run_workflow` / `await_workflow`) are **absent** from the tool list rather than degraded to an error, the `skill_setup` / `skill_executor` builtin agents are gone, and the boot-time remote catalog refresh is skipped. Composes with the runtime `DomainSet::skills` flag (#4796) — that axis needed no change here; #4798 is compile-time only.
 
 **Leaf-gate pattern (`flows`).** Where `voice` needs a stub facade, `flows` needs **none** — and deliberately so. Every symbol reached from outside the gate is a *registration site* (controller push in `src/core/all.rs`, the `FlowTriggerSubscriber` in `src/core/jsonrpc.rs`, boot reconcile in `src/core/runtime/services.rs`, agent-tool `vec!` elements in `src/openhuman/tools/ops.rs`, `BuiltinAgent` entries in `agent/registry/agents/loader.rs`). Registration sites want **absence**: a stub that registered a controller returning `Err("flows disabled")` would make `flows.*` a *known* method that fails at runtime — the opposite of the intended "unknown method / omitted tool". So the family carries a **single** `#[cfg(feature = "flows")]` on `pub mod flows;` in `src/openhuman/mod.rs` — the nested `flows::tinyflows` and `flows::rhai` submodules inherit it — and each call site carries its own `#[cfg]`. The leaf gate holds only because no always-compiled domain has a real code edge into the tree: `memory/tools.rs` and `memory/tools/flavour.rs` name `flows::tinyflows` in comments only. There is no `openhuman flows` CLI subcommand, so no CLI stub is needed either. When flows is off: the `flows.*` controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), all 25 flow agent tools + the `rhai_workflows` tool are absent, and the `workflow_builder` / `flow_discovery` built-in agents are not advertised.
+
+**What is in `flows/` and what is upstream.** The domain used to own its whole
+stack; most of it was not OpenHuman's. Four crates in the vendored tinyflows
+workspace now carry the parts that are true for anyone storing and authoring
+workflows, and what stayed here is the **connector layer** — the part that could
+not be anything else:
+
+| Upstream crate | What moved | What `flows/` kept |
+| --- | --- | --- |
+| `tinyflows-catalog` | `Flow` / `FlowRevision` / `FlowRun` / `FlowDraft` / `FlowSuggestion` and friends, the run + build cancellation registries, the n8n importer, and the save/run safety predicates (`trigger_is_automatic`, `enforce_side_effect_approval`, `graph_has_actionable_nodes`) | `node_contracts.rs` — the *host overlay* on `tinyflows::catalog`: what a `tool_call` slug resolves to here, which trigger kinds this host actually dispatches |
+| `tinyflows-sqlite` | the `flows.db` catalog schema and every query, the JSON draft store, the durable run checkpointer | `store.rs` / `draft_store.rs` — one substitution each, `<workspace_dir>/flows`, and nothing else |
+| `tinyflows-copilot` | the `workflow_builder` + `flow_discovery` standing archetypes and the builder turn brief | `agents/*/prompt.rs` (appending this host's runtime sections) and `agent.toml` (this host's registry format) |
+| `tinyflows` | the authoring checks that are statements about the *graph* or the *engine*: `gates` (envelope violations, prose written as a `=`-expression, a tool arg reading an agent field no schema declares), `compat` (fan-in topologies the engine's barrier relief cannot execute safely), `preflight` (the mock run that proves an outbound arg can resolve), the schema-aware dry-run mocks, and the step-capturing `RunObserver` | `tinyflows/caps/` — every capability adapter: this host's LLM, agent harness, tools, HTTP, sandboxed code, memory |
+
+**`ops.rs` keeps the gates that need this host's vocabulary, and only those.**
+Which agent ids resolve, which Composio slugs and connections exist, what a
+toolkit's live output schema says, whether a provider is reachable, whether an
+upload path is workspace-relative — none of that is knowable upstream. What left
+was the opposite: analysis that only ever read the graph. Three of those had
+drifted into near-duplicates of code the engine already had (`collect_expressions`,
+`parse_node_binding`, an envelope-kind table, a jq-keyword list), which is the
+usual reason to look.
+
+**`tinyflows/caps/` is a connector directory and stays one.** The one exception
+was `mocks.rs`, whose every doc comment explained how the engine's own mocks
+fail a good graph — a fact about the engine, so it went with them. The other
+~685 lines name `integrations`, `memory`, `security`, `skills` and `config` on
+almost every screen; that is the seam working, not work left undone.
+
+Two rules follow, and both are load-bearing:
+
+- **A `store.rs` wrapper body that does more than `dir(config)` is host policy
+  that has leaked into persistence.** That is the only reason those 36
+  one-line functions are spelled out instead of being a `pub use`.
+- **`tinyflows-copilot` may not grow a harness dependency.** It names no tool
+  trait, no agent registry and no model client, which is exactly what lets the
+  desktop panel, the medulla plane and a CLI share one copilot. `tinytools` is
+  not published, so a path dependency on it from that crate would resolve to a
+  *second* `tinytools` package here and every tool would stop satisfying the
+  harness trait — the duplication hazard the `tinytools` note above describes.
+  The `Tool` impls in `builder_tools.rs` are the seam, and they stay here.
 
 **Scope note (`flows` deps):** the gate sheds `tinyflows` + its `jaq-core` / `jaq-std` / `jaq-json` JSON-query stack, and `rhai`. It does **not** shed `tinyagents` — 26+ domains consume that crate. The issue-level DoD line reading "sheds the rhai scripting engine" is therefore true only at the **feature** level: `rhai` arrives via `tinyagents/repl`, which the root `Cargo.toml` no longer enables directly — the `flows` feature turns it on. Dropping `flows` drops `repl`, which drops `rhai`; `tinyagents` itself stays. Verify a claimed shed with `cargo tree -i <crate> --no-default-features` (must return nothing) — compiling clean is **not** proof that a dep was dropped.
 

@@ -2824,11 +2824,9 @@ fn build_null_resolution_entry(
     diag: &tinyflows::expr::NullResolution,
     graph: &WorkflowGraph,
 ) -> Value {
-    if let Some(upstream) = crate::openhuman::flows::ops::mock_opaque_tool_call_upstream_ref(
-        &diag.expression,
-        graph,
-        node_id,
-    ) {
+    if let Some(upstream) =
+        tinyflows::preflight::mock_opaque_tool_call_upstream_ref(&diag.expression, graph, node_id)
+    {
         let field = diag.location.strip_prefix("args.").unwrap_or("args");
         // The disambiguation advice differs by upstream kind: a native `oh:`
         // tool's output binds FLAT (`.item.json.<field>`) after
@@ -3452,41 +3450,14 @@ fn tool_call_error_message(output: &Value, node_id: &str) -> Option<String> {
         })
 }
 
-/// A [`tinyflows::observability::RunObserver`] that captures every finished
-/// node's [`ExecutionStep`](tinyflows::observability::ExecutionStep) — in
-/// particular its `diagnostics` (null-resolved `=`-expressions the engine
-/// traced during that node's config resolution) — so [`DryRunWorkflowTool`]
-/// can inspect them once the sandbox run settles. See the struct's "Null-
-/// resolution check" doc for why this exists.
-/// `pub(crate)` (not private) so [`crate::openhuman::flows::ops::validate_required_arg_resolvability`]
-/// (issue B18 — escalating a null-resolved REQUIRED outbound arg to a hard
-/// authoring-time reject) can run the identical sandbox-capture shape without
-/// duplicating this struct.
-#[derive(Default)]
-pub(crate) struct CapturingObserver {
-    steps: std::sync::Mutex<Vec<tinyflows::observability::ExecutionStep>>,
-}
-
-impl tinyflows::observability::RunObserver for CapturingObserver {
-    fn on_step_finish(&self, step: &tinyflows::observability::ExecutionStep) {
-        self.steps
-            .lock()
-            .expect("CapturingObserver steps mutex poisoned")
-            .push(step.clone());
-    }
-}
-
-impl CapturingObserver {
-    /// A snapshot of every step recorded so far (steps are pushed
-    /// synchronously from `on_step_finish`, so once the run's future resolves
-    /// every step it will ever record is already present).
-    pub(crate) fn steps(&self) -> Vec<tinyflows::observability::ExecutionStep> {
-        self.steps
-            .lock()
-            .expect("CapturingObserver steps mutex poisoned")
-            .clone()
-    }
-}
+/// The engine's own step-capturing observer, re-exported under the name
+/// [`DryRunWorkflowTool`]'s call sites already use.
+///
+/// It is upstream because what it captures is the engine's:
+/// `ExecutionStep::diagnostics` holds the `=`-expressions that resolved to null
+/// while a node's config was being assembled, which is the only place a graph's
+/// real wiring failure is visible. This host used to declare an identical copy.
+pub(crate) use tinyflows::observability::CapturingObserver;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // save_workflow — persist a built graph onto an EXISTING saved flow

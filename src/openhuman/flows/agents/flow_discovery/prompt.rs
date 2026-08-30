@@ -16,7 +16,7 @@ use crate::openhuman::agent::context::prompt::{
 };
 use anyhow::Result;
 
-const ARCHETYPE: &str = include_str!("prompt.md");
+const ARCHETYPE: &str = tinyflows_copilot::prompts::FLOW_DISCOVERY;
 
 pub fn build(ctx: &PromptContext<'_>) -> Result<String> {
     let mut out = String::with_capacity(8192);

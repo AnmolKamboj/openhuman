@@ -13,6 +13,36 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   286/270/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
+#                      the copilot's authoring prompts upstream split the
+#                      `tinyflows` crate's catalog/storage/copilot surface into
+#                      three sibling crates in the SAME vendored workspace:
+#                      `tinyflows-catalog` (flows/revisions/runs/drafts/
+#                      suggestions + n8n import + save/run gates),
+#                      `tinyflows-sqlite` (the SQLite backend + engine
+#                      checkpointer), and `tinyflows-copilot` (the
+#                      `workflow_builder` / `flow_discovery` archetype prose).
+#                      (+3 packages, +3 NAMES — one each.)
+#
+#                      All three are path dependencies into
+#                      `vendor/tinyflows`, the SAME checkout `tinyflows` itself
+#                      already came from — not a new external crate and not a
+#                      second copy of an existing one. `cargo metadata` still
+#                      shows exactly one `tinyflows` package. Native build
+#                      count is unchanged at 2 (`libsqlite3-sys`, `ring`); none
+#                      of the three pulls in a new native dependency — their
+#                      own dependency lists (serde, serde_json, anyhow,
+#                      rusqlite via the existing `tinyflows-sqlite` path,
+#                      thiserror) are already resolved in this graph.
+#
+#                      All three are `optional = true` and gated behind
+#                      `flows = ["dep:tinyflows", "dep:tinyflows-catalog",
+#                      "dep:tinyflows-copilot", "dep:tinyflows-sqlite"]`, so a
+#                      slim build without `flows` drops all four together, same
+#                      as before this PR.
+#                      Measured on CI's Linux target; macOS resolves one extra
+#                      target-specific package/name (287/271/2), matching the
+#                      host skew already recorded below.
 #   283/267/2  2026-08-30  removed TinyPlace from the core and app, shedding
 #                      five packages and three unique crate names from the
 #                      workflow-only profile.
@@ -495,4 +525,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:283:267:2
+flows:286:270:2

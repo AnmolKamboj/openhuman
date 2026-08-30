@@ -10,11 +10,23 @@ use chrono::Utc;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tinyflows::model::{NodeKind, TriggerKind, WorkflowGraph};
+// The save/run safety predicates are `tinyflows-catalog`'s: whether a graph
+// fires unattended, whether it can act on the world, whether it has anything to
+// do at all are properties of the graph, not of this host. Re-exported at
+// `ops::` scope because the agent tools and this module's tests already name
+// them there.
+pub(crate) use tinyflows_catalog::graph_policy::{
+    enforce_side_effect_approval, graph_has_actionable_nodes, trigger_is_automatic,
+};
+// Reached only by this module's own tests, which assert the host resolves the
+// predicate the two save rules are built on — `enforce_side_effect_approval`
+// is what production calls.
+#[cfg(test)]
+pub(crate) use tinyflows_catalog::graph_policy::graph_has_outbound_side_effect;
 use tokio_util::sync::CancellationToken;
 
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
-use crate::openhuman::flows::build_registry;
 use crate::openhuman::flows::bus;
 use crate::openhuman::flows::draft_store;
 use crate::openhuman::flows::run_registry;
@@ -28,6 +40,7 @@ use crate::openhuman::security::approval::{
     APPROVAL_FLOW_RUN_CONTEXT,
 };
 use crate::rpc::RpcOutcome;
+use tinyflows_catalog::build_registry;
 // `MemoryProvider` brings `driver_id()` / `as_documents()` into scope for the
 // `MemoryGuard` this file's delete path clears through. Nothing here names the
 // engine crate any more — `flows_delete_impl`'s test seam took an
@@ -48,11 +61,6 @@ const FLOW_RUN_TIMEOUT_SECS: u64 = 600;
 /// `TrustedAutomation { Workflow }`, which the tool-call gate lets through), so
 /// this is a dedicated flows-side TTL, not a reuse of the approval store's.
 const FLOW_PARKED_TTL_SECS: i64 = 600;
-
-/// Stable host-validation code for a topology that the currently vendored
-/// TinyFlows/TinyAgents barrier-relief implementation cannot execute safely.
-const UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN: &str = "unsupported_nested_conditional_fan_in";
-const UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN: &str = "unsupported_main_port_conditional_fan_in";
 
 /// T-M1 fail-closed refusal: the graph hash pinned when this run parked no
 /// longer matches the flow's current graph (`save_workflow` rewrote it while
@@ -116,227 +124,65 @@ const GRAPH_CHANGED_SINCE_PARK_ERROR: &str = "the workflow changed after this ru
 pub(crate) fn validate_and_migrate_graph(graph_json: Value) -> Result<WorkflowGraph, String> {
     let graph = migrate_and_deserialize_graph(graph_json)?;
     tinyflows::validate::validate(&graph).map_err(|e| e.to_string())?;
-    ensure_engine_compatible(&graph)?;
+    tinyflows::compat::ensure_compatible(&graph)?;
     Ok(graph)
 }
 
-/// Detects fan-in predecessors controlled by more than one branching decision.
+/// Every engine-incompatible topology in `graph`, mapped onto this domain's
+/// validation-error shape.
 ///
-/// TinyFlows lowers every fan-in edge as a waiting edge and registers a
-/// barrier relief for conditional predecessors. The current lowering chooses
-/// only the first upstream brancher, while TinyAgents cannot prove reachability
-/// through a second brancher. Depending on node declaration order, that can
-/// either relieve the barrier before the real predecessor runs (silently
-/// dropping its data) or leave the fan-in unfired. Fail closed until the
-/// vendored engine models nested decisions directly.
-///
-/// This intentionally mirrors TinyFlows' topology classification rather than
-/// limiting the check to `merge` nodes: any node with multiple incoming edges
-/// is lowered as a fan-in barrier. A predecessor reachable from the trigger by
-/// `main`-only edges is unconditional and needs no relief, so it is safe.
+/// The classification is [`tinyflows::compat`]'s, and belongs there: which
+/// fan-in shapes the engine's barrier relief can execute is a fact about the
+/// engine, not about OpenHuman. This host used to carry the whole walk.
 pub(crate) fn engine_compatibility_errors(
     graph: &WorkflowGraph,
 ) -> Vec<crate::openhuman::flows::FlowValidationError> {
-    engine_compatibility_errors_with_max_depth(graph, max_sub_workflow_depth(graph))
+    tinyflows::compat::errors(graph)
+        .into_iter()
+        .map(to_compat_validation_error)
+        .collect()
 }
 
-/// Same walk as [`engine_compatibility_errors`], but with the inline-nesting
-/// budget passed in rather than recomputed from `graph`'s own trigger.
+/// Same walk, with the inline-nesting budget passed in rather than recomputed.
 ///
 /// [`referenced_workflow_compatibility_errors`] needs this: a saved child
 /// reached partway through the root's referenced-workflow chain must still be
-/// checked to the *remaining* depth the root's own `max_sub_workflow_depth`
-/// allows, not to the child's own (possibly lower/default) declared cap —
-/// the engine's runtime depth counter is one budget shared across the whole
-/// inline-plus-referenced call chain, so a fan-in the child's own cap would
-/// not reach can still be reached from the root.
+/// checked to the *remaining* depth the root allows. The engine's runtime depth
+/// counter is one budget shared across the whole inline-plus-referenced chain,
+/// so a fan-in the child's own cap would not reach can still be reached from
+/// the root.
 pub(crate) fn engine_compatibility_errors_with_max_depth(
     graph: &WorkflowGraph,
     max_depth: u64,
 ) -> Vec<crate::openhuman::flows::FlowValidationError> {
-    let mut errors = Vec::new();
-    collect_engine_compatibility_errors(graph, 0, max_depth, &mut errors);
-    errors
+    tinyflows::compat::errors_with_max_depth(graph, max_depth)
+        .into_iter()
+        .map(to_compat_validation_error)
+        .collect()
 }
 
-/// The nesting cap this graph declares on its trigger, or the engine default.
-///
-/// The static walk below has to descend as deep as the run actually will, or a
-/// graph that legitimately nests past the default would stop being checked
-/// exactly where it starts being interesting.
+/// The nesting cap `graph` declares on its trigger, or the engine default.
 pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
-    graph
-        .trigger()
-        .and_then(|t| t.config.get("max_sub_workflow_depth"))
-        .and_then(serde_json::Value::as_u64)
-        .filter(|n| *n > 0)
-        .unwrap_or(tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH)
+    tinyflows::compat::max_sub_workflow_depth(graph)
 }
 
-fn collect_engine_compatibility_errors(
-    graph: &WorkflowGraph,
-    depth: u64,
-    max_depth: u64,
-    errors: &mut Vec<crate::openhuman::flows::FlowValidationError>,
-) {
-    errors.extend(graph_engine_compatibility_errors(graph));
-    if depth >= max_depth {
-        return;
-    }
+// The two refusal codes are `tinyflows::compat`'s, re-exported at `ops::` scope
+// because this module's tests assert on them by name — which is the point of a
+// stable code, and what keeps a rename upstream a compile error here rather
+// than a silently-passing `contains`.
+#[cfg(test)]
+pub(crate) use tinyflows::compat::{
+    UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN, UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN,
+};
 
-    for node in &graph.nodes {
-        if node.kind != NodeKind::SubWorkflow {
-            continue;
-        }
-        let Some(inline) = node.config.get("workflow") else {
-            continue;
-        };
-        let Ok(child) = serde_json::from_value::<WorkflowGraph>(inline.clone()) else {
-            // TinyFlows reports malformed inline children as capability errors;
-            // this gate is specifically for otherwise-deserializable unsafe
-            // topologies.
-            continue;
-        };
-        let first_child_error = errors.len();
-        collect_engine_compatibility_errors(&child, depth + 1, max_depth, errors);
-        for error in &mut errors[first_child_error..] {
-            error.message = format!("Inline sub_workflow node '{}': {}", node.id, error.message);
-        }
-    }
-}
-
-fn graph_engine_compatibility_errors(
-    graph: &WorkflowGraph,
-) -> Vec<crate::openhuman::flows::FlowValidationError> {
-    let Some(trigger) = graph.trigger() else {
-        return Vec::new();
-    };
-    let mut errors = Vec::new();
-
-    // The edges that close a cycle, from the engine's own classifier rather
-    // than a second implementation here — this gate mirrors TinyFlows' fan-in
-    // lowering, so the two must agree on which edges count. A back-edge is a
-    // loop head's re-entry, not a predecessor it barriers on, and counting it
-    // would report every legal loop as an unrelieved fan-in.
-    let loop_edges = tinyflows::engine::back_edges(graph);
-
-    for fan_in in &graph.nodes {
-        let incoming: Vec<&str> = graph
-            .edges
-            .iter()
-            .filter(|edge| edge.to_node == fan_in.id)
-            .filter(|edge| !loop_edges.contains(&(edge.from_node.clone(), edge.to_node.clone())))
-            .map(|edge| edge.from_node.as_str())
-            .collect();
-        if incoming.len() <= 1 {
-            continue;
-        }
-
-        for predecessor in incoming {
-            // Reaching a router itself unconditionally does not make the edge
-            // it selects into the fan-in unconditional. Let router
-            // predecessors reach the port-aware analysis below.
-            if !is_branching_node(graph, predecessor)
-                && reaches_on_main_edges(graph, &trigger.id, predecessor, &fan_in.id)
-            {
-                continue;
-            }
-
-            let mut controlling_branchers = 0usize;
-            let mut controlled_via_main_port = false;
-            for candidate in &graph.nodes {
-                let is_router = matches!(candidate.kind, NodeKind::Condition | NodeKind::Switch);
-                let ports: HashSet<&str> = graph
-                    .edges
-                    .iter()
-                    .filter(|edge| edge.from_node == candidate.id)
-                    .map(|edge| edge.from_port.as_str())
-                    .collect();
-                if ports.len() < 2 && !is_router {
-                    continue;
-                }
-                // When the router is itself the incoming predecessor, its
-                // branch edge must be tested against the fan-in (asking whether
-                // that edge reaches the router again can never succeed).
-                let controlled_target = if candidate.id == predecessor {
-                    fan_in.id.as_str()
-                } else {
-                    predecessor
-                };
-                let reaches_from_port = |port: &str| {
-                    reaches_via_port(graph, &candidate.id, port, controlled_target, &fan_in.id)
-                };
-                let any_port_reaches = ports.iter().any(|port| reaches_from_port(port));
-                // A router with one wired output still has unwired runtime
-                // choices that emit no successor, so that sole edge cannot
-                // prove unconditional reachability. Router reconvergence is
-                // only deterministic when every runtime choice is wired:
-                // both condition outcomes, or a switch fallback. Generic
-                // multi-port nodes retain their existing all-port behavior.
-                let routing_choices_are_exhaustive = match candidate.kind {
-                    NodeKind::Condition => ports.contains("true") && ports.contains("false"),
-                    NodeKind::Switch => ports.contains("default"),
-                    _ => true,
-                };
-                let can_prove_all_routing_choices = if is_router {
-                    routing_choices_are_exhaustive
-                } else {
-                    ports.len() >= 2
-                };
-                let every_port_deterministically_reaches = can_prove_all_routing_choices
-                    && ports.iter().all(|port| {
-                        reaches_deterministically_via_port(
-                            graph,
-                            &candidate.id,
-                            port,
-                            controlled_target,
-                            &fan_in.id,
-                        )
-                    });
-                // A multi-port node only controls this predecessor when the
-                // predecessor is reachable from it but not guaranteed by a
-                // deterministic path on every routing choice. This matches
-                // TinyAgents' relief proof, which stops at another router.
-                if any_port_reaches && !every_port_deterministically_reaches {
-                    controlling_branchers += 1;
-                    controlled_via_main_port |= ports.contains("main") && reaches_from_port("main");
-                }
-            }
-
-            let (code, routing_kind) = if controlled_via_main_port {
-                (
-                    UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN,
-                    "a conditional branch labelled 'main'",
-                )
-            } else if controlling_branchers >= 2 {
-                (
-                    UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN,
-                    "nested conditional routing",
-                )
-            } else {
-                continue;
-            };
-            errors.push(crate::openhuman::flows::FlowValidationError {
-                code: code.to_string(),
-                message: format!(
-                    "Fan-in node '{}' has predecessor '{}' behind {routing_kind}; \
-                     this topology is temporarily unsupported because it can silently lose \
-                     merged data. Flatten the conditional branch or join it before this fan-in.",
-                    fan_in.id, predecessor
-                ),
-                node_id: Some(fan_in.id.clone()),
-                field: None,
-            });
-        }
-    }
-
-    errors
-}
-
-fn ensure_engine_compatible(graph: &WorkflowGraph) -> Result<(), String> {
-    match engine_compatibility_errors(graph).into_iter().next() {
-        Some(error) => Err(format!("{}: {}", error.code, error.message)),
-        None => Ok(()),
+fn to_compat_validation_error(
+    error: tinyflows::compat::CompatibilityError,
+) -> crate::openhuman::flows::FlowValidationError {
+    crate::openhuman::flows::FlowValidationError {
+        code: error.code.to_string(),
+        message: error.message,
+        node_id: error.node_id,
+        field: None,
     }
 }
 
@@ -355,104 +201,6 @@ fn ensure_config_aware_engine_compatible(
         Some(error) => Err(error),
         None => Ok(()),
     }
-}
-
-fn reaches_on_main_edges(graph: &WorkflowGraph, from: &str, to: &str, stop: &str) -> bool {
-    if from == to {
-        return true;
-    }
-    let mut stack: Vec<&str> = if is_branching_node(graph, from) {
-        Vec::new()
-    } else {
-        graph
-            .edges
-            .iter()
-            .filter(|edge| edge.from_node == from && edge.from_port == "main")
-            .map(|edge| edge.to_node.as_str())
-            .collect()
-    };
-    let mut seen = HashSet::new();
-    while let Some(node) = stack.pop() {
-        if node == to {
-            return true;
-        }
-        if node == stop || !seen.insert(node) {
-            continue;
-        }
-        // Port labels are arbitrary. A node with multiple distinct output
-        // ports is runtime-selective even when one label happens to be `main`,
-        // so nothing beyond it is unconditionally reachable.
-        if is_branching_node(graph, node) {
-            continue;
-        }
-        stack.extend(
-            graph
-                .edges
-                .iter()
-                .filter(|edge| edge.from_node == node && edge.from_port == "main")
-                .map(|edge| edge.to_node.as_str()),
-        );
-    }
-    false
-}
-
-fn is_branching_node(graph: &WorkflowGraph, node_id: &str) -> bool {
-    graph.nodes.iter().any(|node| {
-        node.id == node_id && matches!(node.kind, NodeKind::Condition | NodeKind::Switch)
-    }) || graph
-        .edges
-        .iter()
-        .filter(|edge| edge.from_node == node_id)
-        .map(|edge| edge.from_port.as_str())
-        .collect::<HashSet<_>>()
-        .len()
-        >= 2
-}
-
-fn reaches_via_port(
-    graph: &WorkflowGraph,
-    brancher: &str,
-    port: &str,
-    target: &str,
-    stop: &str,
-) -> bool {
-    let mut stack: Vec<&str> = graph
-        .edges
-        .iter()
-        .filter(|edge| edge.from_node == brancher && edge.from_port == port)
-        .map(|edge| edge.to_node.as_str())
-        .collect();
-    let mut seen = HashSet::new();
-    while let Some(node) = stack.pop() {
-        if node == target {
-            return true;
-        }
-        if node == stop || !seen.insert(node) {
-            continue;
-        }
-        stack.extend(
-            graph
-                .edges
-                .iter()
-                .filter(|edge| edge.from_node == node)
-                .map(|edge| edge.to_node.as_str()),
-        );
-    }
-    false
-}
-
-fn reaches_deterministically_via_port(
-    graph: &WorkflowGraph,
-    brancher: &str,
-    port: &str,
-    target: &str,
-    stop: &str,
-) -> bool {
-    graph
-        .edges
-        .iter()
-        .filter(|edge| edge.from_node == brancher && edge.from_port == port)
-        .any(|edge| reaches_on_main_edges(graph, &edge.to_node, target, stop))
 }
 
 /// Runs a raw graph JSON value through migration + deserialization **without**
@@ -610,6 +358,28 @@ pub(crate) async fn run_builder_gates(config: &Config, graph: &WorkflowGraph) ->
     // Async, sandbox run: a required outbound arg that looks wired but resolves
     // null in a mock execution.
     validate_required_arg_resolvability(graph).await
+}
+
+/// Refuses a graph whose outbound `tool_call` arguments a sandbox run proves
+/// can never carry a value.
+///
+/// Delegates to [`tinyflows::preflight::unresolvable_tool_args`]; the whole
+/// analysis is the engine's, because the mock run, the trigger-scope rule and
+/// the opaque-upstream rule are all statements about the DSL. What this host
+/// contributes is the one thing the crate cannot know: which slug prefix marks
+/// a tool of *ours*, which has no external provider to reject the call and so
+/// is skipped.
+// Named at `ops::` scope because this module's tests already reach it there,
+// and they are what proves this host's native-slug prefix reaches the gate.
+#[cfg(test)]
+pub(crate) use tinyflows::preflight::mock_opaque_tool_call_upstream_ref;
+
+pub(crate) async fn validate_required_arg_resolvability(graph: &WorkflowGraph) -> Vec<String> {
+    tinyflows::preflight::unresolvable_tool_args(
+        graph,
+        &[crate::openhuman::flows::tinyflows::caps::NATIVE_TOOL_PREFIX],
+    )
+    .await
 }
 
 /// Checks literal `workflow_id` children reachable from an authoring candidate.
@@ -903,117 +673,6 @@ fn trigger_kind_fires(kind: &TriggerKind) -> bool {
     )
 }
 
-/// Whether `graph`'s trigger fires **without a human in the loop** — i.e. on
-/// a timer, an inbound webhook, or a connected-app event, as opposed to
-/// `manual` (only ever fired by an explicit `flows_run`). Used by
-/// [`flows_create`] (issue B29 — save/enable safety, Rule 1) to decide
-/// whether a freshly-saved flow may persist `enabled: true` or must persist
-/// `enabled: false` until the user arms it explicitly via
-/// `flows_set_enabled`.
-///
-/// Deliberately broader than [`trigger_kind_fires`]: `webhook` is not yet
-/// wired to auto-dispatch in this host (see that fn's doc), but it WILL fire
-/// unattended the moment it is — so a webhook-trigger flow must not be handed
-/// to the user pre-armed either. Returns `false` for a graph with no single
-/// resolvable trigger node or no `trigger_kind` discriminator (never a
-/// surprise — it never self-fires).
-pub(crate) fn trigger_is_automatic(graph: &WorkflowGraph) -> bool {
-    let Some(trigger) = graph.trigger() else {
-        return false;
-    };
-    let Some(kind_value) = trigger.config.get("trigger_kind") else {
-        return false;
-    };
-    let Ok(kind) = serde_json::from_value::<TriggerKind>(kind_value.clone()) else {
-        return false;
-    };
-    matches!(
-        kind,
-        TriggerKind::Schedule | TriggerKind::AppEvent | TriggerKind::Webhook
-    )
-}
-
-/// Whether `graph` contains a node that can produce a real outbound side
-/// effect — `tool_call` (a curated integration action), `http_request`, or
-/// `code` (sandboxed but Turing-complete, can reach the network). Used by
-/// [`flows_create`] (issue B29, Rule 2) to force `require_approval: true` on
-/// any graph that can act on the world, regardless of what the caller
-/// passed. A graph built only from `trigger` / `agent` / `transform` /
-/// `condition` / data-flow nodes is read-only and unaffected.
-pub(crate) fn graph_has_outbound_side_effect(graph: &WorkflowGraph) -> bool {
-    graph.nodes.iter().any(|n| {
-        matches!(
-            n.kind,
-            NodeKind::ToolCall | NodeKind::HttpRequest | NodeKind::Code
-        )
-    })
-}
-
-/// Shared Rule 2 enforcement (issue B29, and its `flows_update` compound-bypass
-/// closure): forces `require_approval` to `true` when `graph` contains an
-/// outbound side-effect node, no matter what the caller asked for. Used by both
-/// [`flows_create`] and [`flows_update`] so a flow can never persist
-/// `require_approval: false` alongside a `tool_call` / `http_request` / `code`
-/// node — on create OR on a later edit that *adds* such a node to a
-/// previously-read-only graph.
-///
-/// Returns `(effective_require_approval, was_forced)`: `was_forced` is `true`
-/// only when the caller's own toggle was `false` but a side-effect node
-/// required the override — callers use it to decide whether to emit the
-/// loud "forced to true" log/result note.
-pub(crate) fn enforce_side_effect_approval(
-    graph: &WorkflowGraph,
-    caller_require_approval: bool,
-) -> (bool, bool) {
-    let has_side_effect = graph_has_outbound_side_effect(graph);
-    let effective_require_approval = caller_require_approval || has_side_effect;
-    let was_forced = has_side_effect && !caller_require_approval;
-    (effective_require_approval, was_forced)
-}
-
-/// Whether `graph` has anything for [`flows_run`] to actually *do* — i.e. at
-/// least one non-`trigger` node **reachable from the trigger** by following
-/// directed edges. A graph made of nothing but a bare `trigger` node (or a
-/// `trigger` plus unreachable/disconnected nodes — even ones wired to each
-/// other by their own edges, just not to the trigger) can compile and "run"
-/// cleanly while producing no work whatsoever — the exact live finding this
-/// guards: a trigger-only flow reported `status="completed"
-/// pending_approvals=0` having done nothing, which reads as a successful
-/// automation to anyone not staring at the node count. Used by `flows_run`
-/// to attach a human-readable note to an otherwise-silent "success".
-///
-/// Deliberately a reachability walk rather than "any edge at all exists":
-/// `nodes.len() > 1 && !edges.is_empty()` would count a disconnected
-/// component's internal edges as actionable even though nothing downstream
-/// of the trigger ever runs.
-pub(crate) fn graph_has_actionable_nodes(graph: &WorkflowGraph) -> bool {
-    let Some(trigger) = graph.trigger() else {
-        // No single resolvable trigger to walk from — fall back to the
-        // coarse "any non-trigger node wired up by an edge" check so a
-        // malformed/ambiguous-trigger graph doesn't spuriously suppress the
-        // empty-flow note.
-        return graph.nodes.iter().any(|n| n.kind != NodeKind::Trigger) && !graph.edges.is_empty();
-    };
-
-    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut stack = vec![trigger.id.as_str()];
-    while let Some(current) = stack.pop() {
-        if !visited.insert(current) {
-            continue;
-        }
-        for next in graph.successors(current) {
-            if !visited.contains(next) {
-                stack.push(next);
-            }
-        }
-    }
-
-    visited
-        .into_iter()
-        .filter_map(|id| graph.node(id))
-        .any(|n| n.kind != NodeKind::Trigger)
-}
-
 /// Produces host-side, **non-fatal** validation warnings for a graph — today
 /// exactly one: "this trigger kind does not fire automatically yet". Returns
 /// an empty vec when the trigger fires (`manual`/`schedule`/`app_event`), when
@@ -1137,17 +796,21 @@ pub(crate) async fn graph_wiring_warnings(config: &Config, graph: &WorkflowGraph
 /// a nonsense path (e.g. suggesting `.item.json.data.successful`).
 async fn graph_output_field_warnings(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
     use crate::openhuman::flows::tinyflows::caps::fetch_live_toolkit_catalog;
+    // Reading a graph's `=`-bindings is the engine's grammar, not this host's:
+    // both helpers were a private copy here until the gates moved upstream.
+    use tinyflows::bindings::{collect_expressions, parse_node_binding};
     use tinymemory_api::composio::toolkit_from_slug;
 
     let mut warnings = Vec::new();
     for node in &graph.nodes {
         for (location, expr) in collect_expressions(&node.config) {
-            let Some((ref_id, has_json, field_path)) = parse_node_binding(&expr) else {
+            let Some(binding) = parse_node_binding(&expr) else {
                 continue;
             };
-            if !has_json {
+            if !binding.through_envelope {
                 continue;
             }
+            let (ref_id, field_path) = (binding.node_id, binding.field_path);
             let Some(ref_node) = graph.node(&ref_id) else {
                 continue;
             };
@@ -1419,331 +1082,30 @@ async fn graph_split_out_path_warnings(config: &Config, graph: &WorkflowGraph) -
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // `graph_wiring_warnings` (above) is advisory — it, and `dry_run_workflow`'s
-// null-resolution check (issue #4586), only WARN the author that a binding
-// resolves null. Neither is consulted by the builder before it proposes or
-// saves a graph, so a warned-about-but-ignored binding still ships. The
-// functions below are the HARD counterpart: `validate_binding_resolvability`
-// statically proves a `tool_call` node's `args` bindings are resolvable
-// *before* `propose_workflow`/`revise_workflow`/`save_workflow` accept the
-// graph at all (see their call sites), so the LLM builder is forced to fix
-// the wiring rather than merely being told about it.
+// null-resolution check, only WARN that a binding resolves null. The gate
+// below is the HARD counterpart, run before
+// `propose_workflow`/`revise_workflow`/`save_workflow` accept a graph at all,
+// so the builder is forced to fix the wiring rather than merely being told.
+//
+// The analysis is `tinyflows::gates`': every rule in it is a statement about
+// the DSL — that agent/tool_call/http_request output is wrapped in
+// `{json, text, raw}`, that a `=`-prefixed prose string is not a jq program,
+// that an agent produces only what its `output_parser.schema` declares — and
+// none of it depends on which host is asking. This host used to carry a
+// near-identical private copy, including its own `collect_expressions` and
+// `parse_node_binding`; that copy is gone.
+//
+// Anything that DOES depend on this host's vocabulary — which agent ids
+// resolve, which tool slugs exist, which integrations are connected — stays
+// here, in the gates that follow.
 
-/// Node kinds whose real capability adapter wraps its structured output in
-/// the stable `{ json, text, raw }` envelope (`src/openhuman/flows/tinyflows/caps.rs`):
-/// a binding into one of these must dereference `.item.json.<field>`, never
-/// `.item.<field>` directly — the latter reads the envelope wrapper itself
-/// (an object with `json`/`text`/`raw` keys), not the field inside it, and
-/// resolves `null` at runtime. Every other node kind (`code`, `transform`,
-/// `split_out`, `merge`, `output_parser`, `sub_workflow`, `trigger`,
-/// `condition`, `switch`) emits its item directly with no envelope, so no
-/// convention applies to a binding that targets one of them.
-const ENVELOPING_KINDS: &[NodeKind] = &[NodeKind::Agent, NodeKind::ToolCall, NodeKind::HttpRequest];
-
-/// Recursively collects every `=`-prefixed expression leaf in a config
-/// `Value` tree, paired with its dotted location (array elements as numeric
-/// segments, e.g. `"args.cc.0"`) — the same location convention as
-/// `tinyflows::expr::resolve_traced`. Unlike that function this never
-/// evaluates an expression against a scope; it only locates the leaves so
-/// [`validate_binding_resolvability`] can statically pattern-match them.
-fn collect_expressions(value: &Value) -> Vec<(String, String)> {
-    fn walk(value: &Value, location: &str, out: &mut Vec<(String, String)>) {
-        match value {
-            Value::Object(map) => {
-                for (k, v) in map {
-                    let child = if location.is_empty() {
-                        k.clone()
-                    } else {
-                        format!("{location}.{k}")
-                    };
-                    walk(v, &child, out);
-                }
-            }
-            Value::Array(items) => {
-                for (i, v) in items.iter().enumerate() {
-                    let child = if location.is_empty() {
-                        i.to_string()
-                    } else {
-                        format!("{location}.{i}")
-                    };
-                    walk(v, &child, out);
-                }
-            }
-            Value::String(s) if tinyflows::expr::is_expression(s) => {
-                out.push((location.to_string(), s.clone()));
-            }
-            _ => {}
-        }
-    }
-    let mut out = Vec::new();
-    walk(value, "", &mut out);
-    out
-}
-
-/// Matches the dotted-path form of a node-output binding —
-/// `=nodes.<ref_id>.item[.json].<field_path>` — returning `(ref_id, has_json,
-/// field_path)`. `has_json` is `true` when the expression dereferenced the
-/// `{json,text,raw}` envelope wrapper (`.item.json.<field_path>`) rather than
-/// the item directly (`.item.<field_path>`).
+/// Refuses a graph whose bindings are statically proven unresolvable.
 ///
-/// `field_path` captures the FULL remaining dotted path, not just its first
-/// segment — e.g. `"data.messages"` for `.item.json.data.messages`. This
-/// matters for a Composio `tool_call` ref, whose real output additionally
-/// wraps the field in `data` (see [`crate::openhuman::flows::tinyflows::caps::ToolContract::output_fields`]'s
-/// doc): callers that need to check field membership against a schema with
-/// no such wrapper (e.g. an `agent` node's `output_parser.schema`) should
-/// compare against just `field_path`'s first segment.
-///
-/// Only the dotted-path form is recognized here — the equivalent jq form
-/// (e.g. `=.nodes["ref"].items[0].field`) is an arbitrary jq program, not a
-/// fixed grammar, so it is not statically pattern-matched; that form is still
-/// covered dynamically by `dry_run_workflow`'s null-resolution check (#4586),
-/// which actually evaluates the expression at run time.
-fn parse_node_binding(expr: &str) -> Option<(String, bool, String)> {
-    fn node_binding_regex() -> &'static regex::Regex {
-        static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-        RE.get_or_init(|| {
-            regex::Regex::new(
-                r"^=nodes\.([A-Za-z_][A-Za-z0-9_]*)\.item(?:\.(json))?\.([A-Za-z_][A-Za-z0-9_.]*)",
-            )
-            .expect("static regex is valid")
-        })
-    }
-    let caps = node_binding_regex().captures(expr)?;
-    let ref_id = caps.get(1)?.as_str().to_string();
-    let has_json = caps.get(2).is_some();
-    let field_path = caps.get(3)?.as_str().trim_end_matches('.').to_string();
-    if field_path.is_empty() {
-        return None;
-    }
-    Some((ref_id, has_json, field_path))
-}
-
-/// Human-readable label for a [`NodeKind`], for
-/// [`validate_binding_resolvability`]'s envelope-violation message.
-fn node_kind_label(kind: &NodeKind) -> &'static str {
-    match kind {
-        NodeKind::Agent => "an agent",
-        NodeKind::ToolCall => "a tool_call",
-        NodeKind::HttpRequest => "an http_request",
-        _ => "a node",
-    }
-}
-
-/// jaq keywords/operators that read as valid jq syntax rather than natural-
-/// language prose; used by [`agent_prompt_looks_like_invalid_jq`]'s bareword
-/// scan so a genuine jq program (`if`/`then`/`else`/`end`, `and`/`or`,
-/// `reduce`/`foreach`, a `def`, …) is never mistaken for prose.
-const JQ_KEYWORDS: &[&str] = &[
-    "and", "or", "not", "if", "then", "elif", "else", "end", "as", "def", "reduce", "foreach",
-    "try", "catch", "import", "include", "label",
-];
-
-/// Best-effort detector for an agent-node `config.prompt` `=`-expression that
-/// is natural-language prose accidentally written in the `=`-binding
-/// convention, rather than a real jq program — the exact failure this check
-/// exists to catch: a builder writes something like `"=You are given an
-/// email: .item. Classify it…"`, which is not a valid jq program (jq's
-/// grammar has no rule for two bare identifiers in a row with nothing but
-/// whitespace between them — an operator or pipe is required), so
-/// `tinyflows::expr::evaluate` silently resolves it to `null` (its contract:
-/// "compile/run errors never panic, they yield `Value::Null`") and the agent
-/// turn then runs with an **empty prompt**.
-///
-/// `tinyflows` doesn't expose a compile-only jq check — `run_jq` is a private
-/// helper in `tinyflows::expr` and the module's evaluation contract is
-/// deliberately "never panics, malformed programs silently yield null" — so
-/// this is a conservative pattern match rather than a real compiler
-/// round-trip: quoted jq string literals are stripped first (so quoted prose
-/// inside a legitimate concatenation like `="Hi " + .item.name` is never
-/// scanned — this includes respecting a `\"` escape inside the string, so a
-/// quoted literal like `="Say \"hi\" to " + .item.name` doesn't desync the
-/// quote-toggle and leak its trailing prose into the bareword scan), then the
-/// remainder is scanned for **two or more consecutive** whitespace-separated
-/// barewords that are neither jq keywords nor path segments (`.foo`,
-/// `.foo.bar`) — a real jq program never juxtaposes two bare identifiers like
-/// that. Deliberately narrow (2+ in a row, not 1): a false negative here just
-/// leaves prose alone (nothing new was broken); a false positive would reject
-/// a legitimate author's graph.
-fn agent_prompt_looks_like_invalid_jq(expr_body: &str) -> bool {
-    let mut stripped = String::with_capacity(expr_body.len());
-    let mut in_str = false;
-    let mut chars = expr_body.chars();
-    while let Some(c) = chars.next() {
-        // An escaped char inside a jq string literal (`\"`, `\\`, `\n`, …) —
-        // consume both the backslash and the escaped char without toggling
-        // `in_str`, so an escaped quote never prematurely ends the string.
-        if in_str && c == '\\' {
-            chars.next();
-            continue;
-        }
-        if c == '"' {
-            in_str = !in_str;
-            continue;
-        }
-        if !in_str {
-            stripped.push(c);
-        }
-    }
-
-    let mut consecutive_bare_words = 0u32;
-    for tok in stripped.split_whitespace() {
-        let core = tok.trim_matches(|c: char| !c.is_ascii_alphabetic());
-        let is_bare_word = !core.is_empty()
-            && core.chars().all(|c| c.is_ascii_alphabetic())
-            && !tok.starts_with('.')
-            && !tok.contains('.')
-            && !JQ_KEYWORDS.contains(&core.to_ascii_lowercase().as_str());
-        if is_bare_word {
-            consecutive_bare_words += 1;
-            if consecutive_bare_words >= 2 {
-                return true;
-            }
-        } else {
-            consecutive_bare_words = 0;
-        }
-    }
-    false
-}
-
-/// Statically proves every `tool_call` node's `config.args` bindings are
-/// resolvable, rejecting the graph (a non-empty `Vec` = reject; empty =
-/// pass) when one is GUARANTEED to resolve `null` (or the wrong value) at
-/// runtime. See the [module section](self) header for why this exists
-/// alongside the advisory `graph_wiring_warnings`/`dry_run_workflow` checks.
-///
-/// Scoped to `tool_call` `args` for the field-addressability checks below —
-/// an `agent` node's free-text prompt has no static output schema to enforce
-/// a `nodes.<ref>.item.<field>` reference against, so a prose string that
-/// merely *mentions* such a path is left alone (degrades output quality, but
-/// doesn't break execution the way a `null` tool argument does). The ONE
-/// `agent`-prompt case this pass DOES reject is narrower and execution-
-/// breaking in its own right: `config.prompt` itself being a `=`-expression
-/// that reads as prose rather than a jq program (see
-/// [`agent_prompt_looks_like_invalid_jq`]) — that doesn't just degrade
-/// output, it guarantees `null`, i.e. an EMPTY prompt, exactly the
-/// `input_context` bug this whole gate was added to prevent (see the
-/// `flows/agents/workflow_builder/prompt.md` convention: `input_context`
-/// carries data, `prompt` stays a plain instruction).
-///
-/// For every `=nodes.<ref>.item[.json].<field>` binding found in a
-/// `tool_call`'s `args` (via [`collect_expressions`] + [`parse_node_binding`]):
-/// - a `<ref>` that doesn't resolve to a node in the graph is skipped — a
-///   dangling reference is already a `tinyflows::validate::validate`
-///   structural error, caught upstream of this pass.
-/// - a `<ref>` that IS an [`ENVELOPING_KINDS`] node and the expression used
-///   `.item.<field>` (no `.json`) is REJECTED: it dereferences the envelope
-///   wrapper, not the field inside it.
-/// - a `<ref>` that is an `agent` node is REJECTED unless it declares
-///   `config.output_parser.schema` with an object `properties` map
-///   containing `<field>` — the exact shape a real run's output-parser
-///   sub-port enforces; without it the agent's structured output has no
-///   addressable `<field>`.
-/// - a `<ref>` that is `tool_call`/`http_request` only gets the envelope
-///   check above — neither has a static output schema to check field
-///   membership against ahead of a real run.
-/// - any other referenced kind (`code`, `transform`, `split_out`, `merge`,
-///   `output_parser`, `sub_workflow`, `trigger`, `condition`, `switch`) has no
-///   schema or envelope convention to enforce and is accepted.
+/// A non-empty `Vec` rejects; empty passes. Delegates wholesale to
+/// [`tinyflows::gates::failures`] — see the section header for why nothing in
+/// it is host-specific.
 pub(crate) fn validate_binding_resolvability(graph: &WorkflowGraph) -> Vec<String> {
-    let mut errors = Vec::new();
-
-    // Agent-prompt gate: reject a `prompt` that reads as prose written in the
-    // `=`-binding convention (see `agent_prompt_looks_like_invalid_jq`'s doc) —
-    // it is GUARANTEED to resolve `null`, handing the agent an empty prompt.
-    // A plain (non-`=`) prompt, or a real jq/dotted-path expression, is
-    // unaffected.
-    for node in &graph.nodes {
-        if node.kind != NodeKind::Agent {
-            continue;
-        }
-        // Both runtime paths (`build_completion_messages` and
-        // `node_request_to_prompt` in `tinyflows/caps.rs`) fall through to a
-        // non-empty `messages` array once `prompt` resolves to `null` — which
-        // is exactly what this bad `=`-expression prompt does. So a node that
-        // declares real `messages` never actually runs on the null prompt;
-        // rejecting the graph for it would be a false positive against a
-        // vestigial/unused legacy `prompt` field.
-        let messages_supply_the_turn = node
-            .config
-            .get("messages")
-            .and_then(Value::as_array)
-            .is_some_and(|entries| !entries.is_empty());
-        if messages_supply_the_turn {
-            continue;
-        }
-        let Some(prompt) = node.config.get("prompt").and_then(Value::as_str) else {
-            continue;
-        };
-        if !tinyflows::expr::is_expression(prompt) {
-            continue;
-        }
-        let body = prompt[1..].trim();
-        if agent_prompt_looks_like_invalid_jq(body) {
-            errors.push(format!(
-                "Node '{}': `prompt` (`{prompt}`) looks like natural-language text written as \
-                 a `=`-expression, not a valid jq program — it will resolve to `null` at \
-                 runtime, handing the agent an EMPTY prompt. Fix: feed upstream data through \
-                 `config.input_context` (e.g. `\"input_context\": \"=item\"`) and make `prompt` \
-                 a plain instruction with no leading `=`.",
-                node.id
-            ));
-        }
-    }
-
-    for node in &graph.nodes {
-        if node.kind != NodeKind::ToolCall {
-            continue;
-        }
-        let Some(args) = node.config.get("args") else {
-            continue;
-        };
-        for (location, expr) in collect_expressions(args) {
-            let Some((ref_id, has_json, field_path)) = parse_node_binding(&expr) else {
-                continue;
-            };
-            let Some(ref_node) = graph.node(&ref_id) else {
-                continue;
-            };
-
-            if ENVELOPING_KINDS.contains(&ref_node.kind) && !has_json {
-                errors.push(format!(
-                    "Node '{}': arg `{location}` (`{expr}`) uses `.item.{field_path}` on {} node \
-                     `{ref_id}`, but agent/tool_call/http_request nodes wrap output in {{json, \
-                     text, raw}} — use `=nodes.{ref_id}.item.json.{field_path}` instead.",
-                    node.id,
-                    node_kind_label(&ref_node.kind),
-                ));
-                continue;
-            }
-
-            if ref_node.kind == NodeKind::Agent {
-                // Agent output has no Composio `data` wrapper — the schema's
-                // top-level properties are checked against just the FIRST
-                // segment of the bound path (agents don't publish nested
-                // output schemas here).
-                let field = field_path.split('.').next().unwrap_or(&field_path);
-                let has_field = ref_node
-                    .config
-                    .get("output_parser")
-                    .and_then(|p| p.get("schema"))
-                    .filter(|s| !s.is_null())
-                    .and_then(|s| s.get("properties"))
-                    .and_then(Value::as_object)
-                    .is_some_and(|props| props.contains_key(field));
-                if !has_field {
-                    errors.push(format!(
-                        "Node '{}': arg `{location}` (`{expr}`) binds to agent node `{ref_id}`, \
-                         which has no `output_parser.schema` declaring `{field}` — its \
-                         structured output has no addressable `{field}`, so this binding \
-                         resolves null at runtime. Fix: add `{field}` to node `{ref_id}`'s \
-                         output_parser.schema and bind via `=nodes.{ref_id}.item.json.{field}`.",
-                        node.id
-                    ));
-                }
-            }
-        }
-    }
-    errors
+    tinyflows::gates::failures(graph)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2836,389 +2198,6 @@ fn validate_connection_refs_against(
         }
     }
     errors
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Required-arg resolvability gate (issue B18)
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// `validate_tool_contracts` (above) proves a required arg is PRESENT
-// (`missing_required_args`: absent or literal `null`) — it has no opinion on
-// whether an arg wired to a real-looking `=`-expression actually RESOLVES to
-// something at runtime, and it says nothing at all about an arg the live
-// schema doesn't individually mark `required` even though the PROVIDER
-// enforces it as a business rule — e.g. `GMAIL_SEND_EMAIL.subject`/`.body`
-// are each individually optional in the schema, but Gmail rejects a send
-// where BOTH are empty ("At least one of 'subject' or 'body' must be
-// provided with non-empty content"). A builder can wire either to an
-// upstream path that looks fully wired but resolves `null`, and neither
-// static check above has anything to say about it.
-//
-// `crate::openhuman::flows::builder_tools::DryRunWorkflowTool` already
-// detects exactly this class of null resolution (`null_resolutions`) by
-// running the graph through the same MOCK sandbox — but only as information
-// the agent is *instructed* (by prompt, not enforced in code) to act on
-// before calling `propose_workflow`/`save_workflow`. Nothing previously
-// stopped those tools from persisting the graph anyway.
-// [`validate_required_arg_resolvability`] closes that gap: it re-runs the
-// identical sandbox check and escalates ANY arg of a real (non-`=`-derived,
-// non-native) `tool_call` node that resolved `null` to a hard reject, wired
-// into `propose_workflow` / `revise_workflow` / `save_workflow` alongside
-// [`validate_binding_resolvability`] and [`validate_tool_contracts`].
-
-/// Wall-clock bound on the sandbox run this gate performs. Mirrors
-/// `builder_tools::DRY_RUN_TIMEOUT_SECS`'s purpose but kept short: unlike the
-/// opt-in `dry_run_workflow` tool, this check runs on EVERY
-/// propose/revise/save call, so a slow or pathological draft must not stall
-/// authoring.
-const REQUIRED_ARG_NULL_CHECK_TIMEOUT_SECS: u64 = 15;
-
-/// Sandbox-executes `graph` against `tinyflows`' deterministic MOCK
-/// capabilities (the same shape `DryRunWorkflowTool` uses — see this
-/// section's module doc) and returns one human-readable error per arg of a
-/// real (non-`=`-derived, non-native) `tool_call` node whose `=`-expression
-/// resolved to `null` during that run **and** whose expression is wired to a
-/// specific upstream node's output (directly, via the implicit
-/// `item`/`items` scope, or explicitly via `nodes.<id>...`) rather than to
-/// the trigger.
-///
-/// This run always sandboxes against `json!({})` as the trigger payload (see
-/// below), so any arg wired to trigger-scoped data — `=item.<field>` /
-/// `=items...` fed directly from the trigger node, or `=run.<field>` (the
-/// trigger metadata itself) — legitimately resolves `null` here even though a
-/// real webhook/app-event/manual trigger WILL populate it at runtime. Hard
-/// gate that on an empty mock run would reject every ordinary trigger-bound
-/// workflow (Codex feedback on PR #4826). Only a `null` resolved from a
-/// genuine upstream **node** reference is escalated — that's the real B18
-/// bug this gate exists to catch: an arg wired to a node output path that can
-/// never resolve (e.g. `GMAIL_SEND_EMAIL.subject =
-/// "=nodes.build_body.item.subject"` where `build_body` never produces
-/// `subject`), which stays broken no matter what the trigger payload is.
-///
-/// Deliberately does **not** wrap the mock `ToolInvoker` in
-/// [`crate::openhuman::flows::tinyflows::caps::PreflightToolInvoker`] the way
-/// `DryRunWorkflowTool` does: that wrapper aborts the WHOLE sandbox run the
-/// instant a node with a `stop` `on_error` policy (the default) hits a
-/// schema-required null arg, which would lose the per-field diagnostic this
-/// gate exists to report for every OTHER node — and this check cares about
-/// EVERY arg, not just ones the schema happens to mark `required`. The plain
-/// mock tool invoker always "succeeds" (a deterministic echo), so the run
-/// settles and every node's config-resolution diagnostics get captured
-/// regardless of on_error policy or schema required-ness.
-///
-/// Best-effort, same posture as [`validate_tool_contracts`]: a compile
-/// failure (structural errors are already caught by
-/// [`validate_and_migrate_graph`] before this gate ever runs) or a sandbox
-/// error/timeout is SKIPPED — never turned into a false rejection. This
-/// check only ever adds a diagnostic the sandbox actually observed.
-pub(crate) async fn validate_required_arg_resolvability(graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::flows::builder_tools::CapturingObserver;
-    use crate::openhuman::flows::tinyflows::caps::{
-        SchemaAwareMockAgentRunner, SchemaAwareMockLlm,
-    };
-
-    let Ok(compiled) = tinyflows::compiler::compile(graph) else {
-        return Vec::new();
-    };
-
-    let mut caps = tinyflows::caps::mock::mock_capabilities_with_agent(SchemaAwareMockAgentRunner);
-    // Same fix as `DryRunWorkflowTool`: a plain agent node (no `agent_ref`)
-    // routes to the `llm` slot, not the runner above, so the vendored `MockLlm`
-    // echo would fail its `output_parser.schema` sub-port and make this gate
-    // reject a correct graph (which is why `propose_workflow` was rejecting
-    // valid graphs). The schema-aware mock LLM honors the schema instead.
-    caps.llm = Arc::new(SchemaAwareMockLlm);
-
-    let observer = Arc::new(CapturingObserver::default());
-    let observer_dyn: Arc<dyn tinyflows::observability::RunObserver> = observer.clone();
-    let run = tinyflows::engine::run_with_observer(&compiled, json!({}), &caps, &observer_dyn);
-    if tokio::time::timeout(
-        std::time::Duration::from_secs(REQUIRED_ARG_NULL_CHECK_TIMEOUT_SECS),
-        run,
-    )
-    .await
-    .is_err()
-    {
-        // Timed out — a different class of problem than this gate exists to
-        // catch; never block authoring on it here.
-        return Vec::new();
-    }
-    // A sandbox `Err` outcome here is a compile/capability issue unrelated
-    // to null args (the plain mock invoker never itself fails) — surfaced by
-    // the other gates / `dry_run_workflow` instead; this gate only adds
-    // diagnostics from a run that actually settled, so an error is silently
-    // skipped rather than turned into a (misleading) empty-errors success.
-
-    let tool_call_slugs: std::collections::HashMap<&str, &str> = graph
-        .nodes
-        .iter()
-        .filter(|n| n.kind == NodeKind::ToolCall)
-        .filter_map(|n| {
-            let slug = n.config.get("slug").and_then(Value::as_str)?;
-            Some((n.id.as_str(), slug))
-        })
-        .collect();
-
-    // The trigger node's id, if any — used below to tell a trigger-scoped
-    // `item`/`items` reference (the direct predecessor IS the trigger) apart
-    // from a real upstream-node reference. Graphs are expected to have
-    // exactly one trigger; `flows_validate` rejects zero/multiple before this
-    // gate ever runs, so `first()` here doesn't hide ambiguity.
-    let trigger_id: Option<&str> = graph
-        .nodes
-        .iter()
-        .find(|n| n.kind == NodeKind::Trigger)
-        .map(|n| n.id.as_str());
-
-    let mut errors = Vec::new();
-    for step in observer.steps() {
-        let Some(&slug) = tool_call_slugs.get(step.node_id.as_str()) else {
-            continue;
-        };
-        // `=`-derived slugs resolve from upstream/trigger data at runtime;
-        // native `oh:` tools have no external-provider rejection mode.
-        if slug.starts_with('=') || slug.starts_with("oh:") {
-            continue;
-        }
-        for diag in &step.diagnostics {
-            let Some(field) = diag.location.strip_prefix("args.") else {
-                continue;
-            };
-            if is_trigger_scoped_expression(&diag.expression, graph, &step.node_id, trigger_id) {
-                // Legitimately empty in this gate's `{}` mock run — the real
-                // trigger (webhook/app-event/manual) will populate it. Not
-                // the B18 broken-wiring case this gate exists to catch.
-                tracing::debug!(
-                    target: "flows",
-                    node = %step.node_id,
-                    %slug,
-                    %field,
-                    expression = %diag.expression,
-                    "[flows] required-arg resolvability check: trigger-scoped null in empty \
-                     mock run — not rejecting"
-                );
-                continue;
-            }
-            // A null bound to the OUTPUT of an upstream Composio-or-native
-            // `tool_call` node is UNVERIFIABLE in this echo sandbox — the mock
-            // renders BOTH a Composio and a native `oh:` `tool_call` as
-            // `{tool, args, connection}` and can NEVER produce their real output
-            // fields (`.item.json.data.<field>` for Composio, `.item.json.<field>`
-            // for a native tool), so a downstream binding to one resolves `null`
-            // here even when the wiring is perfectly correct. Hard-rejecting it
-            // (WS6) would block a possibly-correct graph from ever being proposed
-            // — the exact false-negative the transcript audit caught, and the one
-            // that made this gate reject #5148's own native-attachment chain.
-            // Downgrade to a debug-logged skip; `dry_run_workflow` remains the
-            // surface that reports it (as an `unverifiable` diagnostic the agent
-            // can act on via get_tool_contract / get_tool_output_sample).
-            if let Some(upstream) =
-                mock_opaque_tool_call_upstream_ref(&diag.expression, graph, &step.node_id)
-            {
-                tracing::debug!(
-                    target: "flows",
-                    node = %step.node_id,
-                    %slug,
-                    %field,
-                    upstream = %upstream,
-                    expression = %diag.expression,
-                    "[flows] required-arg resolvability check: arg binds to a Composio-or-native \
-                     tool_call's output — UNVERIFIABLE in the echo sandbox (the mock cannot \
-                     produce real tool output fields), not rejecting; dry_run_workflow \
-                     reports it instead"
-                );
-                continue;
-            }
-            tracing::warn!(
-                target: "flows",
-                node = %step.node_id,
-                %slug,
-                %field,
-                expression = %diag.expression,
-                "[flows] required-arg resolvability check: arg resolved null in sandbox — \
-                 rejecting"
-            );
-            errors.push(format!(
-                "Node '{}': arg `{field}` of `{slug}` (`{}`) resolved to `null` during a \
-                 sandboxed test run — an empty/missing `{field}` can be rejected by the real \
-                 provider at runtime (e.g. Gmail rejects a send with no subject or body). \
-                 Rewire it from an upstream node's output that actually has a value — call \
-                 dry_run_workflow to see exactly which upstream field is null — or drop the \
-                 field from args if it isn't really needed.",
-                step.node_id, diag.expression
-            ));
-        }
-    }
-    errors
-}
-
-/// Returns the node id an explicit `nodes.<id>...` expression addresses —
-/// either the legacy dotted shorthand (`=nodes.build_body.item.subject`) or
-/// the jq bracket form (`=.nodes["build_body"].item.subject`) — or `None` if
-/// the expression's root isn't the `nodes` scope key at all. The expression
-/// scope's shape (`item` / `items` / `run` / `nodes`) is documented on
-/// `tinyflows`'s `expr` module and `nodes::expr_scope`.
-fn explicit_nodes_ref(expr: &str) -> Option<&str> {
-    let body = expr.strip_prefix('=')?.trim();
-    let body = body.strip_prefix('.').unwrap_or(body);
-    let rest = body.strip_prefix("nodes")?;
-    if let Some(after_dot) = rest.strip_prefix('.') {
-        // Dotted shorthand: `nodes.<id>.item.<field>` — the id ends at the
-        // next `.` or `[`.
-        let id = after_dot.split(['.', '[']).next()?;
-        (!id.is_empty()).then_some(id)
-    } else if let Some(after_bracket) = rest.strip_prefix('[') {
-        // jq bracket form: `nodes["<id>"]` / `nodes['<id>']`.
-        let after_bracket = after_bracket.trim_start();
-        let after_bracket = after_bracket
-            .strip_prefix('"')
-            .or_else(|| after_bracket.strip_prefix('\''))
-            .unwrap_or(after_bracket);
-        let id = after_bracket.split(['"', '\'', ']']).next()?;
-        (!id.is_empty()).then_some(id)
-    } else {
-        // `rest` is empty (bare `nodes`) or continues some other identifier
-        // (e.g. a hypothetical `nodesomething` — not this scope key at all).
-        None
-    }
-}
-
-/// Whether a null-resolved config expression on `node_id` is scoped to the
-/// TRIGGER's data rather than a specific upstream node's output — and
-/// therefore legitimately empty in [`validate_required_arg_resolvability`]'s
-/// `{}` mock run rather than evidence of broken wiring (see that function's
-/// doc comment and the Codex feedback it links).
-///
-/// - `=run...` always addresses the trigger payload/metadata directly
-///   (`crate::openhuman::flows::tinyflows`'s `expr_scope` docs) — always
-///   trigger-scoped.
-/// - `=nodes.<id>...` / `=.nodes["<id>"]...` explicitly names an upstream
-///   node. Trigger-scoped only if `<id>` IS the trigger node; naming any
-///   other node is exactly the B18 broken-wiring case this gate exists to
-///   catch, so it is never treated as trigger-scoped.
-/// - `=item...` / `=items...` implicitly addresses `node_id`'s direct
-///   predecessor(s) output. Trigger-scoped only when EVERY incoming edge to
-///   `node_id` comes from the trigger node — a fan-in that mixes the trigger
-///   with a real upstream node, or an `item`/`items` reference fed entirely
-///   by real upstream nodes, keeps the existing (reject) behavior, since a
-///   node that already ran in the sandbox is expected to have produced its
-///   real, deterministic output.
-/// - Anything else (a jq expression not rooted at one of the above, or a
-///   malformed one) is conservatively treated as NOT trigger-scoped, matching
-///   this gate's pre-existing behavior.
-fn is_trigger_scoped_expression(
-    expr: &str,
-    graph: &WorkflowGraph,
-    node_id: &str,
-    trigger_id: Option<&str>,
-) -> bool {
-    let body = expr.strip_prefix('=').unwrap_or(expr).trim();
-    let body = body.strip_prefix('.').unwrap_or(body);
-
-    if body == "run" || body.starts_with("run.") || body.starts_with("run[") {
-        return true;
-    }
-
-    if let Some(referenced_id) = explicit_nodes_ref(expr) {
-        return trigger_id == Some(referenced_id);
-    }
-
-    let is_item_scoped = body == "item"
-        || body.starts_with("item.")
-        || body.starts_with("item[")
-        || body == "items"
-        || body.starts_with("items.")
-        || body.starts_with("items[");
-    if !is_item_scoped {
-        return false;
-    }
-
-    let Some(trigger_id) = trigger_id else {
-        return false;
-    };
-    let mut predecessors = graph
-        .edges
-        .iter()
-        .filter(|e| e.to_node == node_id)
-        .peekable();
-    predecessors.peek().is_some() && predecessors.all(|e| e.from_node == trigger_id)
-}
-
-/// If a null-resolved config expression on `node_id` is bound to the OUTPUT of
-/// an upstream **`tool_call`** node whose sandbox output is an opaque echo — a
-/// Composio curated action OR a native `oh:` tool (anything but a `=`-derived
-/// dynamic slug) — returns that upstream node's id; otherwise `None`.
-///
-/// The dry-run / gate sandbox renders BOTH a Composio `tool_call` and a native
-/// `oh:` `tool_call` as a deterministic echo (`{tool, args, connection}`) and
-/// can NEVER produce their real output fields, so a downstream binding off such
-/// a node (`.item.json.data.<field>` for Composio, or `.item.json.<field>` for
-/// a native tool after `native_tool_payload`'s unwrap) resolves `null` in the
-/// sandbox **even when the wiring is correct** — the binding is UNVERIFIABLE
-/// here, not necessarily broken. Callers use this to tell that honest-
-/// uncertainty case apart from a genuinely broken binding (one wired to an
-/// `agent` / `transform` / `code` / trigger upstream, whose real output the
-/// sandbox DOES produce, so a null there IS a real bug).
-///
-/// The native `oh:` case is why this exists beyond Composio: #5148's guidance
-/// prescribes a `produce -> oh:storage_upload_file -> oh:storage_get_link ->
-/// send` chain where the send binds `=nodes.get_link.item.json.url`; excluding
-/// native upstreams here made the gate hard-reject that exact (correct) chain.
-///
-/// Handles both addressing forms the engine can trace:
-/// - explicit `=nodes.<id>...` / `=.nodes["<id>"]...` (parsed via
-///   [`explicit_nodes_ref`]), and
-/// - implicit `=item...` / `=items...`, resolved against `node_id`'s direct
-///   predecessor — but only when there is exactly ONE incoming edge, so an
-///   ambiguous fan-in is never mis-attributed to a single upstream node.
-///
-/// Anything else (a `=run...` trigger reference, a jq expression not rooted at
-/// one of the above, or a reference to a non-`tool_call` / `=`-dynamic node)
-/// returns `None`.
-pub(crate) fn mock_opaque_tool_call_upstream_ref<'a>(
-    expr: &str,
-    graph: &'a WorkflowGraph,
-    node_id: &str,
-) -> Option<&'a str> {
-    let referenced_id: String = if let Some(id) = explicit_nodes_ref(expr) {
-        id.to_string()
-    } else {
-        let body = expr.strip_prefix('=').unwrap_or(expr).trim();
-        let body = body.strip_prefix('.').unwrap_or(body);
-        let is_item_scoped = body == "item"
-            || body.starts_with("item.")
-            || body.starts_with("item[")
-            || body == "items"
-            || body.starts_with("items.")
-            || body.starts_with("items[");
-        if !is_item_scoped {
-            return None;
-        }
-        let mut preds = graph
-            .edges
-            .iter()
-            .filter(|e| e.to_node == node_id)
-            .map(|e| e.from_node.as_str());
-        let first = preds.next()?;
-        if preds.next().is_some() {
-            // Ambiguous fan-in — cannot attribute the null to one upstream node.
-            return None;
-        }
-        first.to_string()
-    };
-    let node = graph.nodes.iter().find(|n| n.id == referenced_id)?;
-    if node.kind != NodeKind::ToolCall {
-        return None;
-    }
-    let slug = node.config.get("slug").and_then(Value::as_str)?;
-    // A `=`-derived slug is a dynamic runtime slug we can't reason about. But a
-    // native `oh:` tool_call IS opaque-echoed by the mock exactly like a
-    // Composio one, so its downstream null is equally unverifiable, not broken —
-    // do NOT exclude it (that exclusion made the gate reject #5148's own chain).
-    if slug.starts_with('=') {
-        return None;
-    }
-    Some(node.id.as_str())
 }
 
 /// Validates a candidate graph without persisting it — the same

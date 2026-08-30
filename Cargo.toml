@@ -141,6 +141,24 @@ tinyhumans-sdk = { path = "vendor/tinyhumans-sdk", default-features = false }
 # Optional: exclusive to the default-ON `flows` feature (#4797). A slim build
 # without `flows` drops this crate and its `jaq-*` JSON-query stack entirely.
 tinyflows = { version = "0.8", features = ["mock"], optional = true }
+# The saved-flow catalog and its SQLite backend, split out of this crate's
+# `flows::` domain so a second host storing workflows does not have to reinvent
+# them. `tinyflows-catalog` is the model (flows, revisions, runs, drafts,
+# suggestions, the n8n importer, the save/run safety predicates);
+# `tinyflows-sqlite` is one storage backend for it plus the engine checkpointer.
+#
+# Neither is published, so both are path dependencies into the same vendored
+# workspace `tinyflows` itself comes from — one checkout, one `tinyflows`
+# package, one `WorkflowGraph` type. Optional and exclusive to `flows` for the
+# same reason the engine is.
+tinyflows-catalog = { path = "vendor/tinyflows/crates/tinyflows-catalog", optional = true }
+tinyflows-sqlite = { path = "vendor/tinyflows/crates/tinyflows-sqlite", optional = true }
+# The authoring copilot's words: the `workflow_builder` / `flow_discovery`
+# standing archetypes and the turn brief that opens a builder turn. Harness-free
+# by construction — it names no tool trait and no model client — so this host
+# keeps only the wiring: the `Tool` impls, the agent registry entries, and the
+# prompt assembly that appends its own runtime sections.
+tinyflows-copilot = { path = "vendor/tinyflows/crates/tinyflows-copilot", optional = true }
 # TinyAgents — Rust LLM orchestration framework (LangGraph/LangChain-style):
 # durable state graphs, agent-loop harness, model/tool registries, REPL +
 # `.rag` workflow language. openhuman's agent engine + orchestration run on this
@@ -665,6 +683,12 @@ landlock = { version = "0.4", optional = true }
 rppal = { version = "0.22", optional = true }
 
 [dev-dependencies]
+# Turns on `tinyflows-sqlite`'s `test-fixtures` gate for test builds only: the
+# flows test suite stages a terminal run flipped back to `running` and a
+# `graph_json` column that does not deserialize, neither of which any production
+# write path can produce. Declared here rather than in `[dependencies]` so the
+# shipped binary never carries those two writers.
+tinyflows-sqlite = { path = "vendor/tinyflows/crates/tinyflows-sqlite", features = ["test-fixtures"] }
 # Test fixtures derive a known account from the BIP-39 vector phrase. Production
 # does not derive at all — see the note on the main `tinywallet` entry. Cargo
 # does not link dev-dependency features into the shipped binary, so enabling
@@ -1012,7 +1036,7 @@ media = []
 # runtime `DomainSet::flows` flag (#4796): the feature narrows the compile-time
 # surface, `DomainSet` gates it at runtime.
 # NOTE: this gate does NOT drop `tinyagents` itself — 26+ domains consume it.
-flows = ["dep:tinyflows"]
+flows = ["dep:tinyflows", "dep:tinyflows-catalog", "dep:tinyflows-copilot", "dep:tinyflows-sqlite"]
 # Skills domains: `openhuman::skills` (metadata/discovery/install),
 # `openhuman::skill_runtime` (SKILL.md execution + the skill_executor agent),
 # and `openhuman::skill_registry` (remote catalogs + the skill_setup agent).
@@ -1268,7 +1292,7 @@ tinyagents = { path = "vendor/tinyagents" }
 # TinyFlows, TinyCortex, and TinyChannels are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
-tinyflows = { path = "vendor/tinyflows" }
+tinyflows = { path = "vendor/tinyflows/crates/tinyflows" }
 tinycortex = { path = "vendor/tinycortex" }
 # `tinymemory-core` names `tinycortex-api` by version requirement (this crate
 # depends on it by path, above). Patch it onto the same checkout so both see one
