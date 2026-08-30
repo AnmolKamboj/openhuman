@@ -2,9 +2,9 @@ use serde_json::{json, Map, Value};
 
 use crate::core::all;
 use crate::openhuman::agent::harness::AgentDefinitionRegistry;
+use crate::openhuman::agent::tinyagents::convert::spec_to_schema;
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::inference::provider::types::build_tool_instructions_text;
 use crate::openhuman::security::{SecurityPolicy, ToolOperation};
 
 use super::super::write_dispatch;
@@ -237,9 +237,10 @@ async fn list_core_tools() -> Result<Value, ToolCallError> {
 
 async fn core_tool_instructions() -> Result<Value, ToolCallError> {
     let agent = build_orchestrator_agent().await?;
-    Ok(tool_text_success(build_tool_instructions_text(
-        agent.tool_specs(),
-    )))
+    let schemas: Vec<_> = agent.tool_specs().iter().map(spec_to_schema).collect();
+    Ok(tool_text_success(
+        tinyagents::harness::tool::prompt_tool_instructions(&schemas),
+    ))
 }
 
 async fn list_subagents() -> Result<Value, ToolCallError> {

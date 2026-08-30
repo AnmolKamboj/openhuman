@@ -5,12 +5,11 @@
 //! `tinyagents::session::run_ledger`. No execution engine yet — starting / stopping /
 //! resuming runs lands in a follow-up PR.
 
-use std::collections::{HashMap, HashSet, VecDeque};
-
 use anyhow::Result;
 
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::config::Config;
+use tinyagents::graph::dag::{validate_dag, DagIssue, DagNode};
 use tinyagents::session::run_ledger::{
     get_workflow_run, list_workflow_runs, WorkflowRun, WorkflowRunListRequest,
     WorkflowRunListResponse,
@@ -100,13 +99,7 @@ pub fn validate_structure(def: &WorkflowDefinition) -> Vec<DefinitionError> {
         return errors;
     }
 
-    let mut seen: HashSet<&str> = HashSet::new();
     for phase in &def.phases {
-        if !seen.insert(phase.name.as_str()) {
-            errors.push(DefinitionError::DuplicatePhase {
-                name: phase.name.clone(),
-            });
-        }
         if phase.agent_ids.is_empty() {
             errors.push(DefinitionError::EmptyPhase {
                 phase: phase.name.clone(),
@@ -114,20 +107,27 @@ pub fn validate_structure(def: &WorkflowDefinition) -> Vec<DefinitionError> {
         }
     }
 
-    let names: HashSet<&str> = def.phases.iter().map(|p| p.name.as_str()).collect();
-    for phase in &def.phases {
-        for dep in &phase.depends_on {
-            if !names.contains(dep.as_str()) {
-                errors.push(DefinitionError::UnknownDependency {
-                    phase: phase.name.clone(),
-                    depends_on: dep.clone(),
-                });
+    // Unique names, landed `depends_on` edges and acyclicity are the shared
+    // dependency-DAG question; `tinyagents::graph::dag` owns the algorithm and
+    // this maps its structural issues back onto the host's error vocabulary.
+    // A self-dependency arrives as `DagIssue::Cycle`, which is what the
+    // hand-rolled Kahn pass here reported too.
+    let nodes: Vec<DagNode<'_>> = def
+        .phases
+        .iter()
+        .map(|p| DagNode::new(p.name.as_str(), p.depends_on.iter().map(String::as_str)))
+        .collect();
+    for issue in validate_dag(&nodes) {
+        errors.push(match issue {
+            DagIssue::DuplicateNode { id } => DefinitionError::DuplicatePhase { name: id },
+            DagIssue::UnknownDependency { node, depends_on } => {
+                DefinitionError::UnknownDependency {
+                    phase: node,
+                    depends_on,
+                }
             }
-        }
-    }
-
-    if has_cycle(def) {
-        errors.push(DefinitionError::CyclicDependency);
+            DagIssue::Cycle => DefinitionError::CyclicDependency,
+        });
     }
 
     if def.default_concurrency == 0 || def.max_children == 0 {
@@ -206,48 +206,6 @@ pub fn validate_definition(def: &WorkflowDefinition) -> Vec<DefinitionError> {
         errors.len()
     );
     errors
-}
-
-/// Kahn's-algorithm cycle check over the phase dependency graph. Edges that
-/// point at unknown phases are ignored here (reported separately).
-fn has_cycle(def: &WorkflowDefinition) -> bool {
-    let names: HashSet<&str> = def.phases.iter().map(|p| p.name.as_str()).collect();
-    let mut indegree: HashMap<&str, usize> =
-        def.phases.iter().map(|p| (p.name.as_str(), 0)).collect();
-    let mut adjacency: HashMap<&str, Vec<&str>> = HashMap::new();
-    for phase in &def.phases {
-        for dep in &phase.depends_on {
-            let dep = dep.as_str();
-            if names.contains(dep) {
-                // edge dep -> phase
-                adjacency.entry(dep).or_default().push(phase.name.as_str());
-                *indegree.entry(phase.name.as_str()).or_insert(0) += 1;
-            }
-        }
-    }
-
-    let mut queue: VecDeque<&str> = indegree
-        .iter()
-        .filter(|(_, &d)| d == 0)
-        .map(|(&n, _)| n)
-        .collect();
-    let mut visited = 0usize;
-    while let Some(node) = queue.pop_front() {
-        visited += 1;
-        if let Some(children) = adjacency.get(node) {
-            for &child in children {
-                let entry = indegree.get_mut(child).expect("child in indegree");
-                *entry -= 1;
-                if *entry == 0 {
-                    queue.push_back(child);
-                }
-            }
-        }
-    }
-    // Compare against the unique-node count, not `def.phases.len()`: the graph
-    // is keyed by unique phase names, so duplicate names (reported separately as
-    // `DuplicatePhase`) would otherwise trip a false `CyclicDependency`.
-    visited != indegree.len()
 }
 
 /// List durable workflow runs (delegates to the run ledger).

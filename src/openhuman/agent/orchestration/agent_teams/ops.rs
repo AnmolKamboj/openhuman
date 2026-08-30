@@ -6,7 +6,7 @@
 //! and exchange teammate messages. Messaging rides the run-ledger event stream
 //! (`run_id = team_id`, `event_type = "team_message"`) — no new message table.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashSet;
 
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -14,6 +14,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::openhuman::config::Config;
+use tinyagents::graph::dag::{has_cycle, DagNode};
 use tinyagents::session::run_ledger::{
     self, AgentTeam, AgentTeamListRequest, AgentTeamListResponse, AgentTeamMemberStatus,
     AgentTeamMemberUpsert, AgentTeamStatus, AgentTeamTask, AgentTeamTaskStatus,
@@ -389,9 +390,10 @@ fn team_view(config: &Config, team_id: &str) -> Result<TeamView> {
 /// Validate a new task's dependency edges against the team's existing tasks.
 ///
 /// Rejects self-dependency, unknown dependency ids, and any edge that would
-/// introduce a cycle. The cycle check builds the full graph (existing tasks +
-/// the new task with its proposed deps) and runs Kahn's algorithm — the same
-/// shape used for workflow phase graphs in `workflow_runs::ops::has_cycle`.
+/// introduce a cycle. The self and unknown checks stay here because they are
+/// scoped to the *new* task: a pre-existing task carrying a dangling edge is
+/// not this caller's fault and must not block the assignment. The cycle check
+/// delegates to `tinyagents::graph::dag`.
 fn validate_dependencies(
     new_task_id: &str,
     depends_on: &[String],
@@ -419,59 +421,25 @@ fn validate_dependencies(
     Ok(())
 }
 
-/// Kahn's-algorithm cycle check over the task dependency graph (existing tasks
-/// plus the candidate new task). Edge `dep -> task` means `task` depends on
-/// `dep`. Edges pointing at unknown ids are ignored here (rejected separately).
+/// Cycle check over the task dependency graph (existing tasks plus the
+/// candidate new task), delegating to `tinyagents::graph::dag::has_cycle`.
+///
+/// Edge `dep -> task` means `task` depends on `dep`. Edges pointing at unknown
+/// ids are ignored by the shared validator (they are rejected separately).
 fn has_task_cycle(
     new_task_id: &str,
     new_depends_on: &[String],
     existing: &[AgentTeamTask],
 ) -> bool {
-    // Node set: every existing task id plus the new one.
-    let mut nodes: HashSet<&str> = existing.iter().map(|t| t.id.as_str()).collect();
-    nodes.insert(new_task_id);
-
-    let mut indegree: HashMap<&str, usize> = nodes.iter().map(|&n| (n, 0)).collect();
-    let mut adjacency: HashMap<&str, Vec<&str>> = HashMap::new();
-
-    // Existing edges.
-    for task in existing {
-        for dep in &task.depends_on {
-            let dep = dep.as_str();
-            if nodes.contains(dep) {
-                adjacency.entry(dep).or_default().push(task.id.as_str());
-                *indegree.entry(task.id.as_str()).or_insert(0) += 1;
-            }
-        }
-    }
-    // Candidate edges for the new task.
-    for dep in new_depends_on {
-        let dep = dep.as_str();
-        if nodes.contains(dep) {
-            adjacency.entry(dep).or_default().push(new_task_id);
-            *indegree.entry(new_task_id).or_insert(0) += 1;
-        }
-    }
-
-    let mut queue: VecDeque<&str> = indegree
+    let mut nodes: Vec<DagNode<'_>> = existing
         .iter()
-        .filter(|(_, &d)| d == 0)
-        .map(|(&n, _)| n)
+        .map(|t| DagNode::new(t.id.as_str(), t.depends_on.iter().map(String::as_str)))
         .collect();
-    let mut visited = 0usize;
-    while let Some(node) = queue.pop_front() {
-        visited += 1;
-        if let Some(children) = adjacency.get(node) {
-            for &child in children {
-                let entry = indegree.get_mut(child).expect("child in indegree");
-                *entry -= 1;
-                if *entry == 0 {
-                    queue.push_back(child);
-                }
-            }
-        }
-    }
-    visited != indegree.len()
+    nodes.push(DagNode::new(
+        new_task_id,
+        new_depends_on.iter().map(String::as_str),
+    ));
+    has_cycle(&nodes)
 }
 
 #[cfg(test)]
@@ -550,18 +518,52 @@ mod tests {
         let a = assign_task(&config, &team_id, "A", None, None, &[]).unwrap();
         let b = assign_task(&config, &team_id, "B", None, None, &[a.id.clone()]).unwrap();
 
-        // Self-dependency.
-        let err = assign_task(&config, &team_id, "self", None, None, &["task-xyz".into()]);
-        // self id is generated, so simulate via an existing-task edit path instead:
-        // unknown id path already covered; ensure self check fires when dep == new id.
-        // We can't predict the new id; verify cycle path instead.
-        let _ = err;
-
-        // Cycle: try to make A depend_on B (A already an upstream of B).
-        // Re-upserting A with depends_on [B] would close the loop; assign_task
-        // only creates new tasks, so emulate the cycle check directly.
+        // No cycle: a fresh candidate depending on B is a plain extension of
+        // the existing chain (A -> B -> C).
         let existing = run_ledger::list_agent_team_tasks(&config.workspace_dir, &team_id).unwrap();
-        assert!(has_task_cycle(&a.id, &[b.id.clone()], &existing));
+        assert!(!has_task_cycle("C", &[b.id.clone()], &existing));
+
+        // Cycle: `has_task_cycle` is exercised directly (rather than through
+        // `assign_task`, which only ever creates new tasks and can never make
+        // an existing one depend on something newer) with a synthetic fixture
+        // list. Using ids distinct from every existing task matters here:
+        // `tinyagents::graph::dag::has_cycle` deliberately processes only the
+        // *first* declaration of a repeated id and ignores the rest (see its
+        // doc comment on `DagIssue::DuplicateNode`), so reusing `a.id` for the
+        // new candidate — as this test previously did — is silently ignored
+        // by the crate rather than fabricating a cycle, and the assertion
+        // that depended on the old host-side Kahn implementation's
+        // duplicate-merging behaviour no longer holds. A three-node chain
+        // with unique ids (x depends on z, y depends on x, and a new z
+        // depending on y) closes a real x -> z -> y -> x loop without ever
+        // repeating an id.
+        let fixture_existing = vec![
+            task_fixture(&team_id, "x", &["z"]),
+            task_fixture(&team_id, "y", &["x"]),
+        ];
+        assert!(has_task_cycle("z", &["y".to_string()], &fixture_existing));
+    }
+
+    fn task_fixture(team_id: &str, id: &str, depends_on: &[&str]) -> AgentTeamTask {
+        let now = Utc::now();
+        AgentTeamTask {
+            id: id.to_string(),
+            team_id: team_id.to_string(),
+            title: id.to_string(),
+            objective: None,
+            status: AgentTeamTaskStatus::Todo,
+            owner_member_id: None,
+            claimed_by_member_id: None,
+            claim_token: None,
+            depends_on: depends_on.iter().map(|d| d.to_string()).collect(),
+            gate_status: "pending".to_string(),
+            gate_reason: None,
+            evidence: Vec::new(),
+            source_run_id: None,
+            order_index: 0,
+            created_at: now,
+            updated_at: now,
+        }
     }
 
     #[test]

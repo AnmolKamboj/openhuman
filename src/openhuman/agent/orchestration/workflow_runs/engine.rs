@@ -507,7 +507,7 @@ pub(super) async fn execute_phase(
     total_spawned: u32,
 ) -> Result<PhaseExecOutcome> {
     use crate::openhuman::agent::orchestration::{
-        AgentStatus, SpawnAgentRequest, WaitAgentOptions,
+        OrchestrationTaskStatus, SpawnAgentRequest, WaitAgentOptions,
     };
 
     // Reload so the phase state we mutate + persist is the latest projection.
@@ -644,7 +644,7 @@ pub(super) async fn execute_phase(
                 };
                 Ok(match wait.agents.into_iter().next() {
                     Some(s) => match s.status {
-                        AgentStatus::Completed => PhaseWorkerOutcome {
+                        OrchestrationTaskStatus::Completed => PhaseWorkerOutcome {
                             orchestration_id: Some(oid),
                             output: Some(json!({
                                 "orchestrationId": s.orchestration_id,
@@ -653,32 +653,34 @@ pub(super) async fn execute_phase(
                             })),
                             error: None,
                         },
-                        AgentStatus::Failed | AgentStatus::Cancelled | AgentStatus::Closed => {
-                            PhaseWorkerOutcome {
-                                orchestration_id: Some(oid),
-                                output: None,
-                                error: Some(format!(
-                                    "child '{}' (agent '{}') ended {}: {}",
-                                    s.orchestration_id,
-                                    s.agent_id,
-                                    serde_json::to_value(s.status)
-                                        .ok()
-                                        .and_then(|v| v.as_str().map(str::to_string))
-                                        .unwrap_or_else(|| "non-completed".to_string()),
-                                    s.error.clone().unwrap_or_default()
-                                )),
-                            }
-                        }
-                        AgentStatus::Pending | AgentStatus::Running | AgentStatus::Waiting => {
-                            PhaseWorkerOutcome {
-                                orchestration_id: Some(oid),
-                                output: None,
-                                error: Some(format!(
-                                    "child '{}' returned non-terminal status",
-                                    s.orchestration_id
-                                )),
-                            }
-                        }
+                        OrchestrationTaskStatus::Failed
+                        | OrchestrationTaskStatus::Cancelled
+                        | OrchestrationTaskStatus::CancelRequested
+                        | OrchestrationTaskStatus::TimedOut
+                        | OrchestrationTaskStatus::Abandoned => PhaseWorkerOutcome {
+                            orchestration_id: Some(oid),
+                            output: None,
+                            error: Some(format!(
+                                "child '{}' (agent '{}') ended {}: {}",
+                                s.orchestration_id,
+                                s.agent_id,
+                                serde_json::to_value(s.status)
+                                    .ok()
+                                    .and_then(|v| v.as_str().map(str::to_string))
+                                    .unwrap_or_else(|| "non-completed".to_string()),
+                                s.error.clone().unwrap_or_default()
+                            )),
+                        },
+                        OrchestrationTaskStatus::Pending
+                        | OrchestrationTaskStatus::Running
+                        | OrchestrationTaskStatus::Awaiting => PhaseWorkerOutcome {
+                            orchestration_id: Some(oid),
+                            output: None,
+                            error: Some(format!(
+                                "child '{}' returned non-terminal status",
+                                s.orchestration_id
+                            )),
+                        },
                     },
                     None => PhaseWorkerOutcome {
                         orchestration_id: Some(oid),
