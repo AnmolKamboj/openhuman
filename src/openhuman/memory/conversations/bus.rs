@@ -12,8 +12,8 @@ use serde_json::json;
 use crate::core::events::DomainEvent;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
-use tinychannels::context::conversation_history_key;
-use tinychannels::ChannelMessage;
+use tinychannels_bus::context::conversation_history_key;
+use tinychannels_bus::ChannelMessage;
 
 use tinycortex::memory::conversations::{
     append_message, ensure_thread, get_messages, ConversationMessage, CreateConversationThread,
@@ -302,11 +302,11 @@ fn persist_channel_turn(
     Ok(())
 }
 
-fn tinychannels_session_key(envelope: &tinychannels::ChannelInboundEnvelope) -> String {
-    tinychannels::build_session_key_for_inbound_envelope(
+fn tinychannels_session_key(envelope: &tinychannels_bus::ChannelInboundEnvelope) -> String {
+    tinychannels_bus::build_session_key_for_inbound_envelope(
         "main",
         envelope,
-        tinychannels::channel::SessionKeyPolicy::default(),
+        tinychannels_bus::channel::SessionKeyPolicy::default(),
     )
 }
 
@@ -375,7 +375,7 @@ mod tests {
         let temp = TempDir::new().expect("tempdir");
         let subscriber = ConversationPersistenceSubscriber::new(temp.path().to_path_buf());
         let mut inbound_envelope =
-            tinychannels::inbound_envelope_from_legacy_message(&ChannelMessage {
+            tinychannels_bus::inbound_envelope_from_legacy_message(&ChannelMessage {
                 channel: "slack".into(),
                 id: "m1".into(),
                 sender: "alice".into(),
@@ -384,7 +384,7 @@ mod tests {
                 thread_ts: Some("thread-1".into()),
                 timestamp: 0,
             });
-        inbound_envelope.conversation.kind = tinychannels::channel::ConversationKind::Channel;
+        inbound_envelope.conversation.kind = tinychannels_bus::channel::ConversationKind::Channel;
         inbound_envelope.conversation.scope_id = Some("T123".into());
 
         subscriber

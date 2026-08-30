@@ -59,7 +59,7 @@
 //! side-effect free — declared through
 //! [`OpenHumanToolOutcomeClassifier::with_retry_safe_tools`] as an
 //! **allowlist**. An allowlist rather than the inverse, because
-//! `Tool::external_effect()` is arg-less: `ShellTool` and the TinyPlace raw
+//! `Tool::external_effect()` is arg-less: `ShellTool` and other raw
 //! tool classify their effect from *arguments* (`external_effect_with_args`)
 //! and leave the arg-less variant at the default `false`, so a denylist built
 //! from it would admit precisely the tools that must be excluded. Absent the
@@ -120,7 +120,7 @@ impl OpenHumanToolOutcomeClassifier {
     /// List a tool here only when calling it twice is *definitionally*
     /// harmless — a pure read. Do **not** build this by inverting
     /// `Tool::external_effect()`: that signal is arg-less, and a tool whose
-    /// effect depends on its arguments (`ShellTool`, the TinyPlace raw tool)
+    /// effect depends on its arguments (`ShellTool`, raw tools)
     /// overrides `external_effect_with_args` while leaving the arg-less
     /// variant at the default `false`. Inverting it would silently admit
     /// exactly the tools that most need excluding.

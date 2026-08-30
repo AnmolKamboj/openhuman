@@ -59,22 +59,41 @@ function extractFunction(name) {
 function withRunnerFunctions(functions, preamble, body) {
   const script = [
     "set -euo pipefail",
+    // Merge stderr into stdout for the whole script, including the success
+    // path. A `case`/`if !` guard around an undefined helper can turn bash's
+    // status-127 "command not found" into a handled branch rather than a
+    // thrown error, so execFileSync's success path — which otherwise only
+    // returns stdout — would never see it and the guard below would miss a
+    // real extraction drift.
+    "exec 2>&1",
     extractTestsRunDecl(),
     preamble,
     ...functions.map(extractFunction),
     body,
   ].join("\n");
+  let result;
   try {
-    return {
+    result = {
       status: 0,
       output: execFileSync("bash", ["-c", script], { encoding: "utf8" }),
     };
   } catch (err) {
-    return {
+    result = {
       status: err.status,
       output: `${err.stdout ?? ""}${err.stderr ?? ""}`,
     };
   }
+  // A function that calls a helper this list did not lift out fails at runtime
+  // with `command not found`, and bash's 127 then flows into whatever branch the
+  // caller was testing — so the assertion fails for a reason that has nothing to
+  // do with the behaviour under test. Surface it as itself instead.
+  assert.doesNotMatch(
+    result.output,
+    /command not found/,
+    `the extracted functions call a helper that was not lifted out of the runner; ` +
+      `add it to the \`functions\` list:\n${result.output}`,
+  );
+  return result;
 }
 
 test("a failed raw coverage module fails the run even when a later module succeeds", () => {
@@ -82,8 +101,16 @@ test("a failed raw coverage module fails the run even when a later module succee
   // The loop's status is its last iteration's, so without an explicit `return`
   // the failure is discarded and CI goes green on a red suite.
   const res = withRunnerFunctions(
-    ["run_counted", "run_integration_target"],
+    // `target_features_satisfied` is not decoration: `run_integration_target`
+    // consults it on entry, so omitting it makes every target look unsatisfiable
+    // and the function returns early without running anything.
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
     [
+      // Inputs to `target_features_satisfied`. Empty reqs means "no target
+      // declares required-features", i.e. nothing is skipped — the condition
+      // this test needs in order to reach the loop it is actually about.
+      'TEST_TARGET_REQS=""',
+      'PRODUCT_FEATURES=""',
       "log() { printf '%s\\n' \"$*\"; }",
       "raw_coverage_modules() { printf 'first\\nsecond\\n'; }",
       // Neutralise the product-feature gate. Without this the runner skips
@@ -145,4 +172,76 @@ test("run_counted counts zero for a run that executed no tests", () => {
   );
   assert.equal(res.status, 0, res.output);
   assert.match(res.output, /ZERO/);
+});
+
+// The `required-features` skip that `run_integration_target` performs on entry
+// had no test of its own, which is how the extraction above drifted out of sync
+// with it unnoticed. These pin both directions.
+
+test("an integration target whose required-features are not in the product set is skipped", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      // `memory_artifacts_e2e` needs `memory-git`, which the product set below
+      // does not enable — the exact shape that took this lane down when a gate
+      // was dropped from the product set.
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      'PRODUCT_FEATURES="channels,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      // Fails loudly if the skip does not happen, so a regression cannot pass
+      // by quietly doing the work.
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    [
+      "run_integration_target memory_artifacts_e2e",
+      'echo "rc=$?"',
+    ].join("\n"),
+  );
+
+  assert.match(res.output, /skipping memory_artifacts_e2e/, res.output);
+  assert.doesNotMatch(res.output, /RAN-THE-TARGET/, res.output);
+  // Skipping is success: one unsatisfiable target must not fail the lane.
+  assert.match(res.output, /rc=0/, res.output);
+});
+
+test("an integration target whose required-features are all present still runs", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      // Same target, now satisfied. Substring matching would be a real hazard
+      // here, so the product set deliberately contains a feature that has
+      // `memory-git` as a prefix-adjacent neighbour.
+      'PRODUCT_FEATURES="memory-github,memory-git,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    ["run_integration_target memory_artifacts_e2e", 'echo "rc=$?"'].join("\n"),
+  );
+
+  assert.match(res.output, /RAN-THE-TARGET/, res.output);
+  assert.doesNotMatch(res.output, /skipping/, res.output);
+  assert.match(res.output, /rc=0/, res.output);
+});
+
+test("required-features matching is exact, not substring — a superset name does not satisfy it", () => {
+  const res = withRunnerFunctions(
+    ["run_counted", "target_features_satisfied", "run_integration_target"],
+    [
+      'TEST_TARGET_REQS="$(printf \'memory_artifacts_e2e\\tmemory-git\')"',
+      // `memory-git` is required, but the product set below only has
+      // `memory-github` — which contains `memory-git` as a substring — and
+      // `flows`. An implementation that matched by substring rather than by
+      // exact comma-delimited entry would wrongly consider this satisfied and
+      // run the target; a correct one must still skip it.
+      'PRODUCT_FEATURES="memory-github,flows"',
+      "log() { printf '%s\\n' \"$*\"; }",
+      "llvm_cov() { echo 'RAN-THE-TARGET'; return 0; }",
+    ].join("\n"),
+    ["run_integration_target memory_artifacts_e2e", 'echo "rc=$?"'].join("\n"),
+  );
+
+  assert.match(res.output, /skipping memory_artifacts_e2e/, res.output);
+  assert.doesNotMatch(res.output, /RAN-THE-TARGET/, res.output);
+  assert.match(res.output, /rc=0/, res.output);
 });

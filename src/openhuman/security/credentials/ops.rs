@@ -54,8 +54,8 @@ fn is_embedder_host() -> bool {
     crate::core::runtime::context::CoreContext::current_embedder_config().is_some()
 }
 
-/// Start all login-gated background services (local AI, voice, and
-/// orchestration). Called both from the initial boot path (when an existing
+/// Start all login-gated background services (local AI and voice). Called both
+/// from the initial boot path (when an existing
 /// session is detected) and from `store_session()` on fresh login.
 pub async fn start_login_gated_services(config: &Config) {
     // These login-gated services are mutually independent — the ONLY ordering
@@ -63,9 +63,9 @@ pub async fn start_login_gated_services(config: &Config) {
     // for the single rdev global listener on macOS). Previously each was
     // `.await`ed in series, so their cold-start costs SUMMED: the local-AI
     // bootstrap (Ollama/embeddings) + the Windows WASAPI microphone init
-    // (a synchronous readiness handshake in `always_on::spawn_capture_thread`) +
-    // the hosted-client network sync stacked into the ~10s stall users hit
-    // before hotkeys/commands were usable — worst on Windows (#3490). Worse,
+    // (a synchronous readiness handshake in `always_on::spawn_capture_thread`)
+    // stacked into the ~10s stall users hit before hotkeys/commands were usable
+    // — worst on Windows (#3490). Worse,
     // the hotkey/command registration (steps 2–3) sat
     // *after* the local-AI bootstrap in the series, so commands could not
     // register until Ollama finished warming.
@@ -77,9 +77,8 @@ pub async fn start_login_gated_services(config: &Config) {
     // panic in one service is logged on join and never aborts the others.
 
     // Unit tests must not launch the real login-gated background services: they
-    // are detached, long-lived loops (hosted-client read-sync + world-diff
-    // uploader + one-shot history migration, continuous audio capture) that
-    // outlive the test that spawned them and interleave with the
+    // include detached, long-lived continuous audio capture that outlives the
+    // test that spawned it and interleaves with the
     // shared process state (HOME / active_user.toml) of the parallel `cargo
     // test` run. Once startup became concurrent (#3490) that interleaving made
     // the session-isolation tests order-dependent. `cfg!(test)` is compiled out
@@ -164,50 +163,6 @@ pub async fn start_login_gated_services(config: &Config) {
         ));
     }
 
-    // 6. Orchestration hosted-client: read-sync loop + world-diff uploader +
-    //    one-shot history migration. Idempotent (aborts a prior session's loops
-    //    first); no-op when orchestration is disabled. Runs here so both startup
-    //    (already logged in) and a fresh login start the hosted-client tail.
-    //
-    //    Gated on the `hosted` domain family. `start_hosted_client_services`
-    //    lives in `hosted::orchestration`, which `DomainSet` can switch off —
-    //    and a gated domain is supposed to have no live surface at all, its
-    //    background loops included. Starting it anyway is not merely untidy:
-    //    the loop's first act is a backend call with the stored session, and a
-    //    rejection flips the scheduler gate to signed-out, which then fails
-    //    `verify_session_active` for every subsequent turn. An embedder running
-    //    `DomainSet::embedded()` (hosted: false) with its own inference
-    //    endpoint would watch unrelated turns fail with SESSION_EXPIRED.
-    //
-    //    Read the domain set BEFORE the spawn: `CoreContext::current()` resolves
-    //    a task-local, which a spawned task does not inherit. Absent a context
-    //    (a direct CLI call, a unit test) the answer is "enabled", preserving
-    //    the previous behaviour exactly.
-    {
-        let hosted_enabled = crate::core::runtime::context::CoreContext::current()
-            .map(|ctx| ctx.domains().hosted)
-            .unwrap_or(true);
-        if hosted_enabled {
-            let config = config.clone();
-            tasks.push((
-                "orchestration",
-                tokio::spawn(async move {
-                    let step = std::time::Instant::now();
-                    crate::openhuman::hosted::orchestration::start_hosted_client_services(&config)
-                        .await;
-                    log::debug!(
-                        "[services] orchestration hosted-client started ({} ms)",
-                        step.elapsed().as_millis()
-                    );
-                }),
-            ));
-        } else {
-            log::debug!(
-                "[services] orchestration hosted-client skipped — the `hosted` domain family is off"
-            );
-        }
-    }
-
     let total = tasks.len();
     let mut failed = 0usize;
     for (name, task) in tasks {
@@ -254,9 +209,6 @@ pub async fn stop_login_gated_services(config: &Config) {
     //    stops transcribing/delivering after logout (no audio processed while
     //    logged out). Symmetric with start_login_gated_services step 3b.
     crate::openhuman::voice::always_on::stop();
-
-    // 7. Orchestration hosted-client loops (read-sync + world-diff uploader).
-    crate::openhuman::hosted::orchestration::stop_hosted_client_services();
 
     log::info!("[services] all login-gated services stopped");
 }
@@ -570,6 +522,13 @@ async fn store_session_inner(
         config.clone()
     };
 
+    if let Err(error) = crate::openhuman::cron::seed::prune_retired_jobs(&effective_config) {
+        tracing::warn!(
+            error = %error,
+            "[credentials] failed to prune retired cron jobs after user workspace activation"
+        );
+    }
+
     if local_session {
         match crate::openhuman::config::ops::set_onboarding_completed(false).await {
             Ok(_) => logs.push("onboarding left incomplete for local session setup".to_string()),
@@ -635,7 +594,7 @@ async fn store_session_inner(
     );
     logs.push("conversation persistence bound to active workspace".to_string());
 
-    // Start all login-gated services (voice, orchestration, and local AI).
+    // Start all login-gated services (voice and local AI).
     // Uses the effective config so services see the user-scoped workspace
     // directory.
     start_login_gated_services(&effective_config).await;
@@ -830,7 +789,7 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
         }
     }
 
-    // Stop all login-gated services (voice, orchestration, and local AI) so
+    // Stop all login-gated services (voice and local AI) so
     // they don't run as orphan processes after logout, consuming RAM/CPU with
     // no user context to operate against.
     stop_login_gated_services(config).await;

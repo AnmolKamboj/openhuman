@@ -671,6 +671,10 @@ async fn finish_revalidated_user_activation(
     user_id: &str,
     service_rebind_source: Option<&Config>,
 ) {
+    if let Err(error) = crate::openhuman::cron::seed::prune_retired_jobs(target_config) {
+        warn!("{LOG_PREFIX} failed to prune retired cron jobs after pending session revalidation: {error}");
+    }
+
     // ── No explicit memory re-point here any more (#5560) ──────────────────
     //
     // This was `tinymemory_core::global::init(...)`, the in-process engine's

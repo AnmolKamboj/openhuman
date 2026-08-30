@@ -2424,7 +2424,6 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
         ("run_workflow", G::Skills),
         ("cron_add", G::Automation),
         ("composio_execute", G::Integrations),
-        ("orchestration_list_sessions", G::Hosted),
         ("dashboard_model_health", G::Desktop),
         ("node_exec", G::Runtimes),
         ("tinyjuice_retrieve", G::Inference),
@@ -2438,18 +2437,16 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     // `Modules` is the loader, not a capability: a loaded module's own surface
     // is reached through whichever domain calls it (documents go through the
     // document tools), so the family itself owns no agent tool.
-    // `Relay` joined this list when the `tinyplace_*` agent-tool family was
-    // removed: the domain still exists and still serves its controllers, it
-    // just advertises no agent tool any more. `Channels` joined it for the same
-    // reason when the three `whatsapp_data_*` tools went — the channel runtime,
+    // `Channels` joined this list when the three `whatsapp_data_*` tools went —
+    // the channel runtime,
     // its controllers and its inbound dispatch are all still there.
     &[
         G::Config,
         G::Security,
         G::Medulla,
         G::Modules,
-        G::Relay,
         G::Channels,
+        G::Hosted,
     ]
 };
 

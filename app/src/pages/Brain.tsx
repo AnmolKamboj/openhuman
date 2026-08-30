@@ -1,12 +1,10 @@
 /**
  * Brain — the centerpiece memory surface.
  *
- * Sub-tabs: Welcome, Graph, Goals, Sources, Sync, and
- * **Orchestration** (the TinyPlace multi-agent surface, folded back in from the
- * former top-level `/orchestration` tab — see {@link OrchestrationView}).
+ * Sub-tabs: Welcome, Graph, Goals, Sources, and Sync.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { CodingSessionsCard } from '../components/intelligence/CodingSessionsCard';
 import GoalsPanel from '../components/intelligence/GoalsPanel';
@@ -19,10 +17,8 @@ import { ToastContainer } from '../components/intelligence/Toast';
 import PageWelcome from '../components/layout/PageWelcome';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import TwoPaneNav from '../components/layout/TwoPaneNav';
-import OrchestrationView from '../components/orchestration/OrchestrationView';
 import SettingsTabbedPage from '../components/settings/layout/SettingsTabbedPage';
 import { Alert, AlertDescription, Card } from '../components/ui';
-import { useTinyPlaceIdentity } from '../hooks/useTinyPlaceIdentity';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
 import type { ToastNotification } from '../types/intelligence';
@@ -32,7 +28,7 @@ import {
   memoryTreeGraphExport,
 } from '../utils/tauriCommands';
 
-type BrainTab = 'welcome' | 'graph' | 'goals' | 'sources' | 'sync' | 'orchestration';
+type BrainTab = 'welcome' | 'graph' | 'goals' | 'sources' | 'sync';
 
 /** Small inline icon helper for the Brain sidebar nav. */
 const navIcon = (d: string) => (
@@ -41,24 +37,12 @@ const navIcon = (d: string) => (
   </svg>
 );
 
-const BRAIN_TABS: readonly BrainTab[] = [
-  'welcome',
-  'graph',
-  'goals',
-  'sources',
-  'sync',
-  'orchestration',
-];
+const BRAIN_TABS: readonly BrainTab[] = ['welcome', 'graph', 'goals', 'sources', 'sync'];
 
 /**
  * Canonical text header (title + one-line description) per functional tab.
- * Orchestration is excluded — it renders its own full-bleed surface
- * ({@link OrchestrationView}) with its own chip nav, not the shared scaffold.
  */
-const BRAIN_HEADERS: Record<
-  Exclude<BrainTab, 'welcome' | 'orchestration'>,
-  { titleKey: string; descKey: string }
-> = {
+const BRAIN_HEADERS: Record<Exclude<BrainTab, 'welcome'>, { titleKey: string; descKey: string }> = {
   graph: { titleKey: 'brain.tabs.graph', descKey: 'brain.header.graph' },
   goals: { titleKey: 'brain.tabs.goals', descKey: 'brain.header.goals' },
   sources: { titleKey: 'brain.tabs.sources', descKey: 'brain.header.sources' },
@@ -83,28 +67,6 @@ export default function Brain() {
     },
     [location.pathname, location.search, navigate]
   );
-  // Back-compat: the old `?tab=tinyplace-orchestration` slug (from when
-  // Orchestration was briefly a top-level tab) now maps to the folded-in
-  // Orchestration sub-tab.
-  useEffect(() => {
-    if (new URLSearchParams(location.search).get('tab') === 'tinyplace-orchestration') {
-      console.debug('[brain] legacy tinyplace-orchestration deep link → ?tab=orchestration');
-      navigate('/brain?tab=orchestration', { replace: true });
-    }
-  }, [location.search, navigate]);
-
-  // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
-  // without an identity. If a *confirmed* non-holder lands on `?tab=orchestration`
-  // via a stale deep link, redirect to the Brain welcome tab. This is a
-  // render-phase redirect (not a post-commit effect), so once the check resolves
-  // to a non-holder OrchestrationView never mounts. While the check is still in
-  // flight we render optimistically — matching the AgentWorldShell route guard —
-  // so a holder (the common case) never sees a flash; the brief optimistic window
-  // for a stale non-holder link is the deliberate trade-off.
-  const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
-  const shouldRedirectFromOrchestration =
-    activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity;
-
   const [graph, setGraph] = useState<GraphExportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<GraphMode>('tree');
@@ -130,15 +92,6 @@ export default function Brain() {
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
 
   useEffect(() => {
-    // Orchestration is a full-bleed sub-tab that never renders the memory graph,
-    // so skip the export RPC + memory-tree listener entirely while it's active.
-    // Without this, folding Orchestration under Brain would fire an unrelated
-    // graph load on every `/brain?tab=orchestration` (and redirected
-    // `/orchestration`) visit, which the old standalone page never did.
-    if (activeTab === 'orchestration') {
-      console.debug('[brain] graph fetch: skipped (orchestration tab)');
-      return;
-    }
     let cancelled = false;
     const load = async () => {
       console.debug('[brain] graph fetch: entry mode=%s', mode);
@@ -170,14 +123,8 @@ export default function Brain() {
     };
     // `authUserId` is a dependency so a logout→login (identity becomes
     // available again) re-pulls the persisted graph instead of leaving the
-    // signed-out empty state on screen (#4149). `activeTab` gates the fetch off
-    // on the Orchestration sub-tab (and re-runs it when returning to a
-    // graph-bearing tab).
-  }, [mode, refreshKey, authUserId, activeTab]);
-
-  if (shouldRedirectFromOrchestration) {
-    return <Navigate to="/brain" replace />;
-  }
+    // signed-out empty state on screen (#4149).
+  }, [mode, refreshKey, authUserId]);
 
   return (
     <div className="h-full">
@@ -217,36 +164,13 @@ export default function Brain() {
                       'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
                     ),
                   },
-                  // TinyPlace multi-agent orchestration, folded back under Brain
-                  // from the former top-level `/orchestration` tab. Hidden from
-                  // users without a tiny.place identity (#5424).
-                  ...(hasTinyplaceIdentity
-                    ? [
-                        {
-                          value: 'orchestration',
-                          label: t('brain.tabs.orchestration'),
-                          icon: navIcon(
-                            'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
-                          ),
-                        },
-                      ]
-                    : []),
                 ],
               },
             ]}
           />
         </div>
       </SidebarContent>
-      {activeTab === 'orchestration' ? (
-        // Full-bleed: OrchestrationView renders its own chip nav + surfaces
-        // (chat, graph, task board), which need the full content width — so it
-        // sits outside the shared max-w scaffold the other tabs use.
-        <div className="flex h-full flex-col">
-          <div className="min-h-0 flex-1">
-            <OrchestrationView />
-          </div>
-        </div>
-      ) : (
+      {
         // Full width on purpose: the header band has to run edge to edge across
         // the content card, so the width cap cannot live above it. Each tab's
         // body carries its own `mx-auto max-w-3xl`, which is what the old
@@ -304,13 +228,8 @@ export default function Brain() {
             than a bordered card floating in the content column. */
             <div className="h-full p-4">
               <SettingsTabbedPage
-                title={t(
-                  BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>]
-                    .titleKey
-                )}
-                description={t(
-                  BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].descKey
-                )}>
+                title={t(BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome'>].titleKey)}
+                description={t(BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome'>].descKey)}>
                 <div className="w-full space-y-5">
                   {activeTab === 'graph' && (
                     <div className="space-y-5 animate-fade-up">
@@ -366,7 +285,7 @@ export default function Brain() {
             </div>
           )}
         </div>
-      )}
+      }
 
       <ToastContainer notifications={toasts} onRemove={removeToast} />
     </div>

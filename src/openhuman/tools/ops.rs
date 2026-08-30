@@ -276,21 +276,6 @@ pub fn all_tools_with_runtime(
         Box::new(ResolveTimeTool::new()),
         Box::new(DetectToolsTool::new()),
         Box::new(InstallToolTool::new(security.clone())),
-        // Orchestration session-history read tools — browse persisted
-        // OpenHuman↔agent transcripts. Read-only; workspace-internal store access.
-        Box::new(
-            crate::openhuman::hosted::orchestration::tools::ListSessionsTool::new(config.clone()),
-        ),
-        Box::new(
-            crate::openhuman::hosted::orchestration::tools::ReadSessionTool::new(config.clone()),
-        ),
-        // List the agent's tiny.place contacts (browse-loop entry point).
-        Box::new(crate::openhuman::hosted::orchestration::tools::ListContactsTool),
-        // Send-on-behalf: DM another agent for the user. Linked-peers-only,
-        // reuse-or-mint per-peer session id; Write-class external effect.
-        Box::new(
-            crate::openhuman::hosted::orchestration::tools::SendToAgentTool::new(config.clone()),
-        ),
         Box::new(CronAddTool::new(config.clone(), security.clone())),
         Box::new(CronListTool::new(config.clone())),
         Box::new(CronRemoveTool::new(config.clone())),
@@ -1399,8 +1384,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     if name.starts_with("orchestration_") {
         return DomainGroup::Hosted;
     }
-    // Relay owns no agent tools since the `tinyplace_*` family was removed —
-    // see `TOOL_LESS` in `ops_tests.rs`, which is what keeps that honest.
     // Desktop: shell-facing surfaces.
     if name.starts_with("dashboard_") {
         return DomainGroup::Desktop;
