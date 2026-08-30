@@ -13,6 +13,9 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   283/267/2  2026-08-30  removed TinyPlace from the core and app, shedding
+#                      five packages and three unique crate names from the
+#                      workflow-only profile.
 #   288/270/2  2026-08-29  the tool vocabulary moved into its own crate
 #                      (+1 package, +1 NAME: `tinytools`). This entry is the
 #                      CURRENT limit; the tinyjuice entry below it left the
@@ -492,4 +495,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:288:270:2
+flows:283:267:2
