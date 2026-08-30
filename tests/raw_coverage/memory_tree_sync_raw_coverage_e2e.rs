@@ -44,7 +44,7 @@ use openhuman_core::openhuman::memory::tree::tree::{
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     engine, rpc as tree_runtime_rpc, store as runtime_store,
 };
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -165,7 +165,7 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         _request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let response = self
             .responses
             .lock()
