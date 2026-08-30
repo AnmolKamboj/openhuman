@@ -207,18 +207,6 @@ tinyagents-graph = { path = "vendor/tinyagents/crates/tinyagents-graph", feature
 tinyagents-language = { path = "vendor/tinyagents/crates/tinyagents-language" }
 tinyagents-registry = { path = "vendor/tinyagents/crates/tinyagents-registry" }
 tinyagents-session = { path = "vendor/tinyagents/crates/tinyagents-session" }
-# `tinymemory-core`'s `ChatHost` seam (`vendor/tinymemory/crates/tinymemory-core/
-# src/chat_host.rs`) still names the pre-split, published `tinyagents::harness::
-# model::{ChatModel, ModelResponse}` — tinymemory has not migrated onto the
-# tinyagents-harness/tinyinference split yet, so its seam and this crate's own
-# model types are two separately compiled, nominally distinct type graphs, even
-# though the wire shapes are the same provider-neutral request/response schema
-# (tinyinference's model types are literally what tinyagents 2.x's harness::model
-# looked like before the split). This dependency exists ONLY so
-# `memory/host_impls.rs` can implement that old trait; nothing else here should
-# reach for it — reach for `tinyagents-harness` / `tinyinference` instead. Drop
-# it once tinymemory migrates its `ChatHost` seam onto the split crates.
-tinyagents = "2.1"
 tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinference" }
 # TinyTools — the tool vocabulary: the `Tool` trait, `ToolResult`, and the
 # permission / scope / timeout classifications this host enforces around a call.
