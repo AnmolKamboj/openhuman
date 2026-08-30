@@ -75,10 +75,10 @@ use openhuman_core::openhuman::integrations::composio::profile_md::{
     replace_managed_block,
 };
 use openhuman_core::openhuman::integrations::composio::providers::{
-    agent_ready_toolkits, capability_matrix, catalog_for_toolkit, classify_unknown,
-    curated_scope_for, find_curated, is_action_visible_with_pref, toolkit_from_slug,
-    toolkit_has_scope, CuratedTool, NormalizedTask, ProviderUserProfile,
-    SyncOutcome as ComposioSyncOutcome, SyncReason, TaskFetchFilter, ToolScope, UserScopePref,
+    agent_ready_toolkits, catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated,
+    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, CuratedTool,
+    NormalizedTask, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome, SyncReason,
+    TaskFetchFilter, ToolScope, UserScopePref,
 };
 use tinymemory_api::composio::{
     canonicalize, extract_item_id, render_connected_identities_section, ConnectedIdentity,
