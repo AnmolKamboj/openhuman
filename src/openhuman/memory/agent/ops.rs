@@ -44,7 +44,8 @@ pub async fn bench_walk(
     // the scope passed here IS the gate, and a literal `None` would fail it
     // open. See `memory::tree::retrieval::rpc`'s module docs.
     let scope = as_bus_scope();
-    let binding = crate::openhuman::memory::binding::for_config(config)?;
+    let binding = crate::openhuman::memory::binding::for_config(config)
+        .map_err(|e| anyhow::anyhow!("bench_walk: bind memory driver: {e}"))?;
     let start = Instant::now();
     let resp = match binding.provider().as_retrieval() {
         Some(retrieval) => retrieval
