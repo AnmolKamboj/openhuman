@@ -17,9 +17,7 @@ use super::super::types::{
     ComposioAuthorizeRequest, ComposioAuthorizeResponse, ComposioConnectionsResponse,
     ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
-use super::error_utils::{
-    direct_mode_without_key, report_composio_op_error, OpResult,
-};
+use super::error_utils::{direct_mode_without_key, report_composio_op_error, OpResult};
 use super::memory_cleanup::composio_memory_targets_for_connection;
 
 pub async fn composio_list_connections(
@@ -242,15 +240,16 @@ pub(super) async fn resolve_toolkit_for_connection(
     connection_id: &str,
 ) -> OpResult<String> {
     tracing::debug!(connection_id = %connection_id, "[composio] resolve_toolkit_for_connection");
-    let resp = connectors::call_bare::<ComposioConnectionsResponse>(
-        config,
-        methods::LIST_CONNECTIONS,
-    )
-    .await
-    .map_err(|error| {
-        report_composio_op_error("resolve_toolkit_for_connection", &anyhow::anyhow!("{error}"));
-        format!("[composio] list_connections failed: {error}")
-    })?;
+    let resp =
+        connectors::call_bare::<ComposioConnectionsResponse>(config, methods::LIST_CONNECTIONS)
+            .await
+            .map_err(|error| {
+                report_composio_op_error(
+                    "resolve_toolkit_for_connection",
+                    &anyhow::anyhow!("{error}"),
+                );
+                format!("[composio] list_connections failed: {error}")
+            })?;
     let conn = resp
         .connections
         .into_iter()

@@ -28,7 +28,6 @@ fn parse_sync_reason_rejects_unknown_values() {
     assert!(parse_sync_reason(Some("")).is_err());
 }
 
-
 /// Serializes every test that reaches the connector module.
 ///
 /// The module is loaded once per process and holds exactly one route, but each

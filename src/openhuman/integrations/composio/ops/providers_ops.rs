@@ -20,11 +20,11 @@ use super::super::providers::{ProviderUserProfile, SyncOutcome, SyncReason};
 use super::super::types::{
     reencode, ComposioRefreshIdentitiesResponse, ComposioUserProfile, ComposioUserProfileRequest,
 };
+use super::connections::resolve_toolkit_for_connection;
+use super::error_utils::{report_composio_op_error, OpResult};
 use crate::openhuman::memory::api::provider::types::SourceItem;
 use crate::openhuman::memory::api::types::MemoryTaint;
 use tinyconnectors_bus::records::{ConnectorSyncRequest, ConnectorSyncResponse};
-use super::connections::resolve_toolkit_for_connection;
-use super::error_utils::{report_composio_op_error, OpResult};
 
 /// The source kind every connector record is ingested under.
 ///

@@ -150,8 +150,8 @@ fn fingerprint(route: &serde_json::Value) -> u64 {
 /// user's session no longer owns, and "your account is broken" is a bad way to
 /// tell someone they are signed out.
 async fn ensure_routed(config: &Config, proxy: &Proxy) -> Result<(), String> {
-    let mut route = module_config(config)
-        .unwrap_or_else(|_| serde_json::json!({ "route": "none" }));
+    let mut route =
+        module_config(config).unwrap_or_else(|_| serde_json::json!({ "route": "none" }));
     // `state_dir` is load-time only: the trigger archive opens once, and moving
     // it later would strand the history already written there.
     if let Some(object) = route.as_object_mut() {
@@ -159,7 +159,11 @@ async fn ensure_routed(config: &Config, proxy: &Proxy) -> Result<(), String> {
     }
 
     let current = fingerprint(&route);
-    if *last_route().lock().unwrap_or_else(std::sync::PoisonError::into_inner) == Some(current) {
+    if *last_route()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        == Some(current)
+    {
         return Ok(());
     }
 
@@ -170,7 +174,9 @@ async fn ensure_routed(config: &Config, proxy: &Proxy) -> Result<(), String> {
 
     // Recorded only after the module accepted it, so a failed reconfiguration
     // is retried on the next call rather than remembered as done.
-    *last_route().lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(current);
+    *last_route()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(current);
     Ok(())
 }
 
