@@ -838,7 +838,22 @@ not be anything else:
 | `tinyflows-catalog` | `Flow` / `FlowRevision` / `FlowRun` / `FlowDraft` / `FlowSuggestion` and friends, the run + build cancellation registries, the n8n importer, and the save/run safety predicates (`trigger_is_automatic`, `enforce_side_effect_approval`, `graph_has_actionable_nodes`) | `node_contracts.rs` — the *host overlay* on `tinyflows::catalog`: what a `tool_call` slug resolves to here, which trigger kinds this host actually dispatches |
 | `tinyflows-sqlite` | the `flows.db` catalog schema and every query, the JSON draft store, the durable run checkpointer | `store.rs` / `draft_store.rs` — one substitution each, `<workspace_dir>/flows`, and nothing else |
 | `tinyflows-copilot` | the `workflow_builder` + `flow_discovery` standing archetypes and the builder turn brief | `agents/*/prompt.rs` (appending this host's runtime sections) and `agent.toml` (this host's registry format) |
-| `tinyflows` | — | `tinyflows/caps/` — every capability adapter: this host's LLM, agent harness, tools, HTTP, sandboxed code, memory |
+| `tinyflows` | the authoring checks that are statements about the *graph* or the *engine*: `gates` (envelope violations, prose written as a `=`-expression, a tool arg reading an agent field no schema declares), `compat` (fan-in topologies the engine's barrier relief cannot execute safely), `preflight` (the mock run that proves an outbound arg can resolve), the schema-aware dry-run mocks, and the step-capturing `RunObserver` | `tinyflows/caps/` — every capability adapter: this host's LLM, agent harness, tools, HTTP, sandboxed code, memory |
+
+**`ops.rs` keeps the gates that need this host's vocabulary, and only those.**
+Which agent ids resolve, which Composio slugs and connections exist, what a
+toolkit's live output schema says, whether a provider is reachable, whether an
+upload path is workspace-relative — none of that is knowable upstream. What left
+was the opposite: analysis that only ever read the graph. Three of those had
+drifted into near-duplicates of code the engine already had (`collect_expressions`,
+`parse_node_binding`, an envelope-kind table, a jq-keyword list), which is the
+usual reason to look.
+
+**`tinyflows/caps/` is a connector directory and stays one.** The one exception
+was `mocks.rs`, whose every doc comment explained how the engine's own mocks
+fail a good graph — a fact about the engine, so it went with them. The other
+~685 lines name `integrations`, `memory`, `security`, `skills` and `config` on
+almost every screen; that is the seam working, not work left undone.
 
 Two rules follow, and both are load-bearing:
 
