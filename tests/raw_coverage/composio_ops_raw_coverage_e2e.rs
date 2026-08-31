@@ -303,10 +303,14 @@ async fn composio_ops_use_loopback_backend_for_happy_and_error_paths() {
     assert_eq!(deleted.pointer("/result/deleted"), Some(&json!(true)));
     assert!(cached_active_integrations(&config).is_some());
 
-    let missing_provider = composio_sync(&config, "conn-slack", Some("manual".into()))
+    // Sync ownership moved into the Composio module. Slack is now accepted
+    // even though the retired host-side native-provider matrix has no row for
+    // it; the module starts the background sync using its own capabilities.
+    let slack_sync = composio_sync(&config, "conn-slack", Some("manual".into()))
         .await
-        .expect_err("slack has no native provider in this test path");
-    assert!(missing_provider.contains("no native provider"));
+        .expect("module-owned Slack sync starts");
+    assert_eq!(slack_sync.value.toolkit, "slack");
+    assert_eq!(slack_sync.value.details["status"], "started");
     let bad_reason = composio_sync(&config, "conn-gmail", Some("typo".into()))
         .await
         .expect_err("bad sync reason validates before network");
