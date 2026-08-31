@@ -42,8 +42,8 @@ type DataKind = 'raw' | 'derived' | 'credentials' | 'diagnostics' | 'metadata';
 const cap = (id: string, data_kind: DataKind, over: Partial<Capability> = {}): Capability => ({
   id,
   name: `Cap ${id}`,
-  domain: 'test',
-  category: 'test',
+  domain: 'settings',
+  category: 'settings',
   description: `Description for ${id}`,
   how_to: 'Somewhere',
   status: 'stable',
@@ -144,8 +144,8 @@ describe('PrivacyPanel — catalog states', () => {
     const bare: Capability = {
       id: 'plain',
       name: 'Plain',
-      domain: 'test',
-      category: 'test',
+      domain: 'settings',
+      category: 'settings',
       description: 'No privacy metadata.',
       how_to: 'Nowhere',
       status: 'stable',

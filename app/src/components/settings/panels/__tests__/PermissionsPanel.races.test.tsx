@@ -105,7 +105,7 @@ describe('PermissionsPanel — load-shape defaults', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsTauri.mockReturnValue(true);
-    mockGetPaths.mockResolvedValue({ result: agentPaths() });
+    mockGetPaths.mockResolvedValue({ result: agentPaths(), logs: [] });
   });
 
   // `require_task_plan_approval ?? true` and `trusted_roots ?? []`
@@ -116,8 +116,8 @@ describe('PermissionsPanel — load-shape defaults', () => {
     const partial = autonomy();
     delete (partial as Partial<AutonomySettings>).trusted_roots;
     delete (partial as { require_task_plan_approval?: boolean }).require_task_plan_approval;
-    mockGet.mockResolvedValue({ result: partial as AutonomySettings });
-    mockUpdate.mockResolvedValue({ result: autonomy({ level: 'full' }) });
+    mockGet.mockResolvedValue({ result: partial as AutonomySettings, logs: [] });
+    mockUpdate.mockResolvedValue({ result: {} as never, logs: [] });
 
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
@@ -133,8 +133,9 @@ describe('PermissionsPanel — load-shape defaults', () => {
   it('preserves a false require_task_plan_approval rather than defaulting it on', async () => {
     mockGet.mockResolvedValue({
       result: autonomy({ require_task_plan_approval: false } as Partial<AutonomySettings>),
+      logs: [],
     });
-    mockUpdate.mockResolvedValue({ result: autonomy({ level: 'full' }) });
+    mockUpdate.mockResolvedValue({ result: {} as never, logs: [] });
 
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
@@ -162,8 +163,8 @@ describe('PermissionsPanel — persist sequence guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsTauri.mockReturnValue(true);
-    mockGet.mockResolvedValue({ result: autonomy() });
-    mockGetPaths.mockResolvedValue({ result: agentPaths() });
+    mockGet.mockResolvedValue({ result: autonomy(), logs: [] });
+    mockGetPaths.mockResolvedValue({ result: agentPaths(), logs: [] });
   });
 
   it('surfaces a save failure', async () => {
@@ -181,9 +182,9 @@ describe('PermissionsPanel — persist sequence guard', () => {
   // outcome once a newer one has started. Without `persistSeqRef` the stale
   // rejection below would paint an error over a save that actually succeeded.
   it('ignores a stale save failure that lands after a newer save', async () => {
-    const stale = deferred<{ result: AutonomySettings }>();
+    const stale = deferred<{ result: never; logs: string[] }>();
     mockUpdate.mockReturnValueOnce(stale.promise);
-    mockUpdate.mockResolvedValueOnce({ result: autonomy({ level: 'readonly' }) });
+    mockUpdate.mockResolvedValueOnce({ result: {} as never, logs: [] });
 
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
@@ -199,7 +200,7 @@ describe('PermissionsPanel — persist sequence guard', () => {
   });
 
   it('ignores a stale save success that lands after a newer failure', async () => {
-    const stale = deferred<{ result: AutonomySettings }>();
+    const stale = deferred<{ result: never; logs: string[] }>();
     mockUpdate.mockReturnValueOnce(stale.promise);
     mockUpdate.mockRejectedValueOnce(new Error('newer save refused'));
 
@@ -211,7 +212,7 @@ describe('PermissionsPanel — persist sequence guard', () => {
 
     expect(await screen.findByText(/newer save refused/)).toBeInTheDocument();
 
-    stale.resolve({ result: autonomy({ level: 'full' }) });
+    stale.resolve({ result: {} as never, logs: [] });
     await flush();
     // The newer failure must still stand — a late success must not clear it...
     expect(screen.getByText(/newer save refused/)).toBeInTheDocument();
@@ -232,8 +233,8 @@ describe('PermissionsPanel — action_dir sequence guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsTauri.mockReturnValue(true);
-    mockGet.mockResolvedValue({ result: autonomy() });
-    mockGetPaths.mockResolvedValue({ result: agentPaths() });
+    mockGet.mockResolvedValue({ result: autonomy(), logs: [] });
+    mockGetPaths.mockResolvedValue({ result: agentPaths(), logs: [] });
   });
 
   const startEditing = async () => {
@@ -244,7 +245,7 @@ describe('PermissionsPanel — action_dir sequence guard', () => {
   };
 
   it('trims the typed path before sending it', async () => {
-    mockUpdatePaths.mockResolvedValue({ result: agentPaths({ action_dir: '/new/dir' }) });
+    mockUpdatePaths.mockResolvedValue({ result: agentPaths({ action_dir: '/new/dir' }), logs: [] });
 
     const input = await startEditing();
     fireEvent.change(input, { target: { value: '   /new/dir   ' } });
@@ -279,7 +280,7 @@ describe('PermissionsPanel — action_dir sequence guard', () => {
   // one is in flight. Assert the guard that actually holds — a second click
   // cannot start a second RPC — rather than a race the user cannot trigger.
   it('disables Save while one is in flight, so a second click cannot double-send', async () => {
-    const inflight = deferred<{ result: AgentPaths }>();
+    const inflight = deferred<{ result: AgentPaths; logs: string[] }>();
     mockUpdatePaths.mockReturnValueOnce(inflight.promise);
 
     const input = await startEditing();
@@ -291,7 +292,7 @@ describe('PermissionsPanel — action_dir sequence guard', () => {
     fireEvent.click(save);
     expect(mockUpdatePaths).toHaveBeenCalledTimes(1);
 
-    inflight.resolve({ result: agentPaths({ action_dir: '/first' }) });
+    inflight.resolve({ result: agentPaths({ action_dir: '/first' }), logs: [] });
     await waitFor(() => expect(screen.getByText('/first')).toBeInTheDocument());
   });
 });

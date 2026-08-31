@@ -64,7 +64,7 @@ const mockUpdate = vi.mocked(openhumanUpdateSandboxSettings);
 const mockIsTauri = vi.mocked(isTauri);
 
 async function renderLoaded(overrides: Partial<SandboxSettings> = {}) {
-  mockGet.mockResolvedValue({ result: sandboxSettings(overrides) });
+  mockGet.mockResolvedValue({ result: sandboxSettings(overrides), logs: [] });
   renderWithProviders(<SandboxSettingsPanel />);
   await waitFor(() => expect(mockGet).toHaveBeenCalled());
 }
