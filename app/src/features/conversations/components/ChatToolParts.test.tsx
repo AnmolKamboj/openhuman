@@ -14,7 +14,7 @@ const activity: SubagentActivity = {
 };
 
 describe('ChatToolParts', () => {
-  it('renders a delegation with progress args and no result as running', () => {
+  it('renders a running delegation collapsed by default', async () => {
     render(
       <ChatToolFallback
         type="tool-call"
@@ -32,6 +32,12 @@ describe('ChatToolParts', () => {
 
     expect(screen.getByText('running')).toBeInTheDocument();
     expect(screen.getByText('Researcher')).toBeInTheDocument();
+    expect(screen.queryByText('Checking primary sources.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('assistant-ui-subagent-call')).toHaveAttribute(
+      'data-state',
+      'closed'
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Delegated to Researcher/i }));
     expect(screen.getByText('Checking primary sources.')).toBeInTheDocument();
   });
 

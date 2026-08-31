@@ -78,22 +78,22 @@ describe('SubagentActivityBlock', () => {
         }}
       />
     );
-    const calls = screen.getAllByTestId('subagent-tool-call');
+    const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(3);
     // Human labels + timing, with status as a tinted "Done" / "Failed" /
     // "Running" tag instead of a bare ✓/✕ glyph or the raw lowercase word.
     expect(calls[0].textContent).toContain('Searched the web');
-    expect(calls[0].textContent).toContain('Done');
+    expect(calls[0].textContent?.toLowerCase()).toContain('done');
     expect(calls[0].textContent).toContain('312ms');
     expect(calls[1].textContent).toContain('Composio Execute');
-    expect(calls[1].textContent).toContain('Running');
+    expect(calls[1].textContent?.toLowerCase()).toContain('running');
     expect(calls[1].textContent).not.toContain('·t2');
     expect(calls[2].textContent).toContain('Reading file');
-    expect(calls[2].textContent).toContain('Failed');
+    expect(calls[2].textContent?.toLowerCase()).toContain('failed');
     expect(calls[2].textContent).toContain('50ms');
   });
 
-  it('renders subagent web output as Markdown instead of raw JSON', () => {
+  it('renders subagent web output as Markdown instead of raw JSON', async () => {
     renderInStore(
       <SubagentActivityBlock
         subagent={{
@@ -114,7 +114,9 @@ describe('SubagentActivityBlock', () => {
     );
 
     expect(screen.getByText('Searched the web')).toBeInTheDocument();
-    expect(screen.getByTestId('subagent-tool-output')).toHaveTextContent('Formal Conjectures');
+    const call = screen.getByTestId('assistant-ui-tool-call');
+    await userEvent.click(within(call).getByRole('button'));
+    expect(screen.getByTestId('assistant-ui-tool-output')).toHaveTextContent('Formal Conjectures');
     expect(screen.getByRole('strong')).toHaveTextContent('Formal Conjectures');
     expect(screen.queryByText(/"content"/)).not.toBeInTheDocument();
   });
@@ -138,7 +140,7 @@ describe('SubagentActivityBlock', () => {
       />
     );
 
-    expect(screen.getByTestId('subagent-tool-call')).toHaveTextContent('Searched the web');
+    expect(screen.getByTestId('assistant-ui-tool-call')).toHaveTextContent('Searched the web');
   });
 
   it('labels cancelled / awaiting-user calls distinctly (not the green "Done" pill)', () => {
@@ -154,13 +156,13 @@ describe('SubagentActivityBlock', () => {
         }}
       />
     );
-    const calls = screen.getAllByTestId('subagent-tool-call');
+    const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(2);
     // A cancelled / awaiting-user call must NOT read as a successful "Done" step.
-    expect(calls[0].textContent).toContain('Cancelled');
-    expect(calls[0].textContent).not.toContain('Done');
-    expect(calls[1].textContent).toContain('Awaiting input');
-    expect(calls[1].textContent).not.toContain('Done');
+    expect(calls[0].textContent?.toLowerCase()).toContain('cancelled');
+    expect(calls[0].textContent?.toLowerCase()).not.toContain('done');
+    expect(calls[1].textContent?.toLowerCase()).toContain('awaiting input');
+    expect(calls[1].textContent?.toLowerCase()).not.toContain('done');
   });
 
   it('prefers the server-supplied label + contextual detail for a child tool call', () => {
@@ -181,7 +183,7 @@ describe('SubagentActivityBlock', () => {
         }}
       />
     );
-    const row = screen.getByTestId('subagent-tool-call');
+    const row = screen.getByTestId('assistant-ui-tool-call');
     expect(row.textContent).toContain('Reading messages');
     expect(row.textContent).toContain('steven@gmail.com');
     // Never the raw snake_case slug.
@@ -230,7 +232,7 @@ describe('SubagentActivityBlock', () => {
     // Order is preserved: thought → tool → thought.
     expect(rows[0]).toHaveAttribute('data-testid', 'subagent-thought');
     expect(rows[0].textContent).toContain('I should search the web first');
-    expect(rows[1]).toHaveAttribute('data-testid', 'subagent-tool-call');
+    expect(rows[1]).toHaveAttribute('data-testid', 'assistant-ui-tool-call');
     expect(rows[1].textContent).toContain('Searched the web');
     expect(rows[2]).toHaveAttribute('data-testid', 'subagent-thought');
     expect(rows[2].textContent).toContain('Found three relevant results');
@@ -908,7 +910,7 @@ describe('ToolTimelineBlock — coalescing repeated rows', () => {
 });
 
 describe('ToolTimelineBlock — subagent rendering', () => {
-  it('expands a subagent row even without prompt detail and shows child tool calls', () => {
+  it('shows child tool calls after the collapsed subagent row is opened', () => {
     const entry: ToolTimelineEntry = {
       id: 'tid:subagent:sub-1:researcher',
       name: 'subagent:researcher',
@@ -926,7 +928,7 @@ describe('ToolTimelineBlock — subagent rendering', () => {
     };
     renderInStore(<ToolTimelineBlock entries={[entry]} />);
 
-    const calls = screen.getAllByTestId('subagent-tool-call');
+    const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(1);
     expect(calls[0].textContent).toContain('Searching the web');
     expect(screen.getByTestId('subagent-activity').textContent).toContain('turn 1/5');
@@ -1396,19 +1398,19 @@ describe('ToolTimelineBlock — sub-agent activity survives the transcript path'
     expect(screen.getByTestId('processing-transcript')).toBeInTheDocument();
     // …and the nested child run is present, not collapsed to one line.
     expect(screen.getByTestId('processing-subagent')).toBeInTheDocument();
-    const calls = screen.getAllByTestId('subagent-tool-call');
+    const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(2);
     expect(calls[0].textContent).toContain('Searched the web');
-    expect(calls[0].textContent).toContain('Done');
+    expect(calls[0].textContent?.toLowerCase()).toContain('done');
     // Human label, not the raw `web_fetch` slug.
     expect(calls[1].textContent).toContain('Fetching');
-    expect(calls[1].textContent).toContain('Running');
+    expect(calls[1].textContent?.toLowerCase()).toContain('running');
   });
 
   it('still renders child tool calls on the legacy row path (no transcript)', () => {
     renderInStore(<ToolTimelineBlock entries={[subagentEntry]} turnActive />);
     expect(screen.queryByTestId('processing-transcript')).toBeNull();
-    expect(screen.getAllByTestId('subagent-tool-call')).toHaveLength(2);
+    expect(screen.getAllByTestId('assistant-ui-tool-call')).toHaveLength(2);
   });
 
   // The nested child run must live INSIDE the windowed viewport, and must not

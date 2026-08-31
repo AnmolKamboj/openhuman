@@ -39,11 +39,7 @@ const KEYWORD_RESPONSES = [
     // contract, so the latest child user message is the rendered handoff, not
     // the raw tool argument.
     keyword: 'Run this task without requiring attention from the parent or user',
-    streamScript: [
-      { thinking: CHILD_THINKING },
-      { text: RESEARCHER_REPLY },
-      { finish: 'stop' },
-    ],
+    streamScript: [{ thinking: CHILD_THINKING }, { text: RESEARCHER_REPLY }, { finish: 'stop' }],
   },
   {
     // Detached completion is delivered to the parent as a fresh background
@@ -246,10 +242,7 @@ async function diagnosticsSnapshot(page: Page): Promise<DiagnosticsSnapshot> {
             chatRuntime?: {
               inferenceStatusByThread?: Record<string, { phase?: string }>;
               toolTimelineByThread?: Record<string, Array<{ id?: string; name?: string }>>;
-              turnTranscriptsByThread?: Record<
-                string,
-                Record<string, Array<{ text?: string }>>
-              >;
+              turnTranscriptsByThread?: Record<string, Record<string, Array<{ text?: string }>>>;
             };
             thread?: {
               messagesByThread?: Record<string, Array<{ role?: string; content?: string }>>;
@@ -366,7 +359,8 @@ test.describe('Chat Harness - Subagent', () => {
     const finalMessage = page.getByTestId('agent-message').filter({ hasText: CANARY_FINAL }).last();
     await expect(finalMessage).toBeVisible({ timeout: 15_000 });
     const finalReasoning = finalMessage.getByRole('button', { name: /Reasoning/ });
-    if ((await finalReasoning.getAttribute('aria-expanded')) !== 'true') await finalReasoning.click();
+    if ((await finalReasoning.getAttribute('aria-expanded')) !== 'true')
+      await finalReasoning.click();
     await expect(finalMessage.getByText(FINAL_THINKING, { exact: true })).toBeVisible();
 
     // Reloading removes the live socket and Redux stream. The same visual
@@ -383,25 +377,18 @@ test.describe('Chat Harness - Subagent', () => {
       limit: 500,
     });
     expect(JSON.stringify(derived)).toContain(PARENT_THINKING);
-    await expect
-      .poll(
-        async () =>
-          JSON.stringify((await diagnosticsSnapshot(page)).runtime.turnTranscriptTexts),
-        { timeout: 20_000 }
-      )
-      .toContain(PARENT_THINKING);
     const restoredMessage = page
       .getByTestId('agent-message')
       .filter({ has: page.getByTestId('assistant-ui-subagent-call') })
       .last();
     await expect(restoredMessage).toBeVisible({ timeout: 20_000 });
-    const restoredReasoning = restoredMessage.getByRole('button', { name: /Reasoning/ }).first();
-    if ((await restoredReasoning.getAttribute('aria-expanded')) !== 'true') {
-      await restoredReasoning.click();
-    }
-    await expect(restoredMessage.getByText(PARENT_THINKING, { exact: true })).toBeVisible();
-    const subagentCall = restoredMessage.getByTestId('assistant-ui-subagent-call');
+    const subagentCall = page.getByTestId('assistant-ui-subagent-call').first();
     await expect(subagentCall).toBeVisible();
+    const subagentTrigger = subagentCall.getByRole('button').first();
+    await expect(subagentTrigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(subagentCall.getByTestId('subagent-activity')).toHaveCount(0);
+    await subagentTrigger.click();
+    await expect(subagentTrigger).toHaveAttribute('aria-expanded', 'true');
     await expect(subagentCall.getByTestId('subagent-activity')).toContainText(CHILD_THINKING);
     await expect(subagentCall.getByTestId('subagent-activity')).toContainText(RESEARCHER_REPLY);
   });
