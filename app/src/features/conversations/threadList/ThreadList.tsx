@@ -94,11 +94,7 @@ export function ThreadList({
           `text-content-muted` matching an unselected thread row. The border
           uses the same `content-faint` token as the composer's outline, so
           the two read as one edge language rather than two.
-
-          `mb-1` on top of the column's `gap-0.5`: this row is a different
-          kind of thing from the conversations under it, and an outlined box
-          sitting on the exact rhythm of the plain rows reads as the first
-          item in the list rather than as its own control. */}
+ */}
         <button
           type="button"
           data-testid="new-thread-button"
