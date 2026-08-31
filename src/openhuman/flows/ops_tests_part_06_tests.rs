@@ -592,14 +592,17 @@ fn flow_stream_target_generates_request_id_when_absent_or_blank() {
 }
 
 #[test]
-fn binding_to_agent_without_schema_is_rejected() {
-    // The exact live-failure shape: `summarize` has no `output_parser.schema`
-    // at all, so its structured output has no addressable `channel` field.
+fn binding_to_agent_schema_missing_field_is_rejected() {
+    // TinyFlows deliberately permits a schema-less agent because its host
+    // runner can return arbitrary structured JSON. A declared schema that
+    // omits `channel`, however, proves this binding is unaddressable.
     let g = graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "summarize", "kind": "agent", "name": "Summarize",
-              "config": { "agent_ref": "researcher", "prompt": "summarize" } },
+              "config": { "agent_ref": "researcher", "prompt": "summarize",
+                "output_parser": { "schema": { "type": "object",
+                  "properties": { "summary": { "type": "string" } } } } } },
             { "id": "post", "kind": "tool_call", "name": "Post",
               "config": { "slug": "SLACK_SEND_MESSAGE",
                 "args": { "channel": "=nodes.summarize.item.json.channel" } } }
