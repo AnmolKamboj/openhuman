@@ -1,0 +1,96 @@
+import { type Attachment, formatFileSize } from '../../lib/attachments';
+import { useT } from '../../lib/i18n/I18nContext';
+import { Button } from '../ui';
+
+interface AttachmentPreviewProps {
+  attachments: Attachment[];
+  onRemove: (id: string) => void;
+  disabled?: boolean;
+}
+
+export default function AttachmentPreview({
+  attachments,
+  onRemove,
+  disabled,
+}: AttachmentPreviewProps) {
+  const { t } = useT();
+
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 px-1 pb-1">
+      {attachments.map(attachment => (
+        <div
+          key={attachment.id}
+          className="relative flex items-center gap-2 rounded-lg border border-line bg-surface-muted px-2 py-1.5 text-xs text-content-secondary max-w-[180px]">
+          {attachment.kind === 'image' ? (
+            <img
+              src={attachment.previewUri ?? attachment.dataUri}
+              alt={attachment.file.name}
+              className="w-8 h-8 rounded object-cover shrink-0"
+            />
+          ) : attachment.kind === 'video' ? (
+            <div className="relative w-8 h-8 shrink-0">
+              <img
+                src={attachment.previewUri ?? attachment.dataUri}
+                alt={attachment.file.name}
+                className="w-8 h-8 rounded object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <svg
+                  className="w-3.5 h-3.5 text-content-inverted drop-shadow-sm"
+                  fill="currentColor"
+                  viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+            </div>
+          ) : (
+            <div
+              aria-hidden
+              className="w-8 h-8 rounded border border-line bg-surface flex items-center justify-center shrink-0 text-content-muted">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.8}
+                  d="M14 2v6h6M8 13h8M8 17h5"
+                />
+              </svg>
+            </div>
+          )}
+          <div className="flex flex-col min-w-0">
+            <span className="truncate font-medium leading-tight">{attachment.file.name}</span>
+            <span className="text-content-faint leading-tight">
+              {formatFileSize(attachment.payloadSizeBytes)}
+            </span>
+          </div>
+          <Button
+            iconOnly
+            variant="secondary"
+            size="xs"
+            analyticsId="chat-attachment-remove"
+            aria-label={t('chat.attachment.remove').replace('{name}', attachment.file.name)}
+            onClick={() => onRemove(attachment.id)}
+            disabled={disabled}
+            className="absolute -top-1.5 -right-1.5 h-4! w-4! rounded-full border-0 bg-content-muted text-content-inverted hover:bg-content-secondary shrink-0">
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
