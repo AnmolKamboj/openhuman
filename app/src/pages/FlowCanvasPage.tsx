@@ -257,21 +257,6 @@ function SaveIcon() {
   );
 }
 
-function DiscardIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      viewBox="0 0 24 24"
-      aria-hidden="true">
-      <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
-  );
-}
 
 /**
  * The canvas header's Back control. One component rather than the three
@@ -398,9 +383,9 @@ function FlowEditor({
     saving: false,
   });
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  // Which header action (run/save/discard) is awaiting confirmation, if any —
+  // Which header action (run/save) is awaiting confirmation, if any —
   // every icon click opens a confirm popup before it fires.
-  const [confirmAction, setConfirmAction] = useState<'run' | 'save' | 'discard' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'run' | 'save' | null>(null);
   // Active run id (== thread_id) driving the canvas's live per-node overlay
   // (Phase 3e). Set when the user runs the flow; the canvas subscribes to the
   // `flow:run_progress` feed for it via `useFlowRunProgress`.
@@ -1132,9 +1117,16 @@ function FlowEditor({
     </ToggleGroupRoot>
   );
 
-  // Save / Discard moved out of the canvas into the header (the canvas keeps
-  // only undo/redo), as icon buttons. Each opens a confirm popup before firing;
-  // they drive the editable canvas through `canvasRef`.
+  // Save lives in the header (the canvas keeps only undo/redo), as an icon
+  // button behind a confirm popup, driving the editable canvas through
+  // `canvasRef`.
+  //
+  // Discard was beside it and is gone. Its ✕ glyph read as "close" next to a
+  // back button that also leaves, so it competed with navigation while
+  // actually meaning "revert to the last saved graph". Dropping edits now goes
+  // through Back, whose dirty guard already offers exactly that choice.
+  // `EditableFlowCanvasHandle.discard()` stays — it is the canvas's own API and
+  // its specs still cover it; nothing in this page calls it any more.
   const saveActions = (
     <div className="flex items-center gap-1.5">
       {saveMeta.dirty && (
@@ -1142,18 +1134,6 @@ function FlowEditor({
           {t('flows.editor.unsaved')}
         </Badge>
       )}
-      <Button
-        type="button"
-        variant="tertiary"
-        size="sm"
-        iconOnly
-        data-testid="flow-editor-discard"
-        aria-label={t('flows.editor.discard')}
-        title={t('flows.editor.discard')}
-        disabled={!saveMeta.dirty || saveMeta.saving}
-        onClick={() => setConfirmAction('discard')}>
-        <DiscardIcon />
-      </Button>
       <Button
         type="button"
         variant="primary"
@@ -1374,14 +1354,13 @@ function FlowEditor({
             />
           )}
 
-          {/* Confirm popup for the header's Run / Save / Discard icon buttons. */}
+          {/* Confirm popup for the header's Run / Save icon buttons. */}
           {confirmAction && (
             <ConfirmDialog
               testId="flow-action-confirm"
               titleId="flow-action-confirm-title"
               title={t(`flows.editor.confirm.${confirmAction}Title`)}
               body={t(`flows.editor.confirm.${confirmAction}Body`)}
-              destructive={confirmAction === 'discard'}
               cancelLabel={t('flows.editor.confirm.cancel')}
               cancelTestId="flow-action-cancel"
               confirmLabel={t('flows.editor.confirm.confirm')}
@@ -1392,7 +1371,6 @@ function FlowEditor({
                 setConfirmAction(null);
                 if (action === 'run') void handleRun();
                 else if (action === 'save') canvasRef.current?.save();
-                else if (action === 'discard') canvasRef.current?.discard();
               }}
             />
           )}
