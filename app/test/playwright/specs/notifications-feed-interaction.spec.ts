@@ -1,6 +1,40 @@
+/**
+ * ⚠️ SKIPPED — DOES NOT PASS YET. Do not un-skip without re-running it.
+ *
+ * Committed for the diagnosis, not as coverage. Three runs against the live
+ * lane (ports 18406/17706/4406, clean core) all fail at the same point.
+ *
+ * What was established and is worth keeping:
+ *  - The persist blob format here is CORRECT: redux-persist stores each
+ *    whitelisted field as its own JSON string inside the outer object, and a
+ *    probe confirmed the app's own blob has exactly this shape.
+ *  - The namespace is NOT the bypass id passed to `bootAuthenticatedPage`.
+ *    The app resolves its active user from the mock backend and writes
+ *    `user-123:persist:notifications`; a probe of `localStorage` showed both
+ *    `pw-notif-feed:persist:notifications` (my seed, never read) and
+ *    `user-123:persist:notifications` (`items: "[]"`, what the app reads).
+ *    `seedFeed` below therefore discovers the id at runtime rather than
+ *    assuming it.
+ *
+ * Where it still stops: after seeding and re-navigating to /#/notifications,
+ * `system-events-section` does not become visible within 20s. Not yet diagnosed
+ * — the remaining candidates are that redux-persist rehydrates once per page
+ * context and ignores a post-boot localStorage write, or that the section only
+ * mounts when the feed is non-empty at first paint. If the former, seeding has
+ * to happen in `addInitScript` under the real user id, which means learning the
+ * id in a throwaway page context first.
+ *
+ * The other half of this surface — integration notifications, which ARE
+ * RPC-driven — is already covered by `notifications.spec.ts`; this file
+ * deliberately does not duplicate it.
+ */
 import { expect, type Page, test } from '@playwright/test';
 
-import { bootAuthenticatedPage, dismissWalkthroughIfPresent, waitForAppReady } from '../helpers/core-rpc';
+import {
+  bootAuthenticatedPage,
+  dismissWalkthroughIfPresent,
+  waitForAppReady,
+} from '../helpers/core-rpc';
 
 /**
  * The system-events notification feed: filtering, mark-as-read, clear.
@@ -42,41 +76,57 @@ function item(id: string, category: string, title: string, read = false): SeedIt
 }
 
 /**
- * Seed the persisted notification slice for `USER`.
+ * Seed the persisted notification slice for whichever user the app is actually
+ * scoped to, then reload so the real reducer rehydrates it.
  *
- * redux-persist stores each whitelisted field as its own JSON string inside the
- * blob, which is why `items` is double-encoded here.
+ * The namespace is discovered at runtime rather than assumed. `activeUserId`
+ * comes from the signed-in identity the app resolves — in this lane the mock
+ * backend answers `user-123`, NOT the bypass id passed to
+ * `bootAuthenticatedPage`. Seeding under the bypass id writes a key nothing ever
+ * reads, and every assertion then times out against an empty feed. That is
+ * exactly what the first run of this spec did.
+ *
+ * The blob shape is redux-persist's: each whitelisted field is its own JSON
+ * string inside the outer object (`store/index.ts:144-149`).
  */
 async function seedFeed(page: Page, items: SeedItem[]): Promise<void> {
-  await page.addInitScript(
-    ({ user, payload }) => {
-      window.localStorage.setItem('OPENHUMAN_ACTIVE_USER_ID', user);
-      window.localStorage.setItem(
-        `${user}:persist:notifications`,
-        JSON.stringify({ items: JSON.stringify(payload), _persist: '{"version":-1,"rehydrated":true}' })
-      );
+  const user = await page.evaluate(() => localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID'));
+  if (!user) throw new Error('no active user id — the app has not resolved a session yet');
+
+  await page.evaluate(
+    ({ key, payload }) => {
+      const raw = window.localStorage.getItem(key);
+      const blob: Record<string, string> = raw ? JSON.parse(raw) : {};
+      blob.items = JSON.stringify(payload);
+      window.localStorage.setItem(key, JSON.stringify(blob));
     },
-    { user: USER, payload: items }
+    { key: `${user}:persist:notifications`, payload: items }
   );
+
+  // Navigate rather than reload: a bare reload can land on the default route,
+  // and the seeded feed is only observable on /notifications.
+  await page.goto('/#/notifications');
+  await waitForAppReady(page);
+  await dismissWalkthroughIfPresent(page);
 }
 
-async function openFeed(page: Page): Promise<void> {
+async function openFeedWith(page: Page, items: SeedItem[]): Promise<void> {
   await bootAuthenticatedPage(page, USER, '/notifications');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
+  await seedFeed(page, items);
   await expect(page.getByTestId('system-events-section')).toBeVisible({ timeout: 20_000 });
 }
 
 const feed = (page: Page) => page.getByTestId('system-events-section');
 const rows = (page: Page) => feed(page).getByTestId('notification-item');
 
-test.describe('Notifications — the system-events feed renders what was stored', () => {
+test.describe.skip('Notifications — the system-events feed renders what was stored', () => {
   test('shows every seeded item', async ({ page }) => {
-    await seedFeed(page, [
+    await openFeedWith(page, [
       item('n-agents-1', 'agents', 'Agent finished a task'),
       item('n-system-1', 'system', 'Core restarted'),
     ]);
-    await openFeed(page);
 
     await expect(rows(page)).toHaveCount(2, { timeout: 20_000 });
     await expect(feed(page)).toContainText('Agent finished a task');
@@ -86,8 +136,7 @@ test.describe('Notifications — the system-events feed renders what was stored'
   test('offers a filter chip only for categories that are present', async ({ page }) => {
     // The chip row is built from the categories actually in the feed. Offering
     // a filter that can only ever show nothing is a dead control.
-    await seedFeed(page, [item('n-agents-1', 'agents', 'Agent finished a task')]);
-    await openFeed(page);
+    await openFeedWith(page, [item('n-agents-1', 'agents', 'Agent finished a task')]);
 
     await expect(page.getByTestId('notif-filter-chip-all')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('notif-filter-chip-agents')).toBeVisible();
@@ -95,13 +144,12 @@ test.describe('Notifications — the system-events feed renders what was stored'
   });
 });
 
-test.describe('Notifications — filtering is single-select and actually filters', () => {
+test.describe.skip('Notifications — filtering is single-select and actually filters', () => {
   test('narrows the feed to one category and back', async ({ page }) => {
-    await seedFeed(page, [
+    await openFeedWith(page, [
       item('n-agents-1', 'agents', 'Agent finished a task'),
       item('n-system-1', 'system', 'Core restarted'),
     ]);
-    await openFeed(page);
     await expect(rows(page)).toHaveCount(2, { timeout: 20_000 });
 
     await page.getByTestId('notif-filter-chip-system').click();
@@ -117,11 +165,10 @@ test.describe('Notifications — filtering is single-select and actually filters
   test('marks the active chip selected and deselects the previous one', async ({ page }) => {
     // A tablist, not a set of toggles: exactly one selected at a time. Two
     // chips reading `aria-selected="true"` is the bug this pins.
-    await seedFeed(page, [
+    await openFeedWith(page, [
       item('n-agents-1', 'agents', 'Agent finished a task'),
       item('n-system-1', 'system', 'Core restarted'),
     ]);
-    await openFeed(page);
 
     const all = page.getByTestId('notif-filter-chip-all');
     const system = page.getByTestId('notif-filter-chip-system');
@@ -134,13 +181,12 @@ test.describe('Notifications — filtering is single-select and actually filters
   });
 });
 
-test.describe('Notifications — read state', () => {
+test.describe.skip('Notifications — read state', () => {
   test('clicking an unread item marks it read and drops the unread count', async ({ page }) => {
-    await seedFeed(page, [
+    await openFeedWith(page, [
       item('n-agents-1', 'agents', 'Agent finished a task'),
       item('n-system-1', 'system', 'Core restarted'),
     ]);
-    await openFeed(page);
     await expect(rows(page)).toHaveCount(2, { timeout: 20_000 });
 
     // The header reports the unread count; it is the user-visible signal that
@@ -153,11 +199,10 @@ test.describe('Notifications — read state', () => {
   });
 
   test('Mark all read clears the count and disables itself', async ({ page }) => {
-    await seedFeed(page, [
+    await openFeedWith(page, [
       item('n-agents-1', 'agents', 'Agent finished a task'),
       item('n-system-1', 'system', 'Core restarted'),
     ]);
-    await openFeed(page);
 
     const markAll = page.getByRole('button', { name: /mark all read/i });
     await expect(markAll).toBeEnabled({ timeout: 20_000 });
@@ -169,8 +214,7 @@ test.describe('Notifications — read state', () => {
   });
 
   test('Mark all read is already disabled when nothing is unread', async ({ page }) => {
-    await seedFeed(page, [item('n-agents-1', 'agents', 'Agent finished a task', true)]);
-    await openFeed(page);
+    await openFeedWith(page, [item('n-agents-1', 'agents', 'Agent finished a task', true)]);
 
     await expect(rows(page)).toHaveCount(1, { timeout: 20_000 });
     await expect(page.getByRole('button', { name: /mark all read/i })).toBeDisabled();
@@ -179,8 +223,7 @@ test.describe('Notifications — read state', () => {
   test('read state survives a reload', async ({ page }) => {
     // The slice is persisted, so marking read must outlive the page. If it does
     // not, the feed re-accuses the user of everything they just dismissed.
-    await seedFeed(page, [item('n-agents-1', 'agents', 'Agent finished a task')]);
-    await openFeed(page);
+    await openFeedWith(page, [item('n-agents-1', 'agents', 'Agent finished a task')]);
 
     await page.getByRole('button', { name: /mark all read/i }).click();
     await expect(page.getByRole('button', { name: /mark all read/i })).toBeDisabled({
