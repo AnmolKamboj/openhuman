@@ -69,7 +69,7 @@ pub(crate) async fn deliver_response(
     // Keep the response byte-for-byte in one assistant message. The legacy
     // segmentation helpers remain available to channel-specific callers/tests,
     // but the interactive web surface must not cut or reformat model output.
-    let segments = vec![full_response.to_string()];
+    let segments = [full_response.to_string()];
 
     // Await the reaction result (should already be done or nearly done).
     let reaction_emoji = reaction_handle.await.unwrap_or(None);

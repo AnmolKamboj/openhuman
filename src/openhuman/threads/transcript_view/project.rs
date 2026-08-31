@@ -31,6 +31,9 @@ const DATETIME_PREFIX: &str = "Current Date & Time:";
 /// live injector currently only prepends [`DATETIME_PREFIX`].
 const CHANNEL_CONTEXT_PREFIX: &str = "[Channel context]";
 
+type NativeToolCall = (String, String, String);
+type NativeToolEnvelope = (String, Vec<NativeToolCall>);
+
 /// Resolve a thread's root transcript, discover its sub-agent siblings, and
 /// project everything into display items. Returns `None` when the thread has
 /// no root transcript yet (brand-new thread / first turn not persisted).
@@ -463,7 +466,7 @@ fn project_assistant(
 
 /// Decode the native provider replay envelope embedded in `ChatMessage.content`.
 /// Returns visible assistant prose plus `(id, name, arguments)` calls.
-fn parse_native_tool_envelope(raw: &str) -> Option<(String, Vec<(String, String, String)>)> {
+fn parse_native_tool_envelope(raw: &str) -> Option<NativeToolEnvelope> {
     let value = serde_json::from_str::<serde_json::Value>(raw).ok()?;
     let object = value.as_object()?;
     let calls = object.get("tool_calls")?.as_array()?;
