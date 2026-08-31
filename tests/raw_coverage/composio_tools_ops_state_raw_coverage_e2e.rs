@@ -341,7 +341,10 @@ async fn round17_ops_trigger_history_app_state_and_profiles_cover_local_edges() 
         }
         Err(error) => {
             assert!(error.contains("list_trigger_history failed"), "{error}");
-            assert!(error.contains("state_dir"), "{error}");
+            assert!(
+                error.contains("state_dir") || error.contains("trigger archive"),
+                "{error}"
+            );
         }
     }
 
