@@ -99,11 +99,31 @@ function friendlyLabel(key: string): string {
     .replace(/^./, char => char.toUpperCase());
 }
 
-function toolDisplayName(toolName: string, running: boolean): string {
-  if (toolName === 'web_fetch') return running ? 'Fetching from the web' : 'Fetched from the web';
-  if (toolName === 'web_search_tool' || toolName === 'web_search') {
+function toolDisplayName(
+  toolName: string,
+  running: boolean,
+  args: unknown,
+  result: unknown
+): string {
+  const lowerName = toolName.toLowerCase();
+  const parsedArgs = parsedValue(args);
+  const argKeys =
+    parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)
+      ? Object.keys(parsedArgs as object).map(key => key.toLowerCase())
+      : [];
+  const renderedResult = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  const looksLikeSearch =
+    lowerName.includes('search') ||
+    argKeys.some(key => ['query', 'q', 'search_query'].includes(key)) ||
+    /(?:^|\n)#?\s*search results\b/i.test(renderedResult);
+  const looksLikeFetch =
+    lowerName.includes('fetch') ||
+    argKeys.some(key => ['url', 'uri'].includes(key)) ||
+    /\bstatus=\d{3}\s+url=/i.test(renderedResult);
+  if (looksLikeSearch) {
     return running ? 'Searching the web' : 'Searched the web';
   }
+  if (looksLikeFetch) return running ? 'Fetching from the web' : 'Fetched from the web';
   return formatToolName(toolName);
 }
 
@@ -187,7 +207,7 @@ export const OpenHumanToolCall: ToolCallMessagePartComponent = ({
       <CollapsibleTrigger className="group/tool text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors">
         <WrenchIcon className="size-4 shrink-0" />
         <span className="text-foreground text-start font-medium">
-          {toolDisplayName(toolName, running)}
+          {toolDisplayName(toolName, running, args, result)}
         </span>
         {running ? (
           <span className="bg-muted flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]">

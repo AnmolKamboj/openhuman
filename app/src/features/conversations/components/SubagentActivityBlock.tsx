@@ -37,12 +37,31 @@ function toolCallTone(status: ToolTimelineEntryStatus): string {
   return 'text-coral-700 dark:text-coral-300';
 }
 
-function subagentToolLabel(name: string, status: ToolTimelineEntryStatus): string {
+function subagentToolLabel(
+  name: string,
+  status: ToolTimelineEntryStatus,
+  args: unknown,
+  result: unknown
+): string {
   const running = status === 'running';
-  if (name === 'web_fetch') return running ? 'Fetching from the web' : 'Fetched from the web';
-  if (name === 'web_search_tool' || name === 'web_search') {
+  const lowerName = name.toLowerCase();
+  const argKeys =
+    args && typeof args === 'object' && !Array.isArray(args)
+      ? Object.keys(args as object).map(key => key.toLowerCase())
+      : [];
+  const output = readableToolOutput(result) ?? '';
+  const looksLikeSearch =
+    lowerName.includes('search') ||
+    argKeys.some(key => ['query', 'q', 'search_query'].includes(key)) ||
+    /(?:^|\n)#?\s*search results\b/i.test(output);
+  const looksLikeFetch =
+    lowerName.includes('fetch') ||
+    argKeys.some(key => ['url', 'uri'].includes(key)) ||
+    /\bstatus=\d{3}\s+url=/i.test(output);
+  if (looksLikeSearch) {
     return running ? 'Searching the web' : 'Searched the web';
   }
+  if (looksLikeFetch) return running ? 'Fetching from the web' : 'Fetched from the web';
   return formatToolName(name);
 }
 
@@ -114,11 +133,18 @@ export function ToolCallRow({
     detail?: string;
     /** Structured why/next explanation for a FAILED child tool call (#4459). */
     failure?: ToolFailureExplanation;
+    /** Arguments supplied to the child tool, used for descriptive fallback labels. */
+    args?: unknown;
     /** Child tool output, rendered as Markdown when present. */
     result?: unknown;
   };
 }) {
   const output = readableToolOutput(call.result);
+  const suppliedLabel = call.displayName?.trim();
+  const label =
+    suppliedLabel && suppliedLabel.toLowerCase() !== 'tool'
+      ? suppliedLabel
+      : subagentToolLabel(call.toolName, call.status, call.args, call.result);
   return (
     <div className="min-w-0" data-testid="subagent-tool-call">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -126,7 +152,7 @@ export function ToolCallRow({
           •
         </span>
         <span className="shrink-0 text-[12px] whitespace-nowrap text-content-secondary">
-          {call.displayName ?? subagentToolLabel(call.toolName, call.status)}
+          {label}
         </span>
         {/* The contextual arg (path / recipient / query) can be long, so it
           truncates to a single line and absorbs the row's spare width — the

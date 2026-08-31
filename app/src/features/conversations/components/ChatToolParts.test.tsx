@@ -88,4 +88,24 @@ describe('ChatToolParts', () => {
     expect(screen.getByRole('strong')).toHaveTextContent('Example Domain');
     expect(screen.queryByText('Content', { exact: true })).not.toBeInTheDocument();
   });
+
+  it('infers web search labels when a persisted tool name degraded to tool', () => {
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="tool"
+        toolCallId="search-generic"
+        args={{ query: 'latest world news' } as never}
+        argsText={'{"query":"latest world news"}'}
+        result="# Search results\n\n- Headline"
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('assistant-ui-tool-call')).toHaveTextContent('Searched the web');
+    expect(screen.getByTestId('assistant-ui-tool-call')).not.toHaveTextContent(/^Tool done$/);
+  });
 });

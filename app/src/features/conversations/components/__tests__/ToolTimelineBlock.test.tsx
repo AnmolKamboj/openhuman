@@ -119,6 +119,28 @@ describe('SubagentActivityBlock', () => {
     expect(screen.queryByText(/"content"/)).not.toBeInTheDocument();
   });
 
+  it('infers a descriptive search label for a degraded subagent tool name', () => {
+    renderInStore(
+      <SubagentActivityBlock
+        subagent={{
+          taskId: 't',
+          agentId: 'researcher',
+          toolCalls: [
+            {
+              callId: 'generic-search',
+              toolName: 'tool',
+              status: 'success',
+              args: { query: 'world news' },
+              result: '# Search results\n\n- Headline',
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('subagent-tool-call')).toHaveTextContent('Searched the web');
+  });
+
   it('labels cancelled / awaiting-user calls distinctly (not the green "Done" pill)', () => {
     renderInStore(
       <SubagentActivityBlock
