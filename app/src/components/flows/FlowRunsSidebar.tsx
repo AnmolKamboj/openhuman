@@ -170,26 +170,27 @@ export default function FlowRunsSidebar({ flowId }: FlowRunsSidebarProps) {
                   aria-current={active ? 'page' : undefined}
                   data-testid={`flow-runs-sidebar-run-${run.id}`}
                   onClick={() => setSelectedRunId(run.id)}
-                  // `TwoPaneNav`'s row spec verbatim. The status used to be
-                  // painted TWICE per row — a coloured dot AND the same status
-                  // as an accented badge, with the time under it — so a list of
-                  // runs was three visual weights deep and the thing you
-                  // actually scan for (which run, how long ago) came third. The
-                  // dot carries the colour; the label and time are plain text.
-                  className={`h-auto w-full justify-start gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] ${
+                  // `TwoPaneNav`'s row spec, tightened to a single line.
+                  //
+                  // The status used to be painted TWICE per row — a coloured
+                  // dot AND the same status again as an accented badge, with
+                  // the time stacked underneath — so a list of runs was three
+                  // visual weights deep and two lines tall. The dot carries
+                  // the colour; status and time share one line, which also
+                  // fixes the dot's alignment: against a two-line stack it
+                  // centred on the block rather than sitting on the text.
+                  className={`h-auto w-full justify-start gap-2 rounded-md px-2.5 py-1 text-left text-[13px] ${
                     active
                       ? 'bg-primary-500 font-semibold text-content-inverted hover:bg-primary-500'
                       : 'font-normal text-content-muted hover:bg-surface/40 hover:text-content-secondary'
                   }`}>
                   <FlowRunStatus status={displayStatus} label={statusLabel} presentation="dot" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{statusLabel}</span>
-                    <span
-                      className={`mt-0.5 block truncate text-[11px] font-normal ${
-                        active ? 'text-content-inverted/70' : 'text-content-faint'
-                      }`}>
-                      {relativeTime(run.started_at, t)}
-                    </span>
+                  <span className="min-w-0 flex-1 truncate">{statusLabel}</span>
+                  <span
+                    className={`shrink-0 text-[11px] font-normal tabular-nums ${
+                      active ? 'text-content-inverted/70' : 'text-content-faint'
+                    }`}>
+                    {relativeTime(run.started_at, t)}
                   </span>
                 </Button>
               </li>
