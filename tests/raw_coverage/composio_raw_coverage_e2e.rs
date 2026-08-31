@@ -448,7 +448,7 @@ fn composio_action_tool_metadata_is_stable_without_network_execution() {
 }
 
 #[tokio::test]
-async fn composio_action_tool_execute_validates_arguments_without_network() {
+async fn composio_action_tool_execute_reports_missing_route_without_network() {
     let tool = ComposioActionTool::new(
         Arc::new(Config::default()),
         "GMAIL_SEND_EMAIL".into(),
@@ -462,8 +462,8 @@ async fn composio_action_tool_execute_validates_arguments_without_network() {
         .expect("local validation returns a tool result");
     assert!(result.is_error);
     let rendered = serde_json::to_string(&result).unwrap();
-    assert!(rendered.contains("[composio:error:validation]"), "{rendered}");
-    assert!(rendered.contains("recipient"), "{rendered}");
+    assert!(rendered.contains("without a connector route"), "{rendered}");
+    assert!(rendered.contains("proxy"), "{rendered}");
 }
 
 #[tokio::test]
