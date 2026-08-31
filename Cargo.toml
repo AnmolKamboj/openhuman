@@ -359,8 +359,8 @@ tinymemory-sources = { path = "vendor/tinymemory/crates/tinymemory-sources", fea
 #
 # The path dependency on `tinymcp` itself is still the step-one arrangement. The
 # registry entry step two calls for now exists — `src/openhuman/modules/registry.rs`
-# pins the v0.3.1 release — but the host still calls the library directly, because
-# `tinymcp-bus` v0.3.1 does not yet publish everything this host reaches for:
+# pins the v0.3.2 release — but the host still calls the library directly, because
+# `tinymcp-bus` v0.3.2 does not yet publish everything this host reaches for:
 # `OAuthComplete`, a member returning the already-exported `ConnectedServerOverview`,
 # the boot-connect and reconnect-supervisor passes, the `ServerDetail` /
 # `AuthDetection` / `AuthKind` reply types, the registry curation helpers, an error
