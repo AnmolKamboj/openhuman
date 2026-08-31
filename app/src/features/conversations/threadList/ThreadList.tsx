@@ -102,13 +102,14 @@ export function ThreadList({
           uses the same `content-faint` token as the composer's outline, so
           the two read as one edge language rather than two.
 
-          The accent arrives on HOVER instead: border, text and a 10% fill all
-          go primary together. The text shades are `700` / `dark:300` — the
-          same pair `TwoPaneNav` uses for an accented sidebar row, which is
-          exactly what this is. `600` / `dark:400` sits at 4.53:1 against the
-          10% fill it is painted on, which clears AA's 4.5 for 14px by 0.03;
-          `700` is 5.87:1 for free, and `dark:300` is the dominant dark pairing
-          in this codebase (68 call sites to `400`'s 37). That keeps the resting state as quiet as the
+          The accent arrives on HOVER, and only on the BORDER and a 10% fill.
+          The label stays neutral (`content-secondary`, the same lift a thread
+          row gets). Taking the text primary too was tried and reads as a link
+          rather than a button: three accented properties at once made the row
+          the loudest thing in the sidebar on hover, which is the exact failure
+          the resting state is designed to avoid one paragraph above. The `+`
+          follows the label through `currentColor`, so the edge and the fill
+          carry the accent on their own. That keeps the resting state as quiet as the
           argument above requires while making the row unmistakably the
           actionable one the moment it is pointed at. The `+` inherits it for
           free through `currentColor`.
@@ -125,7 +126,7 @@ export function ThreadList({
           data-analytics-id="chat-sidebar-new-thread"
           onClick={onCreateThread}
           title={t('chat.newThreadShortcut')}
-          className="group flex h-8 w-full flex-none cursor-pointer items-center justify-between gap-1.5 rounded-md border border-content-faint/35 px-3 text-left text-[14px] text-content-muted transition-colors hover:border-primary-500/60 hover:bg-primary-500/10 hover:text-primary-700 dark:hover:text-primary-300">
+          className="group flex h-8 w-full flex-none cursor-pointer items-center justify-between gap-1.5 rounded-md border border-content-faint/35 px-3 text-left text-[14px] text-content-muted transition-colors hover:border-primary-500/60 hover:bg-primary-500/10 hover:text-content-secondary">
           <span className="truncate">{t('chat.newConversation')}</span>
           <svg
             className="h-3.5 w-3.5 flex-none"
