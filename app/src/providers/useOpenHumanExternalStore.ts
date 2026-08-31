@@ -112,7 +112,7 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       ? (state.chatRuntime.processingByThread?.[threadId] ?? EMPTY_TRANSCRIPT)
       : EMPTY_TRANSCRIPT
   );
-  const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content.length ?? 0}:${lifecycle ?? ''}`;
+  const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content?.length ?? 0}:${lifecycle ?? ''}`;
   const coreTranscript = useCoreTranscriptProjection(
     threadId,
     settledRevision,
