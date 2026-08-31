@@ -25,7 +25,6 @@ import chatRuntimeReducer, {
   setInferenceStatusForThread,
   setStreamingAssistantForThread,
   setToolTimelineForThread,
-  setTurnTimelinesForThread,
 } from '../../store/chatRuntimeSlice';
 import layoutReducer from '../../store/layoutSlice';
 import socketReducer from '../../store/socketSlice';
@@ -76,6 +75,15 @@ vi.mock('../../services/api/threadApi', () => ({
     getThreadMessages: mockGetThreadMessages,
     getTurnState: vi.fn().mockResolvedValue(null),
     getTurnStateHistory: vi.fn().mockResolvedValue([]),
+    getDerivedTranscript: vi
+      .fn()
+      .mockResolvedValue({
+        threadId: 'none',
+        items: [],
+        total: 0,
+        hasMore: false,
+        hasTranscript: false,
+      }),
     getTaskBoard: vi
       .fn()
       .mockResolvedValue({ threadId: 't-1', cards: [], updatedAt: '2026-05-04T10:00:00Z' }),
@@ -641,9 +649,18 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
     mockGetThreadMessages.mockResolvedValue({ messages, count: messages.length });
 
-    let store: ReturnType<typeof buildStore> | undefined;
+    vi.mocked(threadApi.getDerivedTranscript).mockResolvedValueOnce({
+      threadId: thread.id,
+      items: [
+        { kind: 'toolCall', callId: 'tc-1', name: 'read_file', status: 'success' },
+        { kind: 'turnBoundary', requestId: 'req-1' },
+      ],
+      total: 2,
+      hasMore: false,
+      hasTranscript: true,
+    });
     await act(async () => {
-      store = await renderConversations({
+      await renderConversations({
         thread: {
           ...selectedThreadState(thread),
           messagesByThreadId: { [thread.id]: messages },
@@ -653,22 +670,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       });
     });
 
-    // No past-turn tool call before hydration.
-    expect(screen.queryByTestId('assistant-ui-tool-call')).not.toBeInTheDocument();
-
-    // Hydrate the older turn's timeline (as fetchAndHydrateTurnHistory would).
-    await act(async () => {
-      store!.dispatch(
-        setTurnTimelinesForThread({
-          threadId: thread.id,
-          timelines: {
-            'req-1': [{ id: 'tc-1', name: 'read_file', round: 0, seq: 0, status: 'success' }],
-          },
-        })
-      );
-    });
-
-    // The past turn's tool call is projected into assistant-ui exactly once.
+    // The past turn's core transcript is projected into assistant-ui exactly once.
     expect(await screen.findByTestId('assistant-ui-tool-call')).toHaveTextContent('Read File');
   });
 

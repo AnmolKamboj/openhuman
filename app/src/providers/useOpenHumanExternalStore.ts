@@ -1,6 +1,8 @@
 import type { AppendMessage } from '@assistant-ui/react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
+import { threadApi } from '../services/api/threadApi';
 import { useAppSelector } from '../store/hooks';
 import type { ThreadMessage } from '../types/thread';
 import { buildRuntimeMessages } from './assistantUiMessages';
@@ -10,6 +12,69 @@ const EMPTY_MESSAGES: ThreadMessage[] = [];
 const EMPTY_TIMELINE: never[] = [];
 const EMPTY_TRANSCRIPT: never[] = [];
 const EMPTY_TURN_MAP = {};
+
+type CoreTranscriptProjection = {
+  threadId: string | null;
+  timelines: ReturnType<typeof mapDisplayItems>['timelines'];
+  transcripts: ReturnType<typeof mapDisplayItems>['transcripts'];
+};
+
+const EMPTY_CORE_TRANSCRIPT: CoreTranscriptProjection = {
+  threadId: null,
+  timelines: EMPTY_TURN_MAP,
+  transcripts: EMPTY_TURN_MAP,
+};
+
+/**
+ * Read settled process history straight from the core's transcript projection.
+ * The Rust side owns a bounded, mtime-keyed LRU, so this hook deliberately does
+ * not establish a second Redux transcript store or duplicate cache policy.
+ */
+export function useCoreTranscriptProjection(
+  threadId: string | null,
+  revision: string,
+  liveRequestId: string | undefined
+): CoreTranscriptProjection {
+  const [projection, setProjection] = useState<CoreTranscriptProjection>(EMPTY_CORE_TRANSCRIPT);
+
+  useEffect(() => {
+    if (!threadId) {
+      setProjection(EMPTY_CORE_TRANSCRIPT);
+      return;
+    }
+    // Defensive for narrow test/embedder shims that expose only a subset of
+    // threadApi. Production builds always provide this method.
+    if (typeof threadApi.getDerivedTranscript !== 'function') {
+      setProjection({ threadId, timelines: EMPTY_TURN_MAP, transcripts: EMPTY_TURN_MAP });
+      return;
+    }
+    let cancelled = false;
+    void threadApi
+      .getDerivedTranscript(threadId, { limit: 500 })
+      .then(page => {
+        if (cancelled) return;
+        if (!page.hasTranscript) {
+          setProjection({ threadId, timelines: EMPTY_TURN_MAP, transcripts: EMPTY_TURN_MAP });
+          return;
+        }
+        const skipRequestIds = liveRequestId ? new Set([liveRequestId]) : undefined;
+        const mapped = mapDisplayItems(page.items, { skipRequestIds });
+        setProjection({ threadId, timelines: mapped.timelines, transcripts: mapped.transcripts });
+      })
+      .catch(() => {
+        // A missing/older core has no settled process trail; message text and
+        // the live socket projection remain usable. Navigation must not fail.
+        if (!cancelled) {
+          setProjection({ threadId, timelines: EMPTY_TURN_MAP, transcripts: EMPTY_TURN_MAP });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [liveRequestId, revision, threadId]);
+
+  return projection.threadId === threadId ? projection : EMPTY_CORE_TRANSCRIPT;
+}
 
 /** Flatten an assistant-ui append payload down to the plain text our core takes. */
 function appendMessageText(message: AppendMessage): string {
@@ -22,10 +87,9 @@ function appendMessageText(message: AppendMessage): string {
 /**
  * Build the `ExternalStoreAdapter` that backs `useExternalStoreRuntime`.
  *
- * Read side: a pure projection of Redux. Write side: forwarded to the surface
- * that owns the thread (see `chatSurfaceHandlers`). The runtime therefore gets
- * a faithful, live view of the conversation and a working action API without
- * holding any state of its own.
+ * Settled messages and live deltas remain in their existing UI stores, while
+ * reasoning/tool/sub-agent history comes directly from the core transcript
+ * projection. Redux is not a second transcript database.
  */
 export function useOpenHumanExternalStore(threadId: string | null) {
   const messages = useAppSelector(state =>
@@ -48,15 +112,11 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       ? (state.chatRuntime.processingByThread?.[threadId] ?? EMPTY_TRANSCRIPT)
       : EMPTY_TRANSCRIPT
   );
-  const turnTimelines = useAppSelector(state =>
-    threadId
-      ? (state.chatRuntime.turnTimelinesByThread?.[threadId] ?? EMPTY_TURN_MAP)
-      : EMPTY_TURN_MAP
-  );
-  const turnTranscripts = useAppSelector(state =>
-    threadId
-      ? (state.chatRuntime.turnTranscriptsByThread?.[threadId] ?? EMPTY_TURN_MAP)
-      : EMPTY_TURN_MAP
+  const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content.length ?? 0}:${lifecycle ?? ''}`;
+  const coreTranscript = useCoreTranscriptProjection(
+    threadId,
+    settledRevision,
+    streaming?.requestId
   );
 
   // `started` and `streaming` are both in-flight. A completed turn can retain
@@ -73,10 +133,10 @@ export function useOpenHumanExternalStore(threadId: string | null) {
         isRunning,
         liveTimeline,
         liveTranscript,
-        turnTimelines,
-        turnTranscripts,
+        turnTimelines: coreTranscript.timelines,
+        turnTranscripts: coreTranscript.transcripts,
       }),
-    [messages, streaming, isRunning, liveTimeline, liveTranscript, turnTimelines, turnTranscripts]
+    [messages, streaming, isRunning, liveTimeline, liveTranscript, coreTranscript]
   );
 
   const onNew = useCallback(

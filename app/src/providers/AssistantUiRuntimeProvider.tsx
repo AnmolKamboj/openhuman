@@ -8,15 +8,11 @@ import { useOpenHumanExternalStore } from './useOpenHumanExternalStore';
 const debug = debugFactory('openhuman:assistant-ui');
 
 /**
- * Mounts assistant-ui's runtime over the existing Redux state, scoped to ONE
- * thread.
+ * Mounts assistant-ui's runtime over one OpenHuman thread.
  *
- * This is additive by design. Nothing below it is required to consume the
- * runtime — the transcript, composer and tool timeline still render from Redux
- * exactly as before — so mounting it cannot regress a surface that ignores it.
- * What it provides is the runtime *context*: any component under it may use
- * assistant-ui's hooks and primitives, and the two views of the conversation
- * are guaranteed to agree because both read the same store.
+ * Settled process history (reasoning, tools and sub-agents) is read directly
+ * from the core transcript RPC, whose Rust projection cache is authoritative.
+ * Redux only supplies the existing message list and live socket deltas.
  *
  * ## Why the thread is a prop
  *

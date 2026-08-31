@@ -40,7 +40,6 @@ import {
   clearStreamingAssistantForThread,
   endInferenceTurn,
   fetchAndHydrateCompletedTurnState,
-  fetchAndHydrateDerivedTranscript,
   markInferenceTurnStreaming,
   parseToolFailure,
   recordChatTurnUsage,
@@ -78,7 +77,7 @@ import {
   setActiveThread,
   setSelectedThread,
 } from '../store/threadSlice';
-import { DERIVED_TRANSCRIPT_ENABLED, IS_PROD } from '../utils/config';
+import { IS_PROD } from '../utils/config';
 import { AssistantUiRuntimeProvider } from './AssistantUiRuntimeProvider';
 import { isProactiveConversationSurface, proactiveThreadPins } from './proactiveThreadPins';
 
@@ -481,14 +480,6 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       // ending the live lifecycle) matters: `hydrateRuntimeFromSnapshot`
       // intentionally refuses to overwrite an actively streaming turn.
       await dispatch(fetchAndHydrateCompletedTurnState(event.thread_id));
-      // Live-turn seam: the turn just settled and its line was appended to the
-      // append-only transcript. Invalidate/refresh the thread's derived
-      // settled-turn trails so the next reopen is fresh. The just-finished turn
-      // is the newest, so the derived hydration skips it — this never fights the
-      // live anchor, and it does not touch any socket delta handler.
-      if (DERIVED_TRANSCRIPT_ENABLED) {
-        void dispatch(fetchAndHydrateDerivedTranscript(event.thread_id));
-      }
     };
 
     rtLog('subscribe_chat_events', { socket: socketStatus });
