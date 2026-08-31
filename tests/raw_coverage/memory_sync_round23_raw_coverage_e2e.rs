@@ -198,6 +198,13 @@ async fn profile_persistence_loads_matches_renders_and_deletes_connected_identit
     // the release-metadata resolver.
     config.modules.enabled = true;
     persist_config(&config).await;
+    // `ensure_loaded` binds the module through the boot-time policy, which is
+    // deliberately process-global. This raw-coverage module runs in its own
+    // test process, so publish the same config here just as normal boot does.
+    #[cfg(feature = "modules")]
+    openhuman_core::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(
+        config.clone(),
+    ));
     openhuman_core::openhuman::modules::ops::ensure_loaded(&config, "tinymemory")
         .await
         .expect("load local TinyMemory test module");
