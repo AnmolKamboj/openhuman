@@ -90,7 +90,6 @@ interface Props {
   /** Reject the pending proposal (host reverts the overlay). */
   onReject: () => void;
   /** Close the panel. */
-  onClose: () => void;
   /**
    * Optional repair seed (from a failed run's "Fix with agent") — auto-sends a
    * repair turn once on mount so the copilot opens already diagnosing.
@@ -152,7 +151,6 @@ export default function WorkflowCopilotPanel({
   onProposal,
   onAccept,
   onReject,
-  onClose,
   repairSeed = null,
   buildSeed = null,
   onBuildSeedConsumed,
@@ -493,26 +491,13 @@ export default function WorkflowCopilotPanel({
       className={`flex h-full w-full flex-col border-l border-line bg-surface ${
         fullWidth ? '' : 'max-w-sm'
       }`}>
-      {/* Close-only. The "Workflow copilot" title and its "Ask for changes and
-          review each proposal before applying it" subtitle were removed: the
-          panel is opened from a `Copilot | Manual` toggle that already names
-          it, so the title restated the control the user just pressed, and the
-          subtitle described the proposal flow in a band that stayed on screen
-          long after the first proposal made it self-evident. Two lines of
-          permanent chrome above a transcript that wants the height. */}
-      <header className="flex items-center justify-end border-b border-line px-2 py-1.5">
-        <Button
-          type="button"
-          variant="tertiary"
-          size="xs"
-          iconOnly
-          data-testid="workflow-copilot-close"
-          aria-label={t('flows.copilot.close')}
-          onClick={onClose}
-          className="rounded-full">
-          ✕
-        </Button>
-      </header>
+      {/* No header. It carried a "Workflow copilot" title, a subtitle
+          describing the proposal flow, and a close ✕ — none of which earned
+          permanent height above a transcript. The panel is opened from a
+          `Copilot | Manual` toggle in the canvas header that both names it and
+          closes it (clicking the active segment collapses the rail), so the
+          title restated the control the user just pressed and the ✕ duplicated
+          it. `onClose` went with the button; nothing else called it. */}
 
       {/* Full builder transcript — the SAME rich renderer the home composer
           chat uses (message bubbles, past-turn insights, the shared tool

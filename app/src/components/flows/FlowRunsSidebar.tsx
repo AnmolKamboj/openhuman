@@ -110,8 +110,14 @@ export default function FlowRunsSidebar({ flowId }: FlowRunsSidebarProps) {
     // list and the nav group above it in the same column read as one sidebar
     // rather than two components that happen to be stacked.
     <div className="flex h-full flex-col" data-testid="flow-runs-sidebar">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-2 pb-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
+      {/* `px-3` on the row with `px-2` on the label puts the heading on the same
+          left edge as the row text below it (`px-3` list + `px-2.5` button),
+          which is exactly how `TwoPaneNav` insets its own group headings. The
+          row used to be `px-2` against a `px-3` list, so the heading sat ~14px
+          left of everything under it and the refresh button hugged the pane
+          edge. */}
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1">
+        <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-content-muted">
           {t('flows.runs.sidebarTitle')}
         </span>
         <Button
