@@ -116,9 +116,11 @@ run_raw_coverage_modules() {
     [ -n "$module" ] || continue
     echo "[test-rust-with-mock] raw coverage module: ${module}"
     # Most Composio raw-coverage modules explicitly exercise the absent-module
-    # path. This one module is the exception: it verifies the host-to-module
-    # round trip, so inject the pinned connector only for that process.
-    if [ "$module" = "composio_credentials_state_raw_coverage_e2e" ] && [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
+    # path. These groups verify the host-to-module round trip, so inject the
+    # pinned connector only for their processes.
+    if { [ "$module" = "composio_credentials_state_raw_coverage_e2e" ] ||
+         [ "$module" = "composio_ops_raw_coverage_e2e" ]; } &&
+       [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
       TINYCONNECTORS_TEST_MODULE="$connectors_module" \
         cargo_test --test raw_coverage_all -- "${module}::" --test-threads=1 "$@"
     else
