@@ -128,6 +128,22 @@ describe('rpcMethods catalog', () => {
         path.resolve(__dirname, '../../../../src/openhuman/config/schemas/schema_defs.rs'),
         'utf8'
       ),
+      // The config controller registrations split out of schema_defs.rs; the
+      // `function: "…"` strings this guard greps live in the parts now.
+      fs.readFileSync(
+        path.resolve(
+          __dirname,
+          '../../../../src/openhuman/config/schemas/controllers_part_01.rs'
+        ),
+        'utf8'
+      ),
+      fs.readFileSync(
+        path.resolve(
+          __dirname,
+          '../../../../src/openhuman/config/schemas/controllers_part_02.rs'
+        ),
+        'utf8'
+      ),
       fs.readFileSync(
         path.resolve(__dirname, '../../../../src/openhuman/inference/provider/schemas.rs'),
         'utf8'

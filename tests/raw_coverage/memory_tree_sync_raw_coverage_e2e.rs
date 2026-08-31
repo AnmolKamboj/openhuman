@@ -38,10 +38,10 @@ use openhuman_core::openhuman::integrations::composio::providers::{
     agent_ready_toolkits, catalog_for_toolkit, classify_unknown, find_curated, has_native_provider,
     is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, ToolScope, UserScopePref,
 };
-use openhuman_core::openhuman::memory::tree::score::extract::{EntityKind, ExtractedEntities};
-use openhuman_core::openhuman::memory::tree::score::resolver::canonicalise;
-use openhuman_core::openhuman::memory::tree::tree::bucket_seal::append_leaf;
-use openhuman_core::openhuman::memory::tree::tree::{
+use tinymemory_core::tree::score::extract::{EntityKind, ExtractedEntities};
+use tinymemory_core::tree::score::resolver::canonicalise;
+use tinymemory_core::tree::tree::bucket_seal::append_leaf;
+use tinymemory_core::tree::tree::{
     append_leaf_deferred, get_or_create_tree, store as tree_store, LabelStrategy, LeafRef,
 };
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
@@ -446,14 +446,14 @@ async fn composio_providers_sync_state_and_bus_surfaces_cover_read_write_edges()
 async fn memory_tree_entity_canonicalisation_covers_email_and_person_kinds() {
     let extracted = ExtractedEntities {
         entities: vec![
-            openhuman_core::openhuman::memory::tree::score::extract::ExtractedEntity {
+            tinymemory_core::tree::score::extract::ExtractedEntity {
                 kind: EntityKind::Email,
                 text: "Round14@Example.COM".into(),
                 span_start: 0,
                 span_end: 19,
                 score: 0.9,
             },
-            openhuman_core::openhuman::memory::tree::score::extract::ExtractedEntity {
+            tinymemory_core::tree::score::extract::ExtractedEntity {
                 kind: EntityKind::Person,
                 text: "Round Fourteen".into(),
                 span_start: 20,

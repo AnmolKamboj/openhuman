@@ -306,6 +306,27 @@ tinyconnectors-bus = { path = "vendor/tinyconnectors/crates/tinyconnectors-bus" 
 # directly (EXTRACT_ENTITIES, EMBED_TEXT, EMBEDDER_SLUG) — prefer compile
 # errors on renaming over MemberNotFound at runtime.
 tinymemory-bus = { path = "vendor/tinymemory/crates/tinymemory-bus" }
+# MEASURED 2026-08-31, and it changes the endgame of #5560: this entry has **no
+# production consumer**. Every `tinymemory_tinycortex::` reference in the tree is
+# test code — `memory::test_support` (a `#[cfg(test)] pub(crate) mod`),
+# `agent::harness::archivist_tests`, and `tests/raw_coverage/` — and
+# `cargo tree -e normal -i tinymemory-tinycortex` reports `openhuman` as its only
+# parent. cargo-machete already flags it, which is why it sits in `ignored` at
+# the top of this file.
+#
+# It matters because it is a **second, independent normal edge onto
+# `tinymemory-core`**: `cargo tree -e normal -i tinymemory-core` reports two
+# parents, `openhuman` and this crate. So dropping the `tinymemory-core` entry
+# below on the day `memory/host_impls.rs` and `memory/tree/tree_runtime/mod.rs`
+# stop naming the engine will **not** take the engine out of the shipped graph —
+# this line will still pull it. Moving this to `[dev-dependencies]` (which is
+# where its consumers already live) is what actually sheds it, and it is a
+# prerequisite for #5560, not a tidy-up after it.
+#
+# Deliberately NOT done in this change: it lowers the normal-graph package count,
+# and `scripts/check-kernel-floor.sh` fails on a shed that was not written back
+# to `scripts/kernel-floor.limits`. That write-back belongs with the manifest
+# flip, which is gated on a module release and a registry re-pin.
 tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex" }
 # `tinymemory-core` is the *substance* of the memory subsystem, extracted out of
 # `src/openhuman/memory/` — the SQLite/vector store, the markdown summary tree,
@@ -1300,6 +1321,25 @@ file-logging = ["dep:tracing-appender", "dep:tracing-log"]
 scheduler-gate = ["dep:starship-battery"]
 
 bin-tools = ["dep:clap", "dep:env_logger"]
+# `rss-bench = []` is correct today and must NOT stay empty through #5560.
+#
+# `src/bin/library_profile/scenarios/{cold_phases,memory_ingest}.rs` name
+# `tinymemory_core::` on purpose — they measure the in-process engine, and
+# routing them through `memory::binding` would measure the *null* driver instead
+# — and **a `[[bin]]` cannot use a dev-dependency**. So on the day
+# `tinymemory-core` stops being a normal dependency, this has to become
+# `rss-bench = ["dep:tinymemory-core"]` with that entry marked `optional = true`,
+# or `--features rss-bench` breaks in a configuration no CI lane compiles.
+#
+# Doing it AHEAD of that day is a measured no-op, not an early win. Tried
+# 2026-08-31: the product lib still compiles with the entry optional and this
+# list still empty, because the non-optional `[dev-dependencies]` entry activates
+# the optional normal one — `cargo tree -e normal -i tinymemory-core` is
+# byte-identical before and after, so nothing is shed. What the marker would buy
+# is the appearance of a shed plus a production build whose only reason for
+# having the crate is a dev-dependency side effect. Keep the honest non-optional
+# entry until the two files that still name the engine are clean, then flip both
+# halves together.
 rss-bench = []
 # Adds dhat heap profiling on top of `rss-bench` for the `library-profile`
 # binary. Default-OFF, dev-only: installs dhat's global allocator, which

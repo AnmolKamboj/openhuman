@@ -279,8 +279,10 @@ impl ToolMemoryStore {
     /// `tools` constrains which tool namespaces to inspect; an empty slice
     /// scans every known tool namespace via [`Self::list_tool_names`].
     ///
-    /// Every `Critical` rule is retained and [`TOOL_MEMORY_PROMPT_CAP`] limits
-    /// only the `High` remainder, so the result can exceed the cap.
+    /// Sorted Critical-first then freshest-first, and truncated at
+    /// [`TOOL_MEMORY_PROMPT_CAP`] exactly as the engine did — which means a
+    /// Critical rule CAN fall off once that many fresher Critical+High rules
+    /// exist. That is the engine's documented trade-off, preserved.
     ///
     /// # Errors
     ///
@@ -311,11 +313,13 @@ impl ToolMemoryStore {
                 .cmp(&a.priority)
                 .then_with(|| b.updated_at.cmp(&a.updated_at))
         });
-        let critical_count = collected
-            .iter()
-            .take_while(|rule| rule.priority == ToolMemoryPriority::Critical)
-            .count();
-        collected.truncate(TOOL_MEMORY_PROMPT_CAP.max(critical_count));
+        // The engine enforced this cap with a plain `truncate` after sorting —
+        // its own doc on `TOOL_MEMORY_PROMPT_CAP` admits a Critical rule can be
+        // excluded once that many fresher Critical+High rules exist. The port
+        // briefly "improved" this to keep every Critical, which was a silent
+        // behaviour change in a behaviour-pinned move; the engine's semantics
+        // are restored, and the cap doc no longer overpromises.
+        collected.truncate(TOOL_MEMORY_PROMPT_CAP);
 
         let mut out: HashMap<String, Vec<ToolMemoryRule>> = HashMap::new();
         for rule in collected {

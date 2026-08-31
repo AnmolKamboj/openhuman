@@ -11,20 +11,28 @@
 //! `DegradedState` — and `tinycortex::memory::health`'s own docs call the
 //! confusion out by name. A swap would compile at neither end.
 //!
-//! What this file re-exports splits cleanly in two, and the two halves are now
-//! named apart rather than mixed into one `pub use`:
+//! What this file re-exported used to split cleanly in two; only one half is
+//! left, and the other is documented so nobody re-derives where it went:
 //!
 //! - **The taxonomy** (`FailureCode`, `FailureClass`, `PipelineFailure`,
 //!   `DegradedState`, `classify_embed_error{,_str}`) is `tinycortex`'s; the
 //!   engine crate only re-exported it. It follows the
 //!   `memory::sync::sync_status` precedent and is named on `tinycortex`
 //!   directly below — same items, so no call site changed and none has to when
-//!   the engine crate leaves the build.
-//! - **The process-global degradation flags** (`mark_*` / `clear_*` /
-//!   `current_degraded_state`), the `doctor` report and its `test_guard` are
-//!   defined *in* `tinymemory-core`. They have no home to be repointed at, so
-//!   they are what actually pins this file — and the reason mixing the two
-//!   halves into one `pub use` line hides which is which.
+//!   the engine crate leaves the build. `rpc_part_02.rs` / `rpc_part_03.rs`
+//!   and [`report`] still take these from here, so this half is production
+//!   surface and stays.
+//! - **The engine half is gone.** The process-global degradation flags
+//!   (`mark_*` / `clear_*` / `current_degraded_state`), the engine's `doctor`
+//!   report and its `test_guard` rode a `pub use tinymemory_core::tree::
+//!   health::*;` glob here. Production stopped reading it in #5560 — the
+//!   doctor and the degradation snapshot are `MemoryMaintenance::{diagnose,
+//!   degraded_state}`, served host-side by [`report`] — which left `test_guard`
+//!   as its only consumer, from four test files. A production `pub use` that
+//!   exists only to serve a test is exactly what keeps a crate in
+//!   `[dependencies]`, so those tests name
+//!   `tinymemory_core::tree::health::test_guard` directly now (the
+//!   `[dev-dependencies]` entry serves them) and the glob is deleted.
 //!
 //! Worth knowing before trusting a reading of `current_degraded_state()`: the
 //! flags are process statics, and the loaded module links its **own** copy of
@@ -48,28 +56,13 @@ pub use tinycortex::memory::health::{
     PipelineFailure,
 };
 
-// The half that genuinely pins the engine crate: the process-global
-// degradation flags (`mark_*` / `clear_*` / `current_degraded_state`, plus the
-// `test_guard` that serialises tests touching them) and the engine's own
-// `doctor` report, all *defined in* `tinymemory-core`. Left as a glob
-// deliberately — narrowing it would enumerate the flag set here and go stale
-// the first time one is added, and it carries nothing else.
-//
-// **Nothing in production reads this glob any more.** `current_degraded_state`
-// and `async_run_doctor` were its two live callers and both went to the driver
-// in #5560 — see [`report`]. What is left is `test_guard`, which four test
-// files use to serialise the process statics, and the flag setters those tests
-// drive. So this line is now a test-only pin, and it goes when those tests stop
-// needing an in-process engine to mark a flag on.
-pub use tinymemory_core::tree::health::*;
-
 /// The doctor report and the degradation snapshot, read from the bound driver
 /// rather than from this process's copy of the engine.
 ///
 /// Its [`DoctorReport`](report::DoctorReport) shadows nothing: it is reached as
 /// `health::report::DoctorReport`, deliberately kept out of this module's own
-/// namespace so that "the host's response type" and "the engine's struct the
-/// glob above still carries" cannot be confused for one another at a call site.
+/// namespace so that "the host's response type" and "the engine's same-named
+/// struct" cannot be confused for one another at a call site.
 pub mod report;
 
 pub(crate) mod user_error;

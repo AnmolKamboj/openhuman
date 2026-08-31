@@ -287,7 +287,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/harness/archivist/recap.rs",
         Verdict::NeedsWiderSeam,
-        "the engine-side chat provider seam (chat::test_override), named only from the `#[cfg(test)]` recap arm: the deterministic provider those tests install is a task-local inside this binary's copy of the engine, which a module in its own process cannot see. The production fold is MemoryTree::summarise",
+        "the engine-side chat provider seam (chat::test_override) plus the engine fold it scopes (tree::summarise::{summarise, SummaryInput, SummaryContext}, tree::tree::TreeKind), all named only from the `#[cfg(test)]` recap arm: the deterministic provider those tests install is a task-local inside this binary's copy of the engine, which a module in its own process cannot see. Named engine-direct since the memory::tree shims were deleted. The production fold is MemoryTree::summarise",
     ),
     (
         "src/openhuman/agent/harness/archivist/test_constructors.rs",
@@ -317,28 +317,20 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/read_rpc/mod.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::chunks::store::with_connection, store::chunks::types::SourceKind); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "one `#[cfg(test)]` re-export of store::chunks::store::with_connection, the raw SQLite door the read_rpc tests assert written rows through — asserting storage rather than re-reading through the handler under test. MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no transaction door, and a contract that had one would be a SQLite contract wearing a trait. Nothing production-side in read_rpc names the engine: SourceKind is tinymemory_api::chunks::SourceKind, and wipe_all/delete_source/flush_source_tree are purge_all, forget_matching and Tree::flush_source_tree",
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
     // These are the historical-path aliases `memory/mod.rs` documents. They
     // name the crate once each and call nothing. Removing them is the
     // re-export problem, not the direct-call problem.
-    (
-        "src/openhuman/memory/tree/health/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::health::*; no production caller left — the doctor and the degradation snapshot are MemoryMaintenance::{diagnose, degraded_state} — so what it carries is `test_guard` and the flag setters four *_tests.rs files drive",
-    ),
-    (
-        "src/openhuman/memory/tree/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::*; no production caller left — `score` is MemoryChunks::chunk_score and `summarise` is MemoryTree::summarise — so what it carries is `score::*`, `summarise::*` and `ingest` for this crate's *_tests.rs and tests/raw_coverage/",
-    ),
-    (
-        "src/openhuman/memory/tree/tree/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::tree::*",
-    ),
+    //
+    // Three siblings used to sit here — `tree/mod.rs`, `tree/health/mod.rs`,
+    // `tree/tree/mod.rs` — whose globs had no production consumer left, only
+    // tests. Those tests name the engine crates directly now (served by the
+    // `[dev-dependencies]` tinymemory-core entry) and the globs are deleted,
+    // so the files no longer reference the engine at all. `tree_runtime` is
+    // the one still production-live; a parallel round is building its doors.
     (
         "src/openhuman/memory/tree/tree_runtime/mod.rs",
         Verdict::HostSide,
@@ -354,7 +346,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/host_impls.rs",
         Verdict::HostSide,
-        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter); mirrored over the bus by modules/memory_host.rs — composio had an eighth seam here until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
+        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter), plus the in-process chunk-store recovery door modules/memory_host.rs calls on StoreCorruptQuarantined — only this process can drop this process's cached handle. The seams are mirrored over the bus by modules/memory_host.rs, and since the tree/health/tree-tree globs were deleted their last in-process caller is the tree_runtime glob below. Composio had an eighth seam here until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
@@ -449,8 +441,8 @@ fn direct_reference_scanner_is_not_vacuous() {
     if allowed.contains("src/openhuman/memory/host_impls.rs") {
         assert!(
             found.contains("src/openhuman/memory/host_impls.rs"),
-            "scanner found no direct engine reference in memory/mod.rs, which is the re-export \
-             block; the scanner is broken"
+            "scanner found no direct engine reference in memory/host_impls.rs, which installs \
+             the host seams; the scanner is broken"
         );
     }
 

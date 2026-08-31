@@ -74,8 +74,8 @@ where
         Some(trimmed.to_string())
     };
     log::debug!(
-        "[thread-context] entering scope thread_id={}",
-        value.as_deref().unwrap_or("<none>")
+        "[thread-context] entering scope has_thread_id={}",
+        value.is_some()
     );
     THREAD_ID.scope(value, fut).await
 }

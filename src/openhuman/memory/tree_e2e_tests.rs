@@ -21,12 +21,12 @@ use crate::openhuman::config::Config;
 // re-exporting the engine in #5560 because no production caller was left. A
 // test may still reach the engine — that is what keeps this a test-only
 // reference rather than a shipped one.
-use crate::openhuman::memory::tree::score::embed::build_embedder_from_config;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
 use tinymemory_core::chat::{test_override, ChatProvider, StaticChatProvider};
 use tinymemory_core::ingest_pipeline::ingest_chat;
 use tinymemory_core::queue::drain_until_idle;
 use tinymemory_core::tree::retrieval::{query_source, search_entities};
+use tinymemory_core::tree::score::embed::build_embedder_from_config;
 
 fn test_config() -> (TempDir, Config) {
     let tmp = TempDir::new().unwrap();

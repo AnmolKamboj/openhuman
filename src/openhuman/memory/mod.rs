@@ -72,9 +72,11 @@ pub(crate) mod test_support;
 pub mod tools;
 
 // Domains that are *mostly* extracted but keep their JSON-RPC surface here.
-// Each of these is a thin wrapper: `pub use tinymemory_core::<domain>::*;`
-// plus the handler/schema modules that name `RpcOutcome` and
-// `ControllerSchema`. See the module docs on each for the split.
+// Each of these started as a thin wrapper: `pub use tinymemory_core::
+// <domain>::*;` plus the handler/schema modules that name `RpcOutcome` and
+// `ControllerSchema`. The globs are being deleted as their production
+// consumers drain — `tree`, `tree::health` and `tree::tree` no longer carry
+// one (#5560) — so see the module docs on each for where its split stands.
 pub mod conversations;
 pub mod goals;
 pub mod people;
@@ -142,20 +144,15 @@ pub use schemas::{
     all_tool_memory_controller_schemas as all_memory_tool_memory_controller_schemas,
     all_tool_memory_registered_controllers as all_memory_tool_memory_registered_controllers,
 };
-// The ingestion vocabulary, split by who actually defines it (#5560).
-//
-// It was one `pub use tinymemory_core::ingestion::{…}` line of eleven names,
-// which read as eleven engine types. Seven of them are not: `tinymemory-core`'s
-// `ingestion` module re-exports them out of `engine::backend::ingest`, which is
-// `pub use tinycortex::memory::ingest`. So the line below names the **same
-// items** at the crate that defines them — `tinycortex` stays a direct
-// dependency of this crate, `tinymemory-core` is the one being shed — and no
-// type, wire byte or call site changes. Same move as `memory::people`,
-// `memory::tool_memory` and `memory::tree::health`'s taxonomy half.
-pub use tinycortex::memory::ingest::{
-    ExtractedEntity, ExtractedRelation, ExtractionMode, MemoryIngestionConfig,
-    MemoryIngestionRequest, MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
-};
+// The ingestion vocabulary is host-owned now (#5560). What this block used to
+// re-export from `tinycortex::memory::ingest` was, by the end, pure WIRE
+// SHAPE: `doc_ingest` routes through `MemoryDocuments::put_document` and
+// nothing here drives the engine's extractor. The five shapes with live
+// consumers (`ExtractionMode`, `MemoryIngestionConfig`, `ExtractedEntity`,
+// `ExtractedRelation`, `MemoryIngestionResult`) live in `rpc_models.rs`,
+// which the `pub use rpc_models::*` below re-exports at the same paths —
+// consumers did not move. `MemoryIngestionRequest` and
+// `DEFAULT_MEMORY_EXTRACTION_MODEL` had no code consumers left and are gone.
 // The other four — `IngestionJob`, `IngestionQueue`, `IngestionState` and
 // `IngestionStatusSnapshot` — are genuinely `tinymemory-core`'s own: the
 // in-process ingest queue and its status snapshot, which `direct_engine_refs`
@@ -182,6 +179,7 @@ pub use tinycortex::memory::ingest::{
 // in `tinymemory` ever named one, so the engine crate was carrying this host's
 // RPC surface (#5560). Same glob, same paths, same wire bytes — the definitions
 // are simply ours now. See `rpc_models`'s module docs.
+pub mod ingestion_models;
 pub mod rpc_models;
 pub use rpc_models::*;
 // Named on the crate directly — `traits` is engine scaffolding, not bus

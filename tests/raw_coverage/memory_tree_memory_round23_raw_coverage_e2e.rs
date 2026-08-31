@@ -14,9 +14,10 @@ use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::inference::embeddings::NoopEmbedding;
-use openhuman_core::openhuman::memory::{
-    ExtractionMode, MemoryIngestionConfig, MemoryIngestionRequest,
-};
+// The engine's own ingest request/config — what `UnifiedMemory::ingest_document`
+// takes. `memory::MemoryIngestion*` are the host's WIRE shapes now
+// (`rpc_models`), distinct types (#5560).
+use tinycortex::memory::ingest::{ExtractionMode, MemoryIngestionConfig, MemoryIngestionRequest};
 use tinymemory_core::store::{NamespaceDocumentInput, UnifiedMemory};
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     all_tree_summarizer_registered_controllers, engine, rpc as tree_runtime_rpc,

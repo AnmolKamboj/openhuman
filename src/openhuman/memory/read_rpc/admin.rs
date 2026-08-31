@@ -284,19 +284,21 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
 
 /// Force a flush of one source's summary tree.
 ///
-/// # The last engine reference in this module (#5560)
+/// # Served by the driver, and `TreeFactory` is not a seam gap (#5560)
 ///
-/// **The upstream half of this is done. What is left is two host forwarders,
-/// and until they land migrating here would be a regression — read on before
-/// changing it.**
-///
-/// Served by the bound driver's `MemoryTree::flush_source_tree` (#5560).
+/// Served by the bound driver's `MemoryTree::flush_source_tree`. The wire
+/// member is `tinymemory_bus::names::FLUSH_SOURCE_TREE`, which the pinned
+/// 131-method contract carries, so this is a contract call and not a method
+/// that answers `Unsupported` at run time.
 ///
 /// This used to hold a live `Tree` object from the engine's
 /// `tree_source::get_or_create_source_tree`, because both things it did next
 /// wanted the object rather than a namespace: `TreeFactory::from_tree(&tree)
 /// .label_strategy(&cfg)` picked the labelling policy from the tree's own
-/// kind and scope, and `force_flush_tree` took `&tree.id`.
+/// kind and scope, and `force_flush_tree` took `&tree.id`. **Neither is an
+/// upstream ask** — they are not narrower doors waiting to be opened, they are
+/// the two halves of a handle-passing shape the contract deliberately does not
+/// have, and the member below replaces both.
 ///
 /// tinymemory v1.7.0 replaced that with a member answering the seal count and
 /// making the labelling decision driver-side — which is where it came from

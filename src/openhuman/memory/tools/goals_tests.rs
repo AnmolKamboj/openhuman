@@ -45,6 +45,27 @@ impl Drop for WorkspaceEnvGuard {
     }
 }
 
+/// Reset the shared goals document, and say why that has to happen at all.
+///
+/// `OPENHUMAN_WORKSPACE` does NOT isolate these tests: the test module
+/// provider deliberately pins every binding to
+/// `ops::shared_memory_test_workspace()` (see `memory/binding.rs`'s test
+/// `module_provider` — a native module is loaded once per process and captures
+/// its first workspace), so goals written here land in the SHARED subtree and
+/// outlive the tempdir. Each test therefore clears the document itself, while
+/// it holds `GLOBAL_MEMORY_TEST_LOCK`, instead of trusting the env guard.
+async fn reset_shared_goals() {
+    let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+        .await
+        .expect("resolve the shared test memory guard");
+    if let Some(goals) = guard.as_goals() {
+        goals
+            .set_goals(crate::openhuman::memory::api::goals::GoalsDoc::default())
+            .await
+            .expect("reset the shared goals document");
+    }
+}
+
 #[tokio::test]
 async fn add_then_list_reflects_change() {
     let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
@@ -52,6 +73,7 @@ async fn add_then_list_reflects_change() {
         .await;
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = WorkspaceEnvGuard::set(tmp.path());
+    reset_shared_goals().await;
 
     let add = GoalsAddTool::new(tmp.path().to_path_buf());
     let res = add
@@ -72,6 +94,7 @@ async fn edit_and_delete_unknown_id_error() {
         .await;
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = WorkspaceEnvGuard::set(tmp.path());
+    reset_shared_goals().await;
 
     let edit = GoalsEditTool::new(tmp.path().to_path_buf());
     let res = edit
@@ -95,6 +118,7 @@ async fn add_refuses_pii_bearing_text_with_the_specific_reason() {
         .await;
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = WorkspaceEnvGuard::set(tmp.path());
+    reset_shared_goals().await;
 
     let add = GoalsAddTool::new(tmp.path().to_path_buf());
     let res = add

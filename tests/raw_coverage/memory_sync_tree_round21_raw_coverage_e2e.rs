@@ -68,9 +68,6 @@ use openhuman_core::openhuman::integrations::composio::periodic::record_sync_suc
 use openhuman_core::openhuman::memory::sync::composio::providers::slack::rpc::{
     sync_status_rpc, SyncStatusRequest,
 };
-// Engine-direct for the same reason as the other retrieval e2e suites (#5560).
-use openhuman_core::openhuman::memory::tree::tree::store as tree_store;
-use openhuman_core::openhuman::memory::tree::tree::TreeStatus;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
@@ -81,6 +78,9 @@ use tinymemory_core::store::content::atomic::stage_summary;
 use tinymemory_core::store::content::{SummaryComposeInput, SummaryTreeKind};
 use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind};
 use tinymemory_core::tree::retrieval::source::query_source;
+// Engine-direct for the same reason as the other retrieval e2e suites (#5560).
+use tinymemory_core::tree::tree::store as tree_store;
+use tinymemory_core::tree::tree::TreeStatus;
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
 static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();

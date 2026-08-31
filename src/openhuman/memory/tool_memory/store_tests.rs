@@ -166,9 +166,14 @@ async fn rules_for_prompt_keeps_only_eager_rules() {
     assert_eq!(rules[0].rule, "critical constraint");
 }
 
-/// The cap bounds the High remainder; it never drops a safety constraint.
+/// The cap is a plain truncate at [`TOOL_MEMORY_PROMPT_CAP`], exactly as the
+/// engine enforced it — Critical sorts first, so Criticals are the LAST to
+/// fall, but past the cap they do fall. The port briefly kept every Critical
+/// (`cap.max(critical_count)`), which was a silent behaviour change in a
+/// behaviour-pinned move; this test now pins the engine's trade-off instead,
+/// the same one the engine documents on the constant itself.
 #[tokio::test]
-async fn rules_for_prompt_never_drops_a_critical_rule_to_fit_the_cap() {
+async fn rules_for_prompt_truncates_at_the_cap_exactly_as_the_engine_did() {
     let store = store();
     let critical_count = TOOL_MEMORY_PROMPT_CAP + 5;
     for i in 0..critical_count {
@@ -201,12 +206,16 @@ async fn rules_for_prompt_never_drops_a_critical_rule_to_fit_the_cap() {
     let rules = grouped.get("shell").expect("shell has eager rules");
     assert_eq!(
         rules.len(),
-        critical_count,
-        "every Critical survives; the High remainder is what the cap trims"
+        TOOL_MEMORY_PROMPT_CAP,
+        "the cap is a hard truncate, engine semantics"
     );
-    assert!(rules
-        .iter()
-        .all(|r| r.priority == ToolMemoryPriority::Critical));
+    assert!(
+        rules
+            .iter()
+            .all(|r| r.priority == ToolMemoryPriority::Critical),
+        "Critical sorts first, so the surviving page is all-Critical; the \
+         overflow Criticals and the High are what fell"
+    );
 }
 
 #[tokio::test]

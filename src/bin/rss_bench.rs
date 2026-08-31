@@ -64,7 +64,7 @@ impl ChatModel<()> for MockModel {
         &self,
         _state: &(),
         _request: ModelRequest,
-    ) -> tinyagents_harness::Result<ModelResponse> {
+    ) -> Result<ModelResponse, tinyinference::Error> {
         Ok(ModelResponse::assistant("ok"))
     }
 }

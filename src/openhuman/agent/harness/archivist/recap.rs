@@ -12,13 +12,15 @@ use crate::openhuman::memory::api::provider::{
 // The engine `summarise` survives under `cfg(test)` only, where the recap
 // tests install a deterministic chat provider through the engine's own
 // task-local; see [`ArchivistHook::summarize_entries`] for why that arm cannot
-// go through the driver.
-#[cfg(test)]
-use crate::openhuman::memory::tree::summarise::summarise;
-#[cfg(test)]
-use crate::openhuman::memory::tree::tree::TreeKind;
+// go through the driver. Named on the engine crate directly: the host's
+// `memory::tree` re-export shim stopped serving production and was deleted
+// (#5560), so a test-only reach into the engine spells the crate out.
 #[cfg(test)]
 use std::sync::Arc;
+#[cfg(test)]
+use tinymemory_core::tree::summarise::summarise;
+#[cfg(test)]
+use tinymemory_core::tree::tree::TreeKind;
 
 /// Total input/context budget for one summarisation fold.
 ///
@@ -292,20 +294,18 @@ impl ArchivistHook {
                 let summary_result = {
                     let engine_inputs: Vec<_> = corpus_inputs
                         .iter()
-                        .map(
-                            |input| crate::openhuman::memory::tree::summarise::SummaryInput {
-                                id: input.id.clone(),
-                                content: input.content.clone(),
-                                token_count: input.token_count,
-                                entities: input.entities.clone(),
-                                topics: input.topics.clone(),
-                                time_range_start: input.time_range_start,
-                                time_range_end: input.time_range_end,
-                                score: input.score,
-                            },
-                        )
+                        .map(|input| tinymemory_core::tree::summarise::SummaryInput {
+                            id: input.id.clone(),
+                            content: input.content.clone(),
+                            token_count: input.token_count,
+                            entities: input.entities.clone(),
+                            topics: input.topics.clone(),
+                            time_range_start: input.time_range_start,
+                            time_range_end: input.time_range_end,
+                            score: input.score,
+                        })
                         .collect();
-                    let engine_ctx = crate::openhuman::memory::tree::summarise::SummaryContext {
+                    let engine_ctx = tinymemory_core::tree::summarise::SummaryContext {
                         tree_id: &summary_ctx.tree_id,
                         tree_kind: TreeKind::parse(&summary_ctx.tree_kind)
                             .expect("summarize_entries builds a tree_kind the engine knows"),

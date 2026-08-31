@@ -35,37 +35,58 @@
 //! reading once and had to be reverted. **The driver class is the wrong thing
 //! to check.** It governs what answers a `MemoryProvider` call; it says nothing
 //! about the free-function engine surface this crate still reaches through the
-//! `memory::tree` re-export facade, which bypasses the binding entirely — the
-//! "second unpoliced door" `memory::direct_engine_refs` is a ratchet over.
+//! surviving `memory::tree::tree_runtime` re-export, which bypasses the binding
+//! entirely — the "second unpoliced door" `memory::direct_engine_refs` is a
+//! ratchet over.
 //!
-//! Two production paths through that door land on a seam today, both on
-//! [`ChatHost`]:
+//! **Both production paths this section used to name are gone, and the reason
+//! the installs survive has moved with them.** `agent::harness::archivist::
+//! recap` folds through `MemoryTree::summarise` and `memory::tools::doctor`
+//! through `MemoryMaintenance::diagnose`, so neither reaches [`ChatHost`]
+//! in-process any more; the `memory::tree::summarise` path they went through
+//! does not resolve at all now that the glob carrying it is deleted.
 //!
-//! - `agent::harness::archivist::recap` calls `memory::tree::summarise::
-//!   summarise` on every recap fold — the `#[cfg(not(test))]` arm, so no test
-//!   override is involved — and that is `tinymemory_core::tree::summarise`,
-//!   which builds its provider through `chat::build_chat_provider` →
-//!   `chat_host::{provider_for_role, create_chat_model_with_model_id}`;
-//! - `memory::tools::doctor` and the `memory_tree_doctor` RPC call
-//!   `memory::tree::health::async_run_doctor`, whose `doctor.rs` asks
-//!   `chat_host::summarizer_available(config)` for the report's summariser row.
+//! What keeps the in-process engine live is **`memory::tree::tree_runtime`**,
+//! the last production glob (`pub use tinymemory_core::tree::tree_runtime::*`).
+//! Its five `tree_summarizer_*` RPC handlers, the `openhuman tree-summarizer`
+//! CLI subcommand, `memory::ops::learn` and the channels-startup event
+//! subscriber all run the markdown time-tree in **this** process, and that fold
+//! builds its provider through `chat::build_chat_provider` →
+//! `chat_host::{provider_for_role, create_chat_model_with_model_id}`. It is
+//! also why [`ChatHost::summarizer_available`] is implemented below by
+//! delegating straight back into `tree_runtime::ops`: the seam and its last
+//! remaining caller are two ends of the same module.
 //!
 //! The seams fail **loudly** when unwired rather than degrading, so removing
-//! the installs would not silently misbehave — it would break every recap and
-//! every doctor run with "no ChatHost installed". That is the failure #5560
-//! shipped once, as "no EmbeddingHost installed" on the chat hot path.
+//! the installs would not silently misbehave — it would break every summariser
+//! run with "no ChatHost installed". That is the failure #5560 shipped once, as
+//! "no EmbeddingHost installed" on the chat hot path.
 //!
-//! [`reset_in_process_chunk_store`] is live for a different reason and survives
-//! independently: `memory::sources::status` reaches the engine's chunk store
-//! over raw SQLite, and `openhuman.memory_sources_status_list` — polled every
-//! five seconds by the sources UI — is what keeps that connection cached here.
+//! [`reset_in_process_chunk_store`] survives independently, and its reason has
+//! moved too. It was justified by `memory::sources::status` reading the
+//! engine's chunk store over raw SQLite; that handler asks
+//! `MemoryChunks::source_ingest_status` now and names no engine. What keeps the
+//! function is `modules::memory_host`'s `StoreCorruptQuarantined` arm — only
+//! this process can drop **this** process's cached handle, so no contract
+//! method can stand in for it however small the in-process reader set becomes.
 //!
 //! **So the question to re-ask is not "is the driver embedded" but "does any
 //! production caller still reach an engine free function".** `grep -rn
-//! 'tinymemory_core::' src --include='*.rs'` outside comments, plus the
-//! `memory::{tree, sources}` re-export shims, is the whole inventory; when that
-//! is empty this file's installs are dead and go with the manifest entry, in
+//! 'tinymemory_core::' src --include='*.rs'` outside comments is the inventory
+//! for *this* file's installs, now that `tree_runtime` is the only re-export
+//! shim left; when it is empty they are dead and go with the manifest entry, in
 //! the same change.
+//!
+//! **That grep is not the inventory for #5560 as a whole, and the difference
+//! matters.** #5560 sheds two crates, and `memory::direct_engine_refs` ratchets
+//! one needle. `tinycortex` is a direct dependency of this crate in its own
+//! right — not something reached through `tinymemory-core` — so repointing a
+//! file from `tinymemory_core::x` to `tinycortex::x` drops it out of that lint
+//! while the engine stays linked. `memory::tree::health` did exactly that, on
+//! the sound reasoning that the taxonomy was always `tinycortex`'s and the
+//! engine crate only re-exported it; it is still a production `tinycortex`
+//! reference afterwards, as is `memory::tools::flavour`. Add `tinycortex::` to
+//! the grep before concluding the engine has left the build.
 //!
 //! # Composio no longer has a seam here
 //!
@@ -80,11 +101,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinymemory_api::host::{EmbeddingHost, EmbeddingProvider, ErrorReporter, UsageInfo};
+use tinymemory_api::host::{
+    EmbeddingHost, EmbeddingProvider, ErrorReporter, Policy, SpacyResponse, UsageInfo,
+};
 use tinymemory_core::chat_host::ChatHost;
 use tinymemory_core::config_loader::ConfigLoader;
-use tinymemory_core::nlp_host::{NlpHost, SpacyResponse};
-use tinymemory_core::scheduler_gate::{Policy, SchedulerGate};
+use tinymemory_core::nlp_host::NlpHost;
+use tinymemory_core::scheduler_gate::SchedulerGate;
 use tinymemory_core::shutdown::{ShutdownHook, ShutdownHost};
 use tokio::sync::Notify;
 
@@ -96,9 +119,21 @@ use crate::openhuman::config::Config;
 /// is nothing but `pub type Config = dyn tinymemory_api::host::
 /// MemoryHostConfig;` — the same trait object under a longer chain. Spelling it
 /// this way is not cosmetic: it means every remaining `tinymemory_core::` line
-/// in this file is a *seam installation*, so the direct-reference inventory
-/// reads as what actually keeps the engine linked here rather than as a mix of
-/// installs and inert aliases (#5560).
+/// in this file is a *seam trait*, a *seam installation* or the in-process
+/// recovery door, so the direct-reference inventory reads as what actually
+/// keeps the engine linked here rather than as a mix of those and inert
+/// aliases (#5560).
+///
+/// `SpacyResponse` and `Policy` were the two aliases that still broke that
+/// rule, and they are imported from `tinymemory_api::host` above for the same
+/// reason. It is the identical item either way — `tinymemory_core::nlp_host`
+/// and `::scheduler_gate` are each a `pub use` of the contract's type — so the
+/// repoint is free, and what it buys is that a reader counting engine
+/// references in this file counts only things that would have to be *replaced*
+/// rather than merely *renamed*. The traits themselves (`ChatHost`,
+/// `ConfigLoader`, `NlpHost`, `SchedulerGate`, `ShutdownHost`) have no contract
+/// declaration and cannot follow: they are the in-process embedding seam, which
+/// is the half of `tinymemory_api::host` that never crosses the bus.
 type SeamConfig = dyn tinymemory_api::host::MemoryHostConfig;
 
 // ── Embeddings ──────────────────────────────────────────────────────────────

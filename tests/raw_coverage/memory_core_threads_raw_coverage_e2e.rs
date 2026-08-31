@@ -17,11 +17,6 @@ use openhuman_core::openhuman::memory::conversations::{
     ensure_thread, list_threads, CreateConversationThread,
 };
 use openhuman_core::openhuman::memory::read_rpc::{self, ChunkFilter, GraphMode};
-use openhuman_core::openhuman::memory::tree::score::embed::pack_embedding;
-use openhuman_core::openhuman::memory::tree::score::extract::EntityKind;
-use openhuman_core::openhuman::memory::tree::score::resolver::CanonicalEntity;
-use openhuman_core::openhuman::memory::tree::score::signals::ScoreSignals;
-use openhuman_core::openhuman::memory::tree::score::store::{index_entity, upsert_score, ScoreRow};
 use openhuman_core::openhuman::memory::{
     AppendConversationMessageRequest, ConversationMessageRecord, ConversationMessagesRequest,
     CreateConversationThreadRequest, DeleteConversationThreadRequest, EmptyRequest,
@@ -41,6 +36,11 @@ use tinymemory_core::store::chunks::types::{
 use tinymemory_core::store::content;
 use tinymemory_core::store::trees::store as tree_store;
 use tinymemory_core::store::trees::types::{SummaryNode, TreeKind};
+use tinymemory_core::tree::score::embed::pack_embedding;
+use tinymemory_core::tree::score::extract::EntityKind;
+use tinymemory_core::tree::score::resolver::CanonicalEntity;
+use tinymemory_core::tree::score::signals::ScoreSignals;
+use tinymemory_core::tree::score::store::{index_entity, upsert_score, ScoreRow};
 use tinymemory_core::tree_source::get_or_create_source_tree;
 
 struct EnvGuard {

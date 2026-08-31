@@ -112,24 +112,24 @@ use openhuman_core::openhuman::memory::tools::tool_memory::{
 use openhuman_core::openhuman::memory::tools::{
     MemoryForgetTool, MemoryRecallTool, MemoryStoreTool,
 };
-use openhuman_core::openhuman::memory::tree::score::embed;
-use openhuman_core::openhuman::memory::tree::score::embed::Embedder;
-use openhuman_core::openhuman::memory::tree::score::extract::{
+use tinymemory_core::tree::score::embed;
+use tinymemory_core::tree::score::embed::Embedder;
+use tinymemory_core::tree::score::extract::{
     CompositeExtractor, EntityExtractor, EntityKind, ExtractedEntities, ExtractedEntity,
     ExtractedTopic,
 };
-use openhuman_core::openhuman::memory::tree::score::resolver::CanonicalEntity;
-use openhuman_core::openhuman::memory::tree::score::signals::{
+use tinymemory_core::tree::score::resolver::CanonicalEntity;
+use tinymemory_core::tree::score::signals::{
     combine, combine_cheap_only, compute as compute_score_signals, entity_density_score,
     interaction, metadata_weight, source_weight, token_count, unique_words, ScoreSignals,
     SignalWeights,
 };
-use openhuman_core::openhuman::memory::tree::score::store as score_store;
-use openhuman_core::openhuman::memory::tree::score::{resolver, ScoringConfig};
-use openhuman_core::openhuman::memory::tree::summarise::{
+use tinymemory_core::tree::score::store as score_store;
+use tinymemory_core::tree::score::{resolver, ScoringConfig};
+use tinymemory_core::tree::summarise::{
     fallback_summary, SummaryContext, SummaryInput,
 };
-use openhuman_core::openhuman::memory::tree::tree::bucket_seal::LeafRef;
+use tinymemory_core::tree::tree::bucket_seal::LeafRef;
 use openhuman_core::openhuman::memory::tree::tree_runtime::store as tree_runtime_store;
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     all_tree_summarizer_controller_schemas, all_tree_summarizer_registered_controllers,
@@ -138,15 +138,21 @@ use openhuman_core::openhuman::memory::tree::tree_runtime::{
 };
 use tinymemory_core::store::identity::is_self_identity_any_toolkit;
 // `retrieval` is the engine module, not the host wrapper: the host stopped
-// re-exporting it in #5560. `score::embed` above is still host-side.
+// re-exporting it in #5560. The `tree::score` / `tree::summarise` /
+// `tree::tree` imports above went engine-direct the same way once their host
+// re-export shims stopped serving production (#5560).
 use openhuman_core::openhuman::memory::{
     all_memory_controller_schemas, all_memory_registered_controllers,
     preferences::{
         load_general_preferences, recall_related_preferences, recall_situational_preferences,
         USER_PREF_GENERAL_NAMESPACE, USER_PREF_SITUATIONAL_NAMESPACE,
     },
-    read_rpc as memory_read_rpc, MemoryIngestionConfig, MemoryIngestionRequest,
+    read_rpc as memory_read_rpc,
 };
+// The engine's own ingest request/config — what `UnifiedMemory::
+// ingest_document` and `extract_graph` take. `memory::MemoryIngestion*` are
+// the host's WIRE shapes now (`rpc_models`), distinct types (#5560).
+use tinycortex::memory::ingest::{MemoryIngestionConfig, MemoryIngestionRequest};
 use tinymemory_core::tree::retrieval;
 use tinymemory_core::tree_policy::TreePolicy;
 use tinymemory_core::tree_source;
@@ -679,7 +685,7 @@ Kitchen is north of Garden.
                 taint: openhuman_core::openhuman::memory::MemoryTaint::Internal,
             },
             &MemoryIngestionConfig {
-                extraction_mode: openhuman_core::openhuman::memory::ExtractionMode::Chunk,
+                extraction_mode: tinycortex::memory::ingest::ExtractionMode::Chunk,
                 ..Default::default()
             },
         )
@@ -1462,7 +1468,7 @@ fn memory_tree_scoring_signal_helpers_cover_boundaries_and_serialization() {
     assert!(!EntityKind::Person.is_mechanical());
     assert!(EntityKind::parse("unknown").is_err());
 
-    let regex_entities = openhuman_core::openhuman::memory::tree::score::extract::regex::extract(
+    let regex_entities = tinymemory_core::tree::score::extract::regex::extract(
         "Alice emailed bob@example.com from https://example.test and mentioned #coverage.",
     );
     assert!(regex_entities
@@ -1748,12 +1754,12 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
         0
     );
 
-    let source_factory = openhuman_core::openhuman::memory::tree::tree::TreeFactory::source(
+    let source_factory = tinymemory_core::tree::tree::TreeFactory::source(
         "gmail:alice@example.com|bob@example.com",
     );
     assert_eq!(
         source_factory.profile(),
-        openhuman_core::openhuman::memory::tree::tree::TreeProfile::Source
+        tinymemory_core::tree::tree::TreeProfile::Source
     );
     assert_eq!(
         source_factory.scope_slug(),
@@ -1763,10 +1769,10 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
         .get_or_create(&config)
         .expect("source tree from factory");
     assert_eq!(
-        openhuman_core::openhuman::memory::tree::tree::TreeFactory::from_tree(&source_tree).kind(),
+        tinymemory_core::tree::tree::TreeFactory::from_tree(&source_tree).kind(),
         TreeKind::Source
     );
-    let topic_factory = openhuman_core::openhuman::memory::tree::tree::TreeFactory::topic(
+    let topic_factory = tinymemory_core::tree::tree::TreeFactory::topic(
         "email:alice@example.com",
     );
     assert!(matches!(
@@ -1778,12 +1784,12 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
         .expect("topic tree from factory");
     assert_ne!(source_tree.id, topic_tree.id);
     assert!(
-        openhuman_core::openhuman::memory::tree::tree::new_tree_id(TreeKind::Global)
+        tinymemory_core::tree::tree::new_tree_id(TreeKind::Global)
             .starts_with("global:")
     );
-    assert!(openhuman_core::openhuman::memory::tree::tree::new_summary_id(2).contains(":L2-"));
+    assert!(tinymemory_core::tree::tree::new_summary_id(2).contains(":L2-"));
     assert!(
-        openhuman_core::openhuman::memory::tree::tree::registry::is_unique_violation(
+        tinymemory_core::tree::tree::registry::is_unique_violation(
             &anyhow::anyhow!("UNIQUE constraint failed: mem_trees.kind, mem_trees.scope")
         )
     );
@@ -1791,7 +1797,7 @@ fn memory_tree_runtime_store_buffers_and_retrieval_wire_helpers() {
         .archive(&config)
         .expect("archive source tree");
     assert_eq!(
-        openhuman_core::openhuman::memory::tree::tree::store::get_tree_by_scope(
+        tinymemory_core::tree::tree::store::get_tree_by_scope(
             &config,
             TreeKind::Source,
             "gmail:alice@example.com|bob@example.com"
@@ -2007,13 +2013,13 @@ async fn memory_read_rpc_score_index_and_summary_helpers_cover_dashboard_paths()
         ask: None,
     };
     let empty =
-        openhuman_core::openhuman::memory::tree::summarise::summarise(&config, &[], &empty_ctx)
+        tinymemory_core::tree::summarise::summarise(&config, &[], &empty_ctx)
             .await
             .expect("empty summarise avoids provider");
     assert_eq!(empty.token_count, 0);
 
     let embedder =
-        openhuman_core::openhuman::memory::tree::score::embed::factory::build_embedder_from_config(
+        tinymemory_core::tree::score::embed::factory::build_embedder_from_config(
             &config,
         )
         .expect("inert embedder");
@@ -2761,7 +2767,7 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
 #[test]
 fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     let now = Utc.with_ymd_and_hms(2026, 5, 29, 16, 0, 0).unwrap();
-    let payload = openhuman_core::openhuman::memory::tree::TreeLeafPayload {
+    let payload = tinycortex::memory::tree::TreeLeafPayload {
         chunk_id: "chunk-contract-1".into(),
         token_count: 42,
         timestamp: now,
@@ -2774,12 +2780,12 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(leaf_ref.chunk_id, payload.chunk_id);
     assert_eq!(leaf_ref.entities, payload.entities);
     let round_trip =
-        openhuman_core::openhuman::memory::tree::TreeLeafPayload::from(leaf_ref.clone());
+        tinycortex::memory::tree::TreeLeafPayload::from(leaf_ref.clone());
     assert_eq!(round_trip.content, payload.content);
     assert_eq!(round_trip.score, payload.score);
 
     let write_default_json =
-        serde_json::to_value(openhuman_core::openhuman::memory::tree::TreeWriteRequest {
+        serde_json::to_value(tinycortex::memory::tree::TreeWriteRequest {
             tree_id: "tree-contract".into(),
             tree_kind: TreeKind::Source,
             leaf: round_trip.clone(),
@@ -2790,7 +2796,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(write_default_json["label_strategy"], "inherit");
     assert_eq!(write_default_json["deferred"], false);
 
-    let decoded_write: openhuman_core::openhuman::memory::tree::TreeWriteRequest =
+    let decoded_write: tinycortex::memory::tree::TreeWriteRequest =
         serde_json::from_value(json!({
             "tree_id": "tree-contract",
             "tree_kind": "global",
@@ -2807,12 +2813,12 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(decoded_write.tree_kind, TreeKind::Global);
     assert_eq!(
         decoded_write.label_strategy,
-        openhuman_core::openhuman::memory::tree::TreeLabelStrategy::Empty
+        tinycortex::memory::tree::TreeLabelStrategy::Empty
     );
     assert!(decoded_write.leaf.entities.is_empty());
     assert!(decoded_write.deferred);
 
-    let outcome = openhuman_core::openhuman::memory::tree::TreeWriteOutcome {
+    let outcome = tinycortex::memory::tree::TreeWriteOutcome {
         new_summary_ids: vec!["summary-1".into()],
         seal_pending: true,
     };
@@ -2820,7 +2826,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(outcome_json["new_summary_ids"][0], "summary-1");
     assert_eq!(outcome_json["seal_pending"], true);
 
-    let read_request: openhuman_core::openhuman::memory::tree::TreeReadRequest =
+    let read_request: tinycortex::memory::tree::TreeReadRequest =
         serde_json::from_value(json!({
             "tree_id": "tree-contract",
             "max_depth": 2,
@@ -2832,14 +2838,14 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(read_request.max_depth, 2);
     assert_eq!(read_request.limit, Some(3));
 
-    let hit = openhuman_core::openhuman::memory::tree::TreeReadHit {
+    let hit = tinycortex::memory::tree::TreeReadHit {
         node_id: "summary-1".into(),
         node_kind: "summary".into(),
         level: 1,
         content: "Summary text".into(),
         score: 0.42,
     };
-    let result = openhuman_core::openhuman::memory::tree::TreeReadResult {
+    let result = tinycortex::memory::tree::TreeReadResult {
         hits: vec![hit],
         total: 4,
         tree_id: "tree-contract".into(),
@@ -2859,7 +2865,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
         created_at: now,
         last_sealed_at: None,
     };
-    let empty = openhuman_core::openhuman::memory::tree::TreeReadResult::empty(&tree);
+    let empty = tinycortex::memory::tree::TreeReadResult::empty(&tree);
     assert_eq!(empty.tree_id, "empty-tree");
     assert!(empty.hits.is_empty());
 }
@@ -4486,18 +4492,18 @@ async fn memory_query_backend_and_tree_flush_wrappers_cover_public_edges() {
     assert!(leaves.is_empty());
 
     let no_stale =
-        openhuman_core::openhuman::memory::tree::tree::flush::flush_stale_buffers_default(
+        tinymemory_core::tree::tree::flush::flush_stale_buffers_default(
             &config,
-            &openhuman_core::openhuman::memory::tree::tree::LabelStrategy::Empty,
+            &tinymemory_core::tree::tree::LabelStrategy::Empty,
         )
         .await
         .expect("flush empty buffers");
     assert_eq!(no_stale, 0);
-    let missing_flush = openhuman_core::openhuman::memory::tree::tree::flush::force_flush_tree(
+    let missing_flush = tinymemory_core::tree::tree::flush::force_flush_tree(
         &config,
         "tree:missing",
         None,
-        &openhuman_core::openhuman::memory::tree::tree::LabelStrategy::Empty,
+        &tinymemory_core::tree::tree::LabelStrategy::Empty,
     )
     .await
     .unwrap_err();
