@@ -65,7 +65,6 @@ use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use tinymemory_api::composio::{render_connected_identities_section, ProviderUserProfile};
-use tinymemory_core::global as memory_global;
 use tinymemory_core::store::identity::{is_self_identity_any_toolkit, IdentityKind};
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
@@ -192,9 +191,16 @@ async fn profile_persistence_loads_matches_renders_and_deletes_connected_identit
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
     let _home = EnvGuard::set_path("HOME", tmp.path());
-    let config = config_in(&tmp);
+    let mut config = config_in(&tmp);
+    // This integration test exercises the Profile family through the same
+    // loaded TinyMemory module that production uses. The full-suite fixture
+    // supplies its local path via TINYMEMORY_TEST_MODULE, keeping this out of
+    // the release-metadata resolver.
+    config.modules.enabled = true;
     persist_config(&config).await;
-    memory_global::init(config.workspace_dir.clone()).expect("init global memory client");
+    openhuman_core::openhuman::modules::ops::ensure_loaded(&config, "tinymemory")
+        .await
+        .expect("load local TinyMemory test module");
 
     let slack = ProviderUserProfile {
         toolkit: "Slack!".to_string(),
