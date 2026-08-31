@@ -1089,7 +1089,7 @@ function FlowEditor({
     <Button
       type="button"
       variant="primary"
-      size="xs"
+      size="sm"
       analyticsId="flow-canvas-run"
       iconOnly
       data-testid="flow-canvas-run"
@@ -1108,7 +1108,7 @@ function FlowEditor({
     <ToggleGroupRoot
       type="single"
       variant="secondary"
-      size="xs"
+      size="sm"
       value={sidePanel ?? ''}
       onValueChange={next => setSidePanel(next === 'copilot' || next === 'legend' ? next : null)}
       aria-label={t('flows.canvas.sidePanelToggle')}
@@ -1138,7 +1138,7 @@ function FlowEditor({
       <Button
         type="button"
         variant="tertiary"
-        size="xs"
+        size="sm"
         iconOnly
         data-testid="flow-editor-discard"
         aria-label={t('flows.editor.discard')}
@@ -1150,7 +1150,7 @@ function FlowEditor({
       <Button
         type="button"
         variant="primary"
-        size="xs"
+        size="sm"
         iconOnly
         data-testid="flow-editor-save"
         aria-label={saveMeta.saving ? t('flows.editor.saving') : t('flows.editor.save')}
