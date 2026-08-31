@@ -39,7 +39,7 @@
 //! * **Serial delegation** (`spawn_subagent` → `run_subagent`) runs inline on
 //!   the turn's task and is covered.
 //! * **Parallel fan-out is also covered.** `spawn_parallel_agents` drives its
-//!   workers through `tinyagents::graph::parallel::map_reduce`, which bounds
+//!   workers through `tinyagents_graph::parallel::map_reduce`, which bounds
 //!   concurrency with `futures`' `buffer_unordered`
 //!   (`vendor/tinyagents/src/graph/parallel/mod.rs:86`) rather than
 //!   `tokio::spawn`. `buffer_unordered` polls every worker on the **caller's**

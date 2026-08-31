@@ -3680,8 +3680,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': '수동 실행',
   'flows.copilot.open': '코파일럿',
   'flows.copilot.title': '워크플로 코파일럿',
-  'flows.copilot.subtitle': '변경을 요청하고 각 제안을 적용하기 전에 검토하세요.',
-  'flows.copilot.close': '코파일럿 닫기',
   'flows.copilot.placeholder': '변경을 요청하세요…',
   'flows.copilot.send': '보내기',
   'flows.copilot.thinking': '생각 중…',

@@ -3722,8 +3722,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'চাহিদা অনুযায়ী',
   'flows.copilot.open': 'কো-পাইলট',
   'flows.copilot.title': 'ওয়ার্কফ্লো কো-পাইলট',
-  'flows.copilot.subtitle': 'পরিবর্তন চান এবং প্রয়োগ করার আগে প্রতিটি প্রস্তাব পর্যালোচনা করুন।',
-  'flows.copilot.close': 'কো-পাইলট বন্ধ করুন',
   'flows.copilot.placeholder': 'একটি পরিবর্তন চান…',
   'flows.copilot.send': 'পাঠান',
   'flows.copilot.thinking': 'ভাবছে…',

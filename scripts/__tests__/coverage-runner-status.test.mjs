@@ -113,6 +113,11 @@ test("a failed raw coverage module fails the run even when a later module succee
       'PRODUCT_FEATURES=""',
       "log() { printf '%s\\n' \"$*\"; }",
       "raw_coverage_modules() { printf 'first\\nsecond\\n'; }",
+      // Neutralise the product-feature gate. Without this the runner skips
+      // `raw_coverage_all` before reaching the loop, and the test passes
+      // vacuously — asserting failure propagation while never producing a
+      // failure. What is under test here is the `|| return`, not the gate.
+      "target_features_satisfied() { return 0; }",
       // Fails for `first::`, succeeds otherwise.
       "llvm_cov() { for a in \"$@\"; do case \"$a\" in first::) echo 'module first FAILED'; return 7 ;; esac; done; echo 'module ok'; return 0; }",
     ].join("\n"),

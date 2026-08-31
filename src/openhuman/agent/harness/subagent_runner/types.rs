@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
-use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
 
 use crate::openhuman::agent::harness::definition::AgentTier;
 use crate::openhuman::agent::messages::ChatMessage;

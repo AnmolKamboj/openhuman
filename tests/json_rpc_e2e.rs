@@ -17,8 +17,8 @@ use futures_util::StreamExt;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::ModelRequest;
+use tinyinference::message::Message;
+use tinyinference::model::ModelRequest;
 
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
 use openhuman_core::core::jsonrpc::build_core_http_router;
@@ -3381,15 +3381,15 @@ async fn json_rpc_run_ledger_lifecycle() {
         .await
         .expect("load config");
 
-    tinyagents::session::run_ledger::upsert_agent_run(
+    tinyagents_session::run_ledger::upsert_agent_run(
         &config.workspace_dir,
-        tinyagents::session::run_ledger::AgentRunUpsert {
+        tinyagents_session::run_ledger::AgentRunUpsert {
             id: "sub-run-1".to_string(),
-            kind: tinyagents::session::run_ledger::AgentRunKind::WorkerThread,
+            kind: tinyagents_session::run_ledger::AgentRunKind::WorkerThread,
             parent_run_id: Some("req-run-1".to_string()),
             parent_thread_id: Some("thread-run-1".to_string()),
             agent_id: Some("researcher".to_string()),
-            status: tinyagents::session::run_ledger::AgentRunStatus::AwaitingUser,
+            status: tinyagents_session::run_ledger::AgentRunStatus::AwaitingUser,
             prompt_ref: Some("thread:worker-1:message:seed".to_string()),
             worker_thread_id: Some("worker-1".to_string()),
             task_board_id: Some("thread-run-1".to_string()),
@@ -3408,9 +3408,9 @@ async fn json_rpc_run_ledger_lifecycle() {
     )
     .expect("seed run");
 
-    tinyagents::session::run_ledger::append_run_event(
+    tinyagents_session::run_ledger::append_run_event(
         &config.workspace_dir,
-        tinyagents::session::run_ledger::RunEventAppend {
+        tinyagents_session::run_ledger::RunEventAppend {
             run_id: "sub-run-1".to_string(),
             event_type: "subagent_awaiting_user".to_string(),
             payload: json!({ "question": "Which repo should I inspect?" }),
@@ -3500,7 +3500,7 @@ async fn json_rpc_agent_work_list_groups_runs_by_bucket() {
         .await
         .expect("load config");
 
-    use tinyagents::session::run_ledger::{
+    use tinyagents_session::run_ledger::{
         upsert_agent_run, AgentRunKind, AgentRunStatus, AgentRunUpsert,
     };
     let seed = |id: &str, status: AgentRunStatus| AgentRunUpsert {
@@ -3631,16 +3631,16 @@ async fn json_rpc_workflow_run_definitions_and_runs_roundtrip() {
     );
 
     // Seed a durable workflow run, then list + get it.
-    tinyagents::session::run_ledger::upsert_workflow_run(
+    tinyagents_session::run_ledger::upsert_workflow_run(
         &config.workspace_dir,
-        tinyagents::session::run_ledger::WorkflowRunUpsert {
+        tinyagents_session::run_ledger::WorkflowRunUpsert {
             id: "wf-run-1".to_string(),
             definition_id: "parallel_research_cross_check".to_string(),
             parent_thread_id: Some("thread-wf-1".to_string()),
             input: json!({ "question": "test" }),
             phase_states: json!({ "decompose": "completed" }),
             child_run_ids: vec!["child-1".to_string()],
-            status: tinyagents::session::run_ledger::WorkflowRunStatus::Running,
+            status: tinyagents_session::run_ledger::WorkflowRunStatus::Running,
             summary: None,
             started_at: None,
             completed_at: None,
@@ -3830,17 +3830,17 @@ async fn json_rpc_agent_team_coordination_roundtrip() {
 
     // Mark A done directly via the run ledger, then B claims fine.
     let task_a =
-        tinyagents::session::run_ledger::get_agent_team_task(&config.workspace_dir, &task_a_id)
+        tinyagents_session::run_ledger::get_agent_team_task(&config.workspace_dir, &task_a_id)
             .expect("get task A")
             .expect("task A present");
-    tinyagents::session::run_ledger::upsert_agent_team_task(
+    tinyagents_session::run_ledger::upsert_agent_team_task(
         &config.workspace_dir,
-        tinyagents::session::run_ledger::AgentTeamTaskUpsert {
+        tinyagents_session::run_ledger::AgentTeamTaskUpsert {
             id: task_a.id.clone(),
             team_id: task_a.team_id.clone(),
             title: task_a.title.clone(),
             objective: task_a.objective.clone(),
-            status: tinyagents::session::run_ledger::AgentTeamTaskStatus::Done,
+            status: tinyagents_session::run_ledger::AgentTeamTaskStatus::Done,
             owner_member_id: task_a.owner_member_id.clone(),
             depends_on: task_a.depends_on.clone(),
             gate_status: Some(task_a.gate_status.clone()),
@@ -10672,10 +10672,8 @@ async fn json_rpc_task_sources_crud_and_status() {
     let tasks_result = assert_no_jsonrpc_error(&tasks, "task_sources_list_tasks");
     assert_eq!(tasks_result.as_array().map(|a| a.len()), Some(0));
 
-    // (preview_filter is covered end to end by
-    // json_rpc_task_sources_fetch_pipeline_e2e with a stub provider; we
-    // do not assert on it here because the provider registry is global
-    // and shared across tests in this binary.)
+    // (preview_filter's refusal is covered end to end by
+    // json_rpc_task_sources_fetch_pipeline_e2e.)
 
     // ── remove, then get is not found ────────────────────────────────
     let remove = post_json_rpc(
@@ -10700,60 +10698,22 @@ async fn json_rpc_task_sources_crud_and_status() {
     rpc_join.abort();
 }
 
-/// Stub Composio provider used by the task-sources fetch E2E. Returns a
-/// canned set of tasks from `fetch_tasks` so the full
-/// fetch → enrich → route → ingest pipeline can be exercised over RPC
-/// without a live Composio connection.
-mod task_sources_stub {
-    use async_trait::async_trait;
-    use openhuman_core::openhuman::memory::sync::composio::providers::{
-        ComposioProvider, NormalizedTask, ProviderContext, ProviderUserProfile, TaskFetchFilter,
-    };
-
-    pub struct StubGithubProvider {
-        pub tasks: Vec<NormalizedTask>,
-    }
-
-    pub fn task(external_id: &str, title: &str, updated: &str) -> NormalizedTask {
-        NormalizedTask {
-            external_id: external_id.to_string(),
-            provider: "github".to_string(),
-            title: title.to_string(),
-            url: Some(format!("https://example.com/{external_id}")),
-            updated_at: Some(updated.to_string()),
-            ..Default::default()
-        }
-    }
-
-    #[async_trait]
-    impl ComposioProvider for StubGithubProvider {
-        fn toolkit_slug(&self) -> &'static str {
-            "github"
-        }
-        async fn fetch_user_profile(
-            &self,
-            _ctx: &ProviderContext,
-        ) -> Result<ProviderUserProfile, String> {
-            Ok(ProviderUserProfile::default())
-        }
-        async fn fetch_tasks(
-            &self,
-            _ctx: &ProviderContext,
-            _filter: &TaskFetchFilter,
-        ) -> Result<Vec<NormalizedTask>, String> {
-            Ok(self.tasks.clone())
-        }
-    }
-}
-
-/// Full task-sources fetch pipeline over JSON-RPC: a stub provider feeds
-/// `fetch_tasks`, then `task_sources_fetch` routes the tasks onto the
-/// board, `list_tasks` surfaces them, a re-fetch dedups, and
-/// `preview_filter` returns matches without ingesting.
+/// `task_sources_fetch` / `task_sources_preview_filter` over JSON-RPC now
+/// that `ComposioProvider::fetch_tasks` has no replacement.
+///
+/// This test used to register a stub `ComposioProvider` (deleted by
+/// tinymemory v1.13.4 with the whole in-process provider registry — see
+/// `crate::openhuman::integrations::composio::providers`'s module docs) and
+/// exercise the full fetch → enrich → route → ingest pipeline against it.
+/// `task_sources::pipeline::fetch_tasks_unavailable` documents why that
+/// capability was not ported forward: tinyconnectors' `Sync` member returns
+/// memory records, not board items, and there is no structured task-fetch
+/// bus surface to reimplement `fetch_tasks` against for any toolkit. So the
+/// pipeline now refuses cleanly for every provider instead of silently
+/// dropping some toolkits' coverage, and this test asserts that refusal
+/// end to end over RPC rather than a successful fetch.
 #[tokio::test]
 async fn json_rpc_task_sources_fetch_pipeline_e2e() {
-    use std::sync::Arc;
-
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
@@ -10765,17 +10725,6 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
     write_min_config(&openhuman_home, "http://127.0.0.1:1");
-
-    // Register the stub github provider BEFORE serving so the fetch RPC
-    // resolves it from the global registry.
-    openhuman_core::openhuman::memory::sync::composio::providers::register_provider(Arc::new(
-        task_sources_stub::StubGithubProvider {
-            tasks: vec![
-                task_sources_stub::task("101", "Fix flaky test", "2025-01-01T00:00:00Z"),
-                task_sources_stub::task("102", "Update docs", "2025-01-02T00:00:00Z"),
-            ],
-        },
-    ));
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
@@ -10801,7 +10750,9 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
         .expect("source id")
         .to_string();
 
-    // First fetch: both stub tasks routed.
+    // Fetch is infallible at the RPC boundary — the pipeline captures the
+    // refusal into `FetchOutcome::error` rather than failing the call, so
+    // the scheduler loop that shares this same entry point never unwinds.
     let fetch1 = post_json_rpc(
         &rpc_base,
         7402,
@@ -10810,16 +10761,19 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
     )
     .await;
     let outcome1 = assert_no_jsonrpc_error(&fetch1, "task_sources_fetch first");
-    assert_eq!(
-        outcome1.get("error"),
-        None,
-        "fetch should not error: {outcome1}"
+    let error1 = outcome1
+        .get("error")
+        .and_then(Value::as_str)
+        .expect("fetch outcome carries a refusal error");
+    assert!(
+        error1.contains("fetch_tasks") && error1.contains("unavailable"),
+        "unexpected fetch error: {error1}"
     );
-    assert_eq!(outcome1.get("fetched").and_then(Value::as_u64), Some(2));
-    assert_eq!(outcome1.get("routed").and_then(Value::as_u64), Some(2));
+    assert_eq!(outcome1.get("fetched").and_then(Value::as_u64), Some(0));
+    assert_eq!(outcome1.get("routed").and_then(Value::as_u64), Some(0));
     assert_eq!(outcome1.get("skippedDupe").and_then(Value::as_u64), Some(0));
 
-    // list_tasks surfaces the two ingested tasks.
+    // list_tasks stays empty — nothing was ever routed.
     let tasks = post_json_rpc(
         &rpc_base,
         7403,
@@ -10831,15 +10785,14 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
         .as_array()
         .expect("tasks array")
         .clone();
-    assert_eq!(tasks_arr.len(), 2);
-    let ids: Vec<&str> = tasks_arr
-        .iter()
-        .filter_map(|t| t.get("externalId").and_then(Value::as_str))
-        .collect();
-    assert!(ids.contains(&"101"));
-    assert!(ids.contains(&"102"));
+    assert_eq!(
+        tasks_arr.len(),
+        0,
+        "nothing can be routed without fetch_tasks"
+    );
 
-    // Second fetch: identical tasks → all deduped, none re-routed.
+    // A second fetch refuses identically — the refusal is not a one-shot
+    // fluke, it is the pipeline's steady state for every toolkit.
     let fetch2 = post_json_rpc(
         &rpc_base,
         7404,
@@ -10848,11 +10801,14 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
     )
     .await;
     let outcome2 = assert_no_jsonrpc_error(&fetch2, "task_sources_fetch second");
-    assert_eq!(outcome2.get("fetched").and_then(Value::as_u64), Some(2));
+    assert_eq!(outcome2.get("fetched").and_then(Value::as_u64), Some(0));
     assert_eq!(outcome2.get("routed").and_then(Value::as_u64), Some(0));
-    assert_eq!(outcome2.get("skippedDupe").and_then(Value::as_u64), Some(2));
+    assert!(outcome2.get("error").and_then(Value::as_str).is_some());
 
-    // preview_filter returns matches WITHOUT ingesting (count unchanged).
+    // preview_filter propagates the same refusal as a JSON-RPC error rather
+    // than an in-band outcome field, because `ops::preview_filter` has no
+    // outcome envelope to capture it into — it is a dry-run read, not a
+    // pipeline pass.
     let preview = post_json_rpc(
         &rpc_base,
         7405,
@@ -10863,11 +10819,15 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
         }),
     )
     .await;
-    let preview_arr = assert_no_jsonrpc_error(&preview, "task_sources_preview_filter pipeline")
-        .as_array()
-        .expect("preview array")
-        .clone();
-    assert_eq!(preview_arr.len(), 2);
+    let preview_error = assert_jsonrpc_error(&preview, "task_sources_preview_filter pipeline");
+    let preview_message = preview_error
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        preview_message.contains("fetch_tasks") && preview_message.contains("unavailable"),
+        "unexpected preview_filter error: {preview_message}"
+    );
 
     let tasks_after = post_json_rpc(
         &rpc_base,
@@ -10882,14 +10842,9 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
         .clone();
     assert_eq!(
         tasks_after_arr.len(),
-        2,
-        "preview_filter must not ingest tasks"
+        0,
+        "a refused preview_filter must not ingest tasks either"
     );
-
-    // Restore the global provider registry so the stub "github" provider
-    // does not leak into other tests in this binary (re-registers the
-    // real built-in providers).
-    openhuman_core::openhuman::memory::sync::composio::providers::init_default_providers();
 
     rpc_join.abort();
 }

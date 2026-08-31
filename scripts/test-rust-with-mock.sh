@@ -120,7 +120,7 @@ run_archivist_tree_tests() {
     phase2_ingested_content_is_raw_prose_not_recap \
     phase2_flush_also_triggers_tree_ingest; do
     echo "[test-rust-with-mock] archivist tree test: ${test_name}"
-    cargo_test --lib "openhuman::agent::harness::archivist::tests::${test_name}" -- --exact --test-threads=1 "$@"
+    cargo_test --lib "openhuman::agent::harness::archivist::tests::part_01_tests::${test_name}" -- --exact --test-threads=1 "$@"
   done
 }
 

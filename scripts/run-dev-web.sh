@@ -93,12 +93,14 @@ fi
 export OPENHUMAN_CORE_TOKEN="$core_token"
 
 core_bin="$REPO_ROOT/target/debug/openhuman-core"
-if [[ ! -x "$core_bin" ]]; then
-  echo "[dev:web] building openhuman-core (first run; this takes a while)…"
-  # GGML_NATIVE=OFF is the documented Apple-Silicon workaround for llama.cpp.
-  GGML_NATIVE=OFF cargo build --manifest-path "$REPO_ROOT/Cargo.toml" \
-    --bin openhuman-core
-fi
+# Always run the (incremental) build rather than only when the binary is
+# missing — the normal `tauri dev` path does the same. Skipping this once a
+# binary exists means a later run silently executes an arbitrarily stale
+# core against a current frontend, which is misleading to debug against.
+echo "[dev:web] building openhuman-core…"
+# GGML_NATIVE=OFF is the documented Apple-Silicon workaround for llama.cpp.
+GGML_NATIVE=OFF cargo build --manifest-path "$REPO_ROOT/Cargo.toml" \
+  --bin openhuman-core
 
 core_pid=""
 vite_pid=""

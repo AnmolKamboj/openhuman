@@ -310,11 +310,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
     ),
     (
-        "src/openhuman/flows/memory_tools.rs",
-        Verdict::NeedsWiderSeam,
-        "holds or boots the in-process engine handle (store::UnifiedMemory); driver construction belongs to memory::binding and the seam has no door onto the live client",
-    ),
-    (
         "src/openhuman/integrations/composio/ops/mod.rs",
         Verdict::NeedsWiderSeam,
         "holds or boots the in-process engine handle (store::MemoryClient); driver construction belongs to memory::binding and the seam has no door onto the live client",
@@ -350,19 +345,11 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "re-export shim: pub use tinymemory_core::sources::*",
     ),
     (
-        "src/openhuman/memory/sync/composio/mod.rs",
+        "src/openhuman/memory/sources/reconcile.rs",
         Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::composio::*",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/providers/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::composio::providers::*",
-    ),
-    (
-        "src/openhuman/memory/sync/composio/providers/slack/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sync::composio::providers::slack::*",
+        "calls the engine's still-live apply_composio_source_caps_migration() after this host's \
+         own tinyconnectors-backed ensure_composio_sources() reconcile pass — see the module docs \
+         for why the reconcile itself moved but this one migration call did not",
     ),
     (
         "src/openhuman/memory/tree/health/mod.rs",
@@ -399,7 +386,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/host_impls.rs",
         Verdict::HostSide,
-        "installs the eight host seams (embedding, chat, composio, config, nlp, scheduler gate, shutdown, error reporter); mirrored over the bus by modules/memory_host.rs",
+        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter); mirrored over the bus by modules/memory_host.rs — composio had an eighth seam here until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     // ── Agent tools: chunk reads, source listing, people, source scope ──────

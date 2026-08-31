@@ -9,7 +9,7 @@
 //! phase DAGs on a graph engine, [`agent_teams`] runs members through a
 //! conditional-routing graph, [`delegation`] wires the durable
 //! plan→execute⇄review→finalize graph, and parallel fanout goes through
-//! `tinyagents::graph::parallel::map_reduce`. What stays here is the product
+//! `tinyagents_graph::parallel::map_reduce`. What stays here is the product
 //! layer: durable SQL/JSON run ledgers, validation, cancellation semantics,
 //! compatibility events, and JSON-RPC/tool response formatting.
 //! [`running_subagents`] mirrors detached-sub-agent lifecycle into a
@@ -48,9 +48,8 @@ pub use subagent_control::{
     all_registered_controllers as all_subagent_control_registered_controllers,
 };
 pub use types::{
-    AgentMessage, AgentOrchestrationEvent, AgentSnapshot, AgentStatus, CloseAgentRequest,
-    FollowUpRequest, MessageAgentRequest, ResumeAgentRequest, SpawnAgentRequest,
-    SpawnAgentResponse, WaitAgentOptions, WaitAgentResponse,
+    AgentSnapshot, OrchestrationTaskStatus, SpawnAgentRequest, SpawnAgentResponse,
+    WaitAgentOptions, WaitAgentResponse,
 };
 pub use workflow_runs::{
     all_workflow_run_controller_schemas, all_workflow_run_registered_controllers,

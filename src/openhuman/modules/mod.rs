@@ -39,6 +39,7 @@
 //! - [`boot`] — what happens at startup.
 
 pub mod boot;
+pub mod connectors;
 #[cfg(feature = "documents")]
 pub mod documents;
 pub mod host;

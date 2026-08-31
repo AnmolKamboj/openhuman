@@ -22,7 +22,7 @@ use openhuman_core::openhuman::memory::tree::tree_runtime::{
     all_tree_summarizer_registered_controllers, engine, rpc as tree_runtime_rpc,
     store as tree_runtime_store,
 };
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -76,7 +76,7 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let prompt = format!("{:?}", request.messages);
         assert!(prompt.contains("hierarchical summarizer"));
         assert!(prompt.contains("under"));

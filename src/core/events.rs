@@ -1541,9 +1541,6 @@ impl DomainEvent {
             | Self::AgentOrchestrationSpawned { agent_id, .. }
             | Self::AgentOrchestrationCompleted { agent_id, .. }
             | Self::AgentOrchestrationFailed { agent_id, .. } => Some(agent_id.as_str()),
-            Self::AgentOrchestrationClosed {
-                orchestration_id, ..
-            } => Some(orchestration_id.as_str()),
             Self::ChannelMessageReceived { channel, .. }
             | Self::ChannelConnected { channel, .. }
             | Self::ChannelDisconnected { channel, .. } => Some(channel.as_str()),

@@ -43,12 +43,11 @@ use crate::openhuman::agent::harness::{
     current_spawn_depth, with_current_sandbox_mode, with_spawn_depth, MAX_SPAWN_DEPTH,
 };
 use crate::openhuman::inference::provider::AGENT_TURN_MAX_OUTPUT_TOKENS;
-use crate::openhuman::memory::tree::retrieval::{
-    fast_retrieve, FastRetrieveOptions, QueryResponse,
-};
+use crate::openhuman::memory::api::provider::retrieval::{FastRetrieveQuery, RetrievalResponse};
+use crate::openhuman::memory::source_scope::as_bus_scope;
 use crate::openhuman::tools::{Tool, ToolCategory, ToolSpec};
-use tinyagents::harness::tool::SandboxMode as TinyagentsSandboxMode;
-use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinyagents_harness::tool::SandboxMode as TinyagentsSandboxMode;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
 
 use super::prompt::{
     append_artifact_offload_contract, append_subagent_role_contract, dedup_tool_specs_by_name,
@@ -136,7 +135,7 @@ fn parse_memory_fast_path_enabled(env_value: Option<&str>) -> bool {
 /// block for the parent turn. Returns `None` when there are no hits, so the
 /// caller falls back to the model-driven walk (the empty/degraded case is
 /// #4655's territory and still benefits from the model's judgement).
-fn format_deterministic_memory_hits(resp: &QueryResponse) -> Option<String> {
+fn format_deterministic_memory_hits(resp: &RetrievalResponse) -> Option<String> {
     use std::fmt::Write as _;
     if resp.hits.is_empty() {
         return None;
@@ -295,11 +294,32 @@ async fn try_deterministic_memory_retrieval(
         );
         return None;
     }
-    let opts = FastRetrieveOptions {
+    let opts = FastRetrieveQuery {
         limit: MEMORY_FAST_PATH_LIMIT,
-        ..FastRetrieveOptions::default()
+        ..FastRetrieveQuery::default()
     };
-    let resp = match fast_retrieve(config, query, opts).await {
+    // Through the bound driver's `MemoryRetrieval`, not the engine (#5560).
+    // This is an agent turn, so `as_bus_scope()` carries the turn's own
+    // memory-source allowlist; `binding.provider()` is unguarded, which makes
+    // that argument the gate rather than a hint.
+    let scope = as_bus_scope();
+    let binding = match crate::openhuman::memory::binding::for_config(config) {
+        Ok(binding) => binding,
+        Err(e) => {
+            tracing::warn!(
+                task_id = %task_id,
+                error = %e,
+                "[subagent_runner] agent_memory fast-path could not bind the memory driver — falling back to model walk (#4677)"
+            );
+            return None;
+        }
+    };
+    // A driver with no retrieval family has no summary tree to rank. Falling
+    // through to the model walk is the same answer this path already gives for
+    // an empty result, and strictly better than reporting a failure that is
+    // really an absent capability.
+    let retrieval = binding.provider().as_retrieval()?;
+    let resp = match retrieval.fast_retrieve(query, opts, scope.as_ref()).await {
         Ok(resp) => resp,
         Err(e) => {
             tracing::warn!(
@@ -990,7 +1010,10 @@ async fn run_typed_mode(
                 let fresh_actions = match &client_kind {
                     Some(ComposioClientKind::Backend(client)) => {
                         match crate::openhuman::integrations::composio::fetch_toolkit_actions(
-                            client, tk, None,
+                            arc_config.as_ref(),
+                            client,
+                            tk,
+                            None,
                         )
                         .await
                         {
@@ -1742,144 +1765,5 @@ async fn run_typed_mode(
     })
 }
 #[cfg(test)]
-mod fast_path_tests {
-    use super::{
-        apply_max_result_chars, format_deterministic_memory_hits, parse_memory_fast_path_enabled,
-        MEMORY_FAST_PATH_LIMIT,
-    };
-    use crate::openhuman::memory::tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
-    use chrono::Utc;
-    // `RetrievalHit::tree_kind` is TinyCortex's own enum. `tinymemory_core::
-    // store::trees::types::TreeKind` was a re-export of exactly this item
-    // (`tinymemory_core::store::trees::types` → `engine::backend::tree::store`
-    // → `tinycortex::memory::tree::store`), so naming the owning crate here
-    // changes no type — only which crate alias holds it, which is what #5560
-    // is removing from the production graph. Same precedent as
-    // `memory/tools/flavour.rs`, which already imports it from this path.
-    use tinycortex::memory::tree::store::TreeKind;
-
-    fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {
-        RetrievalHit {
-            node_id: "n1".into(),
-            node_kind: NodeKind::Summary,
-            tree_id: "t1".into(),
-            tree_kind: TreeKind::Source,
-            tree_scope: scope.into(),
-            level: 1,
-            content: content.into(),
-            entities: vec![],
-            topics: vec![],
-            time_range_start: Utc::now(),
-            time_range_end: Utc::now(),
-            score,
-            child_ids: vec![],
-            source_ref: None,
-        }
-    }
-
-    #[test]
-    fn fast_path_enabled_by_default_and_opt_out_parsing() {
-        // Unset / unrecognised → enabled (fast path on by default).
-        assert!(parse_memory_fast_path_enabled(None));
-        assert!(parse_memory_fast_path_enabled(Some("1")));
-        assert!(parse_memory_fast_path_enabled(Some("yes")));
-        // Explicit falsy values → disabled (fall back to the model walk).
-        for off in ["0", "false", "no", "off", " OFF ", "False"] {
-            assert!(
-                !parse_memory_fast_path_enabled(Some(off)),
-                "{off:?} must disable the fast path"
-            );
-        }
-    }
-
-    #[test]
-    fn format_returns_none_for_no_hits() {
-        // Empty response → None so the caller falls back to the full sub-agent
-        // (the empty/degraded case is #4655's territory, not this fast path).
-        let resp = QueryResponse::new(vec![], 0);
-        assert!(format_deterministic_memory_hits(&resp).is_none());
-    }
-
-    #[test]
-    fn format_renders_hits_with_scope_content_and_score() {
-        let resp = QueryResponse::new(
-            vec![
-                hit("Q3 OKR is to ship memory v2", "notes", 0.91),
-                hit("prefers concise replies", "profile", 0.80),
-            ],
-            2,
-        );
-        let out = format_deterministic_memory_hits(&resp).expect("hits present → Some");
-        assert!(out.contains("Retrieved 2 relevant memories"), "{out}");
-        assert!(out.contains("[notes] Q3 OKR is to ship memory v2"), "{out}");
-        assert!(out.contains("[profile] prefers concise replies"), "{out}");
-        assert!(out.contains("(relevance 0.91)"), "{out}");
-        // Numbered list, no LLM synthesis needed.
-        assert!(out.contains("1. ") && out.contains("2. "), "{out}");
-    }
-
-    #[test]
-    fn format_singular_wording_for_one_hit() {
-        let resp = QueryResponse::new(vec![hit("only one", "memory", 0.5)], 1);
-        let out = format_deterministic_memory_hits(&resp).unwrap();
-        assert!(out.contains("Retrieved 1 relevant memory"), "{out}");
-    }
-
-    #[test]
-    fn format_truncates_oversized_hit_body() {
-        let big = "x".repeat(5_000);
-        let resp = QueryResponse::new(vec![hit(&big, "memory", 0.42)], 1);
-        let out = format_deterministic_memory_hits(&resp).unwrap();
-        assert!(
-            out.contains(" …"),
-            "oversized body must be ellipsised: {out}"
-        );
-        assert!(
-            out.chars().count() < big.chars().count(),
-            "output must be shorter than the raw 5k-char body"
-        );
-    }
-
-    #[test]
-    fn fast_path_limit_is_small_single_digit() {
-        // Guards against an accidental blow-up of the deterministic fan-out.
-        assert!(
-            (1..=16).contains(&MEMORY_FAST_PATH_LIMIT),
-            "fast-path limit should stay small: {MEMORY_FAST_PATH_LIMIT}"
-        );
-    }
-
-    #[test]
-    fn max_result_chars_none_is_noop() {
-        // No cap → output untouched (the `agent_memory` default).
-        let mut out = "hello world".to_string();
-        apply_max_result_chars(&mut out, None, "agent_memory");
-        assert_eq!(out, "hello world");
-    }
-
-    #[test]
-    fn max_result_chars_under_cap_is_noop() {
-        let mut out = "short".to_string();
-        apply_max_result_chars(&mut out, Some(100), "agent_memory");
-        assert_eq!(out, "short");
-    }
-
-    #[test]
-    fn max_result_chars_over_cap_truncates_with_marker() {
-        let mut out = "x".repeat(50);
-        apply_max_result_chars(&mut out, Some(10), "agent_memory");
-        assert!(out.starts_with(&"x".repeat(10)), "{out}");
-        assert!(out.ends_with("[...truncated]"), "{out}");
-        // 10 kept chars + the marker, and shorter than the 50-char original.
-        assert!(out.chars().count() < 50, "{out}");
-    }
-
-    #[test]
-    fn max_result_chars_truncates_on_char_boundary_for_multibyte() {
-        // Cap lands mid-run of multi-byte chars; must not panic or split a char.
-        let mut out = "é".repeat(20); // each 'é' is 2 bytes
-        apply_max_result_chars(&mut out, Some(5), "agent_memory");
-        assert!(out.starts_with(&"é".repeat(5)), "{out}");
-        assert!(out.ends_with("[...truncated]"), "{out}");
-    }
-}
+#[path = "runner_fast_path_tests_tests.rs"]
+mod fast_path_tests;

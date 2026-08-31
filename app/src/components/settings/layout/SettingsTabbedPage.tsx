@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { cn } from '../../../lib/cn';
 import ChipTabs, { type ChipTabItem } from '../../layout/ChipTabs';
 
 export interface SettingsTabbedPageProps<T extends string> {
@@ -26,20 +27,21 @@ export interface SettingsTabbedPageProps<T extends string> {
   /** Let the active child own scrolling (for a fixed controls + results layout). */
   scrollable?: boolean;
   /**
-   * Replace the body's own padding wrapper classes.
+   * Run the body to the content card's edges instead of insetting it from the
+   * page gutter — for a page whose body is one full-bleed surface (the flow
+   * canvas) rather than the cards and lists this template was written for.
    *
-   * The default insets the body from the page gutter, which is right for the
-   * card-and-list pages this template was written for. A page whose body is a
-   * single full-bleed surface (the flow canvas) needs the opposite: pass
-   * `-mx-4 -mb-4 h-full min-h-0` to cancel the host's `p-4` so the surface
-   * reaches the content card's edges. The card clips to its own radius
-   * (`SidebarInset` is `overflow-hidden rounded-2xl`), so a full-bleed body
-   * still gets rounded corners.
+   * The negative margins have to go on the SCROLL CONTAINER, not on the
+   * padding wrapper inside it: that container is `overflow-hidden`, so a
+   * child widened past it is simply clipped back to the inset box and nothing
+   * changes on screen. That is exactly what a first attempt at this did.
    *
    * Only the body moves — the header keeps the gutter, so the title stays
-   * aligned with every other page's.
+   * aligned with every other page's. The card clips to its own radius
+   * (`SidebarInset` is `overflow-hidden rounded-2xl`), so a full-bleed body
+   * still gets rounded corners.
    */
-  bodyClassName?: string;
+  bodyFullBleed?: boolean;
   children: ReactNode;
 }
 
@@ -73,14 +75,19 @@ export default function SettingsTabbedPage<T extends string>({
   tabsAriaLabel,
   tabsTestIdPrefix,
   scrollable = true,
-  bodyClassName,
+  bodyFullBleed = false,
   children,
 }: SettingsTabbedPageProps<T>) {
   return (
     <div className="flex h-full flex-col">
       <div className="space-y-4 pb-4">
-        <header className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2">
+        {/* `items-center`, not `items-start`. Top-aligning put the back button
+            and the action cluster against the `h1`'s line box while the
+            title+description block ran a row taller, so both read as sitting
+            high — most visibly next to the canvas's 24px editable heading.
+            Centring lines every item up on the block's optical middle. */}
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             {leading}
             <div className="min-w-0 space-y-0.5">
               <h1 className="text-2xl font-semibold tracking-tight text-content">{title}</h1>
@@ -110,14 +117,19 @@ export default function SettingsTabbedPage<T extends string>({
       </div>
       <div aria-hidden className="-mx-4 border-t border-line" />
       <div
-        className={
+        className={cn(
           scrollable
             ? '-mr-4 min-h-0 flex-1 overflow-y-auto pr-4'
-            : 'min-h-0 flex-1 overflow-hidden'
-        }>
+            : 'min-h-0 flex-1 overflow-hidden',
+          bodyFullBleed && '-mx-4 -mb-4 pr-0'
+        )}>
         <div
           className={
-            bodyClassName ?? (scrollable ? 'min-h-full pb-4 pt-4' : 'h-full min-h-0 pt-4')
+            bodyFullBleed
+              ? 'h-full min-h-0'
+              : scrollable
+                ? 'min-h-full pb-4 pt-4'
+                : 'h-full min-h-0 pt-4'
           }>
           {children}
         </div>

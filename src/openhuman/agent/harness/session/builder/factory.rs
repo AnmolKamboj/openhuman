@@ -665,20 +665,19 @@ impl Agent {
                 let full_config = Arc::clone(&base_config);
                 // For cloud reflection, wrap the provider in an Arc.
                 // For local, no provider needed.
-                let reflection_provider: Option<
-                    Arc<dyn tinyagents::harness::model::ChatModel<()>>,
-                > = if config.learning.reflection_source
-                    == crate::openhuman::config::ReflectionSource::Cloud
-                {
-                    let (model, resolved_model) =
-                        provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
-                    log::debug!(
+                let reflection_provider: Option<Arc<dyn tinyinference::model::ChatModel<()>>> =
+                    if config.learning.reflection_source
+                        == crate::openhuman::config::ReflectionSource::Cloud
+                    {
+                        let (model, resolved_model) =
+                            provider::create_chat_model_with_model_id("reasoning", config, 0.3)?;
+                        log::debug!(
                         "[learning] built crate-native reflection model resolved_model={resolved_model}"
                     );
-                    Some(model)
-                } else {
-                    None
-                };
+                        Some(model)
+                    } else {
+                        None
+                    };
                 post_turn_hooks.push(Arc::new(
                     crate::openhuman::agent::learning::ReflectionHook::new(
                         config.learning.clone(),
@@ -1441,114 +1440,14 @@ pub(crate) fn provider_role_for(agent_id: &str, default_model: Option<&str>) -> 
 }
 
 #[cfg(test)]
-mod provider_role_tests {
-    use super::provider_role_for;
-    use super::{resolve_dispatcher_kind, DispatcherKind};
-
-    #[test]
-    fn legacy_orchestrator_fallback_defaults_to_chat() {
-        assert_eq!(provider_role_for("orchestrator", Some("chat-v1")), "chat");
-        assert_eq!(provider_role_for("orchestrator", None), "chat");
-        // A legacy heavy default_model tier still falls through to chat.
-        assert_eq!(
-            provider_role_for("orchestrator", Some("reasoning-v1")),
-            "chat"
-        );
-    }
-
-    #[test]
-    fn explicit_hints_route_to_workload() {
-        assert_eq!(
-            provider_role_for("orchestrator", Some("hint:agentic")),
-            "agentic"
-        );
-        assert_eq!(
-            provider_role_for("orchestrator", Some("hint:reasoning")),
-            "reasoning"
-        );
-        assert_eq!(
-            provider_role_for("orchestrator", Some("hint:coding")),
-            "coding"
-        );
-        // The cloud tick: orchestrator agent_id + the subconscious hint.
-        assert_eq!(
-            provider_role_for("orchestrator", Some("hint:subconscious")),
-            "subconscious"
-        );
-    }
-
-    #[test]
-    fn subconscious_agent_id_routes_to_subconscious_without_hint() {
-        // The event-driven long-lived session builds with agent_id="subconscious"
-        // and no hint — it must still resolve the subconscious workload (Codex P2).
-        assert_eq!(provider_role_for("subconscious", None), "subconscious");
-        assert_eq!(
-            provider_role_for("subconscious", Some("chat-v1")),
-            "subconscious"
-        );
-        assert_eq!(provider_role_for(" subconscious ", None), "subconscious");
-    }
-
-    #[test]
-    fn auto_prefers_native_when_supported_never_pformat() {
-        assert_eq!(
-            resolve_dispatcher_kind("auto", true, "chat"),
-            DispatcherKind::Native
-        );
-        // Text-only provider defaults to JSON-in-tag, NOT P-Format.
-        assert_eq!(
-            resolve_dispatcher_kind("auto", false, "chat"),
-            DispatcherKind::Xml
-        );
-        // An unrecognized value behaves like "auto".
-        assert_eq!(
-            resolve_dispatcher_kind("bogus", false, "chat"),
-            DispatcherKind::Xml
-        );
-    }
-
-    #[test]
-    fn explicit_choices_are_honoured_including_opt_in_pformat() {
-        assert_eq!(
-            resolve_dispatcher_kind("native", false, "chat"),
-            DispatcherKind::Native
-        );
-        assert_eq!(
-            resolve_dispatcher_kind("xml", true, "chat"),
-            DispatcherKind::Xml
-        );
-        // P-Format is only ever selected when explicitly requested.
-        assert_eq!(
-            resolve_dispatcher_kind("pformat", true, "chat"),
-            DispatcherKind::PFormat
-        );
-    }
-
-    #[test]
-    fn integrations_agent_falls_off_native_to_json_in_tag() {
-        // Native would ship JSON tool specs and blow the provider grammar-rule
-        // ceiling on large Composio toolkits → force JSON-in-tag.
-        assert_eq!(
-            resolve_dispatcher_kind("auto", true, "integrations_agent"),
-            DispatcherKind::Xml
-        );
-        assert_eq!(
-            resolve_dispatcher_kind("native", true, "integrations_agent"),
-            DispatcherKind::Xml
-        );
-        // An explicit non-native choice is left untouched for that agent.
-        assert_eq!(
-            resolve_dispatcher_kind("pformat", true, "integrations_agent"),
-            DispatcherKind::PFormat
-        );
-    }
-}
+#[path = "factory_provider_role_tests_tests.rs"]
+mod provider_role_tests;
 
 /// Section D — derive the top-level chat turn's per-profile workspace
 /// descriptor. Shared by [`Agent::build_session_agent_inner`] and its unit tests
 /// so the two can never drift.
 ///
-/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// Returns a [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 /// rooted at `<action_dir>/profiles/<id>` when `profile` opts into
 /// `dedicated_workspace` and its id passes validation (via
 /// [`dedicated_workspace_dir`](crate::openhuman::agent::profiles::dedicated_workspace_dir)),
@@ -1560,7 +1459,7 @@ mod provider_role_tests {
 pub(crate) fn derive_profile_workspace_descriptor(
     action_dir: &std::path::Path,
     profile: Option<&crate::openhuman::agent::profiles::AgentProfile>,
-) -> Option<tinyagents::harness::workspace::WorkspaceDescriptor> {
+) -> Option<tinyagents_harness::workspace::WorkspaceDescriptor> {
     let (profile_id, dir) = profile.and_then(|p| {
         crate::openhuman::agent::profiles::dedicated_workspace_dir(action_dir, p)
             .map(|dir| (p.id.clone(), dir))
@@ -1583,7 +1482,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
         "[profiles] session bound to dedicated workspace as default cwd"
     );
     Some(
-        tinyagents::harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
+        tinyagents_harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
             crate::openhuman::agent::profiles::workspace_policy_id(&profile_id),
         ),
     )
@@ -1593,7 +1492,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
 /// per-turn root an embedder scoped via
 /// [`turn_workspace::with_workspace`](crate::openhuman::agent::turn_workspace::with_workspace).
 ///
-/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// Returns a [`WorkspaceDescriptor`](tinyagents_harness::workspace::WorkspaceDescriptor)
 /// rooted at the scoped directory so this turn's acting tools (shell, file,
 /// git) resolve their default cwd there instead of the shared `action_dir`.
 /// `None` — every caller that scoped nothing — leaves the shared-`action_dir`
@@ -1607,7 +1506,7 @@ pub(crate) fn derive_profile_workspace_descriptor(
 ///
 /// The policy id is a fixed label rather than the path: it is surfaced in tool
 /// logs, and a host's checkout path is not something to spread through them.
-fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::WorkspaceDescriptor>
+fn derive_turn_workspace_descriptor() -> Option<tinyagents_harness::workspace::WorkspaceDescriptor>
 {
     let root = crate::openhuman::agent::turn_workspace::current()?;
     if !root.is_dir() {
@@ -1623,7 +1522,7 @@ fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::
         "[turn_workspace] turn bound to the embedder's per-turn root as default cwd"
     );
     Some(
-        tinyagents::harness::workspace::WorkspaceDescriptor::new(root)
+        tinyagents_harness::workspace::WorkspaceDescriptor::new(root)
             .with_policy_id("turn-workspace"),
     )
 }
@@ -1648,97 +1547,5 @@ fn build_profile_security(
 /// `<action_dir>/profiles/<id>` for an opted-in profile, and that shared/legacy
 /// profiles produce no descriptor (so the shared `action_dir` cwd is preserved).
 #[cfg(test)]
-mod profile_workspace_descriptor_tests {
-    use super::{build_profile_security, derive_profile_workspace_descriptor};
-    use crate::openhuman::agent::profiles::store::built_in_default_profile;
-
-    fn profile(
-        id: &str,
-        dedicated_workspace: bool,
-    ) -> crate::openhuman::agent::profiles::AgentProfile {
-        let mut p = built_in_default_profile();
-        p.id = id.to_string();
-        p.name = id.to_string();
-        p.built_in = false;
-        p.is_master = false;
-        p.memory_dir_suffix = None;
-        p.dedicated_workspace = dedicated_workspace;
-        p
-    }
-
-    #[test]
-    fn dedicated_workspace_profile_roots_descriptor_at_profile_dir() {
-        // Real temp action_dir: the production fn creates the profile dir as a
-        // side effect, so assert against the resolved path suffix.
-        let action = tempfile::tempdir().expect("action tempdir");
-        let p = profile("alice", true);
-        let desc = derive_profile_workspace_descriptor(action.path(), Some(&p))
-            .expect("dedicated_workspace profile yields a descriptor");
-        let expected = action.path().join("profiles").join("alice");
-        assert_eq!(desc.root.as_path(), expected.as_path());
-        // The production path really created the dir.
-        assert!(desc.root.is_dir());
-    }
-
-    #[test]
-    fn shared_profile_yields_no_descriptor() {
-        let action = tempfile::tempdir().expect("action tempdir");
-        let p = profile("bob", false);
-        assert!(derive_profile_workspace_descriptor(action.path(), Some(&p)).is_none());
-    }
-
-    #[test]
-    fn none_profile_yields_no_descriptor() {
-        let action = tempfile::tempdir().expect("action tempdir");
-        assert!(derive_profile_workspace_descriptor(action.path(), None).is_none());
-    }
-
-    #[test]
-    fn legacy_invalid_id_yields_no_descriptor_even_when_opted_in() {
-        let action = tempfile::tempdir().expect("action tempdir");
-        // An id that fails validation can't mint a workspace path → no descriptor,
-        // so the session falls back to the shared action_dir cwd.
-        let p = profile("Bad Id", true);
-        assert!(derive_profile_workspace_descriptor(action.path(), Some(&p)).is_none());
-    }
-
-    #[test]
-    fn create_dir_failure_yields_no_descriptor() {
-        // Point `action_dir` at a regular file so `profiles/…` can't be created.
-        // The function must fall back to `None` (shared action_dir cwd) rather
-        // than hand tools a descriptor rooted at a nonexistent dir.
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let action_file = tmp.path().join("not-a-dir");
-        std::fs::write(&action_file, b"x").expect("write file");
-        let p = profile("alice", true);
-        assert!(
-            derive_profile_workspace_descriptor(&action_file, Some(&p)).is_none(),
-            "a create_dir_all failure must fall back to None"
-        );
-    }
-
-    #[test]
-    fn shared_profile_still_arms_cross_profile_guard() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let mut config = crate::openhuman::config::Config::default();
-        config.action_dir = temp.path().join("actions");
-        config.workspace_dir = temp.path().join("state");
-        let profile = profile("default", false);
-
-        let security = build_profile_security(&config, Some(&profile));
-
-        let guard = security
-            .active_profile
-            .expect("every active profile must arm the guard");
-        assert_eq!(guard.profile_id, "default");
-        assert_eq!(guard.action_dir, config.action_dir);
-    }
-
-    #[test]
-    fn profile_less_session_leaves_cross_profile_guard_disarmed() {
-        let config = crate::openhuman::config::Config::default();
-        assert!(build_profile_security(&config, None)
-            .active_profile
-            .is_none());
-    }
-}
+#[path = "factory_profile_workspace_descriptor_tests_tests.rs"]
+mod profile_workspace_descriptor_tests;

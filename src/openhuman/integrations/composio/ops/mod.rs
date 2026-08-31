@@ -44,6 +44,9 @@ pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,
     RefreshIdentitiesReport,
 };
+// The tinyconnectors-mediated sync pass, shared with
+// `memory::sync::composio::providers::slack::rpc` — see its doc comment.
+pub(crate) use providers_ops::run_sync_pass;
 pub use toolkits::{
     composio_list_agent_ready_toolkits, composio_list_capabilities, composio_list_toolkits,
 };
@@ -90,9 +93,7 @@ pub(crate) use super::connected_integrations::sync_cache_with_connections;
 #[cfg(test)]
 pub(crate) use crate::openhuman::config::Config;
 #[cfg(test)]
-pub(crate) use crate::openhuman::memory::sync::composio::providers::sync_state::SyncState;
-#[cfg(test)]
-pub(crate) use crate::openhuman::memory::sync::composio::providers::SyncReason;
+pub(crate) use crate::openhuman::integrations::composio::providers::SyncReason;
 #[cfg(test)]
 pub(crate) use connections::enrich_connections_with_identity;
 #[cfg(test)]

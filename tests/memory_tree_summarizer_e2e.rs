@@ -32,8 +32,8 @@ use tempfile::tempdir;
 
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::tree::tree_runtime::{engine, store};
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
-use tinyagents::TinyAgentsError;
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::Error as TinyAgentsError;
 
 // ── Env isolation ─────────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ impl ChatModel<()> for ScriptedProvider {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let mut count = self.call_count.lock().expect("call_count lock");
         *count += 1;
         let call_n = *count;
@@ -232,13 +232,13 @@ async fn builds_hour_day_month_year_chain() {
     // The hour summaries are short enough that day/month/year/root fit within
     // token budget and do NOT trigger additional LLM calls (propagate_node
     // short-circuits when combined children text fits the level budget).
-    let provider = ScriptedProvider::new(vec![
+    let provider = Arc::new(ScriptedProvider::new(vec![
         Ok("User discussed deployment timeline".to_string()),
         Ok("Reviewed infrastructure PR".to_string()),
-    ]);
+    ]));
 
     log::debug!("[memory_tree_summarizer_e2e] running summarization");
-    let result = engine::run_summarization(&config, &provider, NS, Utc::now()).await;
+    let result = engine::run_summarization(&config, provider.as_ref(), NS, Utc::now()).await;
 
     log::debug!(
         "[memory_tree_summarizer_e2e] run_summarization returned: {:?}",
@@ -503,13 +503,13 @@ async fn survives_llm_error_with_partial_progress() {
     .expect("buffer_write hour15");
 
     // Provider: call 1 succeeds, call 2 returns an error.
-    let provider = ScriptedProvider::new(vec![
+    let provider = Arc::new(ScriptedProvider::new(vec![
         Ok("Hour-14 summary: deployment planning in progress".to_string()),
         Err("boom: simulated LLM failure on second call".to_string()),
-    ]);
+    ]));
 
     log::debug!("[memory_tree_summarizer_e2e] running summarization expecting partial failure");
-    let result = engine::run_summarization(&config, &provider, NS, Utc::now()).await;
+    let result = engine::run_summarization(&config, provider.as_ref(), NS, Utc::now()).await;
 
     log::debug!(
         "[memory_tree_summarizer_e2e] run_summarization result: is_ok={}",

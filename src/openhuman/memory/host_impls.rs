@@ -22,16 +22,24 @@
 //! startup config: a mid-session settings change is *not* reflected, which
 //! matches how the pre-extraction call sites behaved — they read the same
 //! ambient config — but is worth knowing before adding a seam method that
-//! should be live. Seams that must be live (`ComposioHost`, `ConfigLoader`)
-//! take a `&Config` argument and re-read instead.
+//! should be live. Seams that must be live (`ConfigLoader`) take a `&Config`
+//! argument and re-read instead.
+//!
+//! # Composio no longer has a seam here
+//!
+//! `tinymemory_core::composio_host` was deleted in tinymemory v1.13.4 along
+//! with the whole in-process Composio sync pipeline: reaching a connected
+//! account needs a credential this crate must not hold. Composio sync is now
+//! host-initiated — `memory::sync::composio` drives it through the
+//! `tinyconnectors` module (see `modules::connectors`) and hands the resulting
+//! records to the driver through `MemorySourceSink::accept_source_items`,
+//! rather than the driver calling back into a host-installed seam.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tinyagents::harness::model::{ChatModel, ModelResponse};
 use tinymemory_api::host::{EmbeddingHost, EmbeddingProvider, ErrorReporter, UsageInfo};
 use tinymemory_core::chat_host::ChatHost;
-use tinymemory_core::composio_host::{ComposioConnection, ComposioExecuteResponse, ComposioHost};
 use tinymemory_core::config_loader::ConfigLoader;
 use tinymemory_core::nlp_host::{NlpHost, SpacyResponse};
 use tinymemory_core::scheduler_gate::{Policy, SchedulerGate};
@@ -160,7 +168,7 @@ impl ChatHost for OpenHumanChatHost {
         role: &str,
         config: &SeamConfig,
         temperature: f64,
-    ) -> Result<(Arc<dyn ChatModel<()>>, String), String> {
+    ) -> Result<(Arc<dyn tinyinference::model::ChatModel<()>>, String), String> {
         crate::openhuman::inference::provider::create_chat_model_with_model_id(
             role,
             host_config(config, &self.config),
@@ -169,7 +177,10 @@ impl ChatHost for OpenHumanChatHost {
         .map_err(|e| format!("{e:#}"))
     }
 
-    fn usage_from_response(&self, response: &ModelResponse) -> Option<UsageInfo> {
+    fn usage_from_response(
+        &self,
+        response: &tinyinference::model::ModelResponse,
+    ) -> Option<UsageInfo> {
         crate::openhuman::agent::tinyagents::model::usage_info_from_response(response)
     }
 
@@ -178,112 +189,6 @@ impl ChatHost for OpenHumanChatHost {
             config,
             &self.config,
         ))
-    }
-}
-
-// ── Composio ────────────────────────────────────────────────────────────────
-
-/// Runs Composio calls for the memory sync pipelines.
-///
-/// The two async methods re-read the config from disk, because an OAuth
-/// completion or a `set_api_key` RPC between ticks has to take effect
-/// immediately. The two sync ones recover the caller's config with
-/// [`host_config`], which costs nothing and is still current as of the call.
-#[derive(Debug)]
-pub struct OpenHumanComposioHost {
-    config: Arc<Config>,
-}
-
-#[async_trait]
-impl ComposioHost for OpenHumanComposioHost {
-    async fn list_connections(
-        &self,
-        config: &SeamConfig,
-    ) -> Result<Vec<ComposioConnection>, String> {
-        use crate::openhuman::integrations::composio::client::{
-            create_composio_client, direct_list_connections, ComposioClientKind,
-        };
-        let config = live_config(config).await?;
-        let response = match create_composio_client(&config)
-            .map_err(|e| format!("create_composio_client: {e:#}"))?
-        {
-            ComposioClientKind::Backend(client) => client
-                .list_connections()
-                .await
-                .map_err(|e| format!("list_connections (backend): {e:#}"))?,
-            ComposioClientKind::Direct(direct) => {
-                direct_list_connections(&direct).await.map_err(|e| {
-                    // [#1166 / Sentry TAURI-RUST-X9] The v3 `/connected_accounts`
-                    // 401 shape has to reach the observability classifier, and it
-                    // only fires on a message carrying the `[composio-direct]`
-                    // anchor. Render it here, where the direct client lives.
-                    let rendered = format!("[composio-direct] list_connections (direct): {e:#}");
-                    crate::openhuman::integrations::composio::ops::report_composio_op_error(
-                        "list_connections",
-                        &rendered,
-                    );
-                    rendered
-                })?
-            }
-        };
-        Ok(response.connections)
-    }
-
-    async fn execute(
-        &self,
-        config: &SeamConfig,
-        tool: &str,
-        arguments: Option<serde_json::Value>,
-        entity_id: &str,
-        connection_id: Option<&str>,
-    ) -> Result<ComposioExecuteResponse, String> {
-        use crate::openhuman::integrations::composio::client::{
-            create_composio_client, direct_execute, ComposioClientKind,
-        };
-        let config = live_config(config).await?;
-        match create_composio_client(&config).map_err(|e| format!("{e:#}"))? {
-            ComposioClientKind::Backend(client) => client
-                .execute_tool(tool, arguments)
-                .await
-                .map_err(|e| format!("{e:#}")),
-            ComposioClientKind::Direct(direct) => {
-                direct_execute(&direct, tool, arguments, entity_id, connection_id)
-                    .await
-                    .map_err(|e| format!("{e:#}"))
-            }
-        }
-    }
-
-    fn api_key(&self, config: &SeamConfig) -> Option<String> {
-        crate::openhuman::security::credentials::get_composio_api_key(host_config(
-            config,
-            &self.config,
-        ))
-        .ok()
-        .flatten()
-    }
-
-    /// The app-session bearer proxied Composio mode authenticates with.
-    ///
-    /// The trait defaults this to `None`, which is right for a host that has no
-    /// session concept — and wrong here, where the whole point of the member is
-    /// that the engine can reach a live one. Left on the default, the engine's
-    /// proxied branch falls back to `Config::session_token`, which works only
-    /// while the engine runs in THIS process and answers nothing once it moves
-    /// behind the bus.
-    ///
-    /// Resolved through `host_config` for the same reason every other member
-    /// here does: the seam is handed a `dyn MemoryHostConfig` that may be the
-    /// module's snapshot rather than this host's own config.
-    fn session_bearer(&self, config: &SeamConfig) -> Option<String> {
-        crate::api::jwt::get_session_token(host_config(config, &self.config))
-            .ok()
-            .flatten()
-    }
-
-    fn is_available(&self, config: &SeamConfig) -> bool {
-        use crate::openhuman::integrations::composio::client::create_composio_client;
-        create_composio_client(host_config(config, &self.config)).is_ok()
     }
 }
 
@@ -430,17 +335,15 @@ async fn live_config(config: &SeamConfig) -> Result<Config, String> {
 /// Install every host seam into `tinymemory-core`.
 ///
 /// Call once during startup wiring, **before any memory work begins** — the
-/// embedding, chat, Composio and config seams all fail loudly when unwired, by
-/// design, because degrading quietly would corrupt an embedding space or make a
-/// sync run look empty rather than broken.
+/// embedding, chat and config seams all fail loudly when unwired, by design,
+/// because degrading quietly would corrupt an embedding space or make a sync
+/// run look empty rather than broken. Composio has no seam here any more —
+/// see the module docs.
 pub fn install_memory_host_seams(config: Arc<Config>) {
     tinymemory_core::embedding_host::set_embedding_host(Arc::new(OpenHumanEmbeddingHost {
         config: Arc::clone(&config),
     }));
     tinymemory_core::chat_host::set_chat_host(Arc::new(OpenHumanChatHost {
-        config: Arc::clone(&config),
-    }));
-    tinymemory_core::composio_host::set_composio_host(Arc::new(OpenHumanComposioHost {
         config: Arc::clone(&config),
     }));
     tinymemory_core::config_loader::set_config_loader(Arc::new(OpenHumanConfigLoader));
@@ -521,68 +424,9 @@ pub(crate) fn install_for_tests() {
 }
 
 #[cfg(test)]
-mod boot_seam_tests {
-    use super::*;
-
-    /// Installing the seams must satisfy the engine's `require_embedding_host`.
-    ///
-    /// This is the regression for the outage #5560 shipped and had to take back:
-    /// the seam install was removed from all three boot sites on the reasoning
-    /// that "this process embeds no engine, so there is nothing to call back".
-    /// It does embed one — `tinymemory-core` is a normal dependency, and
-    /// `session::builder::factory` reaches `store::factories::
-    /// create_session_memory_with_local_ai`, which calls
-    /// `require_embedding_host()`. Every chat turn then died with
-    ///
-    ///   no EmbeddingHost installed — the host must call
-    ///   memory::embedding_host::set_embedding_host during startup wiring
-    ///
-    /// The loaded module installing its own seams does not cover this: a
-    /// `cdylib` has its own statics, so what it sets is invisible in this
-    /// process. Nothing in a build or a type check said so, which is why the
-    /// assertion is here.
-    ///
-    /// It asserts the engine's own accessor rather than a local flag, so it
-    /// keeps testing the thing the engine actually reads.
-    #[test]
-    fn installing_the_seams_satisfies_the_engines_embedding_host() {
-        install_for_tests();
-
-        assert!(
-            tinymemory_core::embedding_host::embedding_host().is_some(),
-            "boot installed no EmbeddingHost; the session memory factory on the \
-             chat path calls require_embedding_host() and will fail every turn"
-        );
-        assert!(
-            tinymemory_core::embedding_host::require_embedding_host().is_ok(),
-            "require_embedding_host must succeed once the boot seams are in"
-        );
-    }
-}
+#[path = "host_impls_boot_seam_tests_tests.rs"]
+mod boot_seam_tests;
 
 #[cfg(test)]
-mod chunk_store_reset_tests {
-    use super::*;
-
-    /// The reset must be safe to run against a healthy (or absent) store: it
-    /// drops the cached handle and reopens without quarantining anything.
-    #[test]
-    fn reset_reopens_a_healthy_or_absent_store_without_quarantining() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut config = Config::default();
-        config.workspace_dir = tmp.path().join("workspace");
-        std::fs::create_dir_all(config.workspace_dir.join("memory_tree")).unwrap();
-
-        reset_in_process_chunk_store(&config);
-
-        let entries: Vec<String> = std::fs::read_dir(config.workspace_dir.join("memory_tree"))
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        assert!(
-            !entries.iter().any(|name| name.contains(".corrupt-")),
-            "a healthy or absent store must never be quarantined by the reset: {entries:?}"
-        );
-    }
-}
+#[path = "host_impls_chunk_store_reset_tests_tests.rs"]
+mod chunk_store_reset_tests;

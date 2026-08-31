@@ -47,6 +47,7 @@ mod types;
 pub use migration::{migrate_session_layout_if_needed, MigrationOutcome};
 
 #[cfg(test)]
+#[path = "session_tests.rs"]
 mod tests;
 
 pub use types::{Agent, AgentBuilder, TurnOverrides};

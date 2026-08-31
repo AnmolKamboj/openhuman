@@ -19,7 +19,7 @@ use crate::openhuman::tools::{Tool, ToolSpec};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tinyagents::harness::workspace::WorkspaceDescriptor;
+use tinyagents_harness::workspace::WorkspaceDescriptor;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parent execution context

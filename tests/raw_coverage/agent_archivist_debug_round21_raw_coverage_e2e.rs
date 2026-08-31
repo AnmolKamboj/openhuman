@@ -30,10 +30,10 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tempfile::TempDir;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinyagents::harness::tool::ToolCall;
-use tinyagents::harness::usage::Usage;
+use tinyinference::message::{AssistantMessage, ContentBlock};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 
 struct ScriptedModel {
     responses: Mutex<VecDeque<anyhow::Result<ModelResponse>>>,
@@ -69,7 +69,7 @@ impl ChatModel<()> for ScriptedModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         self.requests.lock().push(
             request
                 .messages
@@ -82,7 +82,7 @@ impl ChatModel<()> for ScriptedModel {
             .lock()
             .pop_front()
             .unwrap_or_else(|| Ok(text_response("fallback final")))
-            .map_err(|error| tinyagents::TinyAgentsError::Model(error.to_string()))
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))
     }
 }
 

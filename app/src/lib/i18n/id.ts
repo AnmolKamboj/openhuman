@@ -3738,8 +3738,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'Sesuai permintaan',
   'flows.copilot.open': 'Kopilot',
   'flows.copilot.title': 'Kopilot alur kerja',
-  'flows.copilot.subtitle': 'Minta perubahan dan tinjau setiap usulan sebelum menerapkannya.',
-  'flows.copilot.close': 'Tutup kopilot',
   'flows.copilot.placeholder': 'Minta sebuah perubahan…',
   'flows.copilot.send': 'Kirim',
   'flows.copilot.thinking': 'Sedang berpikir…',
@@ -3776,7 +3774,8 @@ const messages: TranslationMap = {
   'flows.import.error': 'Tidak dapat mengimpor alur kerja ini. Periksa file dan coba lagi.',
   'flows.import.warningTitle': 'Peringatan impor',
   'flows.canvas.title': 'Alur kerja',
-  'flows.canvas.description': 'Bangun otomatisasi ini langkah demi langkah, lalu simpan dan jalankan.',
+  'flows.canvas.description':
+    'Bangun otomatisasi ini langkah demi langkah, lalu simpan dan jalankan.',
   'flows.canvas.loading': 'Memuat alur kerja…',
   'flows.canvas.loadError': 'Alur kerja ini tidak dapat dimuat. Silakan coba lagi.',
   'flows.canvas.notFound': 'Alur kerja ini tidak ditemukan.',

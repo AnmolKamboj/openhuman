@@ -28,7 +28,11 @@ use tinycortex::memory::ingest::canonicalize::document::{
 use tinycortex::memory::ingest::canonicalize::email::{
     canonicalise as canonicalise_email, EmailMessage, EmailThread,
 };
-use openhuman_core::openhuman::memory::sync::composio::providers::{
+// These scope/catalog helpers moved off `memory::sync::composio::providers`
+// (the deleted engine registry's former home) onto
+// `integrations::composio::providers`, which re-exports them straight from
+// the `tinymemory-api` contract crate — see that module's doc comment.
+use openhuman_core::openhuman::integrations::composio::providers::{
     classify_unknown, find_curated, toolkit_from_slug, CuratedTool, ToolScope,
 };
 use tinycortex::memory::sync::{SyncOutcome, SyncPipelineKind};

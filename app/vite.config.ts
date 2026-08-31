@@ -108,18 +108,47 @@ function guardCefRelListSupportsPlugin(): PluginOption {
 // server's own environment and never accepted from the query string, so a
 // stray link cannot point a running dev session at an attacker's core.
 //
+// `server.host` defaults to `true` above (binds every adapter, not just
+// loopback) to work around the Windows dual-stack `localhost` proxy issue,
+// so this route is reachable from the LAN even though it needs no auth of
+// its own. Restrict it to loopback callers: a LAN peer that can reach this
+// port must not be able to read `OPENHUMAN_CORE_TOKEN` back out of it,
+// especially when combined with the documented `OPENHUMAN_CORE_HOST=0.0.0.0`
+// setup, where that token would then work against the core directly.
+//
 // Keys must stay in sync with `app/src/utils/configPersistence.ts`.
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  // Strip an IPv4-mapped-IPv6 prefix (`::ffff:127.0.0.1`) before comparing.
+  const normalized = address.replace(/^::ffff:/, "");
+  return normalized === "127.0.0.1" || normalized === "::1";
+}
+
 function devConnectPlugin(): PluginOption {
   return {
     name: "openhuman:dev-connect",
     apply: "serve",
     configureServer(server) {
-      server.middlewares.use("/__dev-connect", (_req, res) => {
+      server.middlewares.use("/__dev-connect", (req, res) => {
+        if (!isLoopbackAddress(req.socket.remoteAddress)) {
+          res.statusCode = 403;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.end("Forbidden: /__dev-connect is only reachable from loopback.");
+          return;
+        }
+
         const token = (process.env.OPENHUMAN_CORE_TOKEN ?? "").trim();
         const rpcUrl = (
           process.env.VITE_OPENHUMAN_CORE_RPC_URL ?? ""
         ).trim();
 
+        // These are the same three keys BootCheckGate's picker writes on a
+        // cloud-mode confirm. The mode marker matters: without it
+        // `getStoredCoreMode()` returns null, which reads as "the picker has
+        // not run yet", and the gate parks the app on the Connect-to-Your-
+        // Runtime screen. A local core reached over an explicit URL + bearer
+        // is exactly what "cloud" means to that picker.
+        //
         // `</script>` inside a JSON string would close the block early.
         const json = (value: string) =>
           JSON.stringify(value).replace(/</g, "\\u003c");
@@ -135,6 +164,7 @@ function devConnectPlugin(): PluginOption {
         var token = ${json(token)};
         if (url) localStorage.setItem("openhuman_core_rpc_url", url);
         if (token) localStorage.setItem("openhuman_core_rpc_token", token);
+        if (url && token) localStorage.setItem("openhuman_core_mode", "cloud");
       } catch (err) {
         document.body.textContent =
           "localStorage unavailable: " + err + " — cannot seed core credentials.";
