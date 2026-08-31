@@ -52,7 +52,11 @@ fn add_and_edit_reject_multiline_text() {
 fn add_and_edit_reject_secret_or_pii_text() {
     let mut doc = GoalsDoc::default();
     assert!(add_item(&mut doc, "follow up with alice@example.com about launch").is_err());
-    assert!(add_item(&mut doc, "rotate api_key=sk-abcdefghijklmnopqrstuvwxyz123456").is_err());
+    assert!(add_item(
+        &mut doc,
+        "rotate api_key=sk-abcdefghijklmnopqrstuvwxyz123456"
+    )
+    .is_err());
 
     let id = add_item(&mut doc, "ship the memory engine").unwrap();
     assert!(edit_item(&mut doc, &id, "call +14155551212 tomorrow").is_err());
@@ -116,6 +120,9 @@ fn host_guards_agree_with_the_engine_choke_point() {
             add_item(&mut doc, rejected).is_err(),
             "host validation must reject {rejected:?} before `set_goals` sees it"
         );
-        assert!(doc.is_empty(), "a rejected add must not mutate the document");
+        assert!(
+            doc.is_empty(),
+            "a rejected add must not mutate the document"
+        );
     }
 }

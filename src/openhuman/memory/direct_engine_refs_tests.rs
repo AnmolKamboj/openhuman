@@ -325,31 +325,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     // name the crate once each and call nothing. Removing them is the
     // re-export problem, not the direct-call problem.
     (
-        "src/openhuman/agent/learning/candidate.rs",
-        Verdict::HostSide,
-        "re-export shim for learning_candidate types",
-    ),
-    (
-        "src/openhuman/agent/tinyagents/thread_context.rs",
-        Verdict::HostSide,
-        "re-export shim for the thread-id task-local",
-    ),
-    (
-        "src/openhuman/memory/mod.rs",
-        Verdict::HostSide,
-        "the re-export block itself — twenty-five engine modules under their historical paths",
-    ),
-    (
         "src/openhuman/memory/sources/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::sources::*",
-    ),
-    (
-        "src/openhuman/memory/sources/reconcile.rs",
-        Verdict::HostSide,
-        "calls the engine's still-live apply_composio_source_caps_migration() after this host's \
-         own tinyconnectors-backed ensure_composio_sources() reconcile pass — see the module docs \
-         for why the reconcile itself moved but this one migration call did not",
     ),
     (
         "src/openhuman/memory/tree/health/mod.rs",
@@ -360,11 +338,6 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "src/openhuman/memory/tree/mod.rs",
         Verdict::HostSide,
         "re-export shim: pub use tinymemory_core::tree::*",
-    ),
-    (
-        "src/openhuman/memory/tree/retrieval/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::retrieval::*",
     ),
     (
         "src/openhuman/memory/tree/tree/mod.rs",
@@ -465,9 +438,11 @@ fn render(paths: impl IntoIterator<Item = String>) -> String {
 /// A scanner that silently found nothing would turn every other test here into
 /// a rubber stamp, so refuse to pass vacuously.
 ///
-/// `memory/mod.rs` is the most stable pin available: it is the re-export block
-/// itself, so it names the crate by construction. If the scanner stops seeing
-/// it, the scanner is broken — fix it, do not relax this assertion.
+/// `memory/host_impls.rs` is the most stable pin available now that the
+/// `memory/mod.rs` re-export block has been drained: it installs the seven host
+/// seams, so it names the crate by construction for as long as the engine is
+/// linked at all. If the scanner stops seeing it, the scanner is broken — fix
+/// it, do not relax this assertion.
 #[test]
 fn direct_reference_scanner_is_not_vacuous() {
     let found = scan();
@@ -476,9 +451,9 @@ fn direct_reference_scanner_is_not_vacuous() {
     // The canary only holds while the allowlist still names it. Asserting it
     // unconditionally would turn the last migration in this file into a
     // failure, which is backwards: draining the list is the goal.
-    if allowed.contains("src/openhuman/memory/mod.rs") {
+    if allowed.contains("src/openhuman/memory/host_impls.rs") {
         assert!(
-            found.contains("src/openhuman/memory/mod.rs"),
+            found.contains("src/openhuman/memory/host_impls.rs"),
             "scanner found no direct engine reference in memory/mod.rs, which is the re-export \
              block; the scanner is broken"
         );

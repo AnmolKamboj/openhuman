@@ -36,7 +36,10 @@ async fn record_lands_in_the_tool_scoped_namespace_under_a_rule_key() {
     // cannot skew.
     assert_eq!(stored.tool_name, "send_email");
 
-    let entries = memory.list(Some("tool-send_email"), None, None).await.unwrap();
+    let entries = memory
+        .list(Some("tool-send_email"), None, None)
+        .await
+        .unwrap();
     assert_eq!(entries.len(), 1, "one rule, in the tool-scoped namespace");
     assert_eq!(entries[0].key, format!("rule/{}", stored.id));
 
@@ -201,7 +204,9 @@ async fn rules_for_prompt_never_drops_a_critical_rule_to_fit_the_cap() {
         critical_count,
         "every Critical survives; the High remainder is what the cap trims"
     );
-    assert!(rules.iter().all(|r| r.priority == ToolMemoryPriority::Critical));
+    assert!(rules
+        .iter()
+        .all(|r| r.priority == ToolMemoryPriority::Critical));
 }
 
 #[tokio::test]

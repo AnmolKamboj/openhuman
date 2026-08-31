@@ -63,7 +63,7 @@ const LOG_PREFIX: &str = "[memory-node-host]";
 /// (`RecallOpts.namespace: None` falls back to this same constant inside the
 /// store). Named here explicitly (rather than passing `None`) purely so it
 /// shows up in the debug log.
-const USER_NAMESPACE: &str = tinycortex::memory::GLOBAL_NAMESPACE;
+const USER_NAMESPACE: &str = tinymemory_api::types::GLOBAL_NAMESPACE;
 
 /// Host-injected memory access for `memory` nodes. See the module doc for the
 /// security contract; see [`super::caps::OpenHumanAgentRunner`] for the

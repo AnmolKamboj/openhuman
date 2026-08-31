@@ -227,31 +227,23 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         ".profile_conn(",
         "sole in-family call; wraps the raw handle in ProfileStore. profile_conn is pub(in crate::openhuman::memory), so the compiler — not this lint — is the primary enforcement",
     ),
-    // ── Composio memory sync: profile_store + &MemoryClientRef ──
+    // ── Composio memory sync: the five entries here are gone ──
+    //
+    // tinymemory v1.13.4 deleted the whole in-process Composio pipeline
+    // (`ComposioProvider`, `ComposioHost`, the identity/toolkit registry), so
+    // `core/src/sync/composio/providers/` no longer exists at the vendored
+    // pin. What survived of the profile bypass moved down into
+    // `core/src/store/identity.rs`, which is the single entry below.
     (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/store/identity.rs",
         ".profile_store(",
-        "typed profile writes; the contract has no profile family, so still unguarded",
+        "typed profile writes; the contract still has no profile-write family, so this stays \
+         unguarded — it is the surviving half of the deleted composio provider entries",
     ),
     (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/store/identity.rs",
         "global::client_if_ready(",
-        "resolved only to reach profile_store()",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
-        "global::client_if_ready(",
-        "same provider trait shape",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types_test_support.rs",
-        "MemoryClient::from_workspace_dir(",
-        "#[cfg(test)] module, split out of the inline test blocks three earlier entries covered",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/user_scopes.rs",
-        "global::client_if_ready(",
-        "same provider trait shape",
+        "resolved only to reach profile_store(), same as the provider it replaced",
     ),
     // ── Golden-workspace fixture seeder (test infrastructure) ──
     //
@@ -275,12 +267,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
-    ),
-    (
-        "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",
-        "global::client_if_ready(",
-        "the engine-free sync runner's seam over the bound client; beneath the contract, \
-         the same way the engine seam beside it is",
     ),
 ];
 

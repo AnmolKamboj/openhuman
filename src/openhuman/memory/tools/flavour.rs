@@ -1,6 +1,6 @@
 //! Agent tool: read a compiled persona flavour profile (issue #5172).
 //!
-//! Persona ingestion (`src/openhuman/memory/tinycortex/persona.rs`) distills a
+//! Persona ingestion (engine-side, `tinycortex::memory::persona`) distills a
 //! person's coding-agent history into seven [`PersonaFacet`] flavoured trees
 //! (communication, coding style, stack, workflow, environment, directives,
 //! anti-preferences), each compiled into a small prompt-ready markdown
@@ -18,12 +18,108 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
-use tinycortex::memory::persona::PersonaFacet;
 use tinycortex::memory::tree::store::{get_tree_by_scope, TreeKind};
 use tinycortex::memory::tree::{compile_flavoured_root, flavoured_root_abs_path};
 
 use crate::openhuman::config::Config;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+
+/// The seven persona facets, host-side (#5560).
+///
+/// This was `tinycortex::memory::persona::PersonaFacet`, and it came home
+/// because it is a pure value type: a field-less enum whose whole behaviour is
+/// three total string mappings. Nothing about it needs the engine — the engine
+/// functions this file calls take the resulting `String`/`&str`, never the enum
+/// — so a host copy is the same value under a different path, not a
+/// translation.
+///
+/// # The strings are an on-disk contract, not cosmetics
+///
+/// [`Self::tree_scope`] is the **key a flavoured tree is stored under**.
+/// Persona ingestion writes `persona/<facet>` into `mem_tree_trees`, and
+/// `get_tree_by_scope` finds it by exact string match. So the mappings below
+/// are reproduced verbatim from the engine, and a "tidy-up" that renames one
+/// (`coding_style` → `codingStyle`, say) does not fail a build or throw — it
+/// silently stops finding a tree that is still there, and `memory_flavour`
+/// starts answering "No profile built yet" forever.
+///
+/// [`Self::parse_loose`]'s alias table is the agent-facing half of the same
+/// contract: an LLM emits `tone` or `pet_peeves`, and dropping an alias
+/// narrows what the tool accepts. [`Self::heading`] is display-only and the one
+/// mapping here that is safe to reword.
+///
+/// The engine's enum carries three more members this host never reads — `ALL`
+/// (the pack's fixed compile order), `default_ask` (per-facet ingestion
+/// prompts) and its serde derives. They are ingestion concerns and are
+/// deliberately not copied: an unused copy is a second thing to keep in sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PersonaFacet {
+    /// Tone, verbosity, directness, phrasing quirks, how they give feedback.
+    Communication,
+    /// Naming, structure, comments, error handling, testing habits.
+    CodingStyle,
+    /// Languages, frameworks, libraries, recurring architectural choices.
+    Stack,
+    /// Branching/commit granularity, plan-first vs. dive-in, PR habits.
+    Workflow,
+    /// Editors/harnesses, CLIs, package managers, OS.
+    Environment,
+    /// Explicit standing rules (mostly T0, near-verbatim).
+    Directives,
+    /// Pet peeves: things they correct agents for, revert, or forbid.
+    AntiPreferences,
+}
+
+impl PersonaFacet {
+    /// Stable string form. Verbatim from the engine — see the type's docs for
+    /// why this one is not free to change.
+    fn as_str(self) -> &'static str {
+        match self {
+            PersonaFacet::Communication => "communication",
+            PersonaFacet::CodingStyle => "coding_style",
+            PersonaFacet::Stack => "stack",
+            PersonaFacet::Workflow => "workflow",
+            PersonaFacet::Environment => "environment",
+            PersonaFacet::Directives => "directives",
+            PersonaFacet::AntiPreferences => "anti_preferences",
+        }
+    }
+
+    /// Human-facing section heading used in error and "not built" messages.
+    /// Display-only, so this is the one mapping here that may be reworded.
+    pub(crate) fn heading(self) -> &'static str {
+        match self {
+            PersonaFacet::Communication => "Communication style",
+            PersonaFacet::CodingStyle => "Coding style",
+            PersonaFacet::Stack => "Stack",
+            PersonaFacet::Workflow => "Workflow",
+            PersonaFacet::Environment => "Environment",
+            PersonaFacet::Directives => "Directives",
+            PersonaFacet::AntiPreferences => "Anti-preferences",
+        }
+    }
+
+    /// Flavoured-tree scope for this facet (`persona/<facet>`) — the exact key
+    /// the tree is persisted under.
+    pub(crate) fn tree_scope(self) -> String {
+        format!("persona/{}", self.as_str())
+    }
+
+    /// Parse the loose forms an LLM might emit.
+    pub(crate) fn parse_loose(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().replace([' ', '-'], "_").as_str() {
+            "communication" | "comms" | "tone" => Some(PersonaFacet::Communication),
+            "coding_style" | "code_style" | "coding" | "style" => Some(PersonaFacet::CodingStyle),
+            "stack" | "tech_stack" | "technology" => Some(PersonaFacet::Stack),
+            "workflow" | "process" => Some(PersonaFacet::Workflow),
+            "environment" | "env" | "tooling" => Some(PersonaFacet::Environment),
+            "directives" | "rules" | "directive" => Some(PersonaFacet::Directives),
+            "anti_preferences" | "anti_preference" | "antipreferences" | "dislikes"
+            | "pet_peeves" => Some(PersonaFacet::AntiPreferences),
+            _ => None,
+        }
+    }
+}
 
 /// The seven valid `flavour` slugs, for error messages.
 const VALID_FLAVOURS: &str =

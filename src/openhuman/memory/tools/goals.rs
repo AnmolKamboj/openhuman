@@ -33,10 +33,10 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use serde_json::json;
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::goals::ops;
 use crate::openhuman::memory::guard::MemoryGuard;
 use crate::openhuman::memory::ops::guard::active_memory_guard;
-use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 /// The guarded driver for this call, checked to serve the goals family.

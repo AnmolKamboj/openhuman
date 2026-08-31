@@ -29,11 +29,6 @@ use openhuman_core::openhuman::memory::query::{
     MemoryQueryTool, MemoryTreeDrillDownTool, MemoryTreeFetchLeavesTool,
     MemoryTreeIngestDocumentTool, MemoryTreeQuerySourceTool, MemoryTreeSearchEntitiesTool,
 };
-use tinymemory_core::queue::types::ReembedBackfillPayload;
-use tinymemory_core::queue::{
-    self as memory_queue, AppendBufferPayload, AppendTarget, ExtractChunkPayload,
-    FlushStalePayload, JobKind, JobStatus, NewJob, NodeRef, SealPayload, DEFAULT_LOCK_DURATION_MS,
-};
 use openhuman_core::openhuman::memory::sources::readers::reader_for;
 use openhuman_core::openhuman::memory::sources::registry;
 use openhuman_core::openhuman::memory::sources::rpc as memory_sources_rpc;
@@ -45,6 +40,12 @@ use openhuman_core::openhuman::memory::sources::types::{
 use openhuman_core::openhuman::memory::sources::{
     all_memory_sources_controller_schemas, all_memory_sources_registered_controllers,
 };
+use openhuman_core::openhuman::memory::sync::composio;
+use tinymemory_core::queue::types::ReembedBackfillPayload;
+use tinymemory_core::queue::{
+    self as memory_queue, AppendBufferPayload, AppendTarget, ExtractChunkPayload,
+    FlushStalePayload, JobKind, JobStatus, NewJob, NodeRef, SealPayload, DEFAULT_LOCK_DURATION_MS,
+};
 use tinymemory_core::store::chunks::store::{upsert_chunks, with_connection};
 use tinymemory_core::store::chunks::types::{
     approx_token_count, chunk_id, Chunk, DataSource, Metadata, SourceKind as ChunkSourceKind,
@@ -53,10 +54,7 @@ use tinymemory_core::store::chunks::types::{
 use tinymemory_core::store::trees::types::{
     SummaryNode, Tree, TreeKind, TreeStatus as StoredTreeStatus,
 };
-use tinymemory_core::store::{
-    MemoryClient, NamespaceDocumentInput, UnifiedMemory,
-};
-use openhuman_core::openhuman::memory::sync::composio;
+use tinymemory_core::store::{MemoryClient, NamespaceDocumentInput, UnifiedMemory};
 // `memory::sync::composio::providers::slack::schemas` is this host's own real,
 // current RPC schema module (`openhuman.slack_memory_sync_trigger` /
 // `_status`) — unrelated to the deleted per-action `post_process` (see below).
@@ -69,16 +67,18 @@ use openhuman_core::openhuman::memory::sync::composio::providers::slack::schemas
 use openhuman_core::openhuman::integrations::composio::identity_store::{
     delete_connected_identity_facets, load_connected_identities,
 };
-use openhuman_core::openhuman::integrations::composio::ops::{composio_get_user_profile, composio_sync};
+use openhuman_core::openhuman::integrations::composio::ops::{
+    composio_get_user_profile, composio_sync,
+};
 use openhuman_core::openhuman::integrations::composio::profile_md::{
     block_end, block_start, merge_provider_into_profile_md, remove_provider_from_profile_md,
     replace_managed_block,
 };
 use openhuman_core::openhuman::integrations::composio::providers::{
     agent_ready_toolkits, catalog_for_toolkit, classify_unknown, curated_scope_for, find_curated,
-    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, CuratedTool,
-    NormalizedTask, ProviderUserProfile, SyncOutcome as ComposioSyncOutcome, SyncReason,
-    TaskFetchFilter, ToolScope, UserScopePref,
+    is_action_visible_with_pref, toolkit_from_slug, toolkit_has_scope, CuratedTool, NormalizedTask,
+    ProviderUserProfile, SyncOutcome as ComposioSyncOutcome, SyncReason, TaskFetchFilter,
+    ToolScope, UserScopePref,
 };
 use tinymemory_api::composio::{
     canonicalize, extract_item_id, render_connected_identities_section, ConnectedIdentity,
@@ -90,7 +90,6 @@ use tinymemory_api::composio::{
 // indexer was never scoped to one toolkit to begin with. Note this is a
 // DIFFERENT (structurally identical) `IdentityKind` than
 // `tinymemory_api::composio::IdentityKind` above.
-use tinymemory_core::store::identity::is_self_identity_any_toolkit;
 use openhuman_core::openhuman::memory::sync::sync_status::{
     rpc as memory_sync_status_rpc, schemas as memory_sync_status_schemas,
 };
@@ -107,6 +106,7 @@ use openhuman_core::openhuman::memory::tools::tool_memory::{
 use openhuman_core::openhuman::memory::tools::{
     MemoryForgetTool, MemoryRecallTool, MemoryStoreTool,
 };
+use openhuman_core::openhuman::memory::tree::score::embed;
 use openhuman_core::openhuman::memory::tree::score::embed::Embedder;
 use openhuman_core::openhuman::memory::tree::score::extract::{
     CompositeExtractor, EntityExtractor, EntityKind, ExtractedEntities, ExtractedEntity,
@@ -130,18 +130,20 @@ use openhuman_core::openhuman::memory::tree::tree_runtime::{
     derive_node_ids, derive_parent_id, estimate_tokens, level_from_node_id, node_id_to_path,
     NodeLevel, TreeNode,
 };
-use openhuman_core::openhuman::memory::tree::{retrieval, score::embed};
-use tinymemory_core::tree_policy::TreePolicy;
-use tinymemory_core::tree_source;
+use tinymemory_core::store::identity::is_self_identity_any_toolkit;
+// `retrieval` is the engine module, not the host wrapper: the host stopped
+// re-exporting it in #5560. `score::embed` above is still host-side.
 use openhuman_core::openhuman::memory::{
     all_memory_controller_schemas, all_memory_registered_controllers,
     preferences::{
         load_general_preferences, recall_related_preferences, recall_situational_preferences,
         USER_PREF_GENERAL_NAMESPACE, USER_PREF_SITUATIONAL_NAMESPACE,
     },
-    read_rpc as memory_read_rpc,
-    MemoryIngestionConfig, MemoryIngestionRequest,
+    read_rpc as memory_read_rpc, MemoryIngestionConfig, MemoryIngestionRequest,
 };
+use tinymemory_core::tree::retrieval;
+use tinymemory_core::tree_policy::TreePolicy;
+use tinymemory_core::tree_source;
 // `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
 // crate with the rest of the memory implementation; the host re-exports some of
 // their contents flat but not the modules themselves.
@@ -159,15 +161,6 @@ use openhuman_core::openhuman::memory::rpc_models::{
     ListMemoryFilesRequest, MemoryInitRequest, ReadMemoryFileRequest,
     UpdateConversationMessageRequest, UpdateConversationThreadLabelsRequest,
     UpdateConversationThreadTitleRequest, UpsertConversationThreadRequest, WriteMemoryFileRequest,
-};
-use tinymemory_core::{
-    remember::RememberSourceKind,
-    rpc_models::{
-        ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest,
-        RecallContextRequest, RecallMemoriesRequest,
-    },
-    traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
-    util::redact::{redact, redact_endpoint},
 };
 use openhuman_core::openhuman::security::{AutonomyLevel, SecurityPolicy};
 use openhuman_core::openhuman::threads::ops as thread_ops;
@@ -196,6 +189,15 @@ use tinycortex::memory::ingest::canonicalize::email::{
 };
 use tinycortex::memory::ingest::canonicalize::email_clean;
 use tinycortex::memory::sync::{SyncOutcome as PipelineSyncOutcome, SyncPipelineKind};
+use tinymemory_core::{
+    remember::RememberSourceKind,
+    rpc_models::{
+        ApiEnvelope, ApiError, ApiMeta, PaginationMeta, QueryNamespaceRequest,
+        RecallContextRequest, RecallMemoriesRequest,
+    },
+    traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
+    util::redact::{redact, redact_endpoint},
+};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -2177,7 +2179,8 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
     // are host policy over a driver, not engine calls. `guarded_in_memory`
     // gives a real guard over a real store, so this still exercises the
     // decorator production uses rather than reaching past it.
-    let (_provider, memory) = openhuman_core::openhuman::memory::guard::in_memory::guarded_in_memory();
+    let (_provider, memory) =
+        openhuman_core::openhuman::memory::guard::in_memory::guarded_in_memory();
 
     memory
         .store(
@@ -3002,7 +3005,6 @@ async fn composio_get_user_profile_and_sync_refuse_cleanly_without_a_loaded_modu
         "sync must refuse to resolve toolkit for an unregistered connection"
     );
 }
-
 
 #[test]
 fn turn_state_mirror_persists_progress_edges_from_public_events() {

@@ -106,7 +106,10 @@ struct MmrResult {
     /// its MMR score, because the latter depends on selection order and would
     /// read as an unstable percentage. Kept so the port stays a faithful copy
     /// of the engine's shape rather than a narrowed re-derivation.
-    #[allow(dead_code, reason = "faithful port; this tool reports the cosine score instead")]
+    #[allow(
+        dead_code,
+        reason = "faithful port; this tool reports the cosine score instead"
+    )]
     score: f64,
 }
 

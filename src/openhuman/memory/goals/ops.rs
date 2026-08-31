@@ -148,7 +148,10 @@ pub async fn delete(goals: &dyn MemoryGoals, id: &str) -> Result<RpcOutcome<Goal
         .await
         .map_err(|e| format!("delete: {e}"))?;
     let updated = read(goals, "delete").await?;
-    Ok(RpcOutcome::single_log(updated, format!("deleted goal {id}")))
+    Ok(RpcOutcome::single_log(
+        updated,
+        format!("deleted goal {id}"),
+    ))
 }
 
 /// On-demand enrichment: run the turn-based goals agent now, then return the

@@ -91,7 +91,15 @@ use tokio::sync::Notify;
 use crate::openhuman::config::Config;
 
 /// Type alias for the seam's config trait object, to keep signatures readable.
-type SeamConfig = tinymemory_core::Config;
+///
+/// Named on the contract crate rather than on `tinymemory_core::Config`, which
+/// is nothing but `pub type Config = dyn tinymemory_api::host::
+/// MemoryHostConfig;` — the same trait object under a longer chain. Spelling it
+/// this way is not cosmetic: it means every remaining `tinymemory_core::` line
+/// in this file is a *seam installation*, so the direct-reference inventory
+/// reads as what actually keeps the engine linked here rather than as a mix of
+/// installs and inert aliases (#5560).
+type SeamConfig = dyn tinymemory_api::host::MemoryHostConfig;
 
 // ── Embeddings ──────────────────────────────────────────────────────────────
 

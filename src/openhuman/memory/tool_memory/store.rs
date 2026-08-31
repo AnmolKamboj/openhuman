@@ -225,6 +225,54 @@ impl ToolMemoryStore {
         Ok(rules)
     }
 
+    /// Fetch a single rule by `(tool_name, rule_id)`.
+    ///
+    /// `Ok(None)` means the rule is absent, which is not an error: the RPC
+    /// surface answers a missing rule with a null body rather than a failure.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures only.
+    pub async fn get_rule(
+        &self,
+        tool_name: &str,
+        rule_id: &str,
+    ) -> Result<Option<ToolMemoryRule>, String> {
+        let namespace = tool_memory_namespace(tool_name);
+        let key = ToolMemoryRule::storage_key(rule_id);
+        self.fetch_rule(&namespace, &key).await
+    }
+
+    /// Delete a rule. Returns `true` when the rule existed.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures only; deleting an absent rule is `Ok(false)`.
+    pub async fn delete_rule(&self, tool_name: &str, rule_id: &str) -> Result<bool, String> {
+        let namespace = tool_memory_namespace(tool_name);
+        let key = ToolMemoryRule::storage_key(rule_id);
+        self.memory
+            .forget(&namespace, &key)
+            .await
+            .map_err(|e| format!("forget tool rule: {e:#}"))
+    }
+
+    /// Render one tool's rules as JSON for an RPC envelope, priority
+    /// descending.
+    ///
+    /// The shape is `serde_json::to_value` over the same `Vec<ToolMemoryRule>`
+    /// [`Self::list_rules`] returns, so `tool_rules_json` stays byte-compatible
+    /// with what the dashboard already parses.
+    ///
+    /// # Errors
+    ///
+    /// Backend failures, or a serialisation failure that cannot occur for this
+    /// type but is surfaced rather than unwrapped.
+    pub async fn list_rules_json(&self, tool_name: &str) -> Result<serde_json::Value, String> {
+        let rules = self.list_rules(tool_name).await?;
+        serde_json::to_value(rules).map_err(|e| e.to_string())
+    }
+
     /// The rules that must be surfaced eagerly (Critical + High), grouped by
     /// tool name.
     ///

@@ -23,7 +23,10 @@ use tempfile::TempDir;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::tree::retrieval::{query_source, search_entities};
+// Named on the engine crate directly: `memory::tree::retrieval` stopped
+// re-exporting the engine in #5560 because no production caller was left. A
+// test may still reach the engine — that is what keeps this a test-only
+// reference rather than a shipped one.
 use crate::openhuman::memory::tree::score::store::lookup_entity;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
@@ -35,6 +38,7 @@ use tinymemory_core::store::chunks::store::{
     count_chunks, count_chunks_by_lifecycle_status, CHUNK_STATUS_BUFFERED,
 };
 use tinymemory_core::store::trees::{store as tree_store, types::TreeKind};
+use tinymemory_core::tree::retrieval::{query_source, search_entities};
 
 // ── helpers ─────────────────────────────────────────────────────────────
 

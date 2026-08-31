@@ -171,7 +171,10 @@ fn migration_fills_kind_defaults_without_counting_them() {
     let count = apply_caps_defaults_to_entries(&mut sources);
 
     assert_eq!(count, 0, "only composio entries count as migrated");
-    assert!(!sources[0].enabled, "kind defaults must not enable a source");
+    assert!(
+        !sources[0].enabled,
+        "kind defaults must not enable a source"
+    );
     assert_eq!(sources[0].max_prs, Some(10));
     assert!(sources[0].max_issues.is_some());
 }
