@@ -94,6 +94,65 @@ function guardCefRelListSupportsPlugin(): PluginOption {
   };
 }
 
+// Dev-server-only route that hands the browser the credentials it needs to
+// talk to a local `openhuman-core` before the SPA boots.
+//
+// In the desktop app the shell injects the per-launch bearer over IPC
+// (`core_rpc_token`), so the renderer never needs one on disk. A plain browser
+// has no such channel: `coreRpcClient` falls back to `getStoredCoreToken()` /
+// `peekStoredRpcUrl()`, which read `localStorage`. Without seeding those the
+// first RPC is a 401 and the app is stuck on the boot gate.
+//
+// `apply: "serve"` keeps this out of every production bundle — the route only
+// exists while the dev server is running. The token is read from the dev
+// server's own environment and never accepted from the query string, so a
+// stray link cannot point a running dev session at an attacker's core.
+//
+// Keys must stay in sync with `app/src/utils/configPersistence.ts`.
+function devConnectPlugin(): PluginOption {
+  return {
+    name: "openhuman:dev-connect",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__dev-connect", (_req, res) => {
+        const token = (process.env.OPENHUMAN_CORE_TOKEN ?? "").trim();
+        const rpcUrl = (
+          process.env.VITE_OPENHUMAN_CORE_RPC_URL ?? ""
+        ).trim();
+
+        // `</script>` inside a JSON string would close the block early.
+        const json = (value: string) =>
+          JSON.stringify(value).replace(/</g, "\\u003c");
+
+        const html = `<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>Connecting…</title></head>
+  <body style="font:14px system-ui;padding:2rem">
+    <p>Connecting to local openhuman-core…</p>
+    <script>
+      try {
+        var url = ${json(rpcUrl)};
+        var token = ${json(token)};
+        if (url) localStorage.setItem("openhuman_core_rpc_url", url);
+        if (token) localStorage.setItem("openhuman_core_rpc_token", token);
+      } catch (err) {
+        document.body.textContent =
+          "localStorage unavailable: " + err + " — cannot seed core credentials.";
+        throw err;
+      }
+      location.replace("/");
+    </script>
+  </body>
+</html>`;
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(html);
+      });
+    },
+  };
+}
+
 // `VITE_OPENHUMAN_TARGET=web` switches the build to the browser-hosted
 // flavor: output lands in `dist-web/` so the desktop build artifact in
 // `dist/` (consumed by `cargo tauri build`) is never clobbered, and the
@@ -156,6 +215,7 @@ export default defineConfig(async () => ({
       },
     }),
     guardCefRelListSupportsPlugin(),
+    devConnectPlugin(),
     react(),
     maybeSentryPlugin(),
   ].filter(Boolean) as PluginOption[],
