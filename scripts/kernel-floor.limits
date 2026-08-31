@@ -13,6 +13,40 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   288/270/2  2026-08-31  openhuman#5560: the memory engine crates leave the
+#                      product build. `tinycortex`, `tinycortex-api`, the
+#                      `tinymemory` facade, `tinymemory-tinycortex` and
+#                      `tinymemory-core` are all out of the NORMAL dependency
+#                      graph — verified with `cargo tree -e normal -i <crate>`
+#                      under the product feature set, which prints "nothing to
+#                      print" for each. `tinycortex` and `tinymemory-core`
+#                      survive as `optional = true` reached only by `rss-bench`
+#                      (the two `library_profile` bins measure the in-process
+#                      engine and a [[bin]] cannot use a dev-dependency); the
+#                      tests that need a real engine are served by
+#                      [dev-dependencies], which cargo does not link into the
+#                      shipped binary. (-6 packages, -6 NAMES, native
+#                      unchanged at 2.)
+#
+#                      READ THE PACKAGE NUMBER CAREFULLY — it goes 286 -> 288
+#                      against this file while going 294 -> 288 against
+#                      reality, and only the second is what this change did.
+#                      The 286/270 entry below was already unmet when this
+#                      branch started: `scripts/kernel-floor.sh flows` on
+#                      upstream/main measured 294/276/2, so BOTH gates were
+#                      failing before a line of #5560 landed, and the packages
+#                      limit had been stale by 8 for a day. This entry records
+#                      the measured floor rather than carrying that drift
+#                      forward silently. The names half needed no raise at all:
+#                      the shed lands it on exactly the 270 already written
+#                      here, which is why `dep-sim --expect-names 270` in
+#                      ci-lite.yml is left alone (its prose claimed 273 and was
+#                      wrong in the other direction — corrected there, argument
+#                      untouched).
+#
+#                      The remaining 2-package gap to 286 is pre-existing and
+#                      NOT diagnosed here. Whoever closes it should start by
+#                      diffing the package list against the 2026-08-30 entry.
 #   286/270/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
 #                      the copilot's authoring prompts upstream split the
 #                      `tinyflows` crate's catalog/storage/copilot surface into
@@ -525,4 +559,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:286:270:2
+flows:288:270:2

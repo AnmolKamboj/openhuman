@@ -15,10 +15,23 @@
 //!
 //! A direct `tinymemory_core::…` call gets neither. It is a second, unpoliced
 //! door into the same subsystem, and two doors into one capability is a
-//! capability whose behaviour can diverge. `tinymemory-core` also stays linked
-//! into the shipped binary — 1.44 MB of `.text`, the 7th largest crate — for as
-//! long as any of these remain, which is the visible symptom rather than the
-//! disease (#5560).
+//! capability whose behaviour can diverge. That is the disease, and it is the
+//! only reason this lint still exists.
+//!
+//! **The symptom is gone: `tinymemory-core` is no longer linked into the
+//! shipped binary** (#5560). It used to cost 1.44 MB of `.text` as the 7th
+//! largest crate, and that sentence stood here for as long as any entry
+//! remained. It no longer follows. The crate left `[dependencies]` on
+//! 2026-08-31 while this list still held nine entries, because **every
+//! surviving entry is test-only code**, served by the `[dev-dependencies]`
+//! entry that cargo does not link into the product. `cargo tree -e normal -i
+//! tinymemory-core` under the product feature set prints "nothing to print".
+//!
+//! Read the consequence carefully, because it inverts what this file used to
+//! assume: **a non-empty list no longer means a linked engine.** Draining the
+//! rest is still worth doing — a second door is a correctness problem whether
+//! or not it ships — but it buys no bytes, and nobody should size it as though
+//! it did.
 //!
 //! # This lint is a ratchet, not an invariant
 //!
@@ -363,7 +376,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/host_impls.rs",
         Verdict::HostSide,
-        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter) and now nothing else. The seams have no in-process caller left at all now that the tree_runtime glob is deleted: they are reached from the far side of the bus, where modules/memory_host.rs serves the same seven for the loaded module, and unwiring them would fail that module's summariser run with 'no ChatHost installed'. The in-process chunk-store recovery door (engine::backend::chunks::recover_corrupt_db, called from the StoreCorruptQuarantined arm) was an eighth reason until #5560 deleted it: every in-process reader it protected had already migrated — sources::status onto MemoryChunks::source_ingest_status, recall onto the binding's driver — leaving only #[cfg(test)] openers, so it was the last production call that opened the host's chunk store rather than a door onto anything. Composio had a seam here too until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
+        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter) into an in-process engine, and the whole module sits behind the default-ON/product-OFF `memory-engine-seams` feature since #5560 — it is listed here only because this lint scans source text and does not track cfg. A feature rather than #[cfg(test)] because a tests/ integration target links this crate as an ordinary dependency, where cfg(test) is false and the module would be invisible however the engine is declared, and two dozen of them install these seams. Its production callers are gone: runtime::context, memory_cli and agent::debug install memory::host::install_memory_event_sink() instead, which is a tinymemory-api seam (still a normal dependency) with a live host-side publisher in memory::sync::composio::bus. That split is load-bearing — tinymemory_api::events::publish drops silently when unwired, so folding the sink in here would have removed a live event path with no error anywhere. What still needs these installs is install_for_tests, whose ~90 callers stand up a real in-process engine from the [dev-dependencies] entry. The seams themselves are also served for the LOADED module by modules/memory_host.rs, over the module's own inbound interfaces — a separate mechanism, since a cdylib has its own statics and never saw what was set here",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
@@ -562,12 +575,23 @@ fn nothing_is_left_migratable() {
 }
 
 /// The blocked set is the upstream ask, so it must be non-empty for as long as
-/// the engine is still linked — and empty when it is not.
+/// any file still names the engine crate — and empty when none does.
 ///
-/// This is the test that makes "`tinymemory-core` left the build" self-proving:
-/// on the day the crate is dropped, [`scan`] returns nothing, `ALLOWED` empties,
-/// and this assertion is what forces the module docs above to be rewritten
-/// rather than left describing a world that no longer exists.
+/// **This test was written to be self-proving and was not.** Its premise was
+/// that "the crate is dropped" and "`ALLOWED` empties" are the same event, so
+/// that the day one happened the other would force the module docs above to be
+/// rewritten. #5560 falsified that on 2026-08-31: `tinymemory-core` left
+/// `[dependencies]` with **nine entries still listed**, and this assertion did
+/// not move, because [`scan`] reads source text and every surviving entry is
+/// test-only code that the `[dev-dependencies]` entry still compiles.
+///
+/// The rewrite happened anyway — by hand, not because a test demanded it. Do
+/// not restore the old wording, and do not add an assertion tying this list to
+/// the manifest: the two are genuinely independent now, and a lint that claimed
+/// otherwise would fail for a build that is correct.
+///
+/// What it still buys is the honest half: a list that empties while files
+/// remain, or files that remain while the list empties, is a broken scanner.
 #[test]
 fn the_blocked_set_matches_the_engine_still_being_linked() {
     let blocked = ALLOWED
@@ -580,8 +604,10 @@ fn the_blocked_set_matches_the_engine_still_being_linked() {
         .count();
     assert!(
         blocked > 0 || host_side > 0,
-        "nothing references tinymemory-core any more — drop the path dependency from Cargo.toml, \
-         remove its cargo-machete `ignored` entry, ratchet scripts/kernel-floor.limits, and rewrite \
-         this module's docs (#5560)"
+        "nothing references tinymemory-core any more — drop the remaining \
+         [dev-dependencies] entry from Cargo.toml and rewrite this module's docs. \
+         The [dependencies] entry, the cargo-machete `ignored` list and \
+         scripts/kernel-floor.limits were all settled in #5560, when the crate left \
+         the product build with this list still non-empty"
     );
 }

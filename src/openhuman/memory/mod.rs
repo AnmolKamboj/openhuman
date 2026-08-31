@@ -40,12 +40,19 @@ pub mod guard;
 pub mod host;
 /// Host implementations of the seam traits the ENGINE declares.
 ///
-/// `#[cfg(test)]` because the production host embeds no engine any more: the
+/// Behind `memory-engine-seams` (default-ON, product-OFF) because the
+/// production host embeds no engine any more: the
 /// module installs its own seams and this host answers it over the bus through
 /// [`crate::openhuman::modules::memory_host`] instead. What still needs these
 /// is the test suite, which binds the in-process TinyCortex driver directly —
 /// legitimate, because `tinymemory-core` is a dev-dependency there and a
 /// dev-dependency is not linked into the shipped binary.
+///
+/// The contract-side event sink is deliberately **not** in here: it installs
+/// into `tinymemory_api`, not the engine, and `memory::sync::composio::bus`
+/// publishes through it from production host code. It is installed directly by
+/// each boot site — see [`host::install_memory_event_sink`].
+#[cfg(any(test, feature = "memory-engine-seams"))]
 pub mod host_impls;
 /// Host desktop policy: is the memory content root a vault Obsidian already
 /// knows about? See the module docs for why this is OpenHuman's and not the

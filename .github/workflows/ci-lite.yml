@@ -504,8 +504,9 @@ jobs:
       - name: Check core builds with the default domain gates disabled
         # Lib-scoped on purpose. `--all-targets` would additionally compile the
         # `tests/` integration crates, which today name gated symbols
-        # (voice::reply_speech::test_seam, mcp::registry::store, web3::x402::tools) without
-        # a #[cfg] and so do not compile with the gates off. That cleanup is tracked
+        # (voice::reply_speech::test_seam, mcp::registry::store, web3::x402::tools,
+        # and since openhuman#5560 memory::host_impls behind `memory-engine-seams`)
+        # without a #[cfg] and so do not compile with the gates off. That cleanup is tracked
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
         run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
@@ -587,7 +588,7 @@ jobs:
         # 2026-08-29: `tinytools` becomes the dependency behind the `Tool`
         # trait/types, which cannot be gated because `tools/` is kernel
         # surface — zero transitive additions, native build count unchanged
-        # at 2. 270 -> 273 on 2026-08-30: the `tinyflows` crate's catalog/
+        # at 2. 267 -> 270 on 2026-08-30: the `tinyflows` crate's catalog/
         # storage/copilot surface split into three sibling path-crates in the
         # SAME vendored workspace (`tinyflows-catalog`, `tinyflows-sqlite`,
         # `tinyflows-copilot`) — one name each, no new external crate, native
@@ -595,6 +596,21 @@ jobs:
         # these raises are temporary/justified. macOS resolves one higher per
         # the host skew recorded in the limits history — this expects the CI
         # host.
+        #
+        # That line read `270 -> 273` until 2026-08-31 and was wrong twice
+        # over: the split took NAMES from 267 to 270, not 270 to 273, and the
+        # argument below was never moved to 273 to match it. Corrected rather
+        # than acted on — 270 is and was the right number, and bumping the
+        # argument to follow the prose would have masked the drift described
+        # next.
+        #
+        # UNCHANGED by openhuman#5560, deliberately. That change sheds the
+        # memory engine crates and takes the measured name count from 276 back
+        # down to exactly 270, so this guard goes from failing to passing
+        # without the argument moving. It had been red on main: the profile
+        # measured 276 names against this 270 while `kernel-floor.limits`
+        # separately measured 294 packages against its 286. Only the packages
+        # limit needed a write-back; see the 2026-08-31 entry there.
         #
         # This number MUST move in lockstep with scripts/kernel-floor.limits —
         # it is a second source of truth for the same Linux name count and is

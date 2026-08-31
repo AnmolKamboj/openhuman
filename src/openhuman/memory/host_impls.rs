@@ -7,12 +7,51 @@
 //! are about *capability*: building providers, loading config, running spaCy,
 //! throttling background work, reporting errors.
 //!
+//! # This whole module is behind `memory-engine-seams` (#5560)
+//!
+//! `tinymemory-core` has left the product build. It is a `[dev-dependencies]`
+//! entry plus an `optional = true` normal one that only `memory-engine-seams`
+//! and `rss-bench` turn on, so the engine these seams install into does not
+//! exist in anything shipped — and neither does this module.
+//!
+//! The gate is a **feature** rather than `#[cfg(test)]`, and the reason is
+//! worth knowing before "simplifying" it: a `tests/*.rs` integration target
+//! links this crate as an ordinary dependency, where `cfg(test)` is false, so a
+//! `#[cfg(test)]` module is invisible to it however the engine is declared. Two
+//! dozen of those targets call [`install_memory_host_seams`], and several of
+//! them drive a real in-process engine — the archivist, session-turn and
+//! memory-sync cases in `raw_coverage_all` fail with "no EmbeddingHost
+//! installed" without it, which is the same failure the first attempt at #5560
+//! shipped to users. `memory-engine-seams` is default-ON, product-OFF and
+//! allow-listed in `INTENTIONALLY_NOT_FORWARDED`.
+//!
+//! **The feature makes the engine available, not used.** In a default build
+//! nothing in production reaches it: the boot sites install only the contract
+//! event sink, so a linked-but-unwired engine is never called and the seams'
+//! fail-loud behaviour is never triggered.
+//!
+//! Production reaches the engine through the loaded TinyMemory module over the
+//! bus, and
+//! `modules::memory_host` serves the same seven capabilities there through the
+//! module's own inbound interfaces, which are a different mechanism entirely: a
+//! `cdylib` has its own statics, so nothing installed here was ever visible to
+//! it, and nothing it installs is visible here.
+//!
+//! **The contract event sink is not one of these seams and is not gated.** It
+//! installs into `tinymemory_api`, which is still a normal dependency, and
+//! `memory::sync::composio::bus` publishes `ComposioIntegrationsChanged`
+//! through it from production host code. Each boot site calls
+//! [`super::host::install_memory_event_sink`] directly for that reason —
+//! `tinymemory_api::events::publish` drops silently when unwired, so folding it
+//! in here would have removed a live event path without a single error.
+//!
 //! # They are process-globals, installed once
 //!
 //! Every one is reached through a `set_*` installer that
-//! [`install_memory_host_seams`] calls during startup wiring, before any memory
-//! work begins. That mirrors the shape the subsystem had before the extraction,
-//! when these were free functions it called directly.
+//! [`install_memory_host_seams`] calls, before any memory work begins. That
+//! mirrors the shape the subsystem had before the extraction, when these were
+//! free functions it called directly; [`install_for_tests`] is the one caller
+//! that matters now.
 //!
 //! # Why several of them capture an `Arc<Config>`
 //!
@@ -25,7 +64,7 @@
 //! should be live. Seams that must be live (`ConfigLoader`) take a `&Config`
 //! argument and re-read instead.
 //!
-//! # What is left alive here, and what stopped being a reason (#5560)
+//! # How this came to be test-only, and the wrong argument for it (#5560)
 //!
 //! `memory::binding` refuses `DriverClass::Embedded` outright — "embedded
 //! memory drivers are no longer supported; use the 'tinymemory' module driver"
@@ -36,7 +75,9 @@
 //! to check**: it governs what answers a `MemoryProvider` call and says nothing
 //! about the free-function engine surface a call site can reach around the
 //! binding entirely — the "second unpoliced door" `memory::direct_engine_refs`
-//! is a ratchet over.
+//! is a ratchet over. The argument that eventually held is the one below:
+//! caller by caller, until the free-function surface had no production reader
+//! and the crate could leave the manifest.
 //!
 //! **Every production path this section used to name is now gone.** They went
 //! one contract round at a time, and the list is worth keeping because it is
@@ -90,11 +131,14 @@
 //! — `modules::memory_host`'s `into_domain_event` publishes it and returns
 //! `None`, exactly as `memory::host`'s in-process sink does.
 //!
-//! **The question to re-ask is not "is the driver embedded" but "does any
-//! production caller still reach an engine free function".** `grep -rn
-//! 'tinymemory_core::' src --include='*.rs'` outside comments is the inventory
-//! for *this* file's installs; when it is empty they are dead and go with the
-//! manifest entry, in the same change.
+//! **The question to re-ask was not "is the driver embedded" but "does any
+//! production caller still reach an engine free function".** That inventory is
+//! now empty, and it was emptied rather than argued away: `session::builder::
+//! factory` stopped booting `global::init(workspace).memory_handle()`,
+//! `ops::helpers::active_memory_client` was deleted, and `memory_cli`'s
+//! `ingest`/`query` engine-client resolver went with it. What is left naming
+//! `tinymemory_core::` is `#[cfg(test)]`, which the `[dev-dependencies]` entry
+//! serves and the shipped binary does not link.
 //!
 //! **That grep is not the inventory for #5560 as a whole, and the difference
 //! matters.** #5560 sheds two crates, and `memory::direct_engine_refs` ratchets
