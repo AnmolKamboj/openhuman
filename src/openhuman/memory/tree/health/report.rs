@@ -27,11 +27,14 @@
 //! against the JSON this RPC has always emitted.
 //!
 //! The failure taxonomy is **not** redefined here. [`PipelineFailure`],
-//! [`FailureCode`] and [`FailureClass`] stay `tinycortex`'s — the same items
-//! [`super`] already re-exports, and the same ones
+//! [`FailureCode`] and [`FailureClass`] come from
+//! [`super::taxonomy`](super) — the same items
 //! `pipeline_status.first_blocking_cause` is built from out of a
 //! `QueueFailure`. Two copies of that vocabulary is exactly how the two halves
-//! of one response start disagreeing about a code.
+//! of one response start disagreeing about a code. (Those types were the
+//! engine's until #5560 and are this host's now; the sentence above was true
+//! before the move for the same reason it is true after it — there is one
+//! definition, wherever it lives.)
 
 use serde::{Deserialize, Serialize};
 
