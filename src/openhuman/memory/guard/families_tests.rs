@@ -584,6 +584,35 @@ async fn the_defaulted_doors_are_forwarded_rather_than_refused() {
         .await
         .expect("diagnose must reach the driver");
 
+    // The seven the runtime-tree round added (contract 4.0). Six of them carry
+    // the `tree_summarizer_*` RPC surface and the `tree-summarizer` CLI; the
+    // seventh is what `memory_flavour` reads. A `GuardedTree` that forgot one
+    // would refuse a driver that serves it perfectly well — the shape of the
+    // `diagnose` bug this test was written for.
+    let tree = guard.as_tree().expect("tree family");
+    let at = chrono::Utc::now();
+    tree.runtime_buffer_write("team", "hello", at, None)
+        .await
+        .expect("runtime_buffer_write must reach the driver");
+    tree.runtime_read_node("team", "root")
+        .await
+        .expect("runtime_read_node must reach the driver");
+    tree.runtime_read_children("team", "root")
+        .await
+        .expect("runtime_read_children must reach the driver");
+    tree.runtime_tree_status("team")
+        .await
+        .expect("runtime_tree_status must reach the driver");
+    tree.runtime_summarize("team", at)
+        .await
+        .expect("runtime_summarize must reach the driver");
+    tree.runtime_rebuild("team")
+        .await
+        .expect("runtime_rebuild must reach the driver");
+    tree.flavour_profile("persona/communication")
+        .await
+        .expect("flavour_profile must reach the driver");
+
     let methods: Vec<String> = driver.calls().into_iter().map(|call| call.method).collect();
     assert_eq!(
         methods,
@@ -594,6 +623,13 @@ async fn the_defaulted_doors_are_forwarded_rather_than_refused() {
             "chunks.source_ingest_status",
             "maintenance.degraded_state",
             "maintenance.diagnose",
+            "tree.runtime_buffer_write",
+            "tree.runtime_read_node",
+            "tree.runtime_read_children",
+            "tree.runtime_tree_status",
+            "tree.runtime_summarize",
+            "tree.runtime_rebuild",
+            "tree.flavour_profile",
         ]
     );
 }

@@ -1,6 +1,13 @@
 use super::*;
 use tempfile::TempDir;
 
+// `lookup_flavour` reads through `MemoryTree::flavour_profile` now (#5560), so
+// a test that expects a real "not built yet" answer needs a driver serving the
+// Tree family — the null driver a test workspace otherwise resolves to would
+// answer `Unsupported`, which this tool reports as a failure rather than as an
+// absent profile. `install_tinycortex_for_test` binds the very driver the
+// loaded module wraps, so these tests exercise the same lookup production runs.
+
 fn test_config() -> (TempDir, Arc<Config>) {
     let tmp = TempDir::new().unwrap();
     let mut cfg = Config::default();
@@ -66,6 +73,7 @@ async fn unknown_flavour_is_error() {
 #[tokio::test]
 async fn valid_flavour_with_no_tree_yet_returns_no_profile_message() {
     let (_tmp, cfg) = test_config();
+    crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
     let tool = MemoryFlavourTool::new(cfg);
     let result = tool
         .execute(json!({"flavour": "coding_style"}))
@@ -79,6 +87,7 @@ async fn valid_flavour_with_no_tree_yet_returns_no_profile_message() {
 async fn aliases_are_accepted() {
     for alias in ["comms", "coding", "env", "rules", "dislikes"] {
         let (_tmp, cfg) = test_config();
+        crate::openhuman::memory::test_support::install_tinycortex_for_test(&cfg);
         let tool = MemoryFlavourTool::new(cfg);
         let result = tool.execute(json!({"flavour": alias})).await;
         assert!(result.is_ok(), "alias `{alias}` should be accepted");

@@ -495,6 +495,80 @@ impl MemoryTree for RecordingProvider {
         self.record(Call::plain("tree.root_summaries_with_caps"));
         Ok(Vec::new())
     }
+
+    // ── The runtime-tree and flavour doors ──────────────────────────────────
+    //
+    // Overridden for the same reason `summarise` and `root_summaries_with_caps`
+    // are: each is defaulted on the trait, so a `GuardedTree` that forgot to
+    // forward one still compiles and answers `Unsupported`. A driver that
+    // *succeeds* here is what makes `the_defaulted_doors_are_forwarded_rather_than_refused`
+    // able to tell the two apart.
+
+    /// Records the buffered body, so a redaction test can assert what the
+    /// driver's buffer would have been handed — [`Self::append`]'s twin.
+    async fn runtime_buffer_write(
+        &self,
+        _namespace: &str,
+        content: &str,
+        _timestamp: chrono::DateTime<chrono::Utc>,
+        _metadata: Option<serde_json::Value>,
+    ) -> Result<String, MemoryError> {
+        self.record(Call {
+            method: "tree.runtime_buffer_write".into(),
+            content: Some(content.to_string()),
+            taint: None,
+            scoped: None,
+        });
+        Ok("/buffer/2026/01/01/00.md".to_string())
+    }
+
+    async fn runtime_read_node(
+        &self,
+        _namespace: &str,
+        _node_id: &str,
+    ) -> Result<
+        Option<crate::openhuman::memory::api::tree::TreeNode>,
+        MemoryError,
+    > {
+        self.record(Call::plain("tree.runtime_read_node"));
+        Ok(None)
+    }
+
+    async fn runtime_read_children(
+        &self,
+        _namespace: &str,
+        _parent_id: &str,
+    ) -> Result<Vec<crate::openhuman::memory::api::tree::TreeNode>, MemoryError> {
+        self.record(Call::plain("tree.runtime_read_children"));
+        Ok(Vec::new())
+    }
+
+    async fn runtime_tree_status(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        self.record(Call::plain("tree.runtime_tree_status"));
+        Ok(tree_status(namespace))
+    }
+
+    async fn runtime_summarize(
+        &self,
+        _namespace: &str,
+        _timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Result<
+        Option<crate::openhuman::memory::api::tree::TreeNode>,
+        MemoryError,
+    > {
+        self.record(Call::plain("tree.runtime_summarize"));
+        Ok(None)
+    }
+
+    async fn runtime_rebuild(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        self.record(Call::plain("tree.runtime_rebuild"));
+        Ok(tree_status(namespace))
+    }
+
+    async fn flavour_profile(&self, _scope: &str) -> Result<Option<String>, MemoryError> {
+        self.record(Call::plain("tree.flavour_profile"));
+        Ok(None)
+    }
 }
 
 #[async_trait]

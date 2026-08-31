@@ -25,57 +25,61 @@
 //! should be live. Seams that must be live (`ConfigLoader`) take a `&Config`
 //! argument and re-read instead.
 //!
-//! # They are not dead code, and the check is not the driver class (#5560)
+//! # What is left alive here, and what stopped being a reason (#5560)
 //!
 //! `memory::binding` refuses `DriverClass::Embedded` outright — "embedded
 //! memory drivers are no longer supported; use the 'tinymemory' module driver"
 //! — and `modules::memory_host` serves this same set of seven over the bus for
 //! the module. Both facts together read like an argument that the in-process
 //! installs below are only reached from tests, and #5560 acted on exactly that
-//! reading once and had to be reverted. **The driver class is the wrong thing
-//! to check.** It governs what answers a `MemoryProvider` call; it says nothing
-//! about the free-function engine surface this crate still reaches through the
-//! surviving `memory::tree::tree_runtime` re-export, which bypasses the binding
-//! entirely — the "second unpoliced door" `memory::direct_engine_refs` is a
-//! ratchet over.
+//! reading once and had to be reverted. **The driver class was the wrong thing
+//! to check**: it governs what answers a `MemoryProvider` call and says nothing
+//! about the free-function engine surface a call site can reach around the
+//! binding entirely — the "second unpoliced door" `memory::direct_engine_refs`
+//! is a ratchet over.
 //!
-//! **Both production paths this section used to name are gone, and the reason
-//! the installs survive has moved with them.** `agent::harness::archivist::
-//! recap` folds through `MemoryTree::summarise` and `memory::tools::doctor`
-//! through `MemoryMaintenance::diagnose`, so neither reaches [`ChatHost`]
-//! in-process any more; the `memory::tree::summarise` path they went through
-//! does not resolve at all now that the glob carrying it is deleted.
+//! **Every production path this section used to name is now gone.** They went
+//! one contract round at a time, and the list is worth keeping because it is
+//! the shape the remaining work takes:
 //!
-//! What keeps the in-process engine live is **`memory::tree::tree_runtime`**,
-//! the last production glob (`pub use tinymemory_core::tree::tree_runtime::*`).
-//! Its five `tree_summarizer_*` RPC handlers, the `openhuman tree-summarizer`
-//! CLI subcommand, `memory::ops::learn` and the channels-startup event
-//! subscriber all run the markdown time-tree in **this** process, and that fold
-//! builds its provider through `chat::build_chat_provider` →
-//! `chat_host::{provider_for_role, create_chat_model_with_model_id}`. It is
-//! also why [`ChatHost::summarizer_available`] is implemented below by
-//! delegating straight back into `tree_runtime::ops`: the seam and its last
-//! remaining caller are two ends of the same module.
+//! - `agent::harness::archivist::recap` folds through `MemoryTree::summarise`.
+//! - `memory::tools::doctor` runs through `MemoryMaintenance::diagnose`.
+//! - `memory::tree::tree_runtime` — the last production glob
+//!   (`pub use tinymemory_core::tree::tree_runtime::*`) — is deleted. Its five
+//!   `tree_summarizer_*` RPC handlers, the `openhuman tree-summarizer` CLI,
+//!   `memory::ops::learn` and the channels-startup subscriber ran the markdown
+//!   time tree in *this* process and built its fold through
+//!   `chat_host::create_chat_model_with_model_id`; they go over the bus now,
+//!   through the six runtime-tree doors.
+//! - `memory::tools::flavour` reached `tinycortex::memory::tree` directly and
+//!   is on `MemoryTree::flavour_profile`.
 //!
-//! The seams fail **loudly** when unwired rather than degrading, so removing
-//! the installs would not silently misbehave — it would break every summariser
-//! run with "no ChatHost installed". That is the failure #5560 shipped once, as
-//! "no EmbeddingHost installed" on the chat hot path.
+//! So **no production caller reaches an in-process engine fold any more**, and
+//! [`ChatHost`] below is reached only from the far side of the bus, where
+//! `modules::memory_host` serves it for the loaded module. That is not the same
+//! thing as the installs being dead: unwire them and the module's own
+//! summariser run fails with "no ChatHost installed", which is the failure
+//! #5560 shipped once as "no EmbeddingHost installed" on the chat hot path. The
+//! seams fail **loudly** rather than degrading, which is a property to keep.
 //!
-//! [`reset_in_process_chunk_store`] survives independently, and its reason has
-//! moved too. It was justified by `memory::sources::status` reading the
-//! engine's chunk store over raw SQLite; that handler asks
-//! `MemoryChunks::source_ingest_status` now and names no engine. What keeps the
-//! function is `modules::memory_host`'s `StoreCorruptQuarantined` arm — only
-//! this process can drop **this** process's cached handle, so no contract
-//! method can stand in for it however small the in-process reader set becomes.
+//! [`ChatHost::summarizer_available`] still delegates into
+//! `tree_runtime::ops::summarizer_available`, and that is now the *only* edge
+//! left between this file and that module: the host owns the local-AI /
+//! cloud-opt-in precedence, and the seam is how the driver asks about it.
 //!
-//! **So the question to re-ask is not "is the driver embedded" but "does any
+//! [`reset_in_process_chunk_store`] is the one function here with a caller that
+//! is not a seam install. It was originally justified by `memory::sources::
+//! status` reading the engine's chunk store over raw SQLite; that handler asks
+//! `MemoryChunks::source_ingest_status` now and names no engine. What keeps it
+//! is `modules::memory_host`'s `StoreCorruptQuarantined` arm — only this
+//! process can drop **this** process's cached handle, so no contract method can
+//! stand in for it however small the in-process reader set becomes.
+//!
+//! **The question to re-ask is not "is the driver embedded" but "does any
 //! production caller still reach an engine free function".** `grep -rn
 //! 'tinymemory_core::' src --include='*.rs'` outside comments is the inventory
-//! for *this* file's installs, now that `tree_runtime` is the only re-export
-//! shim left; when it is empty they are dead and go with the manifest entry, in
-//! the same change.
+//! for *this* file's installs; when it is empty they are dead and go with the
+//! manifest entry, in the same change.
 //!
 //! **That grep is not the inventory for #5560 as a whole, and the difference
 //! matters.** #5560 sheds two crates, and `memory::direct_engine_refs` ratchets
@@ -84,9 +88,10 @@
 //! file from `tinymemory_core::x` to `tinycortex::x` drops it out of that lint
 //! while the engine stays linked. `memory::tree::health` did exactly that, on
 //! the sound reasoning that the taxonomy was always `tinycortex`'s and the
-//! engine crate only re-exported it; it is still a production `tinycortex`
-//! reference afterwards, as is `memory::tools::flavour`. Add `tinycortex::` to
-//! the grep before concluding the engine has left the build.
+//! engine crate only re-exported it. Add `tinycortex::` to the grep before
+//! concluding the engine has left the build — at the time of writing the only
+//! production file it still finds is `src/bin/library_profile/scenarios/
+//! memory_ingest.rs`, which names both crates.
 //!
 //! # Composio no longer has a seam here
 //!

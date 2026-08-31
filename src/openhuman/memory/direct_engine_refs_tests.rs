@@ -193,6 +193,20 @@
 //!
 //! # Known weaknesses, stated rather than hidden
 //!
+//! - **One needle, two crates — and #5560 sheds both.** [`NEEDLE`] is
+//!   `tinymemory_core::` alone, but `tinycortex` is a direct dependency of this
+//!   crate in its own right, not something reached through the engine crate. So
+//!   repointing a file from `tinymemory_core::x` to `tinycortex::x` clears its
+//!   entry here while leaving an engine linked, and the ratchet reads as
+//!   progress. **That is not a migration; it is the lint losing sight of the
+//!   file.** `memory::tree::health` moved that way legitimately — the taxonomy
+//!   was always `tinycortex`'s and the engine crate only re-exported it — and
+//!   `memory::tools::flavour` was a `tinycortex` caller this lint never saw at
+//!   all until it moved onto `MemoryTree::flavour_profile`. Before concluding
+//!   the crates have left the build, run the scan for **both** spellings; at
+//!   the time of writing `tinycortex::` finds one production file
+//!   (`src/bin/library_profile/scenarios/memory_ingest.rs`) and it is already
+//!   listed below for the other needle.
 //! - **The lint sees text, not types.** A reference reached through a
 //!   re-export under another name is invisible to it — and the memory tree is
 //!   full of those on purpose: `memory/mod.rs` re-exports twenty-five engine
@@ -321,21 +335,24 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
-    // These are the historical-path aliases `memory/mod.rs` documents. They
-    // name the crate once each and call nothing. Removing them is the
-    // re-export problem, not the direct-call problem.
+    // **Drained.** Four of these existed — `tree/mod.rs`, `tree/health/mod.rs`,
+    // `tree/tree/mod.rs` and `tree/tree_runtime/mod.rs` — carrying the
+    // historical-path aliases `memory/mod.rs` documented. The first three had
+    // no production consumer left, only tests; those tests name the engine
+    // crates directly now (served by the `[dev-dependencies]` tinymemory-core
+    // entry) and the globs went with them.
     //
-    // Three siblings used to sit here — `tree/mod.rs`, `tree/health/mod.rs`,
-    // `tree/tree/mod.rs` — whose globs had no production consumer left, only
-    // tests. Those tests name the engine crates directly now (served by the
-    // `[dev-dependencies]` tinymemory-core entry) and the globs are deleted,
-    // so the files no longer reference the engine at all. `tree_runtime` is
-    // the one still production-live; a parallel round is building its doors.
-    (
-        "src/openhuman/memory/tree/tree_runtime/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::tree_runtime::*",
-    ),
+    // `tree_runtime` was the last, and the only one that was still production-
+    // live: five `tree_summarizer_*` RPC handlers, the `tree-summarizer` CLI,
+    // `memory::ops::learn` and the channels-startup subscriber ran the markdown
+    // time tree in-process through it. It is gone because the seam grew the six
+    // doors it needed — `RuntimeBufferWrite`, `RuntimeReadNode`,
+    // `RuntimeReadChildren`, `RuntimeTreeStatus`, `RuntimeSummarize`,
+    // `RuntimeRebuild` — in tinymemory PR #123 (contract 4.0). That is the
+    // shape every remaining `NeedsWiderSeam` entry below is waiting for, and
+    // the first one to complete the loop: upstream door, host migration,
+    // entry deleted.
+    //
     // ── Host-seam installation: the host handing itself TO the engine ───────
     //
     // The direction of these is inbound, not outbound: they install embedding /
@@ -346,7 +363,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/host_impls.rs",
         Verdict::HostSide,
-        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter), plus the in-process chunk-store recovery door modules/memory_host.rs calls on StoreCorruptQuarantined — only this process can drop this process's cached handle. The seams are mirrored over the bus by modules/memory_host.rs, and since the tree/health/tree-tree globs were deleted their last in-process caller is the tree_runtime glob below. Composio had an eighth seam here until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
+        "installs the seven host seams (embedding, chat, config, nlp, scheduler gate, shutdown, error reporter), plus the in-process chunk-store recovery door modules/memory_host.rs calls on StoreCorruptQuarantined — only this process can drop this process's cached handle. The seams have no in-process caller left at all now that the tree_runtime glob is deleted: they are reached from the far side of the bus, where modules/memory_host.rs serves the same seven for the loaded module, and unwiring them would fail that module's summariser run with 'no ChatHost installed'. Composio had an eighth seam here until tinymemory v1.13.4 deleted ComposioHost with the rest of the in-process pipeline",
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     // ── Agent tools: chunk reads, source listing, people, source scope ──────

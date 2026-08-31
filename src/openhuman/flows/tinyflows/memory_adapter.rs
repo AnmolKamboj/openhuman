@@ -347,7 +347,7 @@ impl MemoryProvider for OpenHumanMemory {
         tracing::debug!(target: "flows", flavour = slug, "{LOG_PREFIX} flavour: entry");
         self.tier_gate_read("flavour")?;
 
-        match lookup_flavour(&self.config, slug) {
+        match lookup_flavour(&self.config, slug).await {
             Err(hard) => {
                 tracing::debug!(target: "flows", flavour = slug, "{LOG_PREFIX} flavour: rejected (bad slug)");
                 Err(EngineError::Capability(format!("memory node: {hard}")))

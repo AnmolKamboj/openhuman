@@ -1,27 +1,36 @@
 //! Agent tool: read a compiled persona flavour profile (issue #5172).
 //!
-//! Persona ingestion (engine-side, `tinycortex::memory::persona`) distills a
-//! person's coding-agent history into seven [`PersonaFacet`] flavoured trees
-//! (communication, coding style, stack, workflow, environment, directives,
-//! anti-preferences), each compiled into a small prompt-ready markdown
-//! profile via [`compile_flavoured_root`]. Until this tool, nothing surfaced
-//! those compiled profiles to the agent loop — the ingested data sat unread.
-//! `memory_flavour` lets an agent pull one facet's profile on demand.
+//! Persona ingestion (driver-side) distills a person's coding-agent history
+//! into seven [`PersonaFacet`] flavoured trees (communication, coding style,
+//! stack, workflow, environment, directives, anti-preferences), each compiled
+//! into a small prompt-ready markdown profile. Until this tool, nothing
+//! surfaced those compiled profiles to the agent loop — the ingested data sat
+//! unread. `memory_flavour` lets an agent pull one facet's profile on demand.
 //!
 //! Strictly read-only: it never ingests, seals, or otherwise creates persona
-//! evidence. The only disk write it can trigger is `compile_flavoured_root`
-//! re-staging the fixed-path compiled artifact — a pure, idempotent
-//! projection of the tree's existing root node (see
-//! `vendor/tinycortex/src/memory/tree/flavoured.rs`), not new memory content.
+//! evidence. The only disk write it can trigger is the driver re-staging the
+//! fixed-path compiled artifact — a pure, idempotent projection of the tree's
+//! existing root node, not new memory content.
+//!
+//! # This file is why `FlavourProfile` exists (#5560)
+//!
+//! It reached `tinycortex::memory::tree::{store::get_tree_by_scope,
+//! compile_flavoured_root, flavoured_root_abs_path}` directly, and all three
+//! take a `tinycortex::memory::MemoryConfig` — so the file was pinned not by a
+//! missing capability but by the fact that nothing host-side could build that
+//! config without reproducing the engine's own mapping. `MemoryTree::
+//! flavour_profile` collapses the entire lookup behind one scope-shaped
+//! question, and the config is built on the driver's side of the bus where it
+//! belongs. What stays here is the vocabulary ([`PersonaFacet`] and its three
+//! string mappings) and the presentation ([`body_after_front_matter`]).
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
-use tinycortex::memory::tree::store::{get_tree_by_scope, TreeKind};
-use tinycortex::memory::tree::{compile_flavoured_root, flavoured_root_abs_path};
 
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 /// The seven persona facets, host-side (#5560).
@@ -136,10 +145,16 @@ impl MemoryFlavourTool {
     }
 }
 
-/// Strip the YAML front matter written by [`compile_flavoured_root`]
+/// Strip the YAML front matter the flavoured-root compile writes
 /// (`---\n...\n---\n<body>`) and return just the body. Front-matter field
-/// values are single-line (`yaml_quote` collapses interior newlines), so the
-/// first `\n---\n` after the opening delimiter is always the closing one.
+/// values are single-line (the compiler's `yaml_quote` collapses interior
+/// newlines), so the first `\n---\n` after the opening delimiter is always the
+/// closing one.
+///
+/// This is presentation, and presentation is the caller's:
+/// [`MemoryTree::flavour_profile`](crate::openhuman::memory::api::provider::MemoryTree::flavour_profile)
+/// answers with the **full** artifact because the front matter is part of what
+/// was compiled, and only this side knows it wants prose.
 fn body_after_front_matter(content: &str) -> &str {
     match content.strip_prefix("---\n") {
         Some(rest) => match rest.find("\n---\n") {
@@ -169,18 +184,24 @@ pub(crate) enum FlavourLookup {
     Failed(String),
 }
 
-/// Pure lookup shared by [`MemoryFlavourTool::execute`] and the tinyflows
+/// The lookup shared by [`MemoryFlavourTool::execute`] and the tinyflows
 /// `memory` node's `flavour` operation
 /// (`OpenHumanMemory::flavour` in `crate::openhuman::flows::tinyflows::memory_adapter`)
 /// — both surfaces read the exact same flavoured-tree path, so there is only
 /// one place that knows how a `flavour` slug resolves to a compiled profile.
+///
+/// `async` since #5560: the read crosses the module bus rather than running
+/// in-process. Both call sites were already `async fn`s, so nothing is bridged.
 ///
 /// `Err` is reserved for input the caller should have caught before ever
 /// reaching the store (empty/unknown `flavour_raw`); everything the store
 /// itself can report — hit, miss, or lookup failure — comes back as `Ok` of
 /// the matching [`FlavourLookup`] variant so callers can shape each case
 /// (tool result vs. node output) however their surface needs.
-pub(crate) fn lookup_flavour(config: &Config, flavour_raw: &str) -> Result<FlavourLookup, String> {
+pub(crate) async fn lookup_flavour(
+    config: &Config,
+    flavour_raw: &str,
+) -> Result<FlavourLookup, String> {
     let flavour_raw = flavour_raw.trim();
     if flavour_raw.is_empty() {
         return Err("'flavour' cannot be empty".to_string());
@@ -190,37 +211,6 @@ pub(crate) fn lookup_flavour(config: &Config, flavour_raw: &str) -> Result<Flavo
         format!("Unknown flavour '{flavour_raw}'. Valid flavours: {VALID_FLAVOURS}")
     })?;
 
-    // The `MemoryConfig` the three TinyCortex calls below take, built here
-    // rather than through `tinymemory_core::tinycortex::memory_config_from` —
-    // the engine crate's `Config` → `MemoryConfig` mapping, and what used to be
-    // the one `tinymemory_core::` reference in this file (#5560).
-    //
-    // That mapping sets three fields. Two of them are read on this path and are
-    // reproduced verbatim: `workspace`, which is where `get_tree_by_scope` and
-    // `compile_flavoured_root` open the shared chunk/tree connection, and
-    // `content_root`, which `flavoured_root_abs_path` resolves the compiled
-    // artifact under (`memory_tree.content_dir` when the user set one, else
-    // `<workspace>/memory_tree/content`). `Config::memory_tree_content_root` is
-    // the host's own single source of truth for that path, so this reads the
-    // same value the engine mapping read.
-    //
-    // The third — `embedding`, whose `provider` the engine derives from its
-    // `effective_embedder_slug` ladder — is deliberately left at its default,
-    // and this is the one reduction to be aware of. That field is the signature
-    // per-model embedding sidecar rows are keyed by, so it matters wherever a
-    // vector is written or matched; **nothing on this path is.** `memory_flavour`
-    // is strictly read-only over the flavoured tree: `get_tree_by_scope` and
-    // `store::get_summary` are plain SQL over `mem_tree_trees` /
-    // `mem_tree_summaries`, and `compile_flavoured_root` clamps the root node's
-    // stored content to `tree.flavour_root_token_budget` and stages it as
-    // markdown. None of the three reads `config.embedding`.
-    //
-    // So: if a call that embeds, re-embeds, or matches a vector is ever added
-    // to this file, this config is no longer sufficient and the embedder ladder
-    // has to come with it. A defaulted signature would file rows under the
-    // wrong provider, which is silent rather than loud.
-    let mut mc = tinycortex::memory::MemoryConfig::new(config.workspace_dir.clone());
-    mc.content_root = Some(config.memory_tree_content_root());
     let scope = facet.tree_scope();
     let heading = facet.heading();
 
@@ -231,32 +221,57 @@ pub(crate) fn lookup_flavour(config: &Config, flavour_raw: &str) -> Result<Flavo
         "[memory_flavour] entry"
     );
 
-    // Fast path: the compiled artifact already exists on disk with a
-    // non-empty body — read it directly without touching the tree store.
-    let abs_path = flavoured_root_abs_path(&mc, &scope);
-    if abs_path.is_file() {
-        if let Ok(content) = std::fs::read_to_string(&abs_path) {
-            let body = body_after_front_matter(&content);
-            if !body.trim().is_empty() {
+    // The whole lookup this function used to run in-process — build a
+    // `MemoryConfig`, try the compiled artifact on disk, fall back to
+    // `get_tree_by_scope` + `compile_flavoured_root` — is one contract member
+    // now (#5560). That is why the door exists: the three TinyCortex calls all
+    // took a `tinycortex::memory::MemoryConfig`, and building one host-side
+    // meant reproducing the engine's `Config` → `MemoryConfig` mapping field by
+    // field, including an `embedding.provider` this path did not read but the
+    // next edit to it might have.
+    //
+    // The driver runs the same two steps in the same order and applies the same
+    // built/not-built rule (a tree whose compiled root has an empty body is
+    // "not built", never an empty profile), so the three outcomes below are the
+    // three this function always had.
+    let guard = crate::openhuman::memory::binding::for_config(config)?.guard();
+    let Some(tree) = guard.as_tree() else {
+        tracing::warn!(
+            target: "memory_flavour",
+            driver = %guard.driver_id(),
+            "[memory_flavour] driver does not serve Tree"
+        );
+        return Ok(FlavourLookup::Failed(format!(
+            "Failed to look up the {heading} profile: driver '{}' does not serve Tree",
+            guard.driver_id()
+        )));
+    };
+
+    match tree.flavour_profile(&scope).await {
+        // The member answers the **full compiled artifact, front matter
+        // included** — presentation is deliberately the caller's — so the strip
+        // stays here, exactly as it was.
+        Ok(Some(markdown)) => {
+            let body = body_after_front_matter(&markdown);
+            if body.trim().is_empty() {
+                // Unreachable against a conforming driver, which folds this
+                // into `Ok(None)`. Kept because the alternative is handing a
+                // model an empty string that reads as "this person has no
+                // communication style".
+                Ok(FlavourLookup::NotBuilt(format!(
+                    "No profile built yet for {heading}. Run persona ingestion first, then try \
+                     again."
+                )))
+            } else {
                 tracing::debug!(
                     target: "memory_flavour",
                     flavour = flavour_raw,
                     body_len = body.len(),
-                    "[memory_flavour] fast path hit: returning stripped body from disk"
+                    "[memory_flavour] compiled profile returned"
                 );
-                return Ok(FlavourLookup::Profile(body.to_string()));
+                Ok(FlavourLookup::Profile(body.to_string()))
             }
         }
-    }
-
-    tracing::debug!(
-        target: "memory_flavour",
-        flavour = flavour_raw,
-        "[memory_flavour] fast path missed or empty, falling to tree lookup"
-    );
-
-    // Slow path: look up the flavoured tree and (re)compile its root.
-    match get_tree_by_scope(&mc, TreeKind::Flavoured, &scope) {
         Ok(None) => {
             tracing::debug!(
                 target: "memory_flavour",
@@ -267,43 +282,6 @@ pub(crate) fn lookup_flavour(config: &Config, flavour_raw: &str) -> Result<Flavo
                 "No profile built yet for {heading}. Run persona ingestion first, then try \
                  again."
             )))
-        }
-        Ok(Some(tree)) => {
-            tracing::debug!(
-                target: "memory_flavour",
-                flavour = flavour_raw,
-                tree_id = %tree.id,
-                "[memory_flavour] tree found, compiling root"
-            );
-            match compile_flavoured_root(&mc, &tree.id) {
-                Ok(markdown) => {
-                    let body = body_after_front_matter(&markdown);
-                    if body.trim().is_empty() {
-                        Ok(FlavourLookup::NotBuilt(format!(
-                            "No profile built yet for {heading}. Run persona ingestion \
-                             first, then try again."
-                        )))
-                    } else {
-                        tracing::debug!(
-                            target: "memory_flavour",
-                            flavour = flavour_raw,
-                            body_len = body.len(),
-                            "[memory_flavour] compiled profile returned"
-                        );
-                        Ok(FlavourLookup::Profile(body.to_string()))
-                    }
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        %err,
-                        flavour = flavour_raw,
-                        "[memory_flavour] failed to compile flavoured profile"
-                    );
-                    Ok(FlavourLookup::Failed(format!(
-                        "Failed to compile the {heading} profile: {err}"
-                    )))
-                }
-            }
         }
         Err(err) => {
             tracing::warn!(
@@ -366,7 +344,7 @@ impl Tool for MemoryFlavourTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'flavour' parameter"))?;
 
-        match lookup_flavour(&self.config, flavour_raw) {
+        match lookup_flavour(&self.config, flavour_raw).await {
             Err(hard) => Err(anyhow::anyhow!(hard)),
             Ok(FlavourLookup::Profile(body)) => Ok(ToolResult::success(body)),
             Ok(FlavourLookup::NotBuilt(msg)) => Ok(ToolResult::success(msg)),

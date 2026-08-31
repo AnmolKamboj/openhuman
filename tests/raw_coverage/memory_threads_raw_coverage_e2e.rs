@@ -130,7 +130,7 @@ use tinymemory_core::tree::summarise::{
     fallback_summary, SummaryContext, SummaryInput,
 };
 use tinymemory_core::tree::tree::bucket_seal::LeafRef;
-use openhuman_core::openhuman::memory::tree::tree_runtime::store as tree_runtime_store;
+use tinymemory_core::tree::tree_runtime::store as tree_runtime_store;
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     all_tree_summarizer_controller_schemas, all_tree_summarizer_registered_controllers,
     derive_node_ids, derive_parent_id, estimate_tokens, level_from_node_id, node_id_to_path,

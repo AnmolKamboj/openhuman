@@ -48,7 +48,7 @@ use tinycortex::memory::sync::{SyncOutcome, SyncPipelineKind};
 use tinymemory_core::tree::summarise::{
     fallback_summary, SummaryContext, SummaryInput,
 };
-use openhuman_core::openhuman::memory::tree::tree_runtime::store as tree_store;
+use tinymemory_core::tree::tree_runtime::store as tree_store;
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
     derive_node_ids, estimate_tokens, level_from_node_id, node_id_to_path, NodeLevel, TreeNode,
 };

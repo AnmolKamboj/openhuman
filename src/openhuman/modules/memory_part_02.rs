@@ -145,6 +145,103 @@ impl MemoryTree for ModuleMemoryProvider {
             (per_namespace_cap, total_cap)
         )
     }
+
+    // ── The runtime-tree and flavour doors ──────────────────────────────────
+    //
+    // The seven below are named through `tinymemory_bus::names::methods`
+    // rather than as string literals, unlike their neighbours above. The
+    // failure a literal invites is precisely the one this family is prone to:
+    // a member the pinned artifact does not serve answers `Unsupported` at run
+    // time, so a mistyped wire name is indistinguishable from a stale pin, and
+    // both look like "the module is old". The constants make the typo a
+    // compile error and leave `Unsupported` meaning only what it should.
+    //
+    // Every one of them is **defaulted** on the trait, which is what makes
+    // forwarding them mandatory rather than optional: an override that is
+    // missing here does not fail to compile, it silently inherits
+    // `Err(Unsupported)` and the driver underneath is never asked.
+
+    async fn runtime_buffer_write(
+        &self,
+        namespace: &str,
+        content: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<String, MemoryError> {
+        module_call!(
+            self,
+            "runtime_buffer_write",
+            methods::RUNTIME_BUFFER_WRITE,
+            (namespace, content, timestamp, metadata)
+        )
+    }
+
+    async fn runtime_read_node(
+        &self,
+        namespace: &str,
+        node_id: &str,
+    ) -> Result<Option<TreeNode>, MemoryError> {
+        module_call!(
+            self,
+            "runtime_read_node",
+            methods::RUNTIME_READ_NODE,
+            (namespace, node_id)
+        )
+    }
+
+    async fn runtime_read_children(
+        &self,
+        namespace: &str,
+        parent_id: &str,
+    ) -> Result<Vec<TreeNode>, MemoryError> {
+        module_call!(
+            self,
+            "runtime_read_children",
+            methods::RUNTIME_READ_CHILDREN,
+            (namespace, parent_id)
+        )
+    }
+
+    async fn runtime_tree_status(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        module_call!(
+            self,
+            "runtime_tree_status",
+            methods::RUNTIME_TREE_STATUS,
+            (namespace,)
+        )
+    }
+
+    /// Long-running on [`Self::summarise`]'s terms — the fold is one provider
+    /// call per hour group drained, plus the propagation above them — and it
+    /// rides the default deadline for the same reason: the module clamps each
+    /// fold to the level's own token budget, and a summariser that outruns the
+    /// deadline is the failure every caller of this surface already handles.
+    async fn runtime_summarize(
+        &self,
+        namespace: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<TreeNode>, MemoryError> {
+        module_call!(
+            self,
+            "runtime_summarize",
+            methods::RUNTIME_SUMMARIZE,
+            (namespace, timestamp)
+        )
+    }
+
+    /// As [`Self::runtime_summarize`], over every level of the tree at once.
+    async fn runtime_rebuild(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        module_call!(
+            self,
+            "runtime_rebuild",
+            methods::RUNTIME_REBUILD,
+            (namespace,)
+        )
+    }
+
+    async fn flavour_profile(&self, scope: &str) -> Result<Option<String>, MemoryError> {
+        module_call!(self, "flavour_profile", methods::FLAVOUR_PROFILE, (scope,))
+    }
 }
 
 #[async_trait]

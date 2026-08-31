@@ -20,9 +20,13 @@ use openhuman_core::openhuman::inference::embeddings::NoopEmbedding;
 use tinycortex::memory::ingest::{ExtractionMode, MemoryIngestionConfig, MemoryIngestionRequest};
 use tinymemory_core::store::{NamespaceDocumentInput, UnifiedMemory};
 use openhuman_core::openhuman::memory::tree::tree_runtime::{
-    all_tree_summarizer_registered_controllers, engine, rpc as tree_runtime_rpc,
-    store as tree_runtime_store,
+    all_tree_summarizer_registered_controllers, rpc as tree_runtime_rpc,
 };
+// The host's `tree_runtime` re-export of these two engine modules is gone
+// (#5560): the RPC surface goes through the contract's runtime-tree doors now,
+// and the fold is the driver's. This target drives the engine directly, so it
+// names the engine crate.
+use tinymemory_core::tree::tree_runtime::{engine, store as tree_runtime_store};
 use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
 struct EnvVarGuard {

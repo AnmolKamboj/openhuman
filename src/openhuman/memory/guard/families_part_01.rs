@@ -47,7 +47,7 @@ use crate::openhuman::memory::api::provider::{
 };
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{
-    IngestRequest, QueryResult, SummaryForest, TreeLeaf, TreeStatus,
+    IngestRequest, QueryResult, SummaryForest, TreeLeaf, TreeNode, TreeStatus,
 };
 use crate::openhuman::memory::api::types::NamespaceMemoryHit;
 use crate::openhuman::memory::api::types::{
@@ -597,6 +597,127 @@ impl MemoryTree for GuardedTree {
         self.family()?
             .root_summaries_with_caps(per_namespace_cap, total_cap)
             .await
+    }
+
+    // ── The runtime-tree and flavour doors ──────────────────────────────────
+    //
+    // **Forwarding these is not optional.** All seven are defaulted on
+    // [`MemoryTree`], so a decorator that omits one still compiles — and then
+    // answers `Err(Unsupported)` for a driver that serves the member perfectly
+    // well, because the guard *is* the handle every product caller holds and
+    // its own default is what runs. That exact bug shipped once, on
+    // `MemoryMaintenance::diagnose`. The rule this family follows: a new
+    // defaulted member on a wrapped trait is a new override here, in the same
+    // change.
+    //
+    // None of them takes a [`SourceScope`], so step 2 does not apply — the
+    // contract members carry no scope parameter and the guard does not invent
+    // one; see [`Self::root_summaries_with_caps`] for the same reasoning.
+
+    /// Buffering raw content is [`Self::append`]'s write at a finer grain, so
+    /// it takes `append`'s admission exactly: the write tier, against the
+    /// namespace it names, `carries_content: true`, and the same outbound
+    /// scrub applied to the body before it crosses.
+    async fn runtime_buffer_write(
+        &self,
+        namespace: &str,
+        content: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<String, MemoryError> {
+        self.policy.admit_write(
+            Capability::Tree,
+            "tree.runtime_buffer_write",
+            namespace,
+            true,
+        )?;
+        let content = self.policy.redact_outbound(content);
+        trace_allowed(
+            &self.policy,
+            "tree.runtime_buffer_write",
+            namespace,
+            content.chars().count(),
+        );
+        self.family()?
+            .runtime_buffer_write(namespace, &content, timestamp, metadata)
+            .await
+    }
+
+    /// A single node read, admitted like [`Self::drill_down`] — the same tree
+    /// at the same grain, minus the child list.
+    async fn runtime_read_node(
+        &self,
+        namespace: &str,
+        node_id: &str,
+    ) -> Result<Option<TreeNode>, MemoryError> {
+        self.policy
+            .admit_read(Capability::Tree, "tree.runtime_read_node", namespace, false)?;
+        self.family()?.runtime_read_node(namespace, node_id).await
+    }
+
+    /// The other half of [`Self::drill_down`], admitted identically.
+    async fn runtime_read_children(
+        &self,
+        namespace: &str,
+        parent_id: &str,
+    ) -> Result<Vec<TreeNode>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Tree,
+            "tree.runtime_read_children",
+            namespace,
+            false,
+        )?;
+        self.family()?
+            .runtime_read_children(namespace, parent_id)
+            .await
+    }
+
+    /// Counts and timestamps for one namespace: a read, and one that carries
+    /// no prose either way.
+    async fn runtime_tree_status(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        self.policy.admit_read(
+            Capability::Tree,
+            "tree.runtime_tree_status",
+            namespace,
+            false,
+        )?;
+        self.family()?.runtime_tree_status(namespace).await
+    }
+
+    /// The **write** tier, unlike [`Self::summarise`]: this drains the buffer
+    /// into hour leaves and persists them, which is what [`Self::seal`] does
+    /// and why `seal` takes the write tier too. `summarise` hands a fold back
+    /// and leaves the tree as it found it; this one does not.
+    ///
+    /// `carries_content: false`: the caller supplies a namespace and an
+    /// instant, never prose. The content the pass folds is already in the
+    /// driver's own buffer, put there by [`Self::runtime_buffer_write`], which
+    /// scrubbed it on the way in.
+    async fn runtime_summarize(
+        &self,
+        namespace: &str,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<TreeNode>, MemoryError> {
+        self.policy
+            .admit_write(Capability::Tree, "tree.runtime_summarize", namespace, false)?;
+        self.family()?.runtime_summarize(namespace, timestamp).await
+    }
+
+    /// As [`Self::runtime_summarize`], on [`Self::cascade`]'s terms.
+    async fn runtime_rebuild(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        self.policy
+            .admit_write(Capability::Tree, "tree.runtime_rebuild", namespace, false)?;
+        self.family()?.runtime_rebuild(namespace).await
+    }
+
+    /// A compiled profile read. The scope is the caller's naming scheme rather
+    /// than a namespace, and it is what this call acts on, so it is what the
+    /// admission names — the reasoning [`Self::flush_source_tree`] gives for
+    /// admitting against its own label instead of `NO_NAMESPACE`.
+    async fn flavour_profile(&self, scope: &str) -> Result<Option<String>, MemoryError> {
+        self.policy
+            .admit_read(Capability::Tree, "tree.flavour_profile", scope, false)?;
+        self.family()?.flavour_profile(scope).await
     }
 }
 

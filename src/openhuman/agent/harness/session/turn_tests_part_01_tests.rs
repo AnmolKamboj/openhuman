@@ -162,10 +162,10 @@ async fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
     // caller-named workspace. The shared `"memory"` arm now answers from the
     // bound driver, which has no way to be pointed at this temp directory.
     use crate::openhuman::config::Config;
-    use crate::openhuman::memory::tree::tree_runtime::store::write_node;
     use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
+    use tinymemory_core::tree::tree_runtime::store::write_node;
 
     let tmp = tempfile::TempDir::new().unwrap();
     let workspace = tmp.path().join("workspace");
@@ -206,10 +206,10 @@ async fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
 #[tokio::test]
 async fn collect_tree_root_summaries_reads_only_profile_memory_subtree() {
     use crate::openhuman::config::Config;
-    use crate::openhuman::memory::tree::tree_runtime::store::write_node;
     use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
+    use tinymemory_core::tree::tree_runtime::store::write_node;
 
     let tmp = tempfile::TempDir::new().unwrap();
     let workspace = tmp.path().join("workspace");

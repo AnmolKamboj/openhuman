@@ -44,9 +44,9 @@ use tinymemory_core::tree::tree::bucket_seal::append_leaf;
 use tinymemory_core::tree::tree::{
     append_leaf_deferred, get_or_create_tree, store as tree_store, LabelStrategy, LeafRef,
 };
-use openhuman_core::openhuman::memory::tree::tree_runtime::{
-    engine, rpc as tree_runtime_rpc, store as runtime_store,
-};
+use openhuman_core::openhuman::memory::tree::tree_runtime::rpc as tree_runtime_rpc;
+// As above: the host re-export is gone, the engine is named directly (#5560).
+use tinymemory_core::tree::tree_runtime::{engine, store as runtime_store};
 use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
 struct EnvVarGuard {
