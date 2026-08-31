@@ -177,7 +177,8 @@ run_full_suite() {
     elif [ "$target" = "json_rpc_e2e" ]; then
       run_json_rpc_e2e "$@"
     else
-      cargo_test --test "$target" -- "$@"
+      TINYCONNECTORS_TEST_MODULE="${TINYCONNECTORS_TEST_MODULE:-$connectors_module}" \
+        cargo_test --test "$target" -- "$@"
     fi
   done < <(integration_test_targets)
 }
