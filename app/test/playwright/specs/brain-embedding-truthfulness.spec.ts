@@ -1,0 +1,199 @@
+import { expect, type Page, test } from '@playwright/test';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  bootAuthenticatedPage,
+  callCoreRpc,
+  dismissWalkthroughIfPresent,
+  waitForAppReady,
+} from '../helpers/core-rpc';
+
+/**
+ * `/brain` must tell the truth about embedding state, in a real browser.
+ *
+ * The incident: a workspace sat with 2,581 chunks synced and 0 embedded, and no
+ * degraded indicator appeared anywhere. Semantic search silently returned
+ * nothing findable while every surface reported a healthy sync.
+ *
+ * There is already a jsdom spec proving `MemorySourceRow` *renders* the warning
+ * when handed `chunks_pending > 0`
+ * (`app/src/components/intelligence/MemorySourceRow.pipelineWarning.test.tsx`).
+ * That proves the component. It cannot prove the thing that actually failed:
+ * that a user, on the real page, against a real core, with real chunks that
+ * were never embedded, SEES it. Between the component and the user sit
+ * `memory_sources_status_list`, `memory_tree_pipeline_status`, the registry's
+ * polling, the Brain tab routing and the row's `settled` suppression — none of
+ * which jsdom exercises.
+ *
+ * So this spec deliberately asserts nothing about props. It seeds a folder
+ * source through core RPC, syncs it for real, reads the core's own
+ * `chunks_pending` to establish the incident's precondition actually holds, and
+ * then asserts on rendered text.
+ *
+ * NOTE ON PATHS — the trap this lane is known for: a relative source path
+ * resolves against the core's working directory (the build dir) and fails
+ * forever with no error a user can act on. Everything here uses an absolute
+ * `mkdtempSync` root, which is also what the existing
+ * `intelligence-memory-ui-functional.spec.ts` does.
+ */
+
+interface SourceStatus {
+  source_id: string;
+  chunks_synced: number;
+  chunks_pending: number;
+}
+
+async function seedDeveloperMode(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      const raw = localStorage.getItem('persist:theme');
+      const parsed: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      parsed.developerMode = JSON.stringify(true);
+      localStorage.setItem('persist:theme', JSON.stringify(parsed));
+    } catch {}
+  });
+}
+
+async function openSources(page: Page, user: string): Promise<void> {
+  await seedDeveloperMode(page);
+  await bootAuthenticatedPage(page, user, '/brain?tab=sources');
+  await waitForAppReady(page);
+  await dismissWalkthroughIfPresent(page);
+  await expect(page.getByTestId('memory-sources')).toBeVisible({ timeout: 20_000 });
+}
+
+/** Absolute path on purpose — see the note above. */
+function makeCorpus(files: number): string {
+  const root = mkdtempSync(join(tmpdir(), 'openhuman-pw-brain-'));
+  mkdirSync(join(root, 'notes'), { recursive: true });
+  for (let i = 0; i < files; i += 1) {
+    writeFileSync(
+      join(root, 'notes', `note-${i}.md`),
+      `# Note ${i}\n\nPlaywright brain canary paragraph ${i}. ${'filler '.repeat(40)}\n`
+    );
+  }
+  return root;
+}
+
+async function addAndSync(label: string, files = 3): Promise<{ id: string; root: string }> {
+  const root = makeCorpus(files);
+  const added = await callCoreRpc<{ id?: string } | null>('openhuman.memory_sources_add', {
+    kind: 'folder',
+    label,
+    enabled: true,
+    path: root,
+    glob: '**/*.md',
+  });
+  const list = await callCoreRpc<{ sources: Array<{ id: string; label: string }> }>(
+    'openhuman.memory_sources_list',
+    {}
+  );
+  const id = added?.id ?? list.sources.find(s => s.label === label)?.id;
+  if (!id) throw new Error(`source ${label} was not created`);
+  await callCoreRpc('openhuman.memory_sources_sync', { id });
+  return { id, root };
+}
+
+async function statusFor(id: string): Promise<SourceStatus | undefined> {
+  const res = await callCoreRpc<{ statuses: SourceStatus[] }>(
+    'openhuman.memory_sources_status_list',
+    {}
+  );
+  return res.statuses.find(s => s.source_id === id);
+}
+
+test.describe('Brain — the UI tells the truth about embedding state', () => {
+  test('a source whose chunks were never embedded is visibly flagged, not shown as healthy', async ({
+    page,
+  }) => {
+    const label = `PW Brain Unembedded ${Date.now()}`;
+    const { id } = await addAndSync(label);
+
+    // Establish the incident's precondition from the CORE, not from the UI.
+    // If this workspace happens to have a working embeddings provider there is
+    // nothing to warn about and the assertion below would be meaningless — so
+    // the precondition is checked explicitly rather than assumed.
+    let status: SourceStatus | undefined;
+    await expect
+      .poll(
+        async () => {
+          status = await statusFor(id);
+          return status?.chunks_synced ?? 0;
+        },
+        { timeout: 60_000, message: 'the folder source never produced chunks' }
+      )
+      .toBeGreaterThan(0);
+
+    test.skip(
+      (status?.chunks_pending ?? 0) === 0,
+      'this core embedded every chunk, so there is no degraded state to surface'
+    );
+
+    await openSources(page, 'pw-brain-unembedded');
+
+    const row = page.getByTestId('memory-source-row-folder').filter({ hasText: label });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+
+    // The whole point: rendered text a user can read, on the real page.
+    await expect(row.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(row).toContainText('Stored without vectors. Semantic search unavailable.');
+    await expect(row).toContainText('Ingested only');
+  });
+
+  test('the warning survives a reload rather than being a first-paint artefact', async ({
+    page,
+  }) => {
+    // A degraded state that only renders on the first poll is worse than none:
+    // the user refreshes to check and the app tells them everything is fine.
+    const label = `PW Brain Reload ${Date.now()}`;
+    const { id } = await addAndSync(label);
+
+    let status: SourceStatus | undefined;
+    await expect
+      .poll(async () => {
+        status = await statusFor(id);
+        return status?.chunks_synced ?? 0;
+      }, { timeout: 60_000 })
+      .toBeGreaterThan(0);
+    test.skip((status?.chunks_pending ?? 0) === 0, 'no degraded state on this core');
+
+    await openSources(page, 'pw-brain-reload');
+    const warning = page.getByTestId(`memory-source-pipeline-warning-${id}`);
+    await expect(warning).toBeVisible({ timeout: 30_000 });
+
+    await page.reload();
+    await waitForAppReady(page);
+    await dismissWalkthroughIfPresent(page);
+
+    await expect(page.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+
+  test('offers a route to memory health from the flagged row', async ({ page }) => {
+    // The warning is only actionable if it leads somewhere. Without this the
+    // user is told semantic search is broken and given nothing to do about it.
+    const label = `PW Brain Health ${Date.now()}`;
+    const { id } = await addAndSync(label);
+
+    let status: SourceStatus | undefined;
+    await expect
+      .poll(async () => {
+        status = await statusFor(id);
+        return status?.chunks_synced ?? 0;
+      }, { timeout: 60_000 })
+      .toBeGreaterThan(0);
+    test.skip((status?.chunks_pending ?? 0) === 0, 'no degraded state on this core');
+
+    await openSources(page, 'pw-brain-health');
+    await expect(page.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
+      timeout: 30_000,
+    });
+
+    await expect(page.getByTestId(`memory-source-view-health-${id}`)).toBeVisible();
+  });
+});
