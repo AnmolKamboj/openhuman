@@ -38,7 +38,7 @@
  * **Ports connect vertically: inputs on the top edge, outputs on the bottom.**
  * They used to sit on the left and right edges, which fought the graph's own
  * shape — `autoLayout` has always laid flows out top-to-bottom (`y = depth *
- * 160`, siblings spread across `x`), so every edge left a node sideways and
+ * 132`, siblings spread across `x`), so every edge left a node sideways and
  * doubled back to enter the next one sideways. Straightening the handles onto
  * the axis the layout already uses is what makes an edge a straight drop.
  *
