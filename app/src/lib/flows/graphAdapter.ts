@@ -389,7 +389,7 @@ export function normalizeWorkflowGraphForDirtyCheck(
 
 /**
  * Assigns a `{x, y}` position to every node in `nodes`, via a simple BFS
- * layering over `edges`: `y = depth * 160`, `x = column * 280` where
+ * layering over `edges`: `y = depth * 132`, `x = column * 240` where
  * `column` is the node's index within its depth layer (assigned in
  * declaration order). Roots are nodes with no incoming edge (normally just
  * the trigger); disconnected sub-graphs and cycles still terminate — any
