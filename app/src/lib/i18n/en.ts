@@ -4350,8 +4350,6 @@ const en: TranslationMap = {
   'flows.suggest.trigger.manual': 'On demand',
   'flows.copilot.open': 'Copilot',
   'flows.copilot.title': 'Workflow copilot',
-  'flows.copilot.subtitle': 'Ask for changes and review each proposal before applying it.',
-  'flows.copilot.close': 'Close copilot',
   'flows.copilot.placeholder': 'Ask for a change…',
   'flows.copilot.send': 'Send',
   'flows.copilot.thinking': 'Thinking…',
@@ -4385,6 +4383,7 @@ const en: TranslationMap = {
   // flow at /flows/:id. `flows.nodeKind.*` labels the 13 tinyflows node
   // kinds (`tinyflows::model::NodeKind`) shown in each canvas node card.
   'flows.canvas.title': 'Workflow',
+  'flows.canvas.description': 'Build this automation step by step, then save and run it.',
   'flows.canvas.loading': 'Loading workflow…',
   'flows.canvas.loadError': 'Could not load this workflow. Please try again.',
   'flows.canvas.notFound': 'This workflow could not be found.',

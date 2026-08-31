@@ -3825,9 +3825,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'Auf Abruf',
   'flows.copilot.open': 'Assistent',
   'flows.copilot.title': 'Workflow-Assistent',
-  'flows.copilot.subtitle':
-    'Bitte um Änderungen und prüfe jeden Vorschlag, bevor du ihn übernimmst.',
-  'flows.copilot.close': 'Assistent schließen',
   'flows.copilot.placeholder': 'Bitte um eine Änderung…',
   'flows.copilot.send': 'Senden',
   'flows.copilot.thinking': 'Denkt nach…',
@@ -3867,6 +3864,8 @@ const messages: TranslationMap = {
     'Dieser Workflow konnte nicht importiert werden. Überprüfe die Datei und versuche es erneut.',
   'flows.import.warningTitle': 'Importwarnung',
   'flows.canvas.title': 'Workflow',
+  'flows.canvas.description':
+    'Erstellen Sie diese Automatisierung Schritt für Schritt, speichern Sie sie und führen Sie sie aus.',
   'flows.canvas.loading': 'Workflow wird geladen…',
   'flows.canvas.loadError':
     'Dieser Workflow konnte nicht geladen werden. Bitte versuche es erneut.',

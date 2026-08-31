@@ -3757,9 +3757,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'По запросу',
   'flows.copilot.open': 'Второй пилот',
   'flows.copilot.title': 'Второй пилот процессов',
-  'flows.copilot.subtitle':
-    'Запрашивайте изменения и проверяйте каждое предложение перед применением.',
-  'flows.copilot.close': 'Закрыть второго пилота',
   'flows.copilot.placeholder': 'Запросите изменение…',
   'flows.copilot.send': 'Отправить',
   'flows.copilot.thinking': 'Думаю…',
@@ -3797,6 +3794,8 @@ const messages: TranslationMap = {
     'Не удалось импортировать этот рабочий процесс. Проверьте файл и попробуйте снова.',
   'flows.import.warningTitle': 'Предупреждение импорта',
   'flows.canvas.title': 'Рабочий процесс',
+  'flows.canvas.description':
+    'Соберите этот сценарий шаг за шагом, затем сохраните и запустите его.',
   'flows.canvas.loading': 'Загрузка рабочего процесса…',
   'flows.canvas.loadError': 'Не удалось загрузить этот рабочий процесс. Повторите попытку.',
   'flows.canvas.notFound': 'Этот рабочий процесс не найден.',
