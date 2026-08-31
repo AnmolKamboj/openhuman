@@ -29,12 +29,12 @@
  * composition. None of them covers what ends up in the composer, which is the
  * actual defect.
  */
+import { useAui } from '@assistant-ui/react';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { renderHook, act } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
 import { describe, expect, it } from 'vitest';
-import { useAui } from '@assistant-ui/react';
 
 import { AssistantUiRuntimeProvider } from '../../../../providers/AssistantUiRuntimeProvider';
 import chatRuntimeReducer from '../../../../store/chatRuntimeSlice';
