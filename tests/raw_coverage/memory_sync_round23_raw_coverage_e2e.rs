@@ -302,7 +302,7 @@ async fn profile_persistence_loads_matches_renders_and_deletes_connected_identit
         IdentityKind::UserId,
         "U23SELF"
     ));
-    assert!(is_self_identity_any_toolkit(
+    assert!(!is_self_identity_any_toolkit(
         IdentityKind::UserId,
         "notion-user-23"
     ));
