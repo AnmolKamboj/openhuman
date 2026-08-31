@@ -67,10 +67,17 @@ export function ThreadList({
           `px-2`. Without this the row would sit a scrollbar's width left of
           every pill under it, on one platform only.
 
+          `scrollbar-width:thin` has to come with it. The gutter's width is the
+          bar's width, so declaring the gutter without matching the list's
+          `thin` reserves a FULL-width band here against a thin one below —
+          which showed up as this row rendering visibly narrower than the
+          thread pills on both sides, the mirror image of the bug the gutter is
+          here to prevent.
+
           `pb-1` replaces the `mb-1` the button carried as a list child: same
           gap, but owned by the band now that the button no longer sits on the
           column's `gap-0.5` rhythm. */}
-      <div className="flex-none overflow-hidden px-2 pb-1 [scrollbar-gutter:stable_both-edges]">
+      <div className="flex-none overflow-hidden px-2 pb-1 [scrollbar-gutter:stable_both-edges] [scrollbar-width:thin]">
         {/* "New conversation" as a row, not a header icon. It is the same
           affordance as a thread row — pick a conversation to work in — so it
           takes the same shape: `h-8` pill, same radius, same hover fill, same
