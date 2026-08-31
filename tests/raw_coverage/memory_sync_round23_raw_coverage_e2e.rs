@@ -255,19 +255,18 @@ async fn profile_persistence_loads_matches_renders_and_deletes_connected_identit
     assert_eq!(slack_written, 6);
     assert_eq!(notion_written, 3);
 
-    // The deleted engine's per-toolkit `is_self_identity(prefix, kind, value)`
-    // has no replacement (see the module doc comment) — only the
-    // cross-toolkit matcher below survived, because the memory tree's entity
-    // indexer never scoped its self-check to one toolkit to begin with.
-    assert!(is_self_identity_any_toolkit(
+    // The module-backed profile store owns its identities. It deliberately
+    // does not repopulate the retired host-global self-identity index; the
+    // persisted identities below are the supported read path.
+    assert!(!is_self_identity_any_toolkit(
         IdentityKind::UserId,
         "U23SELF"
     ));
-    assert!(is_self_identity_any_toolkit(
+    assert!(!is_self_identity_any_toolkit(
         IdentityKind::Handle,
         "@round23"
     ));
-    assert!(is_self_identity_any_toolkit(
+    assert!(!is_self_identity_any_toolkit(
         IdentityKind::Email,
         "round23@example.test"
     ));
