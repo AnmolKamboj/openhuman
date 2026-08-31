@@ -471,15 +471,39 @@ fn render(paths: impl IntoIterator<Item = String>) -> String {
 #[test]
 fn direct_reference_scanner_is_not_vacuous() {
     let found = scan();
+    let allowed = allowed_set();
+
+    // The canary only holds while the allowlist still names it. Asserting it
+    // unconditionally would turn the last migration in this file into a
+    // failure, which is backwards: draining the list is the goal.
+    if allowed.contains("src/openhuman/memory/mod.rs") {
+        assert!(
+            found.contains("src/openhuman/memory/mod.rs"),
+            "scanner found no direct engine reference in memory/mod.rs, which is the re-export \
+             block; the scanner is broken"
+        );
+    }
+
+    // The real vacuity risk is `scan()` silently returning nothing — a broken
+    // walk, a moved `src/`, a needle that stopped matching — which would turn
+    // `no_new_files_call_the_engine_directly` into a rubber stamp. Pin it to
+    // the allowlist rather than to a literal, so the assertion stays true as
+    // the list drains instead of having to be hand-edited on every migration.
+    //
+    // It was a literal (`found.len() > 20`) until 2026-08-31, by which point
+    // ALLOWED itself had shrunk to exactly 20 — and because the two difference
+    // tests below force `found == allowed`, `20 > 20` made this test
+    // unsatisfiable on `main`. A ratchet that cannot pass is not a ratchet.
     assert!(
-        found.contains("src/openhuman/memory/mod.rs"),
-        "scanner found no direct engine reference in memory/mod.rs, which is the re-export block; \
-         the scanner is broken"
+        !allowed.is_empty() || found.is_empty(),
+        "the allowlist is empty but the scanner still found {} file(s): {}",
+        found.len(),
+        render(found.iter().cloned())
     );
     assert!(
-        found.len() > 20,
-        "scanner found only {} files; expected the full direct-reference surface",
-        found.len()
+        allowed.is_empty() || !found.is_empty(),
+        "scanner found nothing while the allowlist still names {} file(s); the scanner is broken",
+        allowed.len()
     );
 }
 
