@@ -4510,11 +4510,51 @@ async fn memory_query_backend_and_tree_flush_wrappers_cover_public_edges() {
     assert!(missing_flush.to_string().contains("no tree with id"));
 }
 
+/// The `tree_summarizer_*` handlers' validation, query and provider-consent
+/// edges — every one of them driven through the handler.
+///
+/// # One door, and why it is the handler's (#5560)
+///
+/// The subject is `tree_runtime::ops`, so the production path is the door: the
+/// five handlers resolve `memory::binding` and ask the loaded module over the
+/// contract's six runtime-tree members. This case used to seed its query with
+/// `tree_runtime_store::write_node` — the engine copy the `[dev-dependencies]`
+/// entry links into *this* binary — and after `d2697f00a` that is a different
+/// store from the one the handler reads, so the query answered "node 'root' not
+/// found in namespace 'ops_ns'" over a node that had just been written.
+///
+/// # The one assertion that could not survive the door change
+///
+/// The seed existed to reach `tree_summarizer_query`'s **success** branch, and
+/// no handler on this surface can create a node: `runtime_summarize` /
+/// `runtime_rebuild` are the only writers and both fold on the driver's own chat
+/// provider, which a hermetic case has no model for — and which this case
+/// deliberately refuses anyway, two asserts below. Seeding the module's store
+/// from the host's engine to get the branch back is precisely the divergence
+/// #5560 exists to remove, so the branch is asserted where a driver can be bound
+/// instead: `memory::tree::tree_runtime::ops_tests::
+/// tree_summarizer_query_returns_node_and_children` pins the whole
+/// `{node, children}` envelope and the `queried node 'root'` log line.
+///
+/// What replaces it here is the assertion the seed was in the way of: that an
+/// **ingest is not a node**. Buffering content leaves `total_nodes` at zero and
+/// leaves `root` absent, and the refusal names the trimmed namespace — the
+/// handler's own trim, over a padded input, which is what tells a
+/// namespace-mangling bug from an empty tree.
 #[tokio::test]
 async fn tree_summarizer_ops_cover_validation_query_and_local_provider_guards() {
+    let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
+    // The handlers resolve a bound memory driver; `module_workspace` is where
+    // that driver lives for this whole process, and the env var has to agree
+    // with the config or the two halves address different stores.
+    let _workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", module_workspace());
     let mut config = config_in(&tmp);
+    use_module_workspace(&mut config);
+    // Local AI off and cloud summarization un-opted-in: the state the two
+    // provider guards below assert on.
     config.local_ai.runtime_enabled = false;
+    config.memory_tree.cloud_summarization_opt_in = false;
 
     let empty_content =
         openhuman_core::openhuman::memory::tree::tree_runtime::ops::tree_summarizer_ingest(
@@ -4548,15 +4588,21 @@ async fn tree_summarizer_ops_cover_validation_query_and_local_provider_guards() 
     assert_eq!(status.value["namespace"], "ops_ns");
     assert_eq!(status.value["total_nodes"], 0);
 
-    let node = tree_node("ops_ns", "root", "Root summary from ops");
-    tree_runtime_store::write_node(&config, &node).expect("write ops node");
-    let query = openhuman_core::openhuman::memory::tree::tree_runtime::ops::tree_summarizer_query(
-        &config, "ops_ns", None,
-    )
-    .await
-    .expect("query root");
-    assert_eq!(query.value["node"]["node_id"], "root");
-    assert!(query.logs[0].contains("queried node 'root'"));
+    // An ingest buffers; it does not build a node. The default `root` target is
+    // therefore still absent, and the refusal names the namespace **trimmed**,
+    // from a padded argument — the handler's own wording, over the driver's
+    // `Ok(None)`.
+    let unbuilt_root =
+        openhuman_core::openhuman::memory::tree::tree_runtime::ops::tree_summarizer_query(
+            &config, " ops_ns ", None,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        unbuilt_root,
+        "node 'root' not found in namespace 'ops_ns'",
+        "buffering content must not create a tree node"
+    );
 
     let missing =
         openhuman_core::openhuman::memory::tree::tree_runtime::ops::tree_summarizer_query(

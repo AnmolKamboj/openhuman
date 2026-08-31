@@ -44,8 +44,12 @@ use tinymemory_core::tree::tree::bucket_seal::append_leaf;
 use tinymemory_core::tree::tree::{
     append_leaf_deferred, get_or_create_tree, store as tree_store, LabelStrategy, LeafRef,
 };
-use openhuman_core::openhuman::memory::tree::tree_runtime::rpc as tree_runtime_rpc;
 // As above: the host re-export is gone, the engine is named directly (#5560).
+//
+// `tree_runtime::rpc` is deliberately **not** imported here any more. Its five
+// handlers answer from the loaded module's store, and a case that mixed them
+// with these engine calls would be driving two stores that share no state — see
+// `tree_runtime_engine_rpc_and_walk_cover_success_and_edge_paths`.
 use tinymemory_core::tree::tree_runtime::{engine, store as runtime_store};
 use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
 
@@ -179,6 +183,34 @@ impl ChatModel<()> for ScriptedProvider {
     }
 }
 
+/// The engine's summarisation walk: buffer → hour leaves → propagated
+/// ancestors → rebuild, end to end against a scripted summariser.
+///
+/// # One door, and why it is the engine's (#5560)
+///
+/// This case used to seed and read through `tree_runtime::rpc`'s handlers while
+/// folding through `engine::run_summarization`, and after `d2697f00a` those are
+/// two different stores: the handlers answer from the **loaded module's** engine
+/// over the bus, `engine::` runs the copy the `[dev-dependencies]` entry links
+/// into this binary. The fold therefore drained a buffer the ingests had never
+/// written to and answered `None` — "last hour node".
+///
+/// The subject here is the walk, not the RPC envelope, so the whole case takes
+/// the engine door. That is also the only door it *can* take: `run_summarization`
+/// takes an explicit provider, and the contract's `runtime_summarize` does not —
+/// the fold runs on the driver's own chat provider, deliberately, so the
+/// [`ScriptedProvider`] below cannot cross the bus. Routing this through
+/// `tree_summarizer_run` would mean a real summarisation model in a hermetic
+/// suite.
+///
+/// Nothing is left uncovered by that choice. The handlers' side of the same
+/// ground is asserted where it belongs — against a bound driver — by
+/// `memory::tree::tree_runtime::ops_tests`
+/// (`tree_summarizer_status_reports_populated_tree_details` pins the same six
+/// nodes at depth five, `tree_summarizer_query_returns_node_and_children` the
+/// same node-plus-children envelope) and, module-routed, by
+/// `memory_tree_memory_round23_raw_coverage_e2e::
+/// tree_runtime_rpc_and_registered_handlers_cover_status_and_errors`.
 #[tokio::test]
 async fn tree_runtime_engine_rpc_and_walk_cover_success_and_edge_paths() {
     let tmp = TempDir::new().expect("tempdir");
@@ -187,24 +219,36 @@ async fn tree_runtime_engine_rpc_and_walk_cover_success_and_edge_paths() {
 
     let first_ts = Utc.with_ymd_and_hms(2026, 5, 29, 10, 15, 0).unwrap();
     let second_ts = Utc.with_ymd_and_hms(2026, 5, 29, 11, 45, 0).unwrap();
-    tree_runtime_rpc::tree_summarizer_ingest(
+    let first_path = runtime_store::buffer_write(
         &cfg,
         ns,
         "deployment notes mention Alice and the launch room",
-        Some(first_ts),
+        &first_ts,
         Some(&json!({"source": "round14"})),
     )
-    .await
-    .expect("ingest first");
-    tree_runtime_rpc::tree_summarizer_ingest(
+    .expect("buffer first");
+    runtime_store::buffer_write(
         &cfg,
         ns,
         "follow-up notes mention Bob and post-launch cleanup",
-        Some(second_ts),
+        &second_ts,
         None,
     )
-    .await
-    .expect("ingest second");
+    .expect("buffer second");
+    // The two ingests are what the fold consumes, so observe them before it
+    // runs: this is the half `tree_summarizer_ingest` used to stand in for, and
+    // it is the half that silently stopped being observed once the handler
+    // started writing to the module's store instead of this one. Metadata is
+    // read off the file rather than out of `buffer_read`, which strips the
+    // frontmatter it is carried in.
+    let on_disk = std::fs::read_to_string(&first_path).expect("buffer file exists");
+    assert!(on_disk.contains("deployment notes mention Alice"));
+    assert!(on_disk.contains("\"source\":\"round14\""));
+    let buffered = runtime_store::buffer_read(&cfg, ns).expect("buffer read before drain");
+    assert_eq!(buffered.len(), 2);
+    assert!(buffered
+        .iter()
+        .any(|(_, body)| body.contains("post-launch cleanup")));
 
     let provider = ScriptedProvider::new([
         "hour 10 summary about Alice",
@@ -221,16 +265,19 @@ async fn tree_runtime_engine_rpc_and_walk_cover_success_and_edge_paths() {
         .expect("buffer read after drain")
         .is_empty());
 
-    let status = tree_runtime_rpc::tree_summarizer_status(&cfg, ns)
-        .await
-        .expect("status");
-    assert_eq!(status.value["total_nodes"], 6);
-    assert_eq!(status.value["depth"], 5);
+    let status = runtime_store::get_tree_status(&cfg, ns).expect("status");
+    assert_eq!(status.namespace, ns);
+    assert_eq!(status.total_nodes, 6);
+    assert_eq!(status.depth, 5);
 
-    let query = tree_runtime_rpc::tree_summarizer_query(&cfg, ns, Some("2026/05/29"))
-        .await
-        .expect("query day");
-    assert_eq!(query.value["children"].as_array().unwrap().len(), 2);
+    // What `tree_summarizer_query` renders as `{node, children}`, read as the
+    // two store calls the handler now makes over the bus.
+    let day = runtime_store::read_node(&cfg, ns, "2026/05/29")
+        .expect("read day node")
+        .expect("day node exists");
+    assert_eq!(day.node_id, "2026/05/29");
+    let children = runtime_store::read_children(&cfg, ns, "2026/05/29").expect("read day children");
+    assert_eq!(children.len(), 2);
 
     runtime_store::buffer_write(
         &cfg,

@@ -312,18 +312,26 @@ struct RuntimeCallbacks(Arc<Config>);
 
 #[tinybus::interface(name = "ai.tinyhumans.tinymemory.RuntimeHost")]
 impl RuntimeCallbacks {
+    /// Bridge a module-side memory event onto this host.
+    ///
+    /// Every arm is [`into_domain_event`]'s: it either maps the event onto a
+    /// [`DomainEvent`](crate::core::events::DomainEvent) for the bus or handles
+    /// it web-channel-side and answers `None`. `StoreCorruptQuarantined` is the
+    /// second kind — it publishes the durable user error and returns `None`,
+    /// the same shape the in-process sink's arm has in `memory::host`.
+    ///
+    /// **There is deliberately no in-process chunk-store reset here any more
+    /// (#5560).** It existed because this process embedded a second copy of the
+    /// engine whose cached SQLite handle still pointed at the inode the module
+    /// had just renamed, so an in-process read kept failing with `database disk
+    /// image is malformed` until restart (openhuman#5820). Every in-process
+    /// reader it protected is gone: `sources::status` asks
+    /// `MemoryChunks::source_ingest_status`, recall goes through
+    /// `memory::binding` to this same driver, and the only surviving openers of
+    /// the host's chunk store are `#[cfg(test)]`. Nothing else in the corruption
+    /// path needs an engine either — `user_error`'s detectors classify text, and
+    /// `tree::tree::rpc`'s `latest_quarantine` reads the directory.
     async fn publish_event(&self, event: MemoryEvent) -> tinybus::Result<()> {
-        // openhuman#5820: the module just renamed and rebuilt `chunks.db`;
-        // this process's own engine copy still holds a handle to the old
-        // inode, so drop it before anything in-process reads the store again.
-        if matches!(event, MemoryEvent::StoreCorruptQuarantined { .. }) {
-            let config = Arc::clone(&self.0);
-            tokio::task::spawn_blocking(move || {
-                crate::openhuman::memory::host_impls::reset_in_process_chunk_store(&config);
-            })
-            .await
-            .ok();
-        }
         if let Some(event) = into_domain_event(event) {
             BUS.publish(event);
         }

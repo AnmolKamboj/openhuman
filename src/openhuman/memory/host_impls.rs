@@ -67,13 +67,28 @@
 //! left between this file and that module: the host owns the local-AI /
 //! cloud-opt-in precedence, and the seam is how the driver asks about it.
 //!
-//! [`reset_in_process_chunk_store`] is the one function here with a caller that
-//! is not a seam install. It was originally justified by `memory::sources::
-//! status` reading the engine's chunk store over raw SQLite; that handler asks
-//! `MemoryChunks::source_ingest_status` now and names no engine. What keeps it
-//! is `modules::memory_host`'s `StoreCorruptQuarantined` arm — only this
-//! process can drop **this** process's cached handle, so no contract method can
-//! stand in for it however small the in-process reader set becomes.
+//! **Everything left in this file is a seam install (#5560).** There used to be
+//! one exception, `reset_in_process_chunk_store`, and the shape of its removal
+//! is worth keeping because it is the shape the rest of this file's removal
+//! takes. It dropped this process's cached SQLite handle after the *module*
+//! quarantined and rebuilt `chunks.db`, because the host's own engine copy still
+//! pointed at the renamed inode and every in-process read kept failing with
+//! `database disk image is malformed` until restart (openhuman#5820). It was
+//! originally justified by `memory::sources::status` reading that store over raw
+//! SQLite, and later by "only this process can drop **this** process's handle" —
+//! true, and beside the point once nothing in this process opens the store.
+//!
+//! That is now the case. `sources::status` asks
+//! `MemoryChunks::source_ingest_status`; recall resolves through
+//! `memory::binding` to the same module driver; and every surviving opener of
+//! the host's chunk store is `#[cfg(test)]` — `read_rpc::with_connection`,
+//! `tree::retrieval::test_support`, `security::credentials`'s ops tests and
+//! `memory::sync_pipeline`'s. So the reset had no reader left to protect, and
+//! `recover_corrupt_db` was itself the last production call that *opened* the
+//! in-process chunk store. Deleting it removes a door rather than leaving one
+//! ajar; the user-visible notice is untouched, because it was never the reset's
+//! — `modules::memory_host`'s `into_domain_event` publishes it and returns
+//! `None`, exactly as `memory::host`'s in-process sink does.
 //!
 //! **The question to re-ask is not "is the driver embedded" but "does any
 //! production caller still reach an engine free function".** `grep -rn
@@ -464,40 +479,6 @@ pub fn install_memory_host_seams(config: Arc<Config>) {
 /// overflows the 2 MiB test-thread stack. Building it on a thread with a stack
 /// of its own keeps the cost off the caller entirely, and `Once` means it
 /// happens exactly one time per test binary.
-/// Drop this process's cached handle to the chunk store and reopen it.
-///
-/// The loaded TinyMemory module and this process each embed their own copy of
-/// the engine, with their own connection cache. When the *module* quarantines a
-/// corrupt `chunks.db` it renames the file and rebuilds an empty one — but this
-/// process's cached connection still points at the old inode (now the
-/// `.corrupt-<ts>` copy), so every in-process read (`sources::status`, the
-/// session builder's recall) keeps failing with `database disk image is
-/// malformed` until restart. Seen live on openhuman#5820's fix: the module
-/// recovered, the host's status rows stayed red.
-///
-/// Delegates to the engine's own recovery entry point, which takes the
-/// per-path init lock, drops the cached connection, re-runs `quick_check` on
-/// what is on disk now (the rebuilt file, so no second quarantine), and
-/// reopens. Best-effort: a failure is logged, never propagated — the module's
-/// quarantine already happened and the notice is already on its way.
-pub(crate) fn reset_in_process_chunk_store(config: &Config) {
-    let engine = tinymemory_core::engine::memory_config_from(config, config.workspace_dir.clone());
-    match tinymemory_core::engine::backend::chunks::recover_corrupt_db(&engine) {
-        Ok(false) => log::info!(
-            "[memory:host] dropped the in-process chunk-store handle and reopened the \
-             rebuilt file after the module's quarantine"
-        ),
-        Ok(true) => log::warn!(
-            "[memory:host] the in-process chunk-store reset found the file corrupt as \
-             well and quarantined it"
-        ),
-        Err(error) => log::warn!(
-            "[memory:host] could not reset the in-process chunk-store handle after the \
-             module's quarantine; in-process reads may keep failing until restart: {error:#}"
-        ),
-    }
-}
-
 #[cfg(test)]
 pub(crate) fn install_for_tests() {
     use std::sync::Once;
@@ -516,7 +497,3 @@ pub(crate) fn install_for_tests() {
 #[cfg(test)]
 #[path = "host_impls_boot_seam_tests_tests.rs"]
 mod boot_seam_tests;
-
-#[cfg(test)]
-#[path = "host_impls_chunk_store_reset_tests_tests.rs"]
-mod chunk_store_reset_tests;

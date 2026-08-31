@@ -36,9 +36,9 @@ pub struct MemoryHybridSearchTool;
 /// Named hybrid-retrieval weight profiles (graph / vector / keyword /
 /// freshness), resolved from this tool's `mode` argument.
 ///
-/// The final ranking score is the plain weighted sum
-/// `graph·graph_relevance + vector·vector_similarity + keyword·keyword_relevance
-/// + freshness·freshness`. Nothing here *enforces* that the four weights sum to
+/// The final ranking score is the plain weighted sum `graph·graph_relevance +
+/// vector·vector_similarity + keyword·keyword_relevance + freshness·freshness`.
+/// Nothing here *enforces* that the four weights sum to
 /// `1.0` — the four built-ins are chosen that way by convention so scores land
 /// in a familiar `[0.0, 1.0]`-ish range when every signal is itself in
 /// `[0.0, 1.0]`. The constants are the engine's, value for value, so a query
