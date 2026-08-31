@@ -87,6 +87,17 @@ if [ -z "${TINYMEMORY_TEST_MODULE:-}" ]; then
   export TINYMEMORY_TEST_MODULE="$REPO_ROOT/$memory_module"
 fi
 
+# Tokenjuice JSON-RPC coverage loads the production native module. Keep the
+# test run hermetic by building the pinned submodule instead of falling back
+# to GitHub release metadata.
+if [ -z "${TINYJUICE_TEST_MODULE:-}" ]; then
+  juice_manifest="vendor/tinyjuice/crates/tinyjuice-module/Cargo.toml"
+  juice_module="vendor/tinyjuice/target/release/libtinyjuice_module.so"
+  echo "Building TinyJuice test module from the pinned submodule ..."
+  cargo build --release --manifest-path "$juice_manifest"
+  export TINYJUICE_TEST_MODULE="$REPO_ROOT/$juice_module"
+fi
+
 if [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
   connectors_manifest="vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml"
   connectors_module="$REPO_ROOT/vendor/tinyconnectors/target/release/libtinyconnectors.so"
