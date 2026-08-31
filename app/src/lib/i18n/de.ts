@@ -3825,7 +3825,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'Auf Abruf',
   'flows.copilot.open': 'Assistent',
   'flows.copilot.title': 'Workflow-Assistent',
-  'flows.copilot.subtitle':
     'Bitte um Änderungen und prüfe jeden Vorschlag, bevor du ihn übernimmst.',
   'flows.copilot.close': 'Assistent schließen',
   'flows.copilot.placeholder': 'Bitte um eine Änderung…',

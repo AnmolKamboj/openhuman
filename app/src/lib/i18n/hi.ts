@@ -3724,7 +3724,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'मांग पर',
   'flows.copilot.open': 'सहपायलट',
   'flows.copilot.title': 'वर्कफ़्लो सहपायलट',
-  'flows.copilot.subtitle': 'बदलाव माँगें और लागू करने से पहले हर प्रस्ताव की समीक्षा करें।',
   'flows.copilot.close': 'सहपायलट बंद करें',
   'flows.copilot.placeholder': 'एक बदलाव माँगें…',
   'flows.copilot.send': 'भेजें',

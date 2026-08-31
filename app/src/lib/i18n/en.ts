@@ -4350,7 +4350,6 @@ const en: TranslationMap = {
   'flows.suggest.trigger.manual': 'On demand',
   'flows.copilot.open': 'Copilot',
   'flows.copilot.title': 'Workflow copilot',
-  'flows.copilot.subtitle': 'Ask for changes and review each proposal before applying it.',
   'flows.copilot.close': 'Close copilot',
   'flows.copilot.placeholder': 'Ask for a change…',
   'flows.copilot.send': 'Send',
