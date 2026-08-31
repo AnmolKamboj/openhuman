@@ -403,28 +403,37 @@ fn project_assistant(
         }
     }
 
-    let tool_calls = msg
+    let persisted_tool_calls: Vec<(String, String, String)> = msg
         .turn_usage
         .as_ref()
-        .map(|tu| tu.tool_calls.as_slice())
+        .map(|tu| {
+            tu.tool_calls
+                .iter()
+                .map(|call| (call.id.clone(), call.name.clone(), call.arguments.clone()))
+                .collect()
+        })
         .unwrap_or_default();
+    let native_envelope = parse_native_tool_envelope(&msg.message.content);
+    // Some native/tinyagents histories predate top-level `turn_usage` lifting
+    // and carry the invocation only inside the provider replay envelope. Use
+    // that canonical call shape rather than degrading the paired result to an
+    // orphan named "tool".
+    let tool_calls = if persisted_tool_calls.is_empty() {
+        native_envelope
+            .as_ref()
+            .map(|(_, calls)| calls.clone())
+            .unwrap_or_default()
+    } else {
+        persisted_tool_calls
+    };
     let interim = !tool_calls.is_empty();
 
     // Native tool-call turns are persisted as their provider envelope so they
     // can be replayed byte-faithfully. The display projection needs only the
     // envelope's visible `content`; rendering/sanitizing the whole JSON object
     // makes the narration disappear (and risks showing raw tool JSON).
-    let visible_content = serde_json::from_str::<serde_json::Value>(&msg.message.content)
-        .ok()
-        .and_then(|value| {
-            let object = value.as_object()?;
-            object.get("tool_calls")?.as_array()?;
-            match object.get("content") {
-                Some(serde_json::Value::String(content)) => Some(content.clone()),
-                Some(serde_json::Value::Null) | None => Some(String::new()),
-                _ => None,
-            }
-        })
+    let visible_content = native_envelope
+        .map(|(content, _)| content)
         .unwrap_or_else(|| msg.message.content.clone());
 
     // The assistant's prose (if any) shows before its tool calls.
@@ -438,18 +447,46 @@ fn project_assistant(
         });
     }
 
-    for call in tool_calls {
-        let args = parse_tool_args(&call.arguments);
+    for (call_id, name, arguments) in tool_calls {
+        let args = parse_tool_args(&arguments);
         items.push(DisplayItem::ToolCall {
-            call_id: call.id.clone(),
-            name: call.name.clone(),
+            call_id: call_id.clone(),
+            name,
             args,
             result: None,
             status: ToolCallStatus::Running,
             failure: None,
         });
-        pending.push_back((call.id.clone(), items.len() - 1));
+        pending.push_back((call_id, items.len() - 1));
     }
+}
+
+/// Decode the native provider replay envelope embedded in `ChatMessage.content`.
+/// Returns visible assistant prose plus `(id, name, arguments)` calls.
+fn parse_native_tool_envelope(raw: &str) -> Option<(String, Vec<(String, String, String)>)> {
+    let value = serde_json::from_str::<serde_json::Value>(raw).ok()?;
+    let object = value.as_object()?;
+    let calls = object.get("tool_calls")?.as_array()?;
+    let content = match object.get("content") {
+        Some(serde_json::Value::String(content)) => content.clone(),
+        Some(serde_json::Value::Null) | None => String::new(),
+        _ => return None,
+    };
+    let calls = calls
+        .iter()
+        .filter_map(|call| {
+            let call = call.as_object()?;
+            let id = call.get("id")?.as_str()?.to_string();
+            let name = call.get("name")?.as_str()?.to_string();
+            let arguments = match call.get("arguments") {
+                Some(serde_json::Value::String(arguments)) => arguments.clone(),
+                Some(arguments) => arguments.to_string(),
+                None => String::new(),
+            };
+            Some((id, name, arguments))
+        })
+        .collect();
+    Some((content, calls))
 }
 
 fn project_tool_result(

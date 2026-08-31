@@ -137,9 +137,7 @@ describe('buildRuntimeMessages', () => {
     const projected = buildRuntimeMessages([msg({ id: 'answer', sender: 'agent' })], null, {
       isRunning: false,
       liveTimeline: [tool({ id: 'stale-tool', status: 'success' })],
-      liveTranscript: [
-        { kind: 'thinking', round: 1, seq: 0, text: 'already finished thinking' },
-      ],
+      liveTranscript: [{ kind: 'thinking', round: 1, seq: 0, text: 'already finished thinking' }],
     });
     const ids = projected.map(message => message.id);
 
@@ -213,13 +211,72 @@ describe('buildRuntimeMessages', () => {
     const finalText = 'hey! what is up?';
     const answer = msg({ id: 'answer', sender: 'agent', content: finalText });
     const content = buildRuntimeMessages([answer], null, {
-      turnTranscripts: {
-        request: [{ kind: 'narration', round: 1, seq: 0, text: finalText }],
-      },
+      turnTranscripts: { request: [{ kind: 'narration', round: 1, seq: 0, text: finalText }] },
       turnTimelines: { request: [] },
     })[0]?.content;
 
     expect(content).toEqual([{ type: 'text', text: finalText }]);
+  });
+
+  it('coalesces legacy assistant segments into one bubble with one tool trail', () => {
+    const requestId = 'legacy-segmented-request';
+    const intro = "Here's the crypto picture today:";
+    const finalText = `${intro}\n\nBitcoin is trading around $77,000.`;
+    const messages = [
+      msg({ id: 'user', content: 'What is happening with Bitcoin?' }),
+      msg({
+        id: 'tool-envelope',
+        sender: 'agent',
+        content: JSON.stringify({
+          content: null,
+          tool_calls: [
+            { id: 'call-search', name: 'web_search_tool', arguments: '{"query":"bitcoin"}' },
+          ],
+        }),
+        extraMetadata: { requestId },
+      }),
+      msg({ id: 'intro', sender: 'agent', content: intro, extraMetadata: { requestId } }),
+      msg({ id: 'final', sender: 'agent', content: finalText, extraMetadata: { requestId } }),
+    ];
+
+    const projected = buildRuntimeMessages(messages, null, {
+      turnTimelines: {
+        [requestId]: [
+          tool({ id: 'call-search', name: 'tool', status: 'success', result: 'market results' }),
+        ],
+      },
+      turnTranscripts: {
+        [requestId]: [{ kind: 'toolCall', round: 1, seq: 0, callId: 'call-search' }],
+      },
+    });
+
+    expect(projected).toHaveLength(2);
+    expect(projected[1]).toMatchObject({ id: 'final', role: 'assistant' });
+    expect(projected[1]?.content).toEqual([
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCallId: 'call-search',
+        toolName: 'web_search_tool',
+      }),
+      { type: 'text', text: finalText },
+    ]);
+  });
+
+  it('does not coalesce adjacent assistant turns with different request ids', () => {
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'first', sender: 'agent', content: 'first', extraMetadata: { requestId: 'r1' } }),
+        msg({
+          id: 'second',
+          sender: 'agent',
+          content: 'second',
+          extraMetadata: { requestId: 'r2' },
+        }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['first', 'second']);
   });
 
   /**

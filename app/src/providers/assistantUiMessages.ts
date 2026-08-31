@@ -45,6 +45,8 @@ const conversionCache = new WeakMap<ThreadMessage, ConversionCacheEntry>();
 const EMPTY_TIMELINE: readonly ToolTimelineEntry[] = [];
 const EMPTY_TRANSCRIPT: readonly ProcessingTranscriptItem[] = [];
 
+const RECOVERED_TOOL_NAMES_KEY = 'assistantUiToolNames';
+
 /** Synthetic id for the live streaming tail. Stable so React reconciles it. */
 export const STREAMING_TAIL_ID = '__openhuman_streaming_tail__';
 
@@ -168,6 +170,97 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function requestIdOf(message: ThreadMessage): string | undefined {
+  const requestId = message.extraMetadata?.requestId;
+  return typeof requestId === 'string' && requestId.length > 0 ? requestId : undefined;
+}
+
+function isGenericToolName(name: string): boolean {
+  return ['', 'tool', 'unknown', 'unknown_tool'].includes(name.trim().toLowerCase());
+}
+
+function recoverTimelineToolNames(
+  timeline: readonly ToolTimelineEntry[],
+  recoveredNames: readonly string[]
+): readonly ToolTimelineEntry[] {
+  if (recoveredNames.length === 0 || !timeline.some(entry => isGenericToolName(entry.name))) {
+    return timeline;
+  }
+  let recoveredIndex = 0;
+  return timeline.map(entry => {
+    const recovered = recoveredNames[recoveredIndex];
+    recoveredIndex += 1;
+    return recovered && isGenericToolName(entry.name) ? { ...entry, name: recovered } : entry;
+  });
+}
+
+function mergedAssistantText(messages: readonly ThreadMessage[]): string {
+  const texts = messages
+    .map(message => unwrapToolCallEnvelope(message.content ?? '').text)
+    .filter(text => text.trim().length > 0)
+    .filter((text, index, all) => all.indexOf(text) === index);
+  if (texts.length < 2) return texts[0] ?? '';
+
+  // Legacy web delivery persisted both paragraph-sized segments and the full
+  // final response. Prefer the complete response when it contains every
+  // segment; otherwise retain each distinct assistant emission in order.
+  const longest = [...texts].sort((left, right) => right.length - left.length)[0] ?? '';
+  if (texts.every(text => longest.includes(text.trim()))) return longest;
+  return texts.join('\n\n');
+}
+
+function mergeAssistantRun(messages: readonly ThreadMessage[]): ThreadMessage {
+  if (messages.length === 1) return messages[0];
+  const first = messages[0];
+  const last = messages[messages.length - 1];
+  const extraMetadata = Object.assign({}, ...messages.map(message => message.extraMetadata));
+  const requestId = messages.map(requestIdOf).find(Boolean);
+  const toolNames = messages.flatMap(
+    message => unwrapToolCallEnvelope(message.content ?? '').toolNames
+  );
+  if (requestId) extraMetadata.requestId = requestId;
+  if (toolNames.length > 0) extraMetadata[RECOVERED_TOOL_NAMES_KEY] = toolNames;
+  return {
+    ...last,
+    content: mergedAssistantText(messages),
+    createdAt: first.createdAt,
+    extraMetadata,
+  };
+}
+
+/**
+ * Collapse legacy paragraph/tool-envelope rows into one assistant turn.
+ *
+ * The old interactive-web delivery path persisted each segment as a separate
+ * agent message. Consecutive assistant rows cannot cross a user turn; when
+ * both rows carry request ids, a differing id is the explicit boundary.
+ */
+function coalesceAssistantSegments(messages: readonly ThreadMessage[]): ThreadMessage[] {
+  const out: ThreadMessage[] = [];
+  let run: ThreadMessage[] = [];
+  let runRequestId: string | undefined;
+
+  const flush = () => {
+    if (run.length > 0) out.push(mergeAssistantRun(run));
+    run = [];
+    runRequestId = undefined;
+  };
+
+  for (const message of messages) {
+    if (message.sender !== 'agent' || message.extraMetadata?.hidden) {
+      flush();
+      out.push(message);
+      continue;
+    }
+    const requestId = requestIdOf(message);
+    if (run.length > 0 && runRequestId && requestId && runRequestId !== requestId) flush();
+    run.push(message);
+    runRequestId ??= requestId;
+  }
+  flush();
+  return out;
+}
+
 function mimeTypeFromDataUri(dataUri: string): string {
   return dataUri.match(/^data:([^;,]+)/i)?.[1] ?? 'application/octet-stream';
 }
@@ -218,13 +311,19 @@ export function toThreadMessageLike(
   const cached = conversionCache.get(msg);
   if (cached?.timeline === timeline && cached.transcript === transcript) return cached.converted;
 
-  const text =
-    msg.sender === 'agent' ? unwrapToolCallEnvelope(msg.content ?? '').text : (msg.content ?? '');
+  const unwrapped = unwrapToolCallEnvelope(msg.content ?? '');
+  const text = msg.sender === 'agent' ? unwrapped.text : (msg.content ?? '');
+  const recoveredToolNames = [
+    ...unwrapped.toolNames,
+    ...stringArray(msg.extraMetadata?.[RECOVERED_TOOL_NAMES_KEY]),
+  ];
+  const effectiveTimeline = recoverTimelineToolNames(timeline, recoveredToolNames);
 
   const converted: ThreadMessageLike = {
     id: msg.id,
     role: msg.sender === 'agent' ? 'assistant' : 'user',
-    content: msg.sender === 'agent' ? assistantParts(text, timeline, transcript) : userParts(msg),
+    content:
+      msg.sender === 'agent' ? assistantParts(text, effectiveTimeline, transcript) : userParts(msg),
     createdAt: new Date(msg.createdAt),
     ...(msg.sender === 'agent' && msg.extraMetadata?.stopped === true
       ? { status: { type: 'incomplete' as const, reason: 'cancelled' as const } }
@@ -289,9 +388,10 @@ export function buildRuntimeMessages(
   streaming: StreamingAssistantState | null,
   projection: AssistantUiProjection = {}
 ): ThreadMessageLike[] {
+  const coalescedMessages = coalesceAssistantSegments(messages);
   const out: ThreadMessageLike[] = [];
   const claimedRequestIds = new Set(
-    messages.flatMap(message =>
+    coalescedMessages.flatMap(message =>
       message.sender === 'agent' && typeof message.extraMetadata?.requestId === 'string'
         ? [message.extraMetadata.requestId]
         : []
@@ -304,10 +404,10 @@ export function buildRuntimeMessages(
     ]),
   ].filter(requestId => !claimedRequestIds.has(requestId));
   let orphanRequestCursor = 0;
-  const lastVisibleAgentId = [...messages]
+  const lastVisibleAgentId = [...coalescedMessages]
     .reverse()
     .find(message => message.sender === 'agent' && !message.extraMetadata?.hidden)?.id;
-  for (const msg of messages) {
+  for (const msg of coalescedMessages) {
     if (msg.extraMetadata?.hidden) continue;
     const requestId =
       msg.sender === 'agent' && typeof msg.extraMetadata?.requestId === 'string'

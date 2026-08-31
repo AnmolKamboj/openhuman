@@ -11,6 +11,8 @@ const MOCK_ADMIN_BASE = `http://127.0.0.1:${process.env.E2E_MOCK_PORT || '18473'
 const USER_ID = 'pw-chat-tool-call';
 const PROMPT = 'Fetch the contents of https://example.com for me.';
 const CANARY_FINAL = 'canary-tool-call-fetched-a1b2c3';
+const CANARY_SECOND_PARAGRAPH = 'The entire answer must stay in this same assistant bubble.';
+const FINAL_RESPONSE = `Here is the fetched content: ${CANARY_FINAL}\n\n${CANARY_SECOND_PARAGRAPH}`;
 const FORCED_RESPONSES = [
   {
     content: '',
@@ -22,7 +24,7 @@ const FORCED_RESPONSES = [
       },
     ],
   },
-  { content: `Here is the fetched content: ${CANARY_FINAL}` },
+  { content: FINAL_RESPONSE },
 ];
 
 interface MockRequest {
@@ -171,7 +173,10 @@ test.describe('Chat Tool Call Flow', () => {
     await sendMessage(page, PROMPT);
 
     await expect(agentMessageText(page, CANARY_FINAL)).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText(`Here is the fetched content: ${CANARY_FINAL}`, { exact: true })).toHaveCount(1);
+    const finalBubble = page.getByTestId('agent-message').filter({ hasText: CANARY_FINAL });
+    await expect(finalBubble).toHaveCount(1);
+    await expect(finalBubble).toContainText(CANARY_SECOND_PARAGRAPH);
+    await expect(page.getByText(CANARY_SECOND_PARAGRAPH, { exact: true })).toHaveCount(1);
 
     // Regression: completed tool/reasoning arrays remain in Redux briefly, but
     // they must not create a synthetic running tail after the final answer.
@@ -181,8 +186,10 @@ test.describe('Chat Tool Call Flow', () => {
     // Tool activity belongs to assistant-ui and renders as a readable card,
     // never through the removed legacy Agentic task insights timeline.
     await expect(page.getByTestId('agent-task-insights')).toHaveCount(0);
-    const toolCard = page.getByTestId('assistant-ui-tool-call').last();
+    await expect(page.getByTestId('assistant-ui-tool-call')).toHaveCount(1);
+    const toolCard = page.getByTestId('assistant-ui-tool-call');
     await expect(toolCard).toBeVisible();
+    await expect(toolCard).toContainText('Fetched from the web');
     await expect(toolCard).not.toContainText('running');
     const toolTrigger = toolCard.getByRole('button');
     if ((await toolTrigger.getAttribute('aria-expanded')) !== 'true') await toolTrigger.click();
