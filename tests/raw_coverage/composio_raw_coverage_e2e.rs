@@ -449,8 +449,11 @@ fn composio_action_tool_metadata_is_stable_without_network_execution() {
 
 #[tokio::test]
 async fn composio_action_tool_execute_reports_missing_route_without_network() {
+    let tmp = tempfile::tempdir().expect("temp config directory");
+    let mut config = Config::default();
+    config.config_path = tmp.path().join("config.toml");
     let tool = ComposioActionTool::new(
-        Arc::new(Config::default()),
+        Arc::new(config),
         "GMAIL_SEND_EMAIL".into(),
         "Send an email".into(),
         None,
@@ -1161,7 +1164,10 @@ async fn composio_agent_tools_cover_metadata_missing_params_and_scope_helpers() 
             "composio_execute",
         ]
     );
-    let no_tools = all_composio_agent_tools(&Config::default());
+    let anonymous_config_dir = tempfile::tempdir().expect("anonymous config directory");
+    let mut anonymous_config = Config::default();
+    anonymous_config.config_path = anonymous_config_dir.path().join("config.toml");
+    let no_tools = all_composio_agent_tools(&anonymous_config);
     assert!(no_tools.is_empty());
 
     assert_eq!(

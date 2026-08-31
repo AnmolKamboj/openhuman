@@ -75,11 +75,10 @@ fi
 # Source of truth: scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
 
-# The product test surface exercises memory and Composio through their native
-# modules. CI builds the pinned submodules and supplies these explicit
-# overrides; mirror that setup locally so the full runner never falls back to
-# GitHub release metadata (which makes an otherwise hermetic mock-backend suite
-# network-bound).
+# The product test surface exercises memory through its native module. CI builds
+# the pinned submodule and supplies this explicit override; mirror that setup
+# locally so the full runner never falls back to GitHub release metadata (which
+# makes an otherwise hermetic mock-backend suite network-bound).
 if [ -z "${TINYMEMORY_TEST_MODULE:-}" ]; then
   memory_manifest="vendor/tinymemory/crates/tinymemory-module/Cargo.toml"
   memory_module="vendor/tinymemory/crates/tinymemory-module/target/release/libtinymemory_module.so"
@@ -90,10 +89,9 @@ fi
 
 if [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
   connectors_manifest="vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml"
-  connectors_module="vendor/tinyconnectors/target/release/libtinyconnectors.so"
+  connectors_module="$REPO_ROOT/vendor/tinyconnectors/target/release/libtinyconnectors.so"
   echo "Building TinyConnectors test module from the pinned submodule ..."
   cargo build --release --manifest-path "$connectors_manifest"
-  export TINYCONNECTORS_TEST_MODULE="$REPO_ROOT/$connectors_module"
 fi
 
 cargo_test() {
@@ -117,7 +115,15 @@ run_raw_coverage_modules() {
   while IFS= read -r module; do
     [ -n "$module" ] || continue
     echo "[test-rust-with-mock] raw coverage module: ${module}"
-    cargo_test --test raw_coverage_all -- "${module}::" --test-threads=1 "$@"
+    # Most Composio raw-coverage modules explicitly exercise the absent-module
+    # path. This one module is the exception: it verifies the host-to-module
+    # round trip, so inject the pinned connector only for that process.
+    if [ "$module" = "composio_credentials_state_raw_coverage_e2e" ] && [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
+      TINYCONNECTORS_TEST_MODULE="$connectors_module" \
+        cargo_test --test raw_coverage_all -- "${module}::" --test-threads=1 "$@"
+    else
+      cargo_test --test raw_coverage_all -- "${module}::" --test-threads=1 "$@"
+    fi
   done < <(raw_coverage_modules)
 }
 
