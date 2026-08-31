@@ -94,6 +94,18 @@ export function ThreadList({
           `text-content-muted` matching an unselected thread row. The border
           uses the same `content-faint` token as the composer's outline, so
           the two read as one edge language rather than two.
+
+          The accent arrives on HOVER instead: border, text and a 10% fill all
+          go primary together. That keeps the resting state as quiet as the
+          argument above requires while making the row unmistakably the
+          actionable one the moment it is pointed at. The `+` inherits it for
+          free through `currentColor`.
+
+          `justify-between` puts the label on the left edge with the `+` pushed
+          to the right, rather than the two sitting together at the start. The
+          glyph then lands in the row's own trailing gutter, where a thread
+          row's hover actions appear, so the column has one consistent right
+          edge instead of an icon floating mid-row.
  */}
         <button
           type="button"
@@ -101,7 +113,8 @@ export function ThreadList({
           data-analytics-id="chat-sidebar-new-thread"
           onClick={onCreateThread}
           title={t('chat.newThreadShortcut')}
-          className="group flex h-8 w-full flex-none cursor-pointer items-center gap-1.5 rounded-md border border-content-faint/35 px-3 text-left text-[14px] text-content-muted transition-colors hover:border-content-faint/60 hover:bg-surface/40 hover:text-content-secondary dark:hover:bg-surface/60">
+          className="group flex h-8 w-full flex-none cursor-pointer items-center justify-between gap-1.5 rounded-md border border-content-faint/35 px-3 text-left text-[14px] text-content-muted transition-colors hover:border-primary-500/60 hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400">
+          <span className="truncate">{t('chat.newConversation')}</span>
           <svg
             className="h-3.5 w-3.5 flex-none"
             fill="none"
@@ -110,7 +123,6 @@ export function ThreadList({
             aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          <span className="truncate">{t('chat.newConversation')}</span>
         </button>
       </div>
       {/* Rows carry no padding gutter of their own — a thread pill spans the
