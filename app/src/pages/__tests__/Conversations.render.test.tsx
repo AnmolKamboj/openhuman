@@ -606,6 +606,15 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       'Long agent output with enough structure to prefer a text view.'
     );
     expect(screen.getByText('Can you summarize this?')).toBeInTheDocument();
+    // Message rows must retain their measured layout/paint while off-screen.
+    // `content-visibility:auto` plus a guessed intrinsic height makes WebKit
+    // reveal/re-size rows as they cross the viewport, producing scroll flicker.
+    const assistantRoot = screen.getByTestId('agent-message');
+    const userRoot = document.querySelector('[data-slot="aui_user-message-root"]');
+    expect(assistantRoot.className).not.toContain('content-visibility');
+    expect(userRoot?.className).not.toContain('content-visibility');
+    expect(assistantRoot.className).not.toContain('contain-intrinsic-size');
+    expect(userRoot?.className).not.toContain('contain-intrinsic-size');
   });
 
   it("renders a past turn's process trail above the answer it produced (Phase 5)", async () => {
