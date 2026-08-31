@@ -79,20 +79,18 @@ function makeCorpus(files: number): string {
 
 async function addAndSync(label: string, files = 3): Promise<{ id: string; root: string }> {
   const root = makeCorpus(files);
-  const added = await callCoreRpc<{ id?: string } | null>('openhuman.memory_sources_add', {
+  const added = await callCoreRpc<{ source?: { id?: string } }>('openhuman.memory_sources_add', {
     kind: 'folder',
     label,
     enabled: true,
     path: root,
     glob: '**/*.md',
   });
-  const list = await callCoreRpc<{ sources: Array<{ id: string; label: string }> }>(
-    'openhuman.memory_sources_list',
-    {}
-  );
-  const id = added?.id ?? list.sources.find(s => s.label === label)?.id;
+  const id = added?.source?.id;
   if (!id) throw new Error(`source ${label} was not created`);
-  await callCoreRpc('openhuman.memory_sources_sync', { id });
+  // `source_id`, not `id` — the core rejects the latter with
+  // "missing required param 'source_id'". Cost the first run of this spec.
+  await callCoreRpc('openhuman.memory_sources_sync', { source_id: id });
   return { id, root };
 }
 
