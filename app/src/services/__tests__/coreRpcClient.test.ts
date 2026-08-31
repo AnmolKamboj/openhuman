@@ -955,6 +955,48 @@ describe('coreRpcClient — typed errors + auth-expired event', () => {
     expect(authExpiredHandler).toHaveBeenCalledTimes(1);
   });
 
+  test('a 401 from the core refreshes the bearer and retries once, then succeeds', async () => {
+    const fetchMock = vi.mocked(fetch);
+    // First attempt: the core rejects a stale per-launch bearer.
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () =>
+        '{"ok":false,"error":"unauthorized","message":"Missing or invalid Authorization header."}',
+    } as Response);
+    // Retry with a freshly-read bearer succeeds.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jsonrpc: '2.0', id: 1, result: { ok: true } }),
+    } as Response);
+
+    await expect(callCoreRpc({ method: 'openhuman.threads_list' })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // A stale bearer must never be reported as the user's session expiring.
+    expect(authExpiredHandler).not.toHaveBeenCalled();
+  });
+
+  test('a persistent 401 retries exactly once, then surfaces core_auth', async () => {
+    const fetchMock = vi.mocked(fetch);
+    const reject = () =>
+      ({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => 'unauthorized',
+      }) as Response;
+    fetchMock.mockResolvedValueOnce(reject());
+    fetchMock.mockResolvedValueOnce(reject());
+
+    const err = await callCoreRpc({ method: 'openhuman.threads_list' }).catch(e => e);
+    expect(err).toBeInstanceOf(CoreRpcError);
+    expect((err as CoreRpcError).kind).toBe('core_auth');
+    // Bounded: one refresh attempt, not a loop.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(authExpiredHandler).not.toHaveBeenCalled();
+  });
+
   test('classifies budget_exceeded without firing the auth-expired event', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce({
