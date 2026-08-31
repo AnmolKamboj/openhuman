@@ -1,4 +1,68 @@
 #[async_trait]
+impl MemoryCodingSessions for ModuleMemoryProvider {
+    async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
+        module_call!(
+            self,
+            "coding_session_status",
+            methods::CODING_SESSION_STATUS,
+            ()
+        )
+    }
+    /// # Why this one call sets its own bus deadline
+    ///
+    /// Every other member here takes tinybus' `DEFAULT_TIMEOUT`
+    /// (`vendor/tinybus/crates/tinybus/src/connection.rs:56`) — a flat 30 s,
+    /// applied by `Proxy::new` (`proxy.rs:59`) whenever nobody says otherwise.
+    /// That is the right default for a memory read. It is the wrong one here:
+    /// distilling a coding session is several *sequential* model calls, and the
+    /// RPC above it already computes a budget sized to the work
+    /// (`memory::sources::rpc::ingest_budget`, 120 s + 90 s per session, capped
+    /// at 600 s).
+    ///
+    /// So there were two deadlines and the tighter one was the one nobody
+    /// chose. A real 35 s import tripped the 30 s default; the caller was
+    /// released with an error while the module kept working and finished
+    /// seconds later, having imported everything. The UI reported a failure for
+    /// work that had succeeded, and invited a retry that would redo it
+    /// (#5802).
+    ///
+    /// tinybus is explicit that this is the caller's problem to size: *"A
+    /// timeout does not cancel the remote work — tinybus cannot — it stops
+    /// waiting and frees the caller"* (`connection.rs:22-23`). Abandoning the
+    /// call early therefore does not save anything; it only loses the report.
+    ///
+    /// The budget is taken from `ingest_budget` rather than restated, so the
+    /// two layers cannot drift, plus [`INGEST_BUS_GRACE`]. The grace makes the
+    /// ordering deterministic instead of a race between two equal deadlines:
+    /// the RPC's own `tokio::time::timeout` fires first and reports its clean
+    /// structured message, and this deadline survives only as the
+    /// wedged-forever backstop tinybus requires. Same shape as the client's
+    /// `CODING_SESSION_RPC_GRACE_MS` sitting above the server budget.
+    async fn ingest_coding_sessions(
+        &self,
+        request: CodingSessionIngestRequest,
+    ) -> Result<CodingSessionIngestReport, MemoryError> {
+        let deadline = crate::openhuman::memory::sources::rpc::ingest_budget(request.max_sessions)
+            + INGEST_BUS_GRACE;
+        self.proxy("ingest_coding_sessions")
+            .await?
+            .with_timeout(deadline)
+            .call(methods::INGEST_CODING_SESSIONS, (request,))
+            .await
+            .map_err(|error| from_bus(&error))
+    }
+}
+
+/// Head-room added to [`ingest_budget`](crate::openhuman::memory::sources::rpc::ingest_budget)
+/// for the bus deadline on `IngestCodingSessions`.
+///
+/// Exists to order two deadlines, not to allow more work: the RPC's own
+/// wall-clock ceiling must be the one that fires, because its message names the
+/// budget rather than the wire member. Anything comfortably longer than the
+/// scheduling jitter between the two `tokio::time::timeout` arms would do.
+const INGEST_BUS_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[async_trait]
 impl MemoryEpisodic for ModuleMemoryProvider {
     async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
         module_call!(self, "insert_turn", methods::INSERT_TURN, (turn,))
