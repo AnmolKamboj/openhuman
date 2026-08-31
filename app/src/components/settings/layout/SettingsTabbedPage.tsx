@@ -25,6 +25,21 @@ export interface SettingsTabbedPageProps<T extends string> {
   tabsTestIdPrefix?: string;
   /** Let the active child own scrolling (for a fixed controls + results layout). */
   scrollable?: boolean;
+  /**
+   * Replace the body's own padding wrapper classes.
+   *
+   * The default insets the body from the page gutter, which is right for the
+   * card-and-list pages this template was written for. A page whose body is a
+   * single full-bleed surface (the flow canvas) needs the opposite: pass
+   * `-mx-4 -mb-4 h-full min-h-0` to cancel the host's `p-4` so the surface
+   * reaches the content card's edges. The card clips to its own radius
+   * (`SidebarInset` is `overflow-hidden rounded-2xl`), so a full-bleed body
+   * still gets rounded corners.
+   *
+   * Only the body moves — the header keeps the gutter, so the title stays
+   * aligned with every other page's.
+   */
+  bodyClassName?: string;
   children: ReactNode;
 }
 
@@ -58,6 +73,7 @@ export default function SettingsTabbedPage<T extends string>({
   tabsAriaLabel,
   tabsTestIdPrefix,
   scrollable = true,
+  bodyClassName,
   children,
 }: SettingsTabbedPageProps<T>) {
   return (
@@ -99,7 +115,10 @@ export default function SettingsTabbedPage<T extends string>({
             ? '-mr-4 min-h-0 flex-1 overflow-y-auto pr-4'
             : 'min-h-0 flex-1 overflow-hidden'
         }>
-        <div className={scrollable ? 'min-h-full pb-4 pt-4' : 'h-full min-h-0 pt-4'}>
+        <div
+          className={
+            bodyClassName ?? (scrollable ? 'min-h-full pb-4 pt-4' : 'h-full min-h-0 pt-4')
+          }>
           {children}
         </div>
       </div>
