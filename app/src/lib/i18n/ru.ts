@@ -3757,7 +3757,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'По запросу',
   'flows.copilot.open': 'Второй пилот',
   'flows.copilot.title': 'Второй пилот процессов',
-    'Запрашивайте изменения и проверяйте каждое предложение перед применением.',
   'flows.copilot.close': 'Закрыть второго пилота',
   'flows.copilot.placeholder': 'Запросите изменение…',
   'flows.copilot.send': 'Отправить',
