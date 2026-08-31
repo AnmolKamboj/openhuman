@@ -11,27 +11,34 @@
 //! `tree_runtime`) are shadowed by the `pub mod` declarations below — an
 //! explicit item beats a glob import — so its live contribution is narrower
 //! than it looks. **Measured by deleting the line and reading the compiler**,
-//! rather than by grepping for the paths, the production surface is now two
-//! names in two files:
+//! rather than by grepping for the paths, the production surface is now
+//! **empty**. The two names that pinned it are both gone:
 //!
-//! - `score` — `read_rpc::entities` reaches `score::store` and
-//!   `score::DEFAULT_DROP_THRESHOLD` for the chunk-score RPC.
-//! - `summarise` — `agent::harness::archivist::recap` reaches
-//!   `summarise::{summarise, SummaryContext, SummaryInput}`.
+//! - `score` — `read_rpc::entities` reached `score::store` and
+//!   `score::DEFAULT_DROP_THRESHOLD` for the chunk-score RPC. That is
+//!   `MemoryChunks::chunk_score` and the contract's own
+//!   `DEFAULT_DROP_THRESHOLD` since #5560.
+//! - `summarise` — `agent::harness::archivist::recap` reached
+//!   `summarise::{summarise, SummaryContext, SummaryInput}`. That is
+//!   `MemoryTree::summarise` and the contract's owned DTOs now; only the
+//!   recap's `#[cfg(test)]` arm still names the engine's, because the
+//!   deterministic chat provider those tests install is a task-local *inside*
+//!   the engine crate this binary links for tests.
 //!
-//! Everything else the glob carries is now test-only or unreferenced.
-//! `ingest` (`ingest_summary` / `SummaryIngestInput`) survives for
+//! So everything the glob still carries is test-only. `ingest`
+//! (`ingest_summary` / `SummaryIngestInput`) survives for
 //! `tests/memory_sync_pipeline_e2e.rs`, `score::{embed, extract, resolver,
-//! signals}` and `summarise::fallback_summary` for the raw-coverage suites,
-//! and `nlp` and `graph` have no caller under this path at all — `nlp`
-//! **used** to be reached from `retrieval/rpc.rs` and no longer is. A glob is
-//! all-or-nothing, so the unused names ride along with the two that are left.
+//! signals, store}` and `summarise::{summarise, fallback_summary}` for the
+//! raw-coverage suites and this crate's own `*_tests.rs`, and `nlp` and
+//! `graph` have no caller under this path at all — `nlp` **used** to be
+//! reached from `retrieval/rpc.rs` and no longer is. A glob is all-or-nothing,
+//! so the unused names ride along.
 //!
-//! Neither survivor has a contract equivalent: `tinymemory_api::tree` is the
-//! summary-node vocabulary, not an embedder and not an entity extractor. So
-//! this shim is pinned by the engine's *scoring and summarisation* internals
-//! reached from two files outside this directory, and it goes when those two
-//! move — not before.
+//! Nothing left here has a contract equivalent, and none is wanted:
+//! `tinymemory_api::tree` is the summary-node vocabulary, not an embedder and
+//! not an entity extractor. This shim is now pinned purely by test targets, and
+//! it goes when those stop asserting against an in-process engine — which is a
+//! decision about how the raw-coverage suites are written, not a routing pass.
 //!
 //! The seven `Tree{LabelStrategy, LeafPayload, ReadHit, ReadRequest,
 //! ReadResult, WriteOutcome, WriteRequest}` I/O types were re-exported here
@@ -48,7 +55,8 @@
 // `graph`, which the glob carries because a glob is all-or-nothing.
 // `tinymemory_api::tree` is the summary-node vocabulary — not an embedder and
 // not an entity extractor — so there is nothing on the contract to route these
-// at. Two production files pin it; see the module docs above for which.
+// at. **No production file pins it any more**; see the module docs above for
+// what does.
 pub use tinymemory_core::tree::*;
 
 pub mod health;

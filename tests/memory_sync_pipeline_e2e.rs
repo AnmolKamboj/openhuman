@@ -43,9 +43,12 @@ use chrono::Utc;
 use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::sources::sync::sync_source;
+// The engine's own source pipeline. `memory::sources::sync` is host-side now and
+// carries only `derive_scopes`; `sync_source` stayed upstream because nothing in
+// `src/` calls it any more (#5560).
 use openhuman_core::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
 use openhuman_core::openhuman::memory::tree::ingest::{ingest_summary, SummaryIngestInput};
+use tinymemory_core::sources::sync::sync_source;
 use tinymemory_core::store::content::raw::{raw_kind_dir, raw_source_dir, RawKind};
 use tinymemory_core::store::trees::store as tree_store;
 use tinymemory_core::store::trees::types::SUMMARY_FANOUT;

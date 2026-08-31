@@ -151,24 +151,46 @@ Do not attempt to run them with `run_skill` — they have been removed. Tell the
     ))
 }
 
-/// Wrapper around
-/// [`crate::openhuman::memory::tree::tree_runtime::store::collect_root_summaries_with_caps`]
-/// that takes user-resolved per-namespace and total caps. The actual
-/// limits are derived from the active
+/// Every namespace's root summary, under user-resolved per-namespace and total
+/// caps. The limits are derived from the active
 /// [`crate::openhuman::config::schema::agent::MemoryContextWindow`]
 /// preset by [`crate::openhuman::config::schema::agent::AgentConfig::resolved_memory_limits`].
-pub(super) fn collect_tree_root_summaries(
+///
+/// # The shared tree is the driver's now (#5560)
+///
+/// `memory_subdir == "memory"` goes through
+/// `MemoryTree::root_summaries_with_caps` instead of
+/// `tree_runtime::store::collect_root_summaries_with_caps`. Same files, same
+/// two caps, same `[... truncated]` marker: the embedded driver's member is
+/// that function, called with its own `config.workspace_dir`, so the block the
+/// prompt renders is unchanged.
+///
+/// The `memory-<id>` arm stays host-local and untouched. The contract member
+/// takes **no path** — deliberately, since a workspace argument would be
+/// configuration crossing the bus — and the driver reachable here is bound to
+/// the shared subtree, so a dedicated profile's tree still has to be scanned
+/// directly by [`collect_profile_tree_root_summaries`].
+///
+/// # Why `async` is the whole bridge
+///
+/// The only caller, `turn::context::fetch_learned_context`, is already an
+/// `async fn` and awaits four memory reads immediately above this one, so the
+/// driver call is awaited rather than bridged. `block_in_place` — the pattern
+/// `session::builder::helpers` uses for a genuinely synchronous caller —
+/// panics on a current-thread runtime and would buy nothing here.
+///
+/// An unresolvable binding, a driver with no tree family, or a failed read all
+/// yield no summaries. That is what this returned before as well: the engine's
+/// scan swallowed its own failures into an empty vector, and the prompt simply
+/// carries no memory block.
+pub(super) async fn collect_tree_root_summaries(
     workspace_dir: &std::path::Path,
     memory_subdir: &str,
     per_namespace_cap: usize,
     total_cap: usize,
 ) -> Vec<crate::openhuman::agent::context::prompt::NamespaceSummary> {
     let rows = if memory_subdir == "memory" {
-        crate::openhuman::memory::tree::tree_runtime::store::collect_root_summaries_with_caps(
-            workspace_dir,
-            per_namespace_cap,
-            total_cap,
-        )
+        driver_tree_root_summaries(per_namespace_cap, total_cap).await
     } else {
         collect_profile_tree_root_summaries(
             &workspace_dir.join(memory_subdir),
@@ -185,6 +207,46 @@ pub(super) fn collect_tree_root_summaries(
             }
         })
         .collect()
+}
+
+/// The shared subtree's root summaries, read from the guarded driver.
+///
+/// Returns the same positional `(namespace, body, updated_at)` triple the
+/// engine scan did, so [`collect_tree_root_summaries`]'s mapping is shared with
+/// the profile arm rather than written twice.
+async fn driver_tree_root_summaries(
+    per_namespace_cap: usize,
+    total_cap: usize,
+) -> Vec<(String, String, chrono::DateTime<chrono::Utc>)> {
+    use crate::openhuman::memory::api::provider::MemoryProvider;
+
+    let guard = match crate::openhuman::memory::ops::guard::active_memory_guard().await {
+        Ok(guard) => guard,
+        Err(error) => {
+            log::debug!("[session::turn] tree root summaries: no bound driver ({error})");
+            return Vec::new();
+        }
+    };
+    let Some(tree) = guard.as_tree() else {
+        log::debug!(
+            "[session::turn] tree root summaries: driver '{}' does not serve Tree",
+            guard.driver_id()
+        );
+        return Vec::new();
+    };
+    match tree
+        .root_summaries_with_caps(per_namespace_cap, total_cap)
+        .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|row| (row.namespace, row.body, row.updated_at))
+            .collect(),
+        Err(error) => {
+            log::warn!("[session::turn] tree root summaries: {error}");
+            Vec::new()
+        }
+    }
 }
 
 /// Read summary-tree root summaries from an already-resolved `memory-*` subtree.

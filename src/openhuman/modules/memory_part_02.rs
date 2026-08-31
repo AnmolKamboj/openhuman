@@ -118,6 +118,33 @@ impl MemoryTree for ModuleMemoryProvider {
     ) -> Result<Vec<TreeLeaf>, MemoryError> {
         module_call!(self, "recent_leaves", "RecentLeaves", (limit, scope))
     }
+    /// The one member here that costs a provider call rather than a store read,
+    /// so it is also the one whose bus deadline could bind. It rides the
+    /// default: the module clamps the fold to the `token_budget` this caller
+    /// supplied, and a summariser that outruns the deadline is the same failure
+    /// a caller must already handle — `summarise` documents a deterministic
+    /// fallback as the expected response to a model that errors or times out.
+    async fn summarise(
+        &self,
+        inputs: &[SummaryInput],
+        context: &SummaryContext,
+    ) -> Result<SummaryOutput, MemoryError> {
+        module_call!(self, "summarise", "Summarise", (inputs, context))
+    }
+    /// The wire member is `RootSummaries`; the caps are in the signature on
+    /// both sides, so the name carries only what distinguishes the call.
+    async fn root_summaries_with_caps(
+        &self,
+        per_namespace_cap: usize,
+        total_cap: usize,
+    ) -> Result<Vec<RootSummary>, MemoryError> {
+        module_call!(
+            self,
+            "root_summaries_with_caps",
+            "RootSummaries",
+            (per_namespace_cap, total_cap)
+        )
+    }
 }
 
 #[async_trait]
@@ -386,6 +413,14 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     }
     async fn diagnose(&self) -> Result<Diagnosis, MemoryError> {
         module_call!(self, "diagnose", "Diagnose", ())
+    }
+    /// The degradation flags alone — three booleans and at most one cause,
+    /// read from the atomics the module's own embed/extract/storage stages set.
+    /// Deliberately not answered from [`Self::diagnose`]'s payload: a status
+    /// light polls this, and `Diagnose` runs an aggregate scan of the chunk
+    /// table.
+    async fn degraded_state(&self) -> Result<DegradedCapabilities, MemoryError> {
+        module_call!(self, "degraded_state", "DegradedState", ())
     }
 }
 

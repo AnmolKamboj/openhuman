@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::openhuman::memory::api::capabilities::Capability;
@@ -5,8 +6,13 @@ use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::goals::GoalsDoc;
 use crate::openhuman::memory::api::provider::chunks::{
-    ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery, MemoryChunks, SourceTotal,
+    ChunkDetail, ChunkEmbedding, ChunkListRow, ChunkQuery, ChunkScore, MemoryChunks,
+    SourceIngestQuery, SourceIngestStatus, SourceTotal,
 };
+use crate::openhuman::memory::api::provider::content::{
+    RootSummary, SummaryContext, SummaryInput, SummaryOutput,
+};
+use crate::openhuman::memory::api::provider::diagnosis::{DegradedCapabilities, Diagnosis};
 use crate::openhuman::memory::api::provider::episodic::{
     ConversationSegment, EpisodicTurn, MemoryEpisodic,
 };
@@ -523,6 +529,73 @@ impl MemoryTree for GuardedTree {
         let effective = self.policy.narrow_scope(scope);
         self.family()?
             .recent_leaves(limit, effective.as_ref())
+            .await
+    }
+
+    /// A **read** tier check even though the fold costs a provider call: it
+    /// writes nothing. `seal` and `cascade` take the write tier because they
+    /// persist the nodes they produce; this hands the summary back and leaves
+    /// the tree exactly as it found it, so refusing it under `readonly` would
+    /// stop a recap that stores nothing.
+    ///
+    /// It is nevertheless the only member of this family besides
+    /// [`Self::append`] that carries prose *outbound* — every input's body
+    /// crosses to the driver's own chat provider — so it declares
+    /// `carries_content: true` and applies `append`'s scrub to each of them.
+    /// Admitted against [`SummaryContext::tree_id`] rather than
+    /// `NO_NAMESPACE` for the reason [`Self::flush_source_tree`] gives: it
+    /// names the tree it acts on.
+    async fn summarise(
+        &self,
+        inputs: &[SummaryInput],
+        context: &SummaryContext,
+    ) -> Result<SummaryOutput, MemoryError> {
+        self.policy
+            .admit_read(Capability::Tree, "tree.summarise", &context.tree_id, true)?;
+        // `redact_outbound` borrows for every driver class but `External`, so
+        // the re-owned slice is built only when the scrubber actually rewrote
+        // something — a recap folds every turn of a segment, and cloning them
+        // to hand back the same bytes is the one cost this can avoid.
+        let mut scrubbed: Option<Vec<SummaryInput>> = None;
+        for (index, input) in inputs.iter().enumerate() {
+            if let Cow::Owned(content) = self.policy.redact_outbound(&input.content) {
+                scrubbed.get_or_insert_with(|| inputs.to_vec())[index].content = content;
+            }
+        }
+        let effective = scrubbed.as_deref().unwrap_or(inputs);
+        trace_allowed(
+            &self.policy,
+            "tree.summarise",
+            &context.tree_id,
+            effective
+                .iter()
+                .map(|input| input.content.chars().count())
+                .sum(),
+        );
+        self.family()?.summarise(effective, context).await
+    }
+
+    /// The markdown time tree's roots, one body per namespace.
+    ///
+    /// Takes no [`SourceScope`], so unlike [`Self::summary_forest`] there is
+    /// nothing here to intersect with the ambient allowlist — the contract
+    /// member has no scope parameter and the guard does not invent one. Both
+    /// caps are the caller's and cross unchanged: they bound the *response*,
+    /// and clipping them here would produce a body the driver did not choose
+    /// the truncation point of.
+    async fn root_summaries_with_caps(
+        &self,
+        per_namespace_cap: usize,
+        total_cap: usize,
+    ) -> Result<Vec<RootSummary>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Tree,
+            "tree.root_summaries_with_caps",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .root_summaries_with_caps(per_namespace_cap, total_cap)
             .await
     }
 }

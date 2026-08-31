@@ -2,15 +2,20 @@
 
 use super::store::session_entries;
 use super::types::ArchivistHook;
-use crate::openhuman::memory::api::provider::{ConversationSegment, EpisodicTurn};
-use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
-// `SummaryContext::tree_kind` is the engine's own enum. It is reached here
-// through the host's `memory::tree` shim — the same door `summarise`,
-// `SummaryContext` and `SummaryInput` on the line above already come through —
-// rather than by naming the engine crate. Every hop on that path
-// (`memory::tree::tree` → `tinymemory_core::tree::tree` → `store::trees` →
-// `engine::backend::tree::store`) is a re-export of one item, so this is the
-// same type under a shorter name, not a conversion (#5560).
+use crate::openhuman::memory::api::provider::{
+    ConversationSegment, EpisodicTurn, SummaryContext, SummaryInput,
+};
+// The fold itself is `MemoryTree::summarise` now, so the DTOs are the
+// contract's owned ones and `tree_kind` is the wire string the driver
+// validates rather than the engine's `TreeKind` enum (#5560).
+//
+// The engine `summarise` survives under `cfg(test)` only, where the recap
+// tests install a deterministic chat provider through the engine's own
+// task-local; see [`ArchivistHook::summarize_entries`] for why that arm cannot
+// go through the driver.
+#[cfg(test)]
+use crate::openhuman::memory::tree::summarise::summarise;
+#[cfg(test)]
 use crate::openhuman::memory::tree::tree::TreeKind;
 #[cfg(test)]
 use std::sync::Arc;
@@ -32,6 +37,45 @@ const INPUT_TOKEN_BUDGET: u32 = 50_000;
 /// Prompt and formatting headroom withheld from the source inputs of a fold.
 /// See [`INPUT_TOKEN_BUDGET`] for why this is a copy.
 const SUMMARY_OVERHEAD_RESERVE_TOKENS: u32 = 2_048;
+
+/// Fold one segment's corpus through the **guarded** driver's tree family.
+///
+/// The guard rather than the archivist's own provider handle, because
+/// `MemoryTree::summarise` is the one member of that family which sends prose
+/// out of the process — to the driver's chat provider — and the guard's egress
+/// step is what covers that. Resolved through
+/// [`active_memory_guard`](crate::openhuman::memory::ops::guard::active_memory_guard)
+/// the way every other guarded call site does; the fold reads and writes no
+/// store, so the shared binding answers a profile session's fold identically to
+/// its own subtree's.
+///
+/// # Errors
+///
+/// [`MemoryError::Unsupported`] when the bound driver serves no tree family,
+/// [`MemoryError::Backend`] when no workspace can be named, otherwise whatever
+/// the fold itself failed with. Every one of them lands on the caller's
+/// existing error arm — the heuristic bookend — which is exactly where an
+/// engine error landed before.
+#[cfg(not(test))]
+async fn fold_through_driver(
+    inputs: &[SummaryInput],
+    context: &SummaryContext,
+) -> Result<
+    crate::openhuman::memory::api::provider::SummaryOutput,
+    crate::openhuman::memory::api::error::MemoryError,
+> {
+    use crate::openhuman::memory::api::capabilities::Capability;
+    use crate::openhuman::memory::api::error::MemoryError;
+    use crate::openhuman::memory::api::provider::MemoryProvider;
+
+    let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+        .await
+        .map_err(MemoryError::Backend)?;
+    let tree = guard
+        .as_tree()
+        .ok_or_else(|| MemoryError::unsupported(Capability::Tree))?;
+    tree.summarise(inputs, context).await
+}
 
 /// An episodic entry paired with the stable identity exposed by its backing
 /// store. The md archivist uses a per-session sequence while the legacy FTS5
@@ -206,8 +250,11 @@ impl ArchivistHook {
             .collect();
 
         let summary_ctx = SummaryContext {
-            tree_id: segment_id,
-            tree_kind: TreeKind::Source,
+            tree_id: segment_id.to_string(),
+            // The wire spelling of what was `TreeKind::Source`. The driver
+            // validates it and answers `Invalid` for a kind it does not know,
+            // which is why it is stated rather than defaulted.
+            tree_kind: "source".to_string(),
             target_level: 0,
             token_budget: 2_000,
             input_token_budget: INPUT_TOKEN_BUDGET,
@@ -223,27 +270,63 @@ impl ArchivistHook {
         // recorded as the boolean it always was. See `lifecycle::with_config`.
         if self.summariser_available {
             if let Some(ref config) = self.config {
+                // Read only by the `cfg(test)` arm below, now that production
+                // folds through the driver. The `Some` gate stays because it is
+                // the one this function has always had: no config, no LLM
+                // recap, heuristic bookend instead.
+                #[cfg(not(test))]
+                let _ = config;
                 tracing::debug!(
                     "[archivist] summarize_entries: LLM recap segment={segment_id} entries={}",
                     entries.len()
                 );
-                // Test-only: `summarise` builds its own chat provider, and
-                // `build_chat_runtime` consults this task-local before building
-                // one. Scoping the call is what keeps the recap tests off the
-                // network. Production has no such override and never names the
-                // engine's chat module (#5560).
+                // Test-only: the engine's `summarise` builds its own chat
+                // provider, and `build_chat_runtime` consults this task-local
+                // before building one. Scoping the call is what keeps the recap
+                // tests off the network, and it is why this arm cannot go
+                // through the driver: the override is a static inside the
+                // engine crate this binary links for tests, which a module in
+                // its own process would not see. Production has no such
+                // override and never names the engine's chat module (#5560).
                 #[cfg(test)]
-                let summary_result = if let Some(provider) = self.chat_provider.as_ref() {
-                    tinymemory_core::chat::test_override::with_provider(
-                        Arc::clone(provider),
-                        summarise(config, &corpus_inputs, &summary_ctx),
-                    )
-                    .await
-                } else {
-                    summarise(config, &corpus_inputs, &summary_ctx).await
+                let summary_result = {
+                    let engine_inputs: Vec<_> = corpus_inputs
+                        .iter()
+                        .map(
+                            |input| crate::openhuman::memory::tree::summarise::SummaryInput {
+                                id: input.id.clone(),
+                                content: input.content.clone(),
+                                token_count: input.token_count,
+                                entities: input.entities.clone(),
+                                topics: input.topics.clone(),
+                                time_range_start: input.time_range_start,
+                                time_range_end: input.time_range_end,
+                                score: input.score,
+                            },
+                        )
+                        .collect();
+                    let engine_ctx = crate::openhuman::memory::tree::summarise::SummaryContext {
+                        tree_id: &summary_ctx.tree_id,
+                        tree_kind: TreeKind::parse(&summary_ctx.tree_kind)
+                            .expect("summarize_entries builds a tree_kind the engine knows"),
+                        target_level: summary_ctx.target_level,
+                        token_budget: summary_ctx.token_budget,
+                        input_token_budget: summary_ctx.input_token_budget,
+                        overhead_reserve_tokens: summary_ctx.overhead_reserve_tokens,
+                        ask: summary_ctx.ask.as_deref(),
+                    };
+                    if let Some(provider) = self.chat_provider.as_ref() {
+                        tinymemory_core::chat::test_override::with_provider(
+                            Arc::clone(provider),
+                            summarise(config, &engine_inputs, &engine_ctx),
+                        )
+                        .await
+                    } else {
+                        summarise(config, &engine_inputs, &engine_ctx).await
+                    }
                 };
                 #[cfg(not(test))]
-                let summary_result = summarise(config, &corpus_inputs, &summary_ctx).await;
+                let summary_result = fold_through_driver(&corpus_inputs, &summary_ctx).await;
 
                 match summary_result {
                     Ok(output) if !output.content.is_empty() => {

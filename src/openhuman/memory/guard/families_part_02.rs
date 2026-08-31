@@ -305,6 +305,39 @@ impl MemoryMaintenance for GuardedMaintenance {
         )?;
         self.family()?.purge_all().await
     }
+
+    /// [`Self::doctor`]'s findings in full, and read-only on the same terms —
+    /// it inspects configuration, persisted state and counters and mutates
+    /// nothing, so it takes the read tier for the reason `doctor` gives.
+    ///
+    /// Forwarded here rather than left to the trait's default: a defaulted
+    /// method on a decorator answers `Unsupported` even when the driver below
+    /// serves it, so the default would refuse every diagnosis reached through
+    /// the guard.
+    async fn diagnose(&self) -> Result<Diagnosis, MemoryError> {
+        self.policy.admit_read(
+            Capability::Maintenance,
+            "maintenance.diagnose",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.diagnose().await
+    }
+
+    /// The degradation flags without the diagnosis around them — three
+    /// booleans and at most one cause. Read tier for the same reason
+    /// [`Self::doctor`] takes it, and for one more: this is what a status
+    /// light polls, so refusing it under `readonly` would leave the surface
+    /// that reports a reduced pipeline unable to say so.
+    async fn degraded_state(&self) -> Result<DegradedCapabilities, MemoryError> {
+        self.policy.admit_read(
+            Capability::Maintenance,
+            "maintenance.degraded_state",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.degraded_state().await
+    }
 }
 
 // ── People ───────────────────────────────────────────────────────────────────
@@ -534,5 +567,39 @@ impl MemoryChunks for GuardedChunks {
         self.family()?
             .chunk_embeddings(chunk_ids, model_signature)
             .await
+    }
+
+    /// One chunk's admission verdict, read by chunk id exactly as
+    /// [`Self::chunk_detail`] is — so it takes that member's check, not
+    /// [`Self::list_chunks`]'s scope intersection. There is no scope to narrow:
+    /// the caller already holds the id.
+    async fn chunk_score(&self, chunk_id: &str) -> Result<Option<ChunkScore>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.chunk_score",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.chunk_score(chunk_id).await
+    }
+
+    /// Ingest progress for the sources the caller names, one row per query.
+    ///
+    /// Unlike [`Self::source_totals`], which enumerates the groups that exist
+    /// and therefore has to be narrowed to the ambient allowlist, this answers
+    /// only about prefixes the caller supplied — it discloses no source the
+    /// caller did not already name — and the contract member carries no
+    /// [`SourceScope`] for the guard to intersect anything into.
+    async fn source_ingest_status(
+        &self,
+        source_prefixes: &[SourceIngestQuery],
+    ) -> Result<Vec<SourceIngestStatus>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.source_ingest_status",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.source_ingest_status(source_prefixes).await
     }
 }

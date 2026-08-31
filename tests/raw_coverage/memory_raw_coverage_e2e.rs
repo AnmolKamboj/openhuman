@@ -17,7 +17,10 @@ use openhuman_core::openhuman::memory::{
 // test (#5560). Named on the crate directly, exactly as `upsert_chunks` below
 // already is — `tinymemory-core` is a dev-dependency, which this target links.
 use tinymemory_core::ingestion::IngestionState;
-use openhuman_core::openhuman::memory::sources::status::{source_status, FreshnessLabel};
+// The engine's per-source SQL read, which is what this suite seeds a store for.
+// `memory::sources::status` is host-side now and asks the bound driver, which an
+// integration test has no module to load (#5560).
+use tinymemory_core::sources::status::{source_status, FreshnessLabel};
 use openhuman_core::openhuman::memory::sources::{MemorySourceEntry, SourceKind};
 use tinymemory_core::store::chunks::store::upsert_chunks;
 use tinymemory_core::store::chunks::types::{

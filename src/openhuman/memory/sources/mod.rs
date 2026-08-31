@@ -17,37 +17,33 @@
 //!    `twitter` were implemented in the engine crate but named nothing
 //!    engine-shaped, so they came home unchanged. See [`readers`].
 //! 3. **`sync` and `status` are wired into pieces that have not moved.** This
-//!    one still stands, and is why those two are still reached from the engine
-//!    by name below rather than through a glob. `reconcile` was on this line as
-//!    well and has since come home — see below.
+//!    one is settled too — see below. `reconcile` was on this line as well and
+//!    came home first.
 //!
-//! ## What is still the engine's, and why each one
+//! ## How `sync` and `status` were resolved
 //!
-//! - [`sync`] reaches `engine::run_source_pipeline`, `engine::{needs_rebuild,
+//! Neither was ported wholesale; each was split along the line between what the
+//! host knows and what only a driver can answer.
+//!
+//! - [`sync`] reached `engine::run_source_pipeline`, `engine::{needs_rebuild,
 //!   rebuild_tree_from_raw}`, `queue::store::retry_all_failed`,
-//!   `sync::composio` and `sync::audit` — the ingest pipeline, the re-embed
-//!   queue and the Composio sync half. Only `derive_scopes` is reached from
-//!   production today (`rpc::reconcile_rpc`); `sync_source` itself has no
-//!   caller left in `src/`, because the sync the product runs goes over the bus
-//!   through `MemorySourceSync`. The module is kept whole rather than narrowed
-//!   to the one live function: a re-export that hides which half is dead would
-//!   make the next audit harder, not easier.
-//! - [`status`] reaches `store::chunks::store::with_connection`, the raw SQLite
-//!   chunk door, and is live in production behind
-//!   `memory_sources.status_list`. **`MemoryChunks::source_totals` is not a
-//!   substitute**, and this is worth stating because it looks like one:
-//!   `SourceTotal` carries `chunk_count` and `most_recent_ms` but no
-//!   `chunks_pending`, and pending — "has no embedding, was not dropped, was
-//!   not skipped for re-embed" — is the whole point of a sync-status row.
-//!   `source_totals` also omits a source with zero chunks entirely, where
-//!   `status_list` returns a row per *configured* source. Migrating onto it
-//!   would compile and quietly report a healthy store. The ask upstream is a
-//!   pending count.
+//!   `sync::composio` and `sync::audit`. All of that stayed upstream, and none
+//!   of it was reached from production here: `sync_source` has had no caller
+//!   left in `src/` since the sync the product runs went over the bus through
+//!   `MemorySourceSync`. The single live item, `derive_scopes`, is registry
+//!   fields plus a scan of a directory this host owns, so it came home.
+//! - [`status`] reached `store::chunks::store::with_connection`, the raw SQLite
+//!   chunk door. That half is `MemoryChunks::source_ingest_status` now — the
+//!   upstream ask this file used to record, a **pending** count per configured
+//!   source, which `source_totals` still cannot answer (`SourceTotal` has no
+//!   pending column and omits a source with zero chunks entirely). What stayed
+//!   host-side is the half that was always the host's: the chunk-key prefix,
+//!   derived from the registry entry, and the freshness label, which is
+//!   arithmetic over a timestamp and this process's clock.
 //!
-//! Porting those two as they stand would move the ingest pipeline and the raw
-//! chunk door *into* the host rather than behind the bus, which is the opposite
-//! of what #5560 is for: a second unpoliced door spelled differently is still a
-//! second unpoliced door.
+//! What was *not* done in either case is porting the pipeline or the raw chunk
+//! door into the host, which would be the opposite of what #5560 is for: a
+//! second unpoliced door spelled differently is still a second unpoliced door.
 //!
 //! ## What came home, and why it was different
 //!
@@ -84,11 +80,13 @@ pub use registry::{
 };
 pub use types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
 
-// ── Still the engine's ──────────────────────────────────────────────────────
-//
-// Named rather than globbed, so `grep tinymemory_core` in this domain is an
-// honest inventory of what is left. See the module docs for what blocks each.
-pub use tinymemory_core::sources::{status, sync};
+// `status` and `sync` were the last two names this domain reached out of the
+// engine crate for, and both are home now — see each module's own docs for
+// which half moved and which half stayed upstream. The paths are unchanged
+// (`sources::status::status_list`, `sources::sync::derive_scopes`), so no call
+// site moved with them.
+pub mod status;
+pub mod sync;
 
 // `reconcile` used to be entirely the engine's. tinymemory v1.13.4 deleted
 // `ensure_composio_sources` along with the rest of the in-process Composio

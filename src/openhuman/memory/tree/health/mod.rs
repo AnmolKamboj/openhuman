@@ -50,18 +50,26 @@ pub use tinycortex::memory::health::{
 
 // The half that genuinely pins the engine crate: the process-global
 // degradation flags (`mark_*` / `clear_*` / `current_degraded_state`, plus the
-// `test_guard` that serialises tests touching them) and the `doctor` report,
-// all *defined in* `tinymemory-core`. Left as a glob deliberately — narrowing
-// it would enumerate the flag set here and go stale the first time one is
-// added, and it carries nothing else.
+// `test_guard` that serialises tests touching them) and the engine's own
+// `doctor` report, all *defined in* `tinymemory-core`. Left as a glob
+// deliberately — narrowing it would enumerate the flag set here and go stale
+// the first time one is added, and it carries nothing else.
 //
-// `MemoryMaintenance::diagnose()` on the pinned v1.7.0 contract is the
-// structural twin of `DoctorReport` (`healthy` / `stages` / `first_blocking_cause`
-// / `degraded` / `counters`, with `FailureCode` and `FailureClass` widened to
-// open strings), so it is what the doctor eventually routes through — but
-// **not yet**: neither `ModuleMemoryProvider` nor `GuardedMaintenance` overrides
-// it, so a call today falls through to the trait's default and answers
-// `Unsupported` at run time. See `tree::tree::rpc::doctor_rpc`.
+// **Nothing in production reads this glob any more.** `current_degraded_state`
+// and `async_run_doctor` were its two live callers and both went to the driver
+// in #5560 — see [`report`]. What is left is `test_guard`, which four test
+// files use to serialise the process statics, and the flag setters those tests
+// drive. So this line is now a test-only pin, and it goes when those tests stop
+// needing an in-process engine to mark a flag on.
 pub use tinymemory_core::tree::health::*;
+
+/// The doctor report and the degradation snapshot, read from the bound driver
+/// rather than from this process's copy of the engine.
+///
+/// Its [`DoctorReport`](report::DoctorReport) shadows nothing: it is reached as
+/// `health::report::DoctorReport`, deliberately kept out of this module's own
+/// namespace so that "the host's response type" and "the engine's struct the
+/// glob above still carries" cannot be confused for one another at a call site.
+pub mod report;
 
 pub(crate) mod user_error;

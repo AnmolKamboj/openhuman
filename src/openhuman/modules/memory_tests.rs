@@ -475,6 +475,54 @@ async fn the_defaulted_members_dispatch_to_the_module_instead_of_refusing() {
             .await
             .expect_err("a disabled host cannot succeed"),
     );
+
+    // The five doors tinymemory added for the openhuman engine shed. Each is
+    // defaulted upstream, so a missing `module_call!` arm here is invisible at
+    // compile time and turns a working feature into a runtime
+    // `unsupported capability`.
+    use tinymemory_api::provider::{MemoryChunks, MemoryTree, SummaryContext};
+    refused(
+        "summarise",
+        MemoryTree::summarise(
+            &provider,
+            &[],
+            &SummaryContext {
+                tree_id: "t".into(),
+                tree_kind: "source".into(),
+                target_level: 0,
+                token_budget: 1,
+                input_token_budget: 1,
+                overhead_reserve_tokens: 0,
+                ask: None,
+            },
+        )
+        .await
+        .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "root_summaries_with_caps",
+        MemoryTree::root_summaries_with_caps(&provider, 1, 1)
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "chunk_score",
+        MemoryChunks::chunk_score(&provider, "chunk_whatever")
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "source_ingest_status",
+        MemoryChunks::source_ingest_status(&provider, &[])
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
+    refused(
+        "degraded_state",
+        MemoryMaintenance::degraded_state(&provider)
+            .await
+            .expect_err("a disabled host cannot succeed"),
+    );
 }
 
 #[test]

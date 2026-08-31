@@ -287,7 +287,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/agent/harness/archivist/recap.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (store::fts5, store::segments::ConversationSegment, store::chunks::types::approx_token_count); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "the engine-side chat provider seam (chat::test_override), named only from the `#[cfg(test)]` recap arm: the deterministic provider those tests install is a task-local inside this binary's copy of the engine, which a module in its own process cannot see. The production fold is MemoryTree::summarise",
     ),
     (
         "src/openhuman/agent/harness/archivist/test_constructors.rs",
@@ -325,19 +325,14 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     // name the crate once each and call nothing. Removing them is the
     // re-export problem, not the direct-call problem.
     (
-        "src/openhuman/memory/sources/mod.rs",
-        Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::sources::*",
-    ),
-    (
         "src/openhuman/memory/tree/health/mod.rs",
         Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::health::*",
+        "re-export shim: pub use tinymemory_core::tree::health::*; no production caller left — the doctor and the degradation snapshot are MemoryMaintenance::{diagnose, degraded_state} — so what it carries is `test_guard` and the flag setters four *_tests.rs files drive",
     ),
     (
         "src/openhuman/memory/tree/mod.rs",
         Verdict::HostSide,
-        "re-export shim: pub use tinymemory_core::tree::*",
+        "re-export shim: pub use tinymemory_core::tree::*; no production caller left — `score` is MemoryChunks::chunk_score and `summarise` is MemoryTree::summarise — so what it carries is `score::*`, `summarise::*` and `ingest` for this crate's *_tests.rs and tests/raw_coverage/",
     ),
     (
         "src/openhuman/memory/tree/tree/mod.rs",

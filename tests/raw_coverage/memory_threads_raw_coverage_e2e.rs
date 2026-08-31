@@ -32,8 +32,14 @@ use openhuman_core::openhuman::memory::query::{
 use openhuman_core::openhuman::memory::sources::readers::reader_for;
 use openhuman_core::openhuman::memory::sources::registry;
 use openhuman_core::openhuman::memory::sources::rpc as memory_sources_rpc;
-use openhuman_core::openhuman::memory::sources::status::{source_status, FreshnessLabel};
-use openhuman_core::openhuman::memory::sources::sync::sync_source;
+// The engine's per-source SQL read, which is what this suite seeds a store for.
+// `memory::sources::status` is host-side now and asks the bound driver, which an
+// integration test has no module to load (#5560).
+use tinymemory_core::sources::status::{source_status, FreshnessLabel};
+// The engine's own source pipeline. `memory::sources::sync` is host-side now and
+// carries only `derive_scopes`; `sync_source` stayed upstream because nothing in
+// `src/` calls it any more (#5560).
+use tinymemory_core::sources::sync::sync_source;
 use openhuman_core::openhuman::memory::sources::types::{
     ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind,
 };

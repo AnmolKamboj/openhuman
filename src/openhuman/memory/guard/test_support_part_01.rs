@@ -463,6 +463,38 @@ impl MemoryTree for RecordingProvider {
         self.record(Call::plain("tree.cascade"));
         Ok(tree_status(namespace))
     }
+
+    /// Records the folded bodies as one blob, so a redaction test can assert on
+    /// what the driver's summariser would have been handed.
+    async fn summarise(
+        &self,
+        inputs: &[crate::openhuman::memory::api::provider::content::SummaryInput],
+        _context: &crate::openhuman::memory::api::provider::content::SummaryContext,
+    ) -> Result<crate::openhuman::memory::api::provider::content::SummaryOutput, MemoryError> {
+        self.record(Call {
+            method: "tree.summarise".into(),
+            content: Some(
+                inputs
+                    .iter()
+                    .map(|input| input.content.clone())
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            ),
+            taint: None,
+            scoped: None,
+        });
+        Ok(Default::default())
+    }
+
+    async fn root_summaries_with_caps(
+        &self,
+        _per_namespace_cap: usize,
+        _total_cap: usize,
+    ) -> Result<Vec<crate::openhuman::memory::api::provider::content::RootSummary>, MemoryError>
+    {
+        self.record(Call::plain("tree.root_summaries_with_caps"));
+        Ok(Vec::new())
+    }
 }
 
 #[async_trait]
@@ -661,5 +693,22 @@ impl MemoryMaintenance for RecordingProvider {
     async fn doctor(&self) -> Result<MaintenanceReport, MemoryError> {
         self.record(Call::plain("maintenance.doctor"));
         Ok(MaintenanceReport::default())
+    }
+
+    async fn diagnose(
+        &self,
+    ) -> Result<crate::openhuman::memory::api::provider::diagnosis::Diagnosis, MemoryError> {
+        self.record(Call::plain("maintenance.diagnose"));
+        Ok(Default::default())
+    }
+
+    async fn degraded_state(
+        &self,
+    ) -> Result<
+        crate::openhuman::memory::api::provider::diagnosis::DegradedCapabilities,
+        MemoryError,
+    > {
+        self.record(Call::plain("maintenance.degraded_state"));
+        Ok(Default::default())
     }
 }

@@ -358,6 +358,26 @@ impl MemoryChunks for RecordingProvider {
         self.record(Call::plain("chunks.chunk_embeddings"));
         Ok(vec![])
     }
+
+    async fn chunk_score(
+        &self,
+        _chunk_id: &str,
+    ) -> Result<Option<crate::openhuman::memory::api::provider::chunks::ChunkScore>, MemoryError>
+    {
+        self.record(Call::plain("chunks.chunk_score"));
+        Ok(None)
+    }
+
+    async fn source_ingest_status(
+        &self,
+        _source_prefixes: &[crate::openhuman::memory::api::provider::chunks::SourceIngestQuery],
+    ) -> Result<
+        Vec<crate::openhuman::memory::api::provider::chunks::SourceIngestStatus>,
+        MemoryError,
+    > {
+        self.record(Call::plain("chunks.source_ingest_status"));
+        Ok(vec![])
+    }
 }
 
 #[async_trait]

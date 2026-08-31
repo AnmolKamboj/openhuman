@@ -103,6 +103,26 @@ impl MemoryChunks for ModuleMemoryProvider {
     ) -> Result<Vec<SourceTotal>, MemoryError> {
         module_call!(self, "source_totals", "SourceTotals", (limit, scope))
     }
+    /// `Ok(None)` for a chunk the module never scored — a different fact from a
+    /// chunk that scored zero, which is why the response is an `Option` rather
+    /// than a zeroed row.
+    async fn chunk_score(&self, chunk_id: &str) -> Result<Option<ChunkScore>, MemoryError> {
+        module_call!(self, "chunk_score", "ChunkScore", (chunk_id,))
+    }
+    /// One row per query, in the order asked. The prefixes are derived from the
+    /// **host's** source registry — the module has no access to it — so they
+    /// cross as values rather than being re-derived on the far side.
+    async fn source_ingest_status(
+        &self,
+        source_prefixes: &[SourceIngestQuery],
+    ) -> Result<Vec<SourceIngestStatus>, MemoryError> {
+        module_call!(
+            self,
+            "source_ingest_status",
+            "SourceIngestStatus",
+            (source_prefixes,)
+        )
+    }
 }
 
 #[async_trait]
