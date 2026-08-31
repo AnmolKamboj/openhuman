@@ -493,11 +493,14 @@ export default function WorkflowCopilotPanel({
       className={`flex h-full w-full flex-col border-l border-line bg-surface ${
         fullWidth ? '' : 'max-w-sm'
       }`}>
-      <header className="flex items-start gap-2 border-b border-line px-3 py-2.5">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-content">{t('flows.copilot.title')}</p>
-          <p className="text-[11px] text-content-muted">{t('flows.copilot.subtitle')}</p>
-        </div>
+      {/* Close-only. The "Workflow copilot" title and its "Ask for changes and
+          review each proposal before applying it" subtitle were removed: the
+          panel is opened from a `Copilot | Manual` toggle that already names
+          it, so the title restated the control the user just pressed, and the
+          subtitle described the proposal flow in a band that stayed on screen
+          long after the first proposal made it self-evident. Two lines of
+          permanent chrome above a transcript that wants the height. */}
+      <header className="flex items-center justify-end border-b border-line px-2 py-1.5">
         <Button
           type="button"
           variant="tertiary"
@@ -506,7 +509,7 @@ export default function WorkflowCopilotPanel({
           data-testid="workflow-copilot-close"
           aria-label={t('flows.copilot.close')}
           onClick={onClose}
-          className="shrink-0 rounded-full">
+          className="rounded-full">
           ✕
         </Button>
       </header>
