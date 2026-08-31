@@ -710,7 +710,11 @@ export async function callCoreRpc<T>({
   serviceManaged = false, // kept for compatibility; direct frontend RPC does not use relay-level routing.
   timeoutMs,
   suppressAuthExpiredEvent = false,
-}: CoreRpcRelayRequest): Promise<T> {
+  // Internal. Set only by the `core_auth` recovery below so the retry cannot
+  // itself retry — one refresh attempt per call, never a loop against a core
+  // that is genuinely rejecting us.
+  _retriedAfterTokenRefresh = false,
+}: CoreRpcRelayRequest & { _retriedAfterTokenRefresh?: boolean }): Promise<T> {
   void serviceManaged;
 
   if (method.startsWith('ai.')) {
@@ -809,6 +813,29 @@ export async function callCoreRpc<T>({
       const text = await response.text();
       const httpMessage = `Core RPC HTTP ${response.status}: ${text || response.statusText}`;
       const kind = classifyRpcError(text || response.statusText, response.status);
+      // The local core rejected our bearer. `getCoreRpcToken` caches the
+      // resolved value "for the lifetime of the frontend process", so an
+      // in-process core restart — which mints a fresh per-launch bearer —
+      // leaves this renderer holding the old one and EVERY subsequent RPC
+      // 401s, with no way back short of a page reload. Observed in the wild as
+      // a window that looks signed out while a sibling window, loaded after the
+      // restart, works fine.
+      //
+      // Drop the cache and try once more with a freshly-read bearer. Bounded to
+      // a single attempt: if the core is rejecting us for any other reason the
+      // retry fails and the error surfaces normally.
+      if (kind === 'core_auth' && !_retriedAfterTokenRefresh) {
+        coreRpcLog('core rejected the RPC bearer for %s — refreshing it and retrying once', method);
+        clearCoreRpcTokenCache();
+        return callCoreRpc<T>({
+          method,
+          params,
+          serviceManaged,
+          timeoutMs,
+          suppressAuthExpiredEvent,
+          _retriedAfterTokenRefresh: true,
+        });
+      }
       if (kind === 'auth_expired' && !suppressAuthExpiredEvent)
         dispatchAuthExpired(
           payload.method,
