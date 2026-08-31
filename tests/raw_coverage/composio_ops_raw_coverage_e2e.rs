@@ -316,17 +316,13 @@ async fn composio_ops_use_loopback_backend_for_happy_and_error_paths() {
         .expect_err("bad sync reason validates before network");
     assert!(bad_reason.contains("unrecognized sync reason"));
 
-    // Trigger-history storage is now owned by the connector module. The
-    // retired host-global store is no longer its data source, but the module
-    // still requires the archive root to exist before it can enumerate it.
-    std::fs::create_dir_all(config.workspace_dir.join("state").join("triggers"))
-        .expect("create module trigger archive root");
-    let history = composio_list_trigger_history(&config, Some(5000))
+    // Trigger-history storage is module-owned. This host's retired global
+    // store is not its data source, and an absent module archive is surfaced
+    // as a precise, user-actionable error.
+    let history_error = composio_list_trigger_history(&config, Some(5000))
         .await
-        .expect("list trigger history")
-        .into_cli_compatible_json()
-        .expect("history json");
-    assert_eq!(history.pointer("/result/entries"), Some(&json!([])));
+        .expect_err("module archive is absent in this loopback path");
+    assert!(history_error.contains("trigger archive"), "{history_error}");
 
     let requests = state.requests.lock().expect("requests").clone();
     assert!(requests.iter().any(|req| {
