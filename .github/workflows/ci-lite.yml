@@ -604,13 +604,14 @@ jobs:
         # argument to follow the prose would have masked the drift described
         # next.
         #
-        # UNCHANGED by openhuman#5560, deliberately. That change sheds the
-        # memory engine crates and takes the measured name count from 276 back
-        # down to exactly 270, so this guard goes from failing to passing
-        # without the argument moving. It had been red on main: the profile
-        # measured 276 names against this 270 while `kernel-floor.limits`
-        # separately measured 294 packages against its 286. Only the packages
-        # limit needed a write-back; see the 2026-08-31 entry there.
+        # MOVED to 269 by openhuman#5560. That change sheds the memory engine
+        # crates and takes the measured name count from 276 down to 269 on CI
+        # Linux — the platform this guard is calibrated on; macOS resolves one
+        # target-specific name higher (270), which is how an earlier revision
+        # of this comment briefly claimed 270. It had been red on main: the
+        # profile measured 276 names against the argument while
+        # `kernel-floor.limits` separately measured 294 packages against its
+        # 286. Both were written back; see the 2026-08-31 entry there.
         #
         # This number MUST move in lockstep with scripts/kernel-floor.limits —
         # it is a second source of truth for the same Linux name count and is

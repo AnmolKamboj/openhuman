@@ -1,14 +1,19 @@
 #[async_trait]
 impl MemoryDocuments for ModuleMemoryProvider {
     async fn put_document(&self, input: NamespaceDocumentInput) -> Result<String, MemoryError> {
-        module_call!(self, "put_document", "PutDocument", (input,))
+        module_call!(self, "put_document", methods::PUT_DOCUMENT, (input,))
     }
     async fn get_document(
         &self,
         namespace: &str,
         key: &str,
     ) -> Result<Option<StoredMemoryDocument>, MemoryError> {
-        module_call!(self, "get_document", "GetDocument", (namespace, key))
+        module_call!(
+            self,
+            "get_document",
+            methods::GET_DOCUMENT,
+            (namespace, key)
+        )
     }
     async fn list_documents(
         &self,
@@ -17,12 +22,12 @@ impl MemoryDocuments for ModuleMemoryProvider {
         module_call!(
             self,
             "list_documents",
-            "ListDocuments",
+            methods::LIST_DOCUMENTS,
             (namespace.map(str::to_string),)
         )
     }
     async fn list_namespaces(&self) -> Result<Vec<String>, MemoryError> {
-        module_call!(self, "list_namespaces", "ListNamespaces", ())
+        module_call!(self, "list_namespaces", methods::LIST_NAMESPACES, ())
     }
     async fn delete_document(
         &self,
@@ -32,12 +37,17 @@ impl MemoryDocuments for ModuleMemoryProvider {
         module_call!(
             self,
             "delete_document",
-            "DeleteDocument",
+            methods::DELETE_DOCUMENT,
             (namespace, document_id)
         )
     }
     async fn clear_namespace(&self, namespace: &str) -> Result<(), MemoryError> {
-        module_call!(self, "clear_namespace", "ClearNamespace", (namespace,))
+        module_call!(
+            self,
+            "clear_namespace",
+            methods::CLEAR_NAMESPACE,
+            (namespace,)
+        )
     }
     async fn query_documents(
         &self,
@@ -48,7 +58,7 @@ impl MemoryDocuments for ModuleMemoryProvider {
         module_call!(
             self,
             "query_documents",
-            "QueryDocuments",
+            methods::QUERY_DOCUMENTS,
             (namespace, query, limit)
         )
     }
@@ -60,7 +70,7 @@ impl MemoryDocuments for ModuleMemoryProvider {
         module_call!(
             self,
             "recall_documents",
-            "RecallDocuments",
+            methods::RECALL_DOCUMENTS,
             (namespace, limit)
         )
     }
@@ -69,7 +79,7 @@ impl MemoryDocuments for ModuleMemoryProvider {
 #[async_trait]
 impl MemoryTree for ModuleMemoryProvider {
     async fn append(&self, request: IngestRequest) -> Result<(), MemoryError> {
-        module_call!(self, "append", "Append", (request,))
+        module_call!(self, "append", methods::APPEND, (request,))
     }
     async fn query_source(
         &self,
@@ -81,32 +91,42 @@ impl MemoryTree for ModuleMemoryProvider {
         module_call!(
             self,
             "query_source",
-            "QuerySource",
+            methods::QUERY_SOURCE,
             (namespace, source_id, limit, scope.cloned())
         )
     }
     async fn drill_down(&self, namespace: &str, node_id: &str) -> Result<QueryResult, MemoryError> {
-        module_call!(self, "drill_down", "DrillDown", (namespace, node_id))
+        module_call!(
+            self,
+            "drill_down",
+            methods::DRILL_DOWN,
+            (namespace, node_id)
+        )
     }
     async fn seal(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
-        module_call!(self, "seal", "Seal", (namespace,))
+        module_call!(self, "seal", methods::SEAL, (namespace,))
     }
     async fn cascade(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
-        module_call!(self, "cascade", "Cascade", (namespace,))
+        module_call!(self, "cascade", methods::CASCADE, (namespace,))
     }
     async fn summary_forest(
         &self,
         limit: usize,
         scope: Option<&SourceScope>,
     ) -> Result<SummaryForest, MemoryError> {
-        module_call!(self, "summary_forest", "SummaryForest", (limit, scope))
+        module_call!(
+            self,
+            "summary_forest",
+            methods::SUMMARY_FOREST,
+            (limit, scope)
+        )
     }
 
     async fn flush_source_tree(&self, source_scope: &str) -> Result<u64, MemoryError> {
         module_call!(
             self,
             "flush_source_tree",
-            "FlushSourceTree",
+            methods::FLUSH_SOURCE_TREE,
             (source_scope,)
         )
     }
@@ -115,7 +135,12 @@ impl MemoryTree for ModuleMemoryProvider {
         limit: usize,
         scope: Option<&SourceScope>,
     ) -> Result<Vec<TreeLeaf>, MemoryError> {
-        module_call!(self, "recent_leaves", "RecentLeaves", (limit, scope))
+        module_call!(
+            self,
+            "recent_leaves",
+            methods::RECENT_LEAVES,
+            (limit, scope)
+        )
     }
     /// The one member here that costs a provider call rather than a store read,
     /// so it is also the one whose bus deadline could bind. It rides the
@@ -254,7 +279,7 @@ impl MemoryEntities for ModuleMemoryProvider {
         module_call!(
             self,
             "entities",
-            "Entities",
+            methods::ENTITIES,
             (namespace, query.map(str::to_string), limit)
         )
     }
@@ -267,7 +292,7 @@ impl MemoryEntities for ModuleMemoryProvider {
         module_call!(
             self,
             "entity_edges",
-            "EntityEdges",
+            methods::ENTITY_EDGES,
             (namespace, entity_id, limit)
         )
     }
@@ -279,7 +304,7 @@ impl MemoryEntities for ModuleMemoryProvider {
         module_call!(
             self,
             "touch_entities",
-            "TouchEntities",
+            methods::TOUCH_ENTITIES,
             (namespace, entity_ids.to_vec())
         )
     }
@@ -288,14 +313,19 @@ impl MemoryEntities for ModuleMemoryProvider {
         kind: Option<&str>,
         limit: usize,
     ) -> Result<Vec<EntityOccurrence>, MemoryError> {
-        module_call!(self, "top_entities", "TopEntities", (kind, limit))
+        module_call!(self, "top_entities", methods::TOP_ENTITIES, (kind, limit))
     }
     async fn chunk_entities(
         &self,
         chunk_ids: &[String],
         kinds: Option<&[String]>,
     ) -> Result<Vec<ChunkEntityOccurrence>, MemoryError> {
-        module_call!(self, "chunk_entities", "ChunkEntities", (chunk_ids, kinds))
+        module_call!(
+            self,
+            "chunk_entities",
+            methods::CHUNK_ENTITIES,
+            (chunk_ids, kinds)
+        )
     }
     async fn entity_chunk_ids(
         &self,
@@ -305,7 +335,7 @@ impl MemoryEntities for ModuleMemoryProvider {
         module_call!(
             self,
             "entity_chunk_ids",
-            "EntityChunkIds",
+            methods::ENTITY_CHUNK_IDS,
             (entity_id, limit)
         )
     }
@@ -321,7 +351,7 @@ impl MemoryGraph for ModuleMemoryProvider {
         module_call!(
             self,
             "kv_get",
-            "KvGet",
+            methods::KV_GET,
             (namespace.map(str::to_string), key)
         )
     }
@@ -334,7 +364,7 @@ impl MemoryGraph for ModuleMemoryProvider {
         module_call!(
             self,
             "kv_put",
-            "KvPut",
+            methods::KV_PUT,
             (namespace.map(str::to_string), key, value)
         )
     }
@@ -342,7 +372,7 @@ impl MemoryGraph for ModuleMemoryProvider {
         module_call!(
             self,
             "kv_delete",
-            "KvDelete",
+            methods::KV_DELETE,
             (namespace.map(str::to_string), key)
         )
     }
@@ -355,7 +385,7 @@ impl MemoryGraph for ModuleMemoryProvider {
         module_call!(
             self,
             "kv_list",
-            "KvList",
+            methods::KV_LIST,
             (
                 namespace.map(str::to_string),
                 prefix.map(str::to_string),
@@ -373,7 +403,7 @@ impl MemoryGraph for ModuleMemoryProvider {
         module_call!(
             self,
             "relations",
-            "Relations",
+            methods::RELATIONS,
             (
                 namespace.map(str::to_string),
                 subject.map(str::to_string),
@@ -383,21 +413,26 @@ impl MemoryGraph for ModuleMemoryProvider {
         )
     }
     async fn put_relation(&self, relation: GraphRelationRecord) -> Result<(), MemoryError> {
-        module_call!(self, "put_relation", "PutRelation", (relation,))
+        module_call!(self, "put_relation", methods::PUT_RELATION, (relation,))
     }
 }
 
 #[async_trait]
 impl MemoryDiff for ModuleMemoryProvider {
     async fn capture_snapshot(&self, source_id: &str) -> Result<SnapshotRef, MemoryError> {
-        module_call!(self, "capture_snapshot", "CaptureSnapshot", (source_id,))
+        module_call!(
+            self,
+            "capture_snapshot",
+            methods::CAPTURE_SNAPSHOT,
+            (source_id,)
+        )
     }
     async fn snapshots(
         &self,
         source_id: &str,
         limit: usize,
     ) -> Result<Vec<SnapshotRef>, MemoryError> {
-        module_call!(self, "snapshots", "Snapshots", (source_id, limit))
+        module_call!(self, "snapshots", methods::SNAPSHOTS, (source_id, limit))
     }
     async fn diff(
         &self,
@@ -408,7 +443,7 @@ impl MemoryDiff for ModuleMemoryProvider {
         module_call!(
             self,
             "diff",
-            "Diff",
+            methods::DIFF,
             (source_id, from.map(str::to_string), to)
         )
     }
@@ -417,26 +452,26 @@ impl MemoryDiff for ModuleMemoryProvider {
 #[async_trait]
 impl MemoryGoals for ModuleMemoryProvider {
     async fn goals(&self) -> Result<GoalsDoc, MemoryError> {
-        module_call!(self, "goals", "Goals", ())
+        module_call!(self, "goals", methods::GOALS, ())
     }
     async fn set_goals(&self, goals: GoalsDoc) -> Result<(), MemoryError> {
-        module_call!(self, "set_goals", "SetGoals", (goals,))
+        module_call!(self, "set_goals", methods::SET_GOALS, (goals,))
     }
 }
 
 #[async_trait]
 impl MemoryToolMemory for ModuleMemoryProvider {
     async fn tool_rules(&self, tool_name: &str) -> Result<Vec<ToolMemoryRule>, MemoryError> {
-        module_call!(self, "tool_rules", "ToolRules", (tool_name,))
+        module_call!(self, "tool_rules", methods::TOOL_RULES, (tool_name,))
     }
     async fn put_tool_rule(&self, rule: ToolMemoryRule) -> Result<(), MemoryError> {
-        module_call!(self, "put_tool_rule", "PutToolRule", (rule,))
+        module_call!(self, "put_tool_rule", methods::PUT_TOOL_RULE, (rule,))
     }
     async fn delete_tool_rule(&self, tool_name: &str, rule_id: &str) -> Result<bool, MemoryError> {
         module_call!(
             self,
             "delete_tool_rule",
-            "DeleteToolRule",
+            methods::DELETE_TOOL_RULE,
             (tool_name, rule_id)
         )
     }
@@ -454,61 +489,81 @@ impl MemorySourceSink for ModuleMemoryProvider {
         module_call!(
             self,
             "accept_source_items",
-            "AcceptSourceItems",
+            methods::ACCEPT_SOURCE_ITEMS,
             (source_id, source_kind, items, taint)
         )
     }
     async fn forget_source(&self, source_id: &str) -> Result<u64, MemoryError> {
-        module_call!(self, "forget_source", "ForgetSource", (source_id,))
+        module_call!(self, "forget_source", methods::FORGET_SOURCE, (source_id,))
     }
     async fn forget_matching(
         &self,
         selector: &ForgetSelector,
     ) -> Result<ForgetOutcome, MemoryError> {
-        module_call!(self, "forget_matching", "ForgetMatching", (selector,))
+        module_call!(
+            self,
+            "forget_matching",
+            methods::FORGET_MATCHING,
+            (selector,)
+        )
     }
 }
 
 #[async_trait]
 impl MemoryMaintenance for ModuleMemoryProvider {
     async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
-        module_call!(self, "reembed", "Reembed", ())
+        module_call!(self, "reembed", methods::REEMBED, ())
     }
     async fn compact(&self) -> Result<MaintenanceReport, MemoryError> {
-        module_call!(self, "compact", "Compact", ())
+        module_call!(self, "compact", methods::COMPACT, ())
     }
     async fn consolidate(&self) -> Result<MaintenanceReport, MemoryError> {
-        module_call!(self, "consolidate", "Consolidate", ())
+        module_call!(self, "consolidate", methods::CONSOLIDATE, ())
     }
     async fn doctor(&self) -> Result<MaintenanceReport, MemoryError> {
-        module_call!(self, "doctor", "Doctor", ())
+        module_call!(self, "doctor", methods::DOCTOR, ())
     }
     async fn retry_failed(&self) -> Result<MaintenanceReport, MemoryError> {
-        module_call!(self, "retry_failed", "RetryFailed", ())
+        module_call!(self, "retry_failed", methods::RETRY_FAILED, ())
     }
     async fn store_stats(&self) -> Result<StoreStats, MemoryError> {
-        module_call!(self, "store_stats", "StoreStats", ())
+        module_call!(self, "store_stats", methods::STORE_STATS, ())
     }
     async fn queue_stats(&self, kind: Option<&str>) -> Result<QueueStats, MemoryError> {
-        module_call!(self, "queue_stats", "QueueStats", (kind,))
+        module_call!(self, "queue_stats", methods::QUEUE_STATS, (kind,))
     }
     async fn latest_queue_failure(&self) -> Result<Option<QueueFailure>, MemoryError> {
-        module_call!(self, "latest_queue_failure", "LatestQueueFailure", ())
+        module_call!(
+            self,
+            "latest_queue_failure",
+            methods::LATEST_QUEUE_FAILURE,
+            ()
+        )
     }
     async fn backfill_in_progress(&self) -> Result<bool, MemoryError> {
-        module_call!(self, "backfill_in_progress", "BackfillInProgress", ())
+        module_call!(
+            self,
+            "backfill_in_progress",
+            methods::BACKFILL_IN_PROGRESS,
+            ()
+        )
     }
     async fn flush_pending(&self) -> Result<FlushOutcome, MemoryError> {
-        module_call!(self, "flush_pending", "FlushPending", ())
+        module_call!(self, "flush_pending", methods::FLUSH_PENDING, ())
     }
     async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
-        module_call!(self, "reset_derived_index", "ResetDerivedIndex", ())
+        module_call!(
+            self,
+            "reset_derived_index",
+            methods::RESET_DERIVED_INDEX,
+            ()
+        )
     }
     async fn purge_all(&self) -> Result<PurgeOutcome, MemoryError> {
-        module_call!(self, "purge_all", "PurgeAll", ())
+        module_call!(self, "purge_all", methods::PURGE_ALL, ())
     }
     async fn diagnose(&self) -> Result<Diagnosis, MemoryError> {
-        module_call!(self, "diagnose", "Diagnose", ())
+        module_call!(self, "diagnose", methods::DIAGNOSE, ())
     }
     /// The degradation flags alone — three booleans and at most one cause,
     /// read from the atomics the module's own embed/extract/storage stages set.
@@ -550,7 +605,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         self.proxy("run_connection_sync")
             .await?
             .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
-            .call("RunConnectionSync", (toolkit, connection_id))
+            .call(methods::RUN_CONNECTION_SYNC, (toolkit, connection_id))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -558,7 +613,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         self.proxy("run_source_sync")
             .await?
             .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
-            .call("RunSourceSync", (source_id,))
+            .call(methods::RUN_SOURCE_SYNC, (source_id,))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -570,12 +625,17 @@ impl MemorySourceSync for ModuleMemoryProvider {
         self.proxy("bootstrap_connection")
             .await?
             .with_timeout(SOURCE_SYNC_BUS_TIMEOUT)
-            .call("BootstrapConnection", (toolkit, connection_id))
+            .call(methods::BOOTSTRAP_CONNECTION, (toolkit, connection_id))
             .await
             .map_err(|error| from_bus(&error))
     }
     async fn is_toolkit_syncable(&self, toolkit: &str) -> Result<bool, MemoryError> {
-        module_call!(self, "is_toolkit_syncable", "IsToolkitSyncable", (toolkit,))
+        module_call!(
+            self,
+            "is_toolkit_syncable",
+            methods::IS_TOOLKIT_SYNCABLE,
+            (toolkit,)
+        )
     }
     async fn source_sync_state(
         &self,
@@ -585,7 +645,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         module_call!(
             self,
             "source_sync_state",
-            "SourceSyncState",
+            methods::SOURCE_SYNC_STATE,
             (toolkit, connection_id)
         )
     }
@@ -593,7 +653,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         &self,
         limit: Option<usize>,
     ) -> Result<Vec<SyncAuditEntry>, MemoryError> {
-        module_call!(self, "sync_audit_log", "SyncAuditLog", (limit,))
+        module_call!(self, "sync_audit_log", methods::SYNC_AUDIT_LOG, (limit,))
     }
     async fn estimate_sync_cost_usd(
         &self,
@@ -603,12 +663,12 @@ impl MemorySourceSync for ModuleMemoryProvider {
         module_call!(
             self,
             "estimate_sync_cost_usd",
-            "EstimateSyncCostUsd",
+            methods::ESTIMATE_SYNC_COST_USD,
             (input_tokens, output_tokens)
         )
     }
     async fn sync_statuses(&self) -> Result<Vec<SourceSyncStatus>, MemoryError> {
-        module_call!(self, "sync_statuses", "SyncStatuses", ())
+        module_call!(self, "sync_statuses", methods::SYNC_STATUSES, ())
     }
     async fn raw_archive_coverage(
         &self,
@@ -618,7 +678,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         module_call!(
             self,
             "raw_archive_coverage",
-            "RawArchiveCoverage",
+            methods::RAW_ARCHIVE_COVERAGE,
             (tree_scope, archive_source_id)
         )
     }
@@ -630,7 +690,7 @@ impl MemorySourceSync for ModuleMemoryProvider {
         module_call!(
             self,
             "rebuild_from_raw_archive",
-            "RebuildFromRawArchive",
+            methods::REBUILD_FROM_RAW_ARCHIVE,
             (tree_scope, archive_source_id)
         )
     }
@@ -639,7 +699,12 @@ impl MemorySourceSync for ModuleMemoryProvider {
 #[async_trait]
 impl MemoryCodingSessions for ModuleMemoryProvider {
     async fn coding_session_status(&self) -> Result<Vec<CodingSessionSource>, MemoryError> {
-        module_call!(self, "coding_session_status", "CodingSessionStatus", ())
+        module_call!(
+            self,
+            "coding_session_status",
+            methods::CODING_SESSION_STATUS,
+            ()
+        )
     }
     /// # Why this one call sets its own bus deadline
     ///
@@ -680,7 +745,7 @@ impl MemoryCodingSessions for ModuleMemoryProvider {
         self.proxy("ingest_coding_sessions")
             .await?
             .with_timeout(deadline)
-            .call("IngestCodingSessions", (request,))
+            .call(methods::INGEST_CODING_SESSIONS, (request,))
             .await
             .map_err(|error| from_bus(&error))
     }

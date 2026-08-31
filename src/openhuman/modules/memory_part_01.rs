@@ -460,7 +460,7 @@ impl MemoryProvider for ModuleMemoryProvider {
         }
         let proxy = self.proxy("shutdown").await?;
         proxy
-            .call::<()>("Shutdown", ())
+            .call::<()>(methods::SHUTDOWN, ())
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -545,7 +545,7 @@ impl MemoryCore for ModuleMemoryProvider {
         self.proxy("store")
             .await?
             .call::<()>(
-                "Store",
+                methods::STORE,
                 (
                     namespace,
                     key,
@@ -562,7 +562,7 @@ impl MemoryCore for ModuleMemoryProvider {
     async fn get(&self, namespace: &str, key: &str) -> Result<Option<MemoryEntry>, MemoryError> {
         self.proxy("get")
             .await?
-            .call("Get", (namespace, key))
+            .call(methods::GET, (namespace, key))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -570,7 +570,7 @@ impl MemoryCore for ModuleMemoryProvider {
     async fn forget(&self, namespace: &str, key: &str) -> Result<bool, MemoryError> {
         self.proxy("forget")
             .await?
-            .call("Forget", (namespace, key))
+            .call(methods::FORGET, (namespace, key))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -584,7 +584,7 @@ impl MemoryCore for ModuleMemoryProvider {
         self.proxy("list")
             .await?
             .call(
-                "List",
+                methods::LIST,
                 (
                     namespace.map(str::to_string),
                     category.cloned(),
@@ -598,7 +598,7 @@ impl MemoryCore for ModuleMemoryProvider {
     async fn namespaces(&self) -> Result<Vec<NamespaceSummary>, MemoryError> {
         self.proxy("namespaces")
             .await?
-            .call("Namespaces", ())
+            .call(methods::NAMESPACES, ())
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -618,7 +618,7 @@ impl MemoryRecall for ModuleMemoryProvider {
         // module spend its `limit` on entries the caller may not see.
         self.proxy("recall")
             .await?
-            .call("Recall", (query, limit, opts, scope.cloned()))
+            .call(methods::RECALL, (query, limit, opts, scope.cloned()))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -633,7 +633,7 @@ impl MemoryPortability for ModuleMemoryProvider {
     ) -> Result<ExportPage, MemoryError> {
         self.proxy("export_page")
             .await?
-            .call("ExportPage", (cursor.map(str::to_string), limit))
+            .call(methods::EXPORT_PAGE, (cursor.map(str::to_string), limit))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -644,7 +644,7 @@ impl MemoryPortability for ModuleMemoryProvider {
     ) -> Result<ImportOutcome, MemoryError> {
         self.proxy("import_records")
             .await?
-            .call("ImportRecords", (records,))
+            .call(methods::IMPORT_RECORDS, (records,))
             .await
             .map_err(|error| from_bus(&error))
     }
@@ -664,12 +664,12 @@ macro_rules! module_call {
 #[async_trait]
 impl MemoryIngest for ModuleMemoryProvider {
     async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_document", "IngestDocument", (item,))
+        module_call!(self, "ingest_document", methods::INGEST_DOCUMENT, (item,))
     }
     async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_chat", "IngestChat", (messages,))
+        module_call!(self, "ingest_chat", methods::INGEST_CHAT, (messages,))
     }
     async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_email", "IngestEmail", (messages,))
+        module_call!(self, "ingest_email", methods::INGEST_EMAIL, (messages,))
     }
 }

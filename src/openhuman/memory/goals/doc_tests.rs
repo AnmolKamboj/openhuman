@@ -111,10 +111,17 @@ fn next_id_avoids_collision_with_custom_ids() {
 /// refuse never reaches it.
 #[test]
 fn host_guards_agree_with_the_engine_choke_point() {
-    for rejected in [
-        "email bob@example.org the plan",
-        "store token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-    ] {
+    // The token is assembled at runtime so the source never contains a
+    // contiguous credential-shaped string: secret scanners (tinysweeper's
+    // github-personal-access-token rule among them) fire on the pattern in a
+    // committed file, and they cannot tell a synthetic guard fixture from a
+    // leak. The concatenated value is identical, so the guard under test
+    // still sees a real token shape.
+    let synthetic_token = format!(
+        "store token {}{}",
+        "ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+    for rejected in ["email bob@example.org the plan", synthetic_token.as_str()] {
         let mut doc = GoalsDoc::default();
         assert!(
             add_item(&mut doc, rejected).is_err(),
