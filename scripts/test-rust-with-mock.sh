@@ -98,6 +98,23 @@ if [ -z "${TINYJUICE_TEST_MODULE:-}" ]; then
   export TINYJUICE_TEST_MODULE="$REPO_ROOT/$juice_module"
 fi
 
+# Wallet JSON-RPC E2E sends a recovery phrase only to an attested module. Build
+# artifacts are deliberately not treated as release-pinned recipients, so use
+# the checksum-pinned release archive and its accompanying `modules.toml`.
+wallet_dir="$REPO_ROOT/target/test-modules/tinywallet"
+wallet_archive="$wallet_dir/tinywallet-module-0.5.1-ubuntu-22.04-x86_64.tar.gz"
+wallet_sha256="88b63685cab8a622416f24f1ad569153f249d6d74732ff33c79e4021cf64a611"
+if [ ! -f "$wallet_dir/libtinywallet_module.so" ]; then
+  echo "Downloading the pinned TinyWallet test module ..."
+  mkdir -p "$wallet_dir"
+  curl --fail --location --silent --show-error \
+    "https://github.com/tinyhumansai/tinywallet/releases/download/v0.5.1/$(basename "$wallet_archive")" \
+    --output "$wallet_archive"
+  echo "${wallet_sha256}  $wallet_archive" | sha256sum --check
+  tar -xzf "$wallet_archive" -C "$wallet_dir"
+fi
+export OPENHUMAN_MODULE_PATH="$wallet_dir${OPENHUMAN_MODULE_PATH:+:$OPENHUMAN_MODULE_PATH}"
+
 if [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
   connectors_manifest="vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml"
   connectors_module="$REPO_ROOT/vendor/tinyconnectors/target/release/libtinyconnectors.so"
