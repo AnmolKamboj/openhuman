@@ -3515,7 +3515,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': '按需',
   'flows.copilot.open': '副驾驶',
   'flows.copilot.title': '工作流副驾驶',
-  'flows.copilot.close': '关闭副驾驶',
   'flows.copilot.placeholder': '请求一处修改…',
   'flows.copilot.send': '发送',
   'flows.copilot.thinking': '思考中…',

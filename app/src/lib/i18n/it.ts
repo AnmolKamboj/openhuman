@@ -3783,7 +3783,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'Su richiesta',
   'flows.copilot.open': 'Copilota',
   'flows.copilot.title': 'Copilota dei flussi',
-  'flows.copilot.close': 'Chiudi copilota',
   'flows.copilot.placeholder': 'Richiedi una modifica…',
   'flows.copilot.send': 'Invia',
   'flows.copilot.thinking': 'Sto pensando…',

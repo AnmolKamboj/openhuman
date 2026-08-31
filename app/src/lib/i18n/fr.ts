@@ -3813,7 +3813,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'À la demande',
   'flows.copilot.open': 'Copilote',
   'flows.copilot.title': 'Copilote de flux',
-  'flows.copilot.close': 'Fermer le copilote',
   'flows.copilot.placeholder': 'Demandez une modification…',
   'flows.copilot.send': 'Envoyer',
   'flows.copilot.thinking': 'Réflexion…',

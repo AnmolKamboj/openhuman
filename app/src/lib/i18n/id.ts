@@ -3738,7 +3738,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'Sesuai permintaan',
   'flows.copilot.open': 'Kopilot',
   'flows.copilot.title': 'Kopilot alur kerja',
-  'flows.copilot.close': 'Tutup kopilot',
   'flows.copilot.placeholder': 'Minta sebuah perubahan…',
   'flows.copilot.send': 'Kirim',
   'flows.copilot.thinking': 'Sedang berpikir…',

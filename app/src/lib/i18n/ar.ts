@@ -3632,7 +3632,6 @@ const messages: TranslationMap = {
   'flows.suggest.trigger.manual': 'عند الطلب',
   'flows.copilot.open': 'المساعد',
   'flows.copilot.title': 'مساعد سير العمل',
-  'flows.copilot.close': 'إغلاق المساعد',
   'flows.copilot.placeholder': 'اطلب تغييرًا…',
   'flows.copilot.send': 'إرسال',
   'flows.copilot.thinking': 'يفكر…',
