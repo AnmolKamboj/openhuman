@@ -89,14 +89,46 @@ impl ChatCallbacks {
         role: String,
         request: ModelRequest,
     ) -> tinybus::Result<ModelResponse> {
-        let (model, _) = crate::openhuman::inference::provider::create_chat_model_with_model_id(
-            &role,
-            &self.0,
-            self.0.default_temperature,
-        )
-        .map_err(method_error)?;
+        let model = resolve_chat_model(&role, &self.0).map_err(method_error)?;
         model.invoke(&(), request).await.map_err(method_error)
     }
+}
+
+/// Resolve the model a module-side chat call runs on, by role.
+///
+/// The `"summarization"` role is special-cased through the tree summarizer's
+/// provider ladder (`tree_runtime::ops::create_provider`) rather than the
+/// role factory, because every memory fold the module performs — an explicit
+/// `tree_summarizer_run`/`rebuild`, the scheduled `seal`/`cascade` passes, and
+/// the archivist's recap `summarise` — reaches the host through this one seam,
+/// and the ladder is where the host's routing *policy* lives: local Ollama
+/// when `local_ai.runtime_enabled`, the configured cloud provider only under
+/// `memory_tree.cloud_summarization_opt_in`, and a refusal otherwise.
+///
+/// Routing the role factory directly here was a consent hole, not just a
+/// preference miss: with local AI enabled and the cloud opt-in `false`, the
+/// host-side `create_provider` precondition in `tree_runtime::ops` succeeds
+/// (a local model is constructible), and the blind role factory then resolved
+/// `"summarization"` to the configured cloud provider anyway — memory content
+/// leaving the machine against an explicit opt-out. The ladder cannot make
+/// that move: local wins while it is enabled, and cloud requires the opt-in.
+///
+/// Every other role keeps the role factory unchanged.
+fn resolve_chat_model(
+    role: &str,
+    config: &Config,
+) -> anyhow::Result<std::sync::Arc<dyn tinyinference::model::ChatModel<()>>> {
+    if role == "summarization" {
+        let (model, _) = crate::openhuman::memory::tree::tree_runtime::ops::create_provider(config)
+            .map_err(anyhow::Error::msg)?;
+        return Ok(model);
+    }
+    let (model, _) = crate::openhuman::inference::provider::create_chat_model_with_model_id(
+        role,
+        config,
+        config.default_temperature,
+    )?;
+    Ok(model)
 }
 
 /// Composio, as the engine's sync pipelines need it.

@@ -199,7 +199,7 @@ impl MemoryChunks for ModuleMemoryProvider {
     /// chunk that scored zero, which is why the response is an `Option` rather
     /// than a zeroed row.
     async fn chunk_score(&self, chunk_id: &str) -> Result<Option<ChunkScore>, MemoryError> {
-        module_call!(self, "chunk_score", "ChunkScore", (chunk_id,))
+        module_call!(self, "chunk_score", methods::CHUNK_SCORE, (chunk_id,))
     }
     /// One row per query, in the order asked. The prefixes are derived from the
     /// **host's** source registry — the module has no access to it — so they
@@ -211,7 +211,7 @@ impl MemoryChunks for ModuleMemoryProvider {
         module_call!(
             self,
             "source_ingest_status",
-            "SourceIngestStatus",
+            methods::SOURCE_INGEST_STATUS,
             (source_prefixes,)
         )
     }

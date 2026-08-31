@@ -128,7 +128,7 @@ impl MemoryTree for ModuleMemoryProvider {
         inputs: &[SummaryInput],
         context: &SummaryContext,
     ) -> Result<SummaryOutput, MemoryError> {
-        module_call!(self, "summarise", "Summarise", (inputs, context))
+        module_call!(self, "summarise", methods::SUMMARISE, (inputs, context))
     }
     /// The wire member is `RootSummaries`; the caps are in the signature on
     /// both sides, so the name carries only what distinguishes the call.
@@ -140,7 +140,7 @@ impl MemoryTree for ModuleMemoryProvider {
         module_call!(
             self,
             "root_summaries_with_caps",
-            "RootSummaries",
+            methods::ROOT_SUMMARIES,
             (per_namespace_cap, total_cap)
         )
     }
@@ -516,7 +516,7 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     /// light polls this, and `Diagnose` runs an aggregate scan of the chunk
     /// table.
     async fn degraded_state(&self) -> Result<DegradedCapabilities, MemoryError> {
-        module_call!(self, "degraded_state", "DegradedState", ())
+        module_call!(self, "degraded_state", methods::DEGRADED_STATE, ())
     }
 }
 

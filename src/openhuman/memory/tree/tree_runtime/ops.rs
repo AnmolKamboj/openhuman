@@ -295,21 +295,19 @@ pub async fn tree_summarizer_rebuild(
 /// The two handlers therefore resolve a provider and drop it, purely for the
 /// refusal.
 ///
-/// **One consequence is not preserved and should be fixed upstream:** with
-/// local AI enabled this returns a local Ollama model, but the driver still
-/// builds the cloud-routed `"summarization"` model, so an explicit run no
-/// longer folds locally. `MemoryTree::seal` has behaved that way since it
-/// landed — this makes `run`/`rebuild` consistent with it rather than
-/// introducing the divergence — and the fix belongs where the fold is: the
-/// driver resolving its summariser through the host's ladder (which
-/// [`summarizer_available`] already crosses the seam to answer) rather than
-/// through role routing alone.
+/// **The fold does consult this ladder — through the seam, not this call.**
+/// The model resolved here is dropped; the one the fold actually runs on is
+/// resolved when the driver's `"summarization"`-role chat call crosses back
+/// into `modules::memory_host::resolve_chat_model`, which routes that role
+/// through this same function. So an explicit run folds locally when local AI
+/// is enabled, the scheduled `seal`/`cascade` passes do too, and the cloud
+/// route stays behind `memory_tree.cloud_summarization_opt_in` everywhere.
+/// The precondition here is still worth its construction cost: it refuses
+/// before any driver work begins, with an error that names the setting.
 ///
-/// Visibility note: `pub(crate)` is historical. It was widened so an in-process
-/// embedded driver's `seal`/`cascade` could reach the same resolver; there is
-/// no embedded driver (`memory::driver` is a doc-only namespace and
-/// `memory::binding` refuses `DriverClass::Embedded`), so the only callers are
-/// in this module.
+/// Visibility note: `pub(crate)` is load-bearing — `modules::memory_host`'s
+/// chat seam is the second caller, so the module's folds and this handler's
+/// precondition resolve through one ladder that cannot drift apart.
 pub(crate) fn create_provider(
     config: &Config,
 ) -> Result<

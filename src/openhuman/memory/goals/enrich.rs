@@ -61,9 +61,10 @@ fn build_prompt(context_input: &str, first_run: bool) -> String {
 ///
 /// Resolved here rather than passed in because of [`spawn_enrich_goals`]: that
 /// entry point detaches a `'static` task, which cannot hold a borrowed
-/// `&dyn MemoryGoals` across the spawn. `active_memory_guard` works inside a
-/// spawned task — `CoreContext::current` falls back to the process default
-/// context, which a detached task still sees.
+/// `&dyn MemoryGoals` across the spawn. Inside that task, `CoreContext::current`
+/// answers the scope [`spawn_enrich_goals`] re-enters — the context captured at
+/// the spawn site — so a scoped multi-tenant dispatch resolves its own tenant's
+/// guard rather than the process default it would otherwise fall back to.
 ///
 /// # Errors
 ///
@@ -151,10 +152,26 @@ pub fn spawn_enrich_goals(
     workspace_dir: std::path::PathBuf,
     context_input: String,
 ) {
+    // Capture the ambient CoreContext before detaching: `tokio::spawn` does
+    // not inherit the `CURRENT_CONTEXT` task-local, so under a scoped
+    // multi-tenant dispatch the detached task's `active_memory_guard` (see
+    // [`read_goals`]) would fall back to the process default context and
+    // enrich another tenant's goals document with this tenant's recap.
+    // Re-entering the scope keeps the task on the dispatch that spawned it;
+    // with no scoped context (the desktop path) this is a no-op.
+    let core_ctx = crate::core::runtime::context::CoreContext::current();
     tokio::spawn(async move {
-        match enrich_goals(&config, &workspace_dir, &context_input).await {
-            Ok(_) => log::debug!("[memory_goals] background enrich finished"),
-            Err(e) => log::warn!("[memory_goals] background enrich failed: {e}"),
+        let run = async move {
+            match enrich_goals(&config, &workspace_dir, &context_input).await {
+                Ok(_) => log::debug!("[memory_goals] background enrich finished"),
+                Err(e) => log::warn!("[memory_goals] background enrich failed: {e}"),
+            }
+        };
+        match core_ctx {
+            Some(scope_ctx) => {
+                crate::core::runtime::context::CoreContext::scope(scope_ctx, run).await
+            }
+            None => run.await,
         }
     });
 }
