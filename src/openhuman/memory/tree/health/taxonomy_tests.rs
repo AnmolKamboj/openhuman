@@ -182,7 +182,10 @@ fn every_remediation_key_is_derived_from_its_code() {
 /// A code this build has no variant for is `None`, not a nearest guess.
 #[test]
 fn an_unknown_code_does_not_parse() {
-    assert_eq!(FailureCode::from_str("a_cause_this_build_never_heard_of"), None);
+    assert_eq!(
+        FailureCode::from_str("a_cause_this_build_never_heard_of"),
+        None
+    );
     assert_eq!(FailureCode::from_str(""), None);
     // Casing is not normalised: the wire is snake_case and only snake_case.
     assert_eq!(FailureCode::from_str("Auth_Missing"), None);
