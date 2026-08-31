@@ -3668,6 +3668,7 @@ const messages: TranslationMap = {
   'flows.import.error': 'تعذّر استيراد سير العمل هذا. تحقق من الملف وحاول مرة أخرى.',
   'flows.import.warningTitle': 'تحذير الاستيراد',
   'flows.canvas.title': 'سير العمل',
+  'flows.canvas.description': 'أنشئ هذه الأتمتة خطوة بخطوة، ثم احفظها وشغّلها.',
   'flows.canvas.loading': 'جارٍ تحميل سير العمل…',
   'flows.canvas.loadError': 'تعذّر تحميل سير العمل هذا. يرجى المحاولة مرة أخرى.',
   'flows.canvas.notFound': 'تعذّر العثور على سير العمل هذا.',

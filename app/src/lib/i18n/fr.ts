@@ -3852,6 +3852,7 @@ const messages: TranslationMap = {
   'flows.import.error': "Impossible d'importer ce workflow. Vérifiez le fichier et réessayez.",
   'flows.import.warningTitle': "Avertissement d'importation",
   'flows.canvas.title': 'Workflow',
+  'flows.canvas.description': 'Créez cette automatisation étape par étape, puis enregistrez-la et exécutez-la.',
   'flows.canvas.loading': 'Chargement du workflow…',
   'flows.canvas.loadError': 'Impossible de charger ce workflow. Veuillez réessayer.',
   'flows.canvas.notFound': 'Ce workflow est introuvable.',

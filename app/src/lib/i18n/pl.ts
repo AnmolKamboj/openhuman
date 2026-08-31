@@ -3813,6 +3813,7 @@ const messages: TranslationMap = {
     'Nie udało się zaimportować tego przepływu pracy. Sprawdź plik i spróbuj ponownie.',
   'flows.import.warningTitle': 'Ostrzeżenie importu',
   'flows.canvas.title': 'Przepływ pracy',
+  'flows.canvas.description': 'Zbuduj tę automatyzację krok po kroku, a następnie zapisz ją i uruchom.',
   'flows.canvas.loading': 'Wczytywanie przepływu pracy…',
   'flows.canvas.loadError': 'Nie można wczytać tego przepływu pracy. Spróbuj ponownie.',
   'flows.canvas.notFound': 'Nie znaleziono tego przepływu pracy.',

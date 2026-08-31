@@ -3717,6 +3717,7 @@ const messages: TranslationMap = {
   'flows.import.error': '이 워크플로를 가져올 수 없습니다. 파일을 확인하고 다시 시도하세요.',
   'flows.import.warningTitle': '가져오기 경고',
   'flows.canvas.title': '워크플로',
+  'flows.canvas.description': '이 자동화를 단계별로 구성한 다음 저장하고 실행하세요.',
   'flows.canvas.loading': '워크플로 로드 중…',
   'flows.canvas.loadError': '이 워크플로를 불러올 수 없습니다. 다시 시도해 주세요.',
   'flows.canvas.notFound': '이 워크플로를 찾을 수 없습니다.',

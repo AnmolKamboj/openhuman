@@ -3761,6 +3761,7 @@ const messages: TranslationMap = {
   'flows.import.error': 'এই ওয়ার্কফ্লোটি আমদানি করা যায়নি। ফাইলটি পরীক্ষা করে আবার চেষ্টা করুন।',
   'flows.import.warningTitle': 'আমদানি সতর্কতা',
   'flows.canvas.title': 'ওয়ার্কফ্লো',
+  'flows.canvas.description': 'ধাপে ধাপে এই অটোমেশনটি তৈরি করুন, তারপর সংরক্ষণ করে চালান।',
   'flows.canvas.loading': 'ওয়ার্কফ্লো লোড হচ্ছে…',
   'flows.canvas.loadError': 'এই ওয়ার্কফ্লোটি লোড করা যায়নি। আবার চেষ্টা করুন।',
   'flows.canvas.notFound': 'এই ওয়ার্কফ্লোটি পাওয়া যায়নি।',

@@ -3776,6 +3776,7 @@ const messages: TranslationMap = {
   'flows.import.error': 'Tidak dapat mengimpor alur kerja ini. Periksa file dan coba lagi.',
   'flows.import.warningTitle': 'Peringatan impor',
   'flows.canvas.title': 'Alur kerja',
+  'flows.canvas.description': 'Bangun otomatisasi ini langkah demi langkah, lalu simpan dan jalankan.',
   'flows.canvas.loading': 'Memuat alur kerja…',
   'flows.canvas.loadError': 'Alur kerja ini tidak dapat dimuat. Silakan coba lagi.',
   'flows.canvas.notFound': 'Alur kerja ini tidak ditemukan.',

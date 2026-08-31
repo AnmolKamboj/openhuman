@@ -3551,6 +3551,7 @@ const messages: TranslationMap = {
   'flows.import.error': '无法导入此工作流。请检查文件后重试。',
   'flows.import.warningTitle': '导入警告',
   'flows.canvas.title': '工作流',
+  'flows.canvas.description': '逐步构建此自动化流程，然后保存并运行。',
   'flows.canvas.loading': '正在加载工作流…',
   'flows.canvas.loadError': '无法加载此工作流。请重试。',
   'flows.canvas.notFound': '未找到此工作流。',

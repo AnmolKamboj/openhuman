@@ -3762,6 +3762,7 @@ const messages: TranslationMap = {
   'flows.import.error': 'इस वर्कफ़्लो को आयात नहीं किया जा सका। फ़ाइल जाँचें और पुनः प्रयास करें।',
   'flows.import.warningTitle': 'आयात चेतावनी',
   'flows.canvas.title': 'वर्कफ़्लो',
+  'flows.canvas.description': 'इस स्वचालन को चरण दर चरण बनाएं, फिर उसे सहेजकर चलाएं।',
   'flows.canvas.loading': 'वर्कफ़्लो लोड हो रहा है…',
   'flows.canvas.loadError': 'यह वर्कफ़्लो लोड नहीं हो सका। कृपया पुनः प्रयास करें।',
   'flows.canvas.notFound': 'यह वर्कफ़्लो नहीं मिला।',

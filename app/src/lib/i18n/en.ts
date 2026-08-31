@@ -4385,6 +4385,7 @@ const en: TranslationMap = {
   // flow at /flows/:id. `flows.nodeKind.*` labels the 13 tinyflows node
   // kinds (`tinyflows::model::NodeKind`) shown in each canvas node card.
   'flows.canvas.title': 'Workflow',
+  'flows.canvas.description': 'Build this automation step by step, then save and run it.',
   'flows.canvas.loading': 'Loading workflow…',
   'flows.canvas.loadError': 'Could not load this workflow. Please try again.',
   'flows.canvas.notFound': 'This workflow could not be found.',

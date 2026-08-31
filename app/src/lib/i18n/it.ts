@@ -3822,6 +3822,7 @@ const messages: TranslationMap = {
     'Impossibile importare questo flusso di lavoro. Controlla il file e riprova.',
   'flows.import.warningTitle': 'Avviso di importazione',
   'flows.canvas.title': 'Flusso di lavoro',
+  'flows.canvas.description': 'Crea questa automazione passo dopo passo, poi salvala ed eseguila.',
   'flows.canvas.loading': 'Caricamento flusso di lavoro…',
   'flows.canvas.loadError': 'Impossibile caricare questo flusso di lavoro. Riprova.',
   'flows.canvas.notFound': 'Flusso di lavoro non trovato.',
