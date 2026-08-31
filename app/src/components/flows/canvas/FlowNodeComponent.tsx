@@ -22,6 +22,13 @@
  * filled tile keeps kinds recognisable before the label is readable without
  * ever impersonating run state.
  *
+ * The card is 224px wide and tightly padded. It was 264px, sized when ports
+ * were labelled rows INSIDE the card and needed the horizontal room; with the
+ * ports on the top and bottom edges that room is dead space, and a narrower
+ * card means more of the graph fits on screen at a readable zoom. The name
+ * still gets ~156px after the 32px kind tile and the padding, which is what it
+ * truncates against.
+ *
  * The card is deliberately elevated rather than flat: on the dark theme the
  * canvas is pure black and `surface` is `#171717`, so a flat card with a
  * default `line` border is nearly invisible. It uses a top-lit gradient,
@@ -134,7 +141,7 @@ function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNode>) {
     <div
       data-testid="flow-node"
       data-node-kind={data.kind}
-      className={`relative w-[264px] rounded-2xl border bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.06),0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-150 dark:shadow-[0_2px_6px_rgba(0,0,0,0.5),0_8px_24px_rgba(0,0,0,0.45)] ${
+      className={`relative w-[224px] rounded-2xl border bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.06),0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-150 dark:shadow-[0_2px_6px_rgba(0,0,0,0.5),0_8px_24px_rgba(0,0,0,0.45)] ${
         selected
           ? 'border-primary-500 ring-2 ring-primary-500/40'
           : 'border-line-strong hover:-translate-y-px hover:border-primary-500/40 hover:shadow-[0_2px_4px_rgba(0,0,0,0.08),0_10px_28px_rgba(0,0,0,0.12)] dark:hover:shadow-[0_4px_10px_rgba(0,0,0,0.55),0_14px_36px_rgba(0,0,0,0.5)]'
@@ -174,7 +181,7 @@ function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNode>) {
           divider shares the card's own `bg-surface`, so the body reads as one
           uninterrupted surface: a separately-tinted summary well plus an
           untinted connector row gave the card three competing bands. */}
-      <div className="flex items-center gap-3 rounded-t-2xl border-b border-line-strong/60 bg-surface-muted px-3 py-2.5">
+      <div className="flex items-center gap-2.5 rounded-t-2xl border-b border-line-strong/60 bg-surface-muted px-2.5 py-2">
         {/* Kind glyph on a saturated tile — the card's only filled colour.
             Status stays legible because it is drawn as a ring around the whole
             card, so identity (filled square) and state (outline) never share
@@ -211,7 +218,7 @@ function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNode>) {
           identity from behaviour, so a second fill here would only add a band. */}
       {summary && (
         <div
-          className="px-3 pb-3 pt-2 text-[11px] leading-snug text-content-secondary"
+          className="px-2.5 pb-2.5 pt-1.5 text-[11px] leading-snug text-content-secondary"
           data-testid="flow-node-summary">
           {summary}
         </div>
