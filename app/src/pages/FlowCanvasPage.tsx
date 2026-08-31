@@ -257,7 +257,6 @@ function SaveIcon() {
   );
 }
 
-
 /**
  * The canvas header's Back control. One component rather than the three
  * byte-identical copies this file used to carry (the editor, the load-state
