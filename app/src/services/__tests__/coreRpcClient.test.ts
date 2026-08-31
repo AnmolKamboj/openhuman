@@ -815,8 +815,30 @@ describe('classifyRpcError', () => {
     expect(classifyRpcError(message, status)).toBe(expected);
   });
 
-  test('http status 401 wins over message text', () => {
-    expect(classifyRpcError('anything', 401)).toBe('auth_expired');
+  // A 401 on the RPC endpoint is the LOCAL core's bearer gate, not the
+  // TinyHumans backend — the backend's own rejections arrive as a JSON-RPC
+  // error inside a 200 and are covered by the message cases above. This used
+  // to assert `auth_expired`, which paired with a `confirmed` reason and so
+  // signed the user out of their account whenever the core's per-launch bearer
+  // went stale.
+  test('http status 401 is the core bearer gate, not user session expiry', () => {
+    expect(classifyRpcError('anything', 401)).toBe('core_auth');
+    expect(
+      classifyRpcError(
+        '{"ok":false,"error":"unauthorized","message":"Missing or invalid Authorization header. Supply \'Authorization: Bearer <token>\'."}',
+        401
+      )
+    ).toBe('core_auth');
+  });
+
+  // The backend path must still sign the user out — that IS the server saying
+  // the session is gone, and it arrives with no HTTP status because the core
+  // returns it as a JSON-RPC error in a 200.
+  test('a backend session rejection still classifies as auth_expired', () => {
+    expect(
+      classifyRpcError('SESSION_EXPIRED: backend rejected session token on GET /teams/me/usage')
+    ).toBe('auth_expired');
+    expect(classifyRpcError('GET /teams/me/usage failed (401 Unauthorized)')).toBe('auth_expired');
   });
 
   test('http status 429 wins over message text', () => {
@@ -852,7 +874,11 @@ describe('classifyRpcError', () => {
 describe('classifyAuthExpiredReason', () => {
   test.each([
     // Confirmed server-side rejection → safe to sign out immediately.
-    ['anything', 401, 'confirmed'],
+    // NOTE: there is deliberately no `['anything', 401, 'confirmed']` case any
+    // more. A 401 is the local core's bearer gate and no longer reaches here;
+    // if one ever did, `unconfirmed` is the safe fallthrough (corroborate
+    // before destroying the session) rather than an immediate sign-out.
+    ['anything', 401, 'unconfirmed'],
     ['Session expired. Please log in again.', undefined, 'confirmed'],
     ['SESSION_EXPIRED', undefined, 'confirmed'],
     ['GET /teams failed (401 Unauthorized): {"success":false}', undefined, 'confirmed'],
