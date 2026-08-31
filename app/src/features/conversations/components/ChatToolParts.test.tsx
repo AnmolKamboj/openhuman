@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import type { SubagentActivity } from '../../../store/chatRuntimeSlice';
@@ -42,5 +43,48 @@ describe('ChatToolParts', () => {
     );
 
     expect(screen.getByText('live delegation')).toBeVisible();
+  });
+
+  it('renders ordinary tools with rich input and output on the assistant-ui surface', async () => {
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="web_search_tool"
+        toolCallId="search-1"
+        args={{ query: 'Lean open conjectures' } as never}
+        argsText={'{"query":"Lean open conjectures"}'}
+        result="Found 12 candidate problems"
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('assistant-ui-tool-call')).toHaveTextContent('Searched the web');
+    await userEvent.click(screen.getByRole('button', { name: /Searched the web/ }));
+    expect(screen.getByText(/Lean open conjectures/)).toBeInTheDocument();
+    expect(screen.getByText('Found 12 candidate problems')).toBeInTheDocument();
+  });
+
+  it('unwraps a single content field instead of showing a redundant title', async () => {
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="web_fetch"
+        toolCallId="fetch-1"
+        args={{} as never}
+        argsText="{}"
+        result={{ content: '**Example Domain**', tool_call_id: 'fetch-1', success: true }}
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Fetched from the web/ }));
+    expect(screen.getByRole('strong')).toHaveTextContent('Example Domain');
+    expect(screen.queryByText('Content', { exact: true })).not.toBeInTheDocument();
   });
 });

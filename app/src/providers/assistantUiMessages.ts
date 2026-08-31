@@ -140,9 +140,13 @@ function assistantParts(
         parts.push(toolPart(entry));
       }
     }
-    // Narration is process commentary, not the final assistant answer. The
-    // legacy pane keeps it in the processing view; projecting it as ordinary
-    // text here would duplicate prose around the persisted final response.
+    if (item.kind === 'narration' && item.text.trim().length > 0) {
+      // Narration emitted before a tool call is assistant content in its own
+      // right. Keep it inline in assistant-ui's ordered part stream; the final
+      // answer is appended separately below, so this preserves the real turn
+      // sequence without relying on the removed legacy processing pane.
+      parts.push({ type: 'text', text: item.text });
+    }
   }
 
   for (const entry of [...timeline].sort((a, b) => a.seq - b.seq)) {
@@ -260,6 +264,8 @@ export function streamingTailMessage(
 }
 
 export type AssistantUiProjection = {
+  /** Whether the synthetic live tail has an active core turn driving it. */
+  isRunning?: boolean;
   liveTimeline?: readonly ToolTimelineEntry[];
   liveTranscript?: readonly ProcessingTranscriptItem[];
   turnTimelines?: Readonly<Record<string, readonly ToolTimelineEntry[]>>;
@@ -280,25 +286,71 @@ export function buildRuntimeMessages(
   projection: AssistantUiProjection = {}
 ): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
+  const claimedRequestIds = new Set(
+    messages.flatMap(message =>
+      message.sender === 'agent' && typeof message.extraMetadata?.requestId === 'string'
+        ? [message.extraMetadata.requestId]
+        : []
+    )
+  );
+  const projectedRequestIds = [
+    ...new Set([
+      ...Object.keys(projection.turnTimelines ?? {}),
+      ...Object.keys(projection.turnTranscripts ?? {}),
+    ]),
+  ].filter(requestId => !claimedRequestIds.has(requestId));
+  let orphanRequestCursor = 0;
+  const lastVisibleAgentId = [...messages]
+    .reverse()
+    .find(message => message.sender === 'agent' && !message.extraMetadata?.hidden)?.id;
   for (const msg of messages) {
     if (msg.extraMetadata?.hidden) continue;
     const requestId =
       msg.sender === 'agent' && typeof msg.extraMetadata?.requestId === 'string'
         ? msg.extraMetadata.requestId
         : undefined;
+    // Async acknowledgements/background deliveries can be persisted without
+    // message-level request metadata. The transcript maps are chronological
+    // and request-keyed, so pair only unclaimed trails with unanchored agent
+    // messages in the same order instead of dropping them from assistant-ui.
+    const effectiveRequestId =
+      requestId ??
+      (msg.sender === 'agent' ? projectedRequestIds[orphanRequestCursor++] : undefined);
+    const persistedTimeline = effectiveRequestId
+      ? projection.turnTimelines?.[effectiveRequestId]
+      : undefined;
+    const persistedTranscript = effectiveRequestId
+      ? projection.turnTranscripts?.[effectiveRequestId]
+      : undefined;
+    // `chat_done` clears the active lifecycle before the completed snapshot is
+    // indexed into the request maps. Keep the just-settled tools/reasoning on
+    // the final assistant message during that handoff; never mint a running
+    // synthetic tail for them.
+    const useSettledLiveFallback =
+      projection.isRunning === false &&
+      msg.id === lastVisibleAgentId &&
+      !persistedTimeline &&
+      !persistedTranscript;
     out.push(
       toThreadMessageLike(
         msg,
-        requestId ? (projection.turnTimelines?.[requestId] ?? EMPTY_TIMELINE) : EMPTY_TIMELINE,
-        requestId ? (projection.turnTranscripts?.[requestId] ?? EMPTY_TRANSCRIPT) : EMPTY_TRANSCRIPT
+        persistedTimeline ??
+          (useSettledLiveFallback ? (projection.liveTimeline ?? EMPTY_TIMELINE) : EMPTY_TIMELINE),
+        persistedTranscript ??
+          (useSettledLiveFallback
+            ? (projection.liveTranscript ?? EMPTY_TRANSCRIPT)
+            : EMPTY_TRANSCRIPT)
       )
     );
   }
-  const tail = streamingTailMessage(
-    streaming,
-    projection.liveTimeline ?? EMPTY_TIMELINE,
-    projection.liveTranscript ?? EMPTY_TRANSCRIPT
-  );
+  const tail =
+    projection.isRunning === false
+      ? null
+      : streamingTailMessage(
+          streaming,
+          projection.liveTimeline ?? EMPTY_TIMELINE,
+          projection.liveTranscript ?? EMPTY_TRANSCRIPT
+        );
   if (tail) out.push(tail);
   return out;
 }

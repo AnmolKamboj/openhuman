@@ -172,6 +172,22 @@ test.describe('Chat Tool Call Flow', () => {
 
     await expect(agentMessageText(page, CANARY_FINAL)).toBeVisible({ timeout: 40_000 });
 
+    // Regression: completed tool/reasoning arrays remain in Redux briefly, but
+    // they must not create a synthetic running tail after the final answer.
+    await expect(page.getByLabel('Assistant is working')).toHaveCount(0);
+    await expect(page.getByText('running', { exact: true })).toHaveCount(0);
+
+    // Tool activity belongs to assistant-ui and renders as a readable card,
+    // never through the removed legacy Agentic task insights timeline.
+    await expect(page.getByTestId('agent-task-insights')).toHaveCount(0);
+    const toolCard = page.getByTestId('assistant-ui-tool-call').last();
+    await expect(toolCard).toBeVisible();
+    await expect(toolCard).not.toContainText('running');
+    const toolTrigger = toolCard.getByRole('button');
+    if ((await toolTrigger.getAttribute('aria-expanded')) !== 'true') await toolTrigger.click();
+    await expect(toolCard.getByText('Output', { exact: true })).toBeVisible();
+    await expect(toolCard.getByRole('link', { name: 'https://example.com/' })).toBeVisible();
+
     await expect
       .poll(
         async () => {

@@ -133,6 +133,25 @@ describe('buildRuntimeMessages', () => {
     expect(ids).toEqual(['a', STREAMING_TAIL_ID]);
   });
 
+  it('does not keep a synthetic thinking/tool tail running after lifecycle completion', () => {
+    const projected = buildRuntimeMessages([msg({ id: 'answer', sender: 'agent' })], null, {
+      isRunning: false,
+      liveTimeline: [tool({ id: 'stale-tool', status: 'success' })],
+      liveTranscript: [
+        { kind: 'thinking', round: 1, seq: 0, text: 'already finished thinking' },
+      ],
+    });
+    const ids = projected.map(message => message.id);
+
+    expect(ids).toEqual(['answer']);
+    expect(ids).not.toContain(STREAMING_TAIL_ID);
+    expect(projected[0]?.content).toEqual([
+      { type: 'reasoning', text: 'already finished thinking' },
+      expect.objectContaining({ type: 'tool-call', toolCallId: 'stale-tool' }),
+      { type: 'text', text: 'hello' },
+    ]);
+  });
+
   it('replays a settled turn reasoning and tool calls from its request id', () => {
     const answer = msg({
       id: 'answer',
@@ -143,7 +162,8 @@ describe('buildRuntimeMessages', () => {
     const timeline = [tool({ id: 'call-1', status: 'success', result: 'found it' })];
     const transcript = [
       { kind: 'thinking' as const, round: 1, seq: 0, text: 'need to search' },
-      { kind: 'toolCall' as const, round: 1, seq: 1, callId: 'call-1' },
+      { kind: 'narration' as const, round: 1, seq: 1, text: 'I will check the sources.' },
+      { kind: 'toolCall' as const, round: 1, seq: 2, callId: 'call-1' },
     ];
 
     expect(
@@ -153,6 +173,7 @@ describe('buildRuntimeMessages', () => {
       })[0]?.content
     ).toEqual([
       { type: 'reasoning', text: 'need to search' },
+      { type: 'text', text: 'I will check the sources.' },
       expect.objectContaining({
         type: 'tool-call',
         toolCallId: 'call-1',
@@ -160,6 +181,31 @@ describe('buildRuntimeMessages', () => {
         result: 'found it',
       }),
       { type: 'text', text: 'finished' },
+    ]);
+  });
+
+  it('chronologically anchors persisted trails to async agent messages without request ids', () => {
+    const acknowledgement = msg({
+      id: 'ack',
+      sender: 'agent',
+      content: 'Accepted background work',
+      extraMetadata: {},
+    });
+    const content = buildRuntimeMessages([acknowledgement], null, {
+      isRunning: false,
+      turnTimelines: { 'request-async': [tool({ id: 'async-tool', status: 'success' })] },
+      turnTranscripts: {
+        'request-async': [
+          { kind: 'thinking', round: 1, seq: 0, text: 'delegate this research' },
+          { kind: 'toolCall', round: 1, seq: 1, callId: 'async-tool' },
+        ],
+      },
+    })[0]?.content;
+
+    expect(content).toEqual([
+      { type: 'reasoning', text: 'delegate this research' },
+      expect.objectContaining({ type: 'tool-call', toolCallId: 'async-tool' }),
+      { type: 'text', text: 'Accepted background work' },
     ]);
   });
 

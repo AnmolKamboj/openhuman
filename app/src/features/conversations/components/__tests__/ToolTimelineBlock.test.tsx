@@ -82,7 +82,7 @@ describe('SubagentActivityBlock', () => {
     expect(calls).toHaveLength(3);
     // Human labels + timing, with status as a tinted "Done" / "Failed" /
     // "Running" tag instead of a bare ✓/✕ glyph or the raw lowercase word.
-    expect(calls[0].textContent).toContain('Searching the web');
+    expect(calls[0].textContent).toContain('Searched the web');
     expect(calls[0].textContent).toContain('Done');
     expect(calls[0].textContent).toContain('312ms');
     expect(calls[1].textContent).toContain('Composio Execute');
@@ -91,6 +91,32 @@ describe('SubagentActivityBlock', () => {
     expect(calls[2].textContent).toContain('Reading file');
     expect(calls[2].textContent).toContain('Failed');
     expect(calls[2].textContent).toContain('50ms');
+  });
+
+  it('renders subagent web output as Markdown instead of raw JSON', () => {
+    renderInStore(
+      <SubagentActivityBlock
+        subagent={{
+          taskId: 't',
+          agentId: 'researcher',
+          toolCalls: [],
+          transcript: [
+            {
+              kind: 'tool',
+              callId: 'search-1',
+              toolName: 'web_search_tool',
+              status: 'success',
+              result: JSON.stringify({ content: '**Formal Conjectures**\n\n- OEIS Open' }),
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByText('Searched the web')).toBeInTheDocument();
+    expect(screen.getByTestId('subagent-tool-output')).toHaveTextContent('Formal Conjectures');
+    expect(screen.getByRole('strong')).toHaveTextContent('Formal Conjectures');
+    expect(screen.queryByText(/"content"/)).not.toBeInTheDocument();
   });
 
   it('labels cancelled / awaiting-user calls distinctly (not the green "Done" pill)', () => {
@@ -183,7 +209,7 @@ describe('SubagentActivityBlock', () => {
     expect(rows[0]).toHaveAttribute('data-testid', 'subagent-thought');
     expect(rows[0].textContent).toContain('I should search the web first');
     expect(rows[1]).toHaveAttribute('data-testid', 'subagent-tool-call');
-    expect(rows[1].textContent).toContain('Searching the web');
+    expect(rows[1].textContent).toContain('Searched the web');
     expect(rows[2]).toHaveAttribute('data-testid', 'subagent-thought');
     expect(rows[2].textContent).toContain('Found three relevant results');
   });
@@ -1350,7 +1376,7 @@ describe('ToolTimelineBlock — sub-agent activity survives the transcript path'
     expect(screen.getByTestId('processing-subagent')).toBeInTheDocument();
     const calls = screen.getAllByTestId('subagent-tool-call');
     expect(calls).toHaveLength(2);
-    expect(calls[0].textContent).toContain('Searching the web');
+    expect(calls[0].textContent).toContain('Searched the web');
     expect(calls[0].textContent).toContain('Done');
     // Human label, not the raw `web_fetch` slug.
     expect(calls[1].textContent).toContain('Fetching');

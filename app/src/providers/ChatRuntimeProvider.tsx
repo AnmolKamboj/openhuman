@@ -39,6 +39,7 @@ import {
   clearProcessingForThread,
   clearStreamingAssistantForThread,
   endInferenceTurn,
+  fetchAndHydrateCompletedTurnState,
   fetchAndHydrateDerivedTranscript,
   markInferenceTurnStreaming,
   parseToolFailure,
@@ -473,6 +474,13 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       await flushQueuedFollowups(event.thread_id);
       dispatch(endInferenceTurn({ threadId: event.thread_id }));
       dispatch(clearThreadInferenceActive(event.thread_id));
+      // Socket reducers keep only the current iteration's prose in the live
+      // buffer. Once the turn settles, replace that partial projection with
+      // the core's completed snapshot, whose ordered transcript contains every
+      // parent and sub-agent event from the whole turn. Doing this here (after
+      // ending the live lifecycle) matters: `hydrateRuntimeFromSnapshot`
+      // intentionally refuses to overwrite an actively streaming turn.
+      await dispatch(fetchAndHydrateCompletedTurnState(event.thread_id));
       // Live-turn seam: the turn just settled and its line was appended to the
       // append-only transcript. Invalidate/refresh the thread's derived
       // settled-turn trails so the next reopen is fresh. The just-finished turn

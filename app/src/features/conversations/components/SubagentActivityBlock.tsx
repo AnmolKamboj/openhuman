@@ -37,6 +37,38 @@ function toolCallTone(status: ToolTimelineEntryStatus): string {
   return 'text-coral-700 dark:text-coral-300';
 }
 
+function subagentToolLabel(name: string, status: ToolTimelineEntryStatus): string {
+  const running = status === 'running';
+  if (name === 'web_fetch') return running ? 'Fetching from the web' : 'Fetched from the web';
+  if (name === 'web_search_tool' || name === 'web_search') {
+    return running ? 'Searching the web' : 'Searched the web';
+  }
+  return formatToolName(name);
+}
+
+function readableToolOutput(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      return readableToolOutput(JSON.parse(trimmed)) ?? trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+  if (typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    for (const key of ['content', 'output', 'message', 'result']) {
+      if (typeof object[key] === 'string' && object[key].trim()) return object[key].trim();
+    }
+    return Object.entries(object)
+      .map(([key, item]) => `- **${key.replace(/[_-]+/g, ' ')}:** ${String(item)}`)
+      .join('\n');
+  }
+  return String(value);
+}
+
 /**
  * Status pill for a tool-call row — a tinted "Done" / "Failed" / "Running"
  * tag instead of a bare ✓/✕ glyph, so the outcome reads at a glance. Built on
@@ -82,8 +114,11 @@ export function ToolCallRow({
     detail?: string;
     /** Structured why/next explanation for a FAILED child tool call (#4459). */
     failure?: ToolFailureExplanation;
+    /** Child tool output, rendered as Markdown when present. */
+    result?: unknown;
   };
 }) {
+  const output = readableToolOutput(call.result);
   return (
     <div className="min-w-0" data-testid="subagent-tool-call">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -91,7 +126,7 @@ export function ToolCallRow({
           •
         </span>
         <span className="shrink-0 text-[12px] whitespace-nowrap text-content-secondary">
-          {call.displayName ?? formatToolName(call.toolName)}
+          {call.displayName ?? subagentToolLabel(call.toolName, call.status)}
         </span>
         {/* The contextual arg (path / recipient / query) can be long, so it
           truncates to a single line and absorbs the row's spare width — the
@@ -117,6 +152,13 @@ export function ToolCallRow({
         ) : null}
       </div>
       {call.status === 'error' && call.failure ? <ToolFailureLines failure={call.failure} /> : null}
+      {output ? (
+        <div
+          data-testid="subagent-tool-output"
+          className="bg-surface-muted mt-1 ml-4 rounded-md px-2 py-1.5 text-xs text-content-secondary">
+          <BubbleMarkdown content={output} />
+        </div>
+      ) : null}
     </div>
   );
 }

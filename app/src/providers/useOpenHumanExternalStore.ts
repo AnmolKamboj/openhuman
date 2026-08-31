@@ -59,24 +59,25 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       : EMPTY_TURN_MAP
   );
 
+  // `started` and `streaming` are both in-flight. A completed turn can retain
+  // its tool/reasoning arrays while the persisted projection catches up; those
+  // arrays must not mint a forever-running assistant-ui tail.
+  const isRunning = lifecycle === 'started' || lifecycle === 'streaming';
+
   // Recomputed only when the settled transcript or the live tail changes.
   // Settled messages are converted through an identity-keyed cache, so a token
   // landing on the tail re-converts exactly one message, never the transcript.
   const runtimeMessages = useMemo(
     () =>
       buildRuntimeMessages(messages, streaming, {
+        isRunning,
         liveTimeline,
         liveTranscript,
         turnTimelines,
         turnTranscripts,
       }),
-    [messages, streaming, liveTimeline, liveTranscript, turnTimelines, turnTranscripts]
+    [messages, streaming, isRunning, liveTimeline, liveTranscript, turnTimelines, turnTranscripts]
   );
-
-  // `started` and `streaming` are both in-flight; the row is deleted on
-  // completion, so a present lifecycle (other than the cold-boot `interrupted`
-  // marker, which has no live driver) means a turn is running.
-  const isRunning = lifecycle === 'started' || lifecycle === 'streaming';
 
   const onNew = useCallback(
     async (message: AppendMessage) => {

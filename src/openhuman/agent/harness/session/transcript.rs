@@ -528,6 +528,35 @@ fn build_message_line(
         Some((failed, detail)) => (failed, detail),
         None => (false, None),
     };
+    // Every assistant model response can carry its own thinking metadata,
+    // especially an intermediate response that also opens tool calls. Turn
+    // usage is attached only to the final assistant row, so sourcing reasoning
+    // exclusively from it silently dropped all pre-tool thoughts from the
+    // append-only display transcript.
+    let message_reasoning = (msg.role == "assistant")
+        .then(|| {
+            extra_metadata
+                .as_ref()
+                .and_then(|meta| {
+                    meta.get(crate::openhuman::agent::message_convert::REASONING_EXT_KEY)
+                })
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .flatten();
+    let native_envelope = (msg.role == "assistant")
+        .then(|| serde_json::from_str::<serde_json::Value>(&msg.content).ok())
+        .flatten();
+    let envelope_reasoning = native_envelope
+        .as_ref()
+        .and_then(|value| value.get("reasoning_content"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let envelope_tool_calls = native_envelope
+        .as_ref()
+        .and_then(|value| value.get("tool_calls"))
+        .and_then(|value| serde_json::from_value::<Vec<ToolCall>>(value.clone()).ok())
+        .filter(|calls| !calls.is_empty());
     MessageLine {
         id: msg.id.clone(),
         role: msg.role.clone(),
@@ -536,13 +565,17 @@ fn build_message_line(
         provider: assistant_usage.map(|tu| tu.provider.clone()),
         model: assistant_usage.map(|tu| tu.model.clone()),
         usage: assistant_usage.map(|tu| tu.usage.clone()),
-        reasoning_content: assistant_usage.and_then(|tu| tu.reasoning_content.clone()),
-        tool_calls: assistant_usage.and_then(|tu| {
-            if tu.tool_calls.is_empty() {
-                None
-            } else {
-                Some(tu.tool_calls.clone())
-            }
+        reasoning_content: message_reasoning
+            .or(envelope_reasoning)
+            .or_else(|| assistant_usage.and_then(|tu| tu.reasoning_content.clone())),
+        tool_calls: envelope_tool_calls.or_else(|| {
+            assistant_usage.and_then(|tu| {
+                if tu.tool_calls.is_empty() {
+                    None
+                } else {
+                    Some(tu.tool_calls.clone())
+                }
+            })
         }),
         iteration: assistant_usage.map(|tu| tu.iteration),
         ts: assistant_usage.map(|tu| tu.ts.clone()),
@@ -1187,10 +1220,21 @@ pub fn read_transcript_display(path: &Path) -> Result<DisplaySessionTranscript> 
 /// transcript without accidentally folding delegated worker transcripts
 /// into the main chat timeline.
 pub fn find_root_transcript_for_thread(workspace_dir: &Path, thread_id: &str) -> Option<PathBuf> {
-    raw_session_dirs(workspace_dir)
-        .into_iter()
-        .filter_map(|raw_dir| find_root_transcript_for_thread_in_dir(&raw_dir, thread_id))
-        .max_by(|left, right| left.file_name().cmp(&right.file_name()))
+    find_root_transcripts_for_thread(workspace_dir, thread_id).pop()
+}
+
+/// Find every root transcript associated with a thread, oldest first.
+///
+/// A detached/background completion can open a new root session for the same
+/// chat thread. Display readers must merge those files; selecting only the
+/// newest makes the continuation appear to erase the original tool turn.
+pub fn find_root_transcripts_for_thread(workspace_dir: &Path, thread_id: &str) -> Vec<PathBuf> {
+    let mut matches = Vec::new();
+    for raw_dir in raw_session_dirs(workspace_dir) {
+        matches.extend(root_transcripts_for_thread_in_dir(&raw_dir, thread_id));
+    }
+    matches.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+    matches
 }
 
 fn raw_session_dirs(workspace_dir: &Path) -> Vec<PathBuf> {
@@ -1212,12 +1256,18 @@ fn raw_session_dirs(workspace_dir: &Path) -> Vec<PathBuf> {
 }
 
 pub fn find_root_transcript_for_thread_in_dir(raw_dir: &Path, thread_id: &str) -> Option<PathBuf> {
+    root_transcripts_for_thread_in_dir(raw_dir, thread_id).pop()
+}
+
+fn root_transcripts_for_thread_in_dir(raw_dir: &Path, thread_id: &str) -> Vec<PathBuf> {
     let thread_id = thread_id.trim();
     if thread_id.is_empty() {
-        return None;
+        return Vec::new();
     }
 
-    let entries = fs::read_dir(raw_dir).ok()?;
+    let Ok(entries) = fs::read_dir(raw_dir) else {
+        return Vec::new();
+    };
     let mut matches: Vec<PathBuf> = entries
         .flatten()
         .map(|entry| entry.path())
@@ -1241,7 +1291,7 @@ pub fn find_root_transcript_for_thread_in_dir(raw_dir: &Path, thread_id: &str) -
         .collect();
 
     matches.sort();
-    matches.pop()
+    matches
 }
 
 /// Aggregated token/cost usage for a chat thread, summed across **all** of the
