@@ -72,10 +72,47 @@ const stopButton = (page: Page): Locator => page.getByTestId('stop-generation-bu
 const attachButton = (page: Page): Locator => page.getByRole('button', { name: 'Attach file' });
 const fileInput = (page: Page): Locator => page.locator('input[type="file"]');
 
+/**
+ * Attach a file through the app's own hidden `input[type=file]`, retrying until
+ * the chip appears.
+ *
+ * The retry closes a race in the TEST, not a product bug.
+ * `ComposerAddAttachment` is a `useCallback` whose identity changes with
+ * `attachmentInteractionBlocked`, `attachments.length` and `maxAttachments`
+ * (`AssistantUiChat.tsx:160-185`), so early on a fresh page the input can be
+ * replaced between `setInputFiles` and React binding its `onChange`, and the
+ * change event lands on a detached node. Seen once in fifteen runs, always on
+ * the first case of the file; the screenshot showed a fully rendered, idle
+ * composer with `[+]` enabled and no chip.
+ *
+ * A retry is only acceptable if the case still dies under fault injection —
+ * otherwise it is a way of passing regardless. If ingest is genuinely broken
+ * the chip never appears and this poll exhausts. Re-verified against fault A3
+ * (`onAttachFiles` handed an empty `FileList`): the cases still fail.
+ */
 async function attach(page: Page, name: string, body = 'attached by the picker'): Promise<void> {
-  await fileInput(page)
-    .first()
-    .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(body) });
+  await expect
+    .poll(
+      async () => {
+        if (
+          await page
+            .getByText(name)
+            .isVisible()
+            .catch(() => false)
+        ) {
+          return true;
+        }
+        await fileInput(page)
+          .first()
+          .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(body) });
+        return page
+          .getByText(name)
+          .isVisible({ timeout: 2_000 })
+          .catch(() => false);
+      },
+      { timeout: 15_000, message: `attachment chip for ${name} never appeared` }
+    )
+    .toBe(true);
 }
 
 async function beginStreamingTurn(page: Page, prompt: string): Promise<void> {
@@ -101,7 +138,9 @@ test.describe('Chat composer attachment gate', () => {
 
     await attach(page, 'picker-notes.txt');
 
-    await expect(page.getByText('picker-notes.txt')).toBeVisible({ timeout: 10_000 });
+    // `attach` already waits for the chip; assert it here too so this case
+    // fails on its own terms rather than inside a helper.
+    await expect(page.getByText('picker-notes.txt')).toBeVisible();
   });
 
   test('an attached file can be removed again', async ({ page }) => {
