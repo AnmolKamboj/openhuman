@@ -49,7 +49,6 @@ import {
   ErrorBanner,
   ToggleGroupItem,
   ToggleGroupRoot,
-  Input as UiInput,
 } from '../components/ui';
 import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { asFlowCanvasDraftState } from '../lib/flows/canvasDraft';
@@ -1173,12 +1172,20 @@ function FlowEditor({
     </div>
   );
 
-  // Editable title: an unstyled input that reads as the page heading until
-  // focused, so renaming is discoverable without a separate edit affordance.
+  // Editable title: the page's `h1` IS this input, so renaming is discoverable
+  // without a separate edit affordance.
+  //
+  // Deliberately a raw `<input>` rather than the `ui/Input` primitive. That
+  // component joins its class list with `[...].join(' ')` — no `cn`, no
+  // tailwind-merge — so `inputSize="sm"`'s `h-8 px-2.5 text-sm` stays in the
+  // attribute alongside anything a caller passes, and which one applies is
+  // decided by Tailwind's stylesheet order rather than by the caller. That is
+  // how this rendered as a small, inset control instead of a page heading. A
+  // control that has to inherit its host's typography has no business going
+  // through a sized primitive at all.
   const titleNode = (
-    <UiInput
+    <input
       type="text"
-      inputSize="sm"
       value={titleDraft}
       disabled={renaming}
       data-testid="flow-canvas-title"
@@ -1194,14 +1201,14 @@ function FlowEditor({
           e.currentTarget.blur();
         }
       }}
-      // Sized to the standard page heading (`text-2xl font-semibold
-      // tracking-tight`, matching `SettingsTabbedPage`'s own `h1`) rather than
-      // the `text-base` `PanelPage` wanted, so the rename affordance reads as
-      // the page title on this page exactly like a static title does on every
-      // other one. `h-auto`/`px-2`/`py-0` strip the input's own control metrics
-      // so it sits on the heading's baseline instead of adding a form row's
-      // worth of height to the header band.
-      className="h-auto w-full max-w-lg truncate border-transparent bg-transparent px-2 py-0 text-2xl font-semibold tracking-tight hover:border-line"
+      // `[font:inherit]` + `text-inherit` take the whole type ramp from the
+      // enclosing `h1` — family, size, weight, line-height, colour — so this
+      // cannot drift from `SettingsTabbedPage`'s heading the way a restated
+      // `text-2xl font-semibold` would the next time that heading changes.
+      // `p-0` puts the text on the same left edge a static title would sit on;
+      // `-mx-1 px-1` gives the hover/focus highlight some room back without
+      // moving the text, since a padding-only affordance would inset it.
+      className="-mx-1 w-full max-w-lg truncate rounded-md border-0 bg-transparent p-0 px-1 text-inherit [font:inherit] hover:bg-surface-hover focus:bg-surface-hover focus:outline-hidden focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
     />
   );
 
