@@ -13,7 +13,11 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
-#   288/270/2  2026-08-31  openhuman#5560: the memory engine crates leave the
+#   287/269/2  2026-08-31  openhuman#5560: the memory engine crates leave the
+#                      (287/269 is the CI-Linux measurement this ratchet is
+#                      calibrated on; macOS resolves one target-specific
+#                      package/name higher, 288/270 — measure sheds on Linux
+#                      or expect an off-by-one.)
 #                      product build. `tinycortex`, `tinycortex-api`, the
 #                      `tinymemory` facade, `tinymemory-tinycortex` and
 #                      `tinymemory-core` are all out of the NORMAL dependency
@@ -559,4 +563,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:288:270:2
+flows:287:269:2
