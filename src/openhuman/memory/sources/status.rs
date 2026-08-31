@@ -127,7 +127,15 @@ pub(crate) fn source_id_prefix(source: &MemorySourceEntry) -> String {
         SourceKind::Composio => {
             match (source.toolkit.as_deref(), source.connection_id.as_deref()) {
                 (Some(toolkit), Some(connection_id)) => format!("{toolkit}:{connection_id}:"),
-                (Some(toolkit), None) => format!("{toolkit}:"),
+                // A connection-less entry gets an unmatchable prefix, not the
+                // bare `{toolkit}:` — that widened prefix matched *every*
+                // connection of the toolkit, so a malformed or legacy Gmail
+                // source reported another Gmail connection's ingest counts as
+                // its own. Chunk ids are `{toolkit}:{connection_id}:{doc}`, so
+                // an entry with no connection id has no rows it could name;
+                // the driver's zero-fill guarantee turns the non-match into an
+                // idle row. Same sentinel style as `__no_toolkit__` below.
+                (Some(toolkit), None) => format!("{toolkit}:__no_connection__:"),
                 (None, _) => "__no_toolkit__:".to_string(),
             }
         }

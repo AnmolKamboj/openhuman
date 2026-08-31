@@ -161,10 +161,17 @@ fn mmr_select(candidates: &[MmrCandidate<'_>], limit: usize, lambda: f64) -> Vec
             let max_sim_to_selected = if selected_embeddings.is_empty() {
                 0.0
             } else {
+                // Seeded with NEG_INFINITY, not 0.0: when every selected
+                // similarity is negative, a 0.0 seed would win the fold and
+                // report an anti-correlated candidate as orthogonal — the
+                // exact collapse the `[0.0, 1.0]` note on
+                // [`cosine_similarity`] warns against reintroducing. The
+                // iterator is non-empty on this branch, so the seed never
+                // escapes.
                 selected_embeddings
                     .iter()
                     .map(|sel| cosine_similarity(candidate.embedding, sel))
-                    .fold(0.0_f64, f64::max)
+                    .fold(f64::NEG_INFINITY, f64::max)
             };
             let mmr_score = lambda * candidate.relevance - (1.0 - lambda) * max_sim_to_selected;
             if mmr_score > best_mmr {
@@ -441,3 +448,7 @@ impl Tool for MemoryVectorSearchTool {
         Ok(ToolResult::success(output))
     }
 }
+
+#[cfg(test)]
+#[path = "vector_search_tests.rs"]
+mod tests;

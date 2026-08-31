@@ -47,8 +47,11 @@ fn source_id_prefix_dispatch() {
     entry.connection_id = Some("conn-1".into());
     assert_eq!(source_id_prefix(&entry), "gmail:conn-1:");
 
+    // Connection-less entries must not widen to the bare toolkit prefix --
+    // that matched every gmail connection's chunks, so a malformed source
+    // reported another connection's counts as its own.
     entry.connection_id = None;
-    assert_eq!(source_id_prefix(&entry), "gmail:");
+    assert_eq!(source_id_prefix(&entry), "gmail:__no_connection__:");
 
     entry.toolkit = None;
     assert_eq!(source_id_prefix(&entry), "__no_toolkit__:");
