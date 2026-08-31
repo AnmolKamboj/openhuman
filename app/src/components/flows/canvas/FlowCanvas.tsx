@@ -98,6 +98,21 @@ interface FlowCanvasProps {
   onViewportChange?: (viewport: Viewport) => void;
 }
 
+/**
+ * Shared `fitView` options for both canvases.
+ *
+ * React Flow's default is `{ padding: 0.1, maxZoom: 1 }`, so a small graph
+ * opens at 100% and fills the viewport with three or four cards. `maxZoom`
+ * 0.85 pulls back far enough to see the shape of a flow on open while the
+ * 13px node titles stay readable, and the wider padding keeps the outermost
+ * cards off the canvas edge.
+ *
+ * Exported because {@link EditableFlowCanvas} must fit identically — the
+ * editable canvas persists its viewport, so a different initial zoom there
+ * would be saved and then restored forever.
+ */
+export const FLOW_FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 0.85 } as const;
+
 const NODE_TYPES = { [FLOW_NODE_TYPE]: FlowNodeComponent };
 
 // Stable fallback so an omitted `meta` doesn't allocate a new object every
@@ -129,6 +144,7 @@ function ReadonlyFlowCanvas({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEd
           edges={edges}
           nodeTypes={NODE_TYPES}
           fitView
+          fitViewOptions={FLOW_FIT_VIEW_OPTIONS}
           panOnScroll
           zoomOnScroll
           {...interactionProps}>

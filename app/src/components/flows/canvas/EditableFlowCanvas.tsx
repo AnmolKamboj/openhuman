@@ -859,6 +859,7 @@ function EditableFlowCanvas(
             nodesConnectable
             elementsSelectable
             fitView={!savedViewport}
+            fitViewOptions={FLOW_FIT_VIEW_OPTIONS}
             defaultViewport={savedViewport ?? undefined}
             onViewportChange={onViewportChange}
             panOnScroll
