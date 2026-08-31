@@ -157,7 +157,8 @@ run_full_suite() {
   # Several unit fixtures mutate process-wide state (provider overrides and
   # temporary executable paths). Keep this aggregate invocation deterministic;
   # integration targets below retain their own, narrower isolation strategies.
-  cargo_test --lib --bins -- --test-threads=1 \
+  TINYCONNECTORS_TEST_MODULE="${TINYCONNECTORS_TEST_MODULE:-$connectors_module}" \
+    cargo_test --lib --bins -- --test-threads=1 \
     --skip phase2_no_per_turn_tree_write \
     --skip phase2_exactly_one_tree_ingest_per_segment_close \
     --skip phase2_provenance_stamped_on_leaf_and_source_id_is_constant \
