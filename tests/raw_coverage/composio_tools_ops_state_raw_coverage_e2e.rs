@@ -25,9 +25,9 @@ use openhuman_core::openhuman::desktop::app_state::{
 use openhuman_core::openhuman::integrations::composio::ops::{
     composio_execute, composio_list_tools, composio_list_trigger_history,
 };
-use openhuman_core::openhuman::integrations::composio::trigger_history::ComposioTriggerHistoryStore;
 use openhuman_core::openhuman::integrations::composio::{
-    init_composio_trigger_history, invalidate_connected_integrations_cache,
+    global_composio_trigger_history, init_composio_trigger_history,
+    invalidate_connected_integrations_cache,
 };
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::profiles::{AuthProfile, AuthProfilesStore, TokenSet};
@@ -310,29 +310,45 @@ async fn round17_ops_trigger_history_app_state_and_profiles_cover_local_edges() 
     let harness = setup(&base).await;
     store_app_session_token(&harness.config, "round17-session-token");
 
-    let missing_history = composio_list_trigger_history(&harness.config, Some(5))
-        .await
-        .expect_err("history not initialized");
-    assert!(missing_history.contains("archive store is not initialized"));
+    // Trigger history is process-global. The aggregated raw-coverage target
+    // also exercises it from other Composio modules, so cover the unavailable
+    // branch only when this test is first and otherwise use the existing
+    // module-owned store.
+    let store = if let Some(store) = global_composio_trigger_history() {
+        store
+    } else {
+        let missing_history = composio_list_trigger_history(&harness.config, Some(5))
+            .await
+            .expect_err("history not initialized");
+        assert!(missing_history.contains("archive store is not initialized"));
 
-    let store = ComposioTriggerHistoryStore::new(&harness.workspace).expect("history store");
+        init_composio_trigger_history(harness.workspace.clone()).expect("init history");
+        global_composio_trigger_history().expect("global history store")
+    };
+
+    let marker_prefix = format!("round17-{}", uuid::Uuid::new_v4());
     for idx in 0..3 {
         store
             .record_trigger(
                 "gmail",
                 "GMAIL_NEW_GMAIL_MESSAGE",
-                &format!("metadata-{idx}"),
-                &format!("uuid-{idx}"),
+                &format!("{marker_prefix}-metadata-{idx}"),
+                &format!("{marker_prefix}-uuid-{idx}"),
                 &json!({ "idx": idx }),
             )
             .expect("record trigger");
     }
-    init_composio_trigger_history(harness.workspace.clone()).expect("init history");
     let clamped = composio_list_trigger_history(&harness.config, Some(9999))
         .await
         .expect("list initialized history")
         .value;
-    assert_eq!(clamped.entries.len(), 3);
+    assert!(clamped.entries.len() >= 3);
+    assert!(clamped
+        .entries
+        .iter()
+        .filter(|entry| entry.metadata_id.starts_with(&marker_prefix))
+        .count()
+        >= 3);
     assert!(clamped.archive_dir.ends_with("/state/triggers"));
     assert!(clamped.current_day_file.ends_with(".jsonl"));
 
