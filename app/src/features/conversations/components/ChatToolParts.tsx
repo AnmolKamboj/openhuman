@@ -143,7 +143,7 @@ function ToolDataView({ value }: { value: unknown }) {
     // Tool wrappers frequently add bookkeeping beside the actual payload
     // (`tool_call_id`, success, timing). When a semantic output field exists,
     // show that value directly and hide the wrapper entirely.
-    for (const key of ['content', 'output', 'result', 'message']) {
+    for (const key of ['content', 'output', 'result', 'message', 'query', 'q']) {
       const semantic = entries.find(([candidate]) => candidate === key)?.[1];
       if (hasDisplayValue(semantic)) return <ToolDataView value={semantic} />;
     }

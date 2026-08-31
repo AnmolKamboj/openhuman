@@ -654,7 +654,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     });
 
     // No past-turn tool call before hydration.
-    expect(screen.queryByText(/read_file/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('assistant-ui-tool-call')).not.toBeInTheDocument();
 
     // Hydrate the older turn's timeline (as fetchAndHydrateTurnHistory would).
     await act(async () => {
@@ -669,8 +669,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     });
 
     // The past turn's tool call is projected into assistant-ui exactly once.
-    fireEvent.click(await screen.findByRole('button', { name: /1 tool call/ }));
-    expect(await screen.findByText('read_file')).toBeInTheDocument();
+    expect(await screen.findByTestId('assistant-ui-tool-call')).toHaveTextContent('Read File');
   });
 
   it('keeps assistant message copy available through assistant-ui', async () => {
@@ -955,7 +954,13 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     // The send cleared the composer; with an empty composer mid-send the Send
     // button morphs into the Stop button, so there is no Send affordance left
     // to fire a duplicate send.
-    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
+    const stopButton = screen.getByRole('button', { name: 'Stop generating' });
+    expect(stopButton).toBeInTheDocument();
+    expect(stopButton).toHaveClass(
+      'bg-primary-500',
+      'text-content-inverted',
+      'hover:bg-primary-600'
+    );
     expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
     resolveSend?.();
   });

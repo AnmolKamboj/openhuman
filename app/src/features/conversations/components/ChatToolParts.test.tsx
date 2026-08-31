@@ -64,6 +64,7 @@ describe('ChatToolParts', () => {
     expect(screen.getByTestId('assistant-ui-tool-call')).toHaveTextContent('Searched the web');
     await userEvent.click(screen.getByRole('button', { name: /Searched the web/ }));
     expect(screen.getByText(/Lean open conjectures/)).toBeInTheDocument();
+    expect(screen.queryByText('Query', { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText('Found 12 candidate problems')).toBeInTheDocument();
   });
 
