@@ -1055,8 +1055,11 @@ named `tinycortex-api` found") before anything compiles.
 
 `memory/direct_engine_refs_tests.rs` is still the ratchet over direct
 `tinymemory_core::` references, but **its non-empty list no longer implies a
-linked engine** — it scans source text and cannot see `cfg`, and all nine
-remaining entries are test-only. Draining them is a correctness goal (a second,
+linked engine** — it scans source text and cannot see `cfg`, and none of its
+ten remaining entries is in the product build: seven are `#[cfg(test)]`-only,
+one is `memory/host_impls.rs` behind the default-only `memory-engine-seams`
+feature, and two are the `rss-bench` bins, behind a feature the product set
+never enables. Draining them is a correctness goal (a second,
 unpoliced door into the subsystem), not a binary-size one.
 
 **Most of what remains is blocked upstream, not here.** `modules::registry` pins
