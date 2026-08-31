@@ -116,6 +116,7 @@ export function setActiveCoreTransport(transport: CoreTransport | null): void {
 type CoreRpcErrorKind =
   | 'auth_expired'
   | 'provider_auth' // downstream provider 401 — NOT user session expiry
+  | 'core_auth' // the LOCAL core rejected our RPC bearer — NOT user session expiry
   | 'transport'
   | 'timeout'
   | 'rate_limited'
@@ -157,7 +158,24 @@ export function classifyRpcError(
   data?: unknown
 ): CoreRpcErrorKind {
   if (isThreadNotFoundRpcData(data)) return 'thread_not_found';
-  if (httpStatus === 401) return 'auth_expired';
+  // An HTTP 401 on the RPC endpoint itself is the LOCAL core's bearer gate
+  // (`src/core/auth.rs` — "Missing or invalid Authorization header"), never the
+  // TinyHumans backend. A backend session rejection cannot arrive this way: the
+  // core proxies those calls and surfaces them as a JSON-RPC error inside a 200
+  // (`SESSION_EXPIRED: backend rejected session token on GET /…`), which the
+  // message arms below classify. `httpStatus` is only ever populated from the
+  // transport branch, and custom transports (cloud / LAN / tunnel) return
+  // before it.
+  //
+  // This used to return `auth_expired`, and `classifyAuthExpiredReason` paired
+  // it with `confirmed` — which skips corroboration in `CoreStateProvider` and
+  // calls `clearSession()`, wiping the auth profile from disk. So a stale RPC
+  // bearer (the core restarting and minting a new per-launch token while the
+  // renderer holds the old one, or a browser session against a stale
+  // `core.token`) signed the user out of their TinyHumans account when the
+  // TinyHumans server had said nothing at all. Recovery is to re-read the
+  // bearer or restart the core, never to destroy the session.
+  if (httpStatus === 401) return 'core_auth';
   if (httpStatus === 429) return 'rate_limited';
   // The running core has no such method — a transport-boundary version skew
   // (older core than the UI bundle, a domain-gated `DomainSet`, or a slim
@@ -227,8 +245,15 @@ export function classifyRpcError(
  */
 export type AuthExpiredReason = 'confirmed' | 'unconfirmed';
 
-export function classifyAuthExpiredReason(message: string, httpStatus?: number): AuthExpiredReason {
-  if (httpStatus === 401) return 'confirmed';
+export function classifyAuthExpiredReason(
+  message: string,
+  _httpStatus?: number
+): AuthExpiredReason {
+  // No `httpStatus === 401` arm — see `classifyRpcError`: a 401 on the RPC
+  // endpoint is the local core's bearer gate and no longer classifies as
+  // `auth_expired` at all, so it cannot reach here. Were one ever passed again,
+  // falling through to `unconfirmed` makes `CoreStateProvider` corroborate
+  // before signing out, which is the safe direction.
   if (/Session expired|SESSION_EXPIRED/i.test(message)) return 'confirmed';
   if (
     /^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(message) &&
