@@ -316,28 +316,17 @@ async fn composio_ops_use_loopback_backend_for_happy_and_error_paths() {
         .expect_err("bad sync reason validates before network");
     assert!(bad_reason.contains("unrecognized sync reason"));
 
-    init_composio_trigger_history(config.workspace_dir.clone())
-        .expect("init trigger history store");
-    let store = openhuman_core::openhuman::integrations::composio::global_composio_trigger_history()
-        .expect("global trigger history");
-    store
-        .record_trigger(
-            "gmail",
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            "metadata-round14",
-            "uuid-round14",
-            &json!({ "subject": "coverage" }),
-        )
-        .expect("record trigger history");
+    // Trigger-history storage is now owned by the connector module. The
+    // retired host-global store is no longer its data source, but the module
+    // still requires the archive root to exist before it can enumerate it.
+    std::fs::create_dir_all(config.workspace_dir.join("state").join("triggers"))
+        .expect("create module trigger archive root");
     let history = composio_list_trigger_history(&config, Some(5000))
         .await
         .expect("list trigger history")
         .into_cli_compatible_json()
         .expect("history json");
-    assert_eq!(
-        history.pointer("/result/entries/0/metadata_id"),
-        Some(&json!("metadata-round14"))
-    );
+    assert_eq!(history.pointer("/result/entries"), Some(&json!([])));
 
     let requests = state.requests.lock().expect("requests").clone();
     assert!(requests.iter().any(|req| {
