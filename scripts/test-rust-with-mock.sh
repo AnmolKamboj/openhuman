@@ -75,10 +75,19 @@ fi
 # Source of truth: scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
 
-# The product test surface exercises Composio through its TinyConnectors module.
-# CI builds the pinned submodule and supplies this explicit override; mirror
-# that setup locally so the full runner never falls back to GitHub release
-# metadata (which makes an otherwise hermetic mock-backend suite network-bound).
+# The product test surface exercises memory and Composio through their native
+# modules. CI builds the pinned submodules and supplies these explicit
+# overrides; mirror that setup locally so the full runner never falls back to
+# GitHub release metadata (which makes an otherwise hermetic mock-backend suite
+# network-bound).
+if [ -z "${TINYMEMORY_TEST_MODULE:-}" ]; then
+  memory_manifest="vendor/tinymemory/crates/tinymemory-module/Cargo.toml"
+  memory_module="vendor/tinymemory/crates/tinymemory-module/target/release/libtinymemory_module.so"
+  echo "Building TinyMemory test module from the pinned submodule ..."
+  cargo build --release --manifest-path "$memory_manifest"
+  export TINYMEMORY_TEST_MODULE="$REPO_ROOT/$memory_module"
+fi
+
 if [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
   connectors_manifest="vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml"
   connectors_module="vendor/tinyconnectors/target/release/libtinyconnectors.so"
