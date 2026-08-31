@@ -1,3 +1,95 @@
+#[async_trait]
+impl MemoryEpisodic for ModuleMemoryProvider {
+    async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
+        module_call!(self, "insert_turn", "InsertTurn", (turn,))
+    }
+    async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
+        module_call!(self, "session_turns", "SessionTurns", (session_id,))
+    }
+    async fn open_segment(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ConversationSegment>, MemoryError> {
+        module_call!(self, "open_segment", "OpenSegment", (session_id,))
+    }
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "trait signature; see the contract's rationale"
+    )]
+    async fn create_segment(
+        &self,
+        segment_id: &str,
+        session_id: &str,
+        namespace: &str,
+        start_episodic_id: i64,
+        start_seq: Option<u32>,
+        start_timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "create_segment",
+            "CreateSegment",
+            (
+                segment_id,
+                session_id,
+                namespace,
+                start_episodic_id,
+                start_seq,
+                start_timestamp,
+                now
+            )
+        )
+    }
+    async fn append_turn(
+        &self,
+        segment_id: &str,
+        episodic_id: i64,
+        seq: Option<u32>,
+        timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "append_turn",
+            "AppendTurn",
+            (segment_id, episodic_id, seq, timestamp, now)
+        )
+    }
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        module_call!(self, "insert_event", "InsertEvent", (event,))
+    }
+    async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {
+        module_call!(self, "close_segment", "CloseSegment", (segment_id, now))
+    }
+    async fn set_segment_summary(
+        &self,
+        segment_id: &str,
+        summary: &str,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "set_segment_summary",
+            "SetSegmentSummary",
+            (segment_id, summary, now)
+        )
+    }
+    async fn upsert_segment_embedding(
+        &self,
+        segment_id: &str,
+        model_signature: &str,
+        embedding: &[f32],
+        created_at: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "upsert_segment_embedding",
+            "UpsertSegmentEmbedding",
+            (segment_id, model_signature, embedding, created_at)
+        )
+    }
+}
 
 #[async_trait]
 impl MemoryPeople for ModuleMemoryProvider {

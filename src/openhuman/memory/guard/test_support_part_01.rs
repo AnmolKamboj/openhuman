@@ -526,10 +526,7 @@ impl MemoryTree for RecordingProvider {
         &self,
         _namespace: &str,
         _node_id: &str,
-    ) -> Result<
-        Option<crate::openhuman::memory::api::tree::TreeNode>,
-        MemoryError,
-    > {
+    ) -> Result<Option<crate::openhuman::memory::api::tree::TreeNode>, MemoryError> {
         self.record(Call::plain("tree.runtime_read_node"));
         Ok(None)
     }
@@ -552,10 +549,7 @@ impl MemoryTree for RecordingProvider {
         &self,
         _namespace: &str,
         _timestamp: chrono::DateTime<chrono::Utc>,
-    ) -> Result<
-        Option<crate::openhuman::memory::api::tree::TreeNode>,
-        MemoryError,
-    > {
+    ) -> Result<Option<crate::openhuman::memory::api::tree::TreeNode>, MemoryError> {
         self.record(Call::plain("tree.runtime_summarize"));
         Ok(None)
     }
@@ -720,69 +714,5 @@ impl MemoryToolMemory for RecordingProvider {
     ) -> Result<bool, MemoryError> {
         self.record(Call::plain("tool_memory.delete_tool_rule"));
         Ok(false)
-    }
-}
-
-#[async_trait]
-impl MemorySourceSink for RecordingProvider {
-    async fn accept_source_items(
-        &self,
-        _source_id: &str,
-        _source_kind: &str,
-        items: Vec<SourceItem>,
-        taint: MemoryTaint,
-    ) -> Result<IngestOutcome, MemoryError> {
-        self.record(Call {
-            method: "sources.accept_source_items".into(),
-            content: items.first().map(|i| i.content.clone()),
-            taint: Some(taint),
-            scoped: None,
-        });
-        Ok(IngestOutcome::default())
-    }
-
-    async fn forget_source(&self, _source_id: &str) -> Result<u64, MemoryError> {
-        self.record(Call::plain("sources.forget_source"));
-        Ok(0)
-    }
-}
-
-#[async_trait]
-impl MemoryMaintenance for RecordingProvider {
-    async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
-        self.record(Call::plain("maintenance.reembed"));
-        Ok(MaintenanceReport::default())
-    }
-
-    async fn compact(&self) -> Result<MaintenanceReport, MemoryError> {
-        self.record(Call::plain("maintenance.compact"));
-        Ok(MaintenanceReport::default())
-    }
-
-    async fn consolidate(&self) -> Result<MaintenanceReport, MemoryError> {
-        self.record(Call::plain("maintenance.consolidate"));
-        Ok(MaintenanceReport::default())
-    }
-
-    async fn doctor(&self) -> Result<MaintenanceReport, MemoryError> {
-        self.record(Call::plain("maintenance.doctor"));
-        Ok(MaintenanceReport::default())
-    }
-
-    async fn diagnose(
-        &self,
-    ) -> Result<crate::openhuman::memory::api::provider::diagnosis::Diagnosis, MemoryError> {
-        self.record(Call::plain("maintenance.diagnose"));
-        Ok(Default::default())
-    }
-
-    async fn degraded_state(
-        &self,
-    ) -> Result<
-        crate::openhuman::memory::api::provider::diagnosis::DegradedCapabilities,
-        MemoryError,
-    > {
-        self.record(Call::plain("maintenance.degraded_state"));
-        Ok(Default::default())
     }
 }
