@@ -323,7 +323,6 @@ jobs:
           # fully local: falling back to the GitHub-release resolver makes the
           # suite depend on release metadata availability after the app has
           # already started.
-          git submodule update --init --recursive vendor/tinymemory
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           mkdir -p "$memory_dir"
