@@ -24,11 +24,14 @@ const list = (
   />
 );
 
+// `tokens.css` scopes the dark palette to `:root.dark`, so the class has to go
+// on documentElement — a nested `.dark` wrapper redefines nothing.
+if (new URLSearchParams(location.search).has('dark')) {
+  document.documentElement.classList.add('dark');
+}
+
 createRoot(document.getElementById('root')!).render(
-  <div className="flex h-screen gap-4 p-3">
+  <div className="h-screen bg-surface-chrome p-3">
     <div className="h-72 w-64 rounded-2xl border border-line">{list}</div>
-    <div className="dark h-72 w-64 rounded-2xl border border-line bg-surface-chrome" data-testid="dark-pane">
-      {list}
-    </div>
   </div>
 );
