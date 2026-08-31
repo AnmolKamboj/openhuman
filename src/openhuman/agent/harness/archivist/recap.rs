@@ -1,15 +1,37 @@
 //! Summarization and rolling recap logic for `ArchivistHook`.
 
+use super::store::session_entries;
 use super::types::ArchivistHook;
 use crate::openhuman::memory::api::provider::{ConversationSegment, EpisodicTurn};
 use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
+// `SummaryContext::tree_kind` is the engine's own enum. It is reached here
+// through the host's `memory::tree` shim — the same door `summarise`,
+// `SummaryContext` and `SummaryInput` on the line above already come through —
+// rather than by naming the engine crate. Every hop on that path
+// (`memory::tree::tree` → `tinymemory_core::tree::tree` → `store::trees` →
+// `engine::backend::tree::store`) is a re-export of one item, so this is the
+// same type under a shorter name, not a conversion (#5560).
+use crate::openhuman::memory::tree::tree::TreeKind;
 #[cfg(test)]
 use std::sync::Arc;
-// `SummaryContext::tree_kind` is TinyCortex's own enum, and
-// `tinymemory_core::store::trees::types::TreeKind` was a re-export of exactly
-// this item. Naming the owning crate changes no type — only which crate alias
-// holds it (#5560).
-use tinycortex::memory::tree::store::TreeKind;
+
+/// Total input/context budget for one summarisation fold.
+///
+/// A pinned copy of the engine's `INPUT_TOKEN_BUDGET`, and its sibling below of
+/// `SUMMARY_OVERHEAD_RESERVE_TOKENS`. Copies rather than imports because the
+/// second of the pair is reachable only by naming `tinycortex` — it is a
+/// `memory::config` constant that no re-export carries out to
+/// `tinymemory-core` — and splitting the pair across two provenances would
+/// hide that the summariser's arithmetic reads them together.
+///
+/// `recap_tests::summary_budget_constants_match_the_engine` asserts both still
+/// equal the engine's, so drift fails a test rather than silently changing
+/// every recap's prompt budget.
+const INPUT_TOKEN_BUDGET: u32 = 50_000;
+
+/// Prompt and formatting headroom withheld from the source inputs of a fold.
+/// See [`INPUT_TOKEN_BUDGET`] for why this is a copy.
+const SUMMARY_OVERHEAD_RESERVE_TOKENS: u32 = 2_048;
 
 /// An episodic entry paired with the stable identity exposed by its backing
 /// store. The md archivist uses a per-session sequence while the legacy FTS5
@@ -59,9 +81,9 @@ impl SessionEntry {
 }
 
 impl ArchivistHook {
-    /// Read every entry recorded for `session_id`, preferring the
-    /// crate-owned md-backed archivist store when `self.config` is set and
-    /// falling back to the legacy FTS5 episodic table otherwise.
+    /// Read every entry recorded for `session_id`, preferring the md-backed
+    /// archivist store when `self.config` is set and falling back to the
+    /// legacy FTS5 episodic table otherwise.
     ///
     /// Each entry retains the stable sequence or row identity needed for
     /// segment selection. Timestamps are only a fallback for legacy records:
@@ -70,14 +92,12 @@ impl ArchivistHook {
     pub(super) async fn read_session_entries(&self, session_id: &str) -> Vec<SessionEntry> {
         if let Some(cfg) = self.config.as_ref() {
             // Workspace-rooted and nothing else, for the same reason as the
-            // write side in `hook_impl.rs`: `session_entries` resolves its
-            // directory through the archivist store's own private
-            // `<workspace>/memory_tree/content` root and reads neither
-            // `content_root` nor `embedding`. See that call site for why this
-            // replaced `tinymemory_core::tinycortex::memory_config_from`.
-            let engine_config = tinycortex::memory::MemoryConfig::new(cfg.workspace_dir.clone());
-            match tinycortex::memory::archivist::store::session_entries(&engine_config, session_id)
-            {
+            // write side in `hook_impl.rs`: [`super::store::session_entries`]
+            // resolves its directory through the store's own private
+            // `<workspace>/memory_tree/content` root. See that call site for
+            // why the store now lives in this directory rather than behind
+            // `tinycortex` (#5560).
+            match session_entries(cfg.workspace_dir.as_path(), session_id) {
                 Ok(turns) => {
                     return turns
                         .into_iter()
@@ -93,7 +113,7 @@ impl ArchivistHook {
                                 content: t.content,
                                 lesson: t.lesson,
                                 tool_calls_json: t.tool_calls_json,
-                                // The engine column is unsigned; the wire is a
+                                // The stored field is unsigned; the wire is a
                                 // plain signed number.
                                 cost_microdollars: i64::try_from(t.cost_microdollars)
                                     .unwrap_or(i64::MAX),
@@ -190,8 +210,8 @@ impl ArchivistHook {
             tree_kind: TreeKind::Source,
             target_level: 0,
             token_budget: 2_000,
-            input_token_budget: tinycortex::memory::config::INPUT_TOKEN_BUDGET,
-            overhead_reserve_tokens: tinycortex::memory::config::SUMMARY_OVERHEAD_RESERVE_TOKENS,
+            input_token_budget: INPUT_TOKEN_BUDGET,
+            overhead_reserve_tokens: SUMMARY_OVERHEAD_RESERVE_TOKENS,
             ask: None,
         };
 

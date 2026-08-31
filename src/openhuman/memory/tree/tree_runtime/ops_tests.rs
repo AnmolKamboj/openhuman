@@ -2,6 +2,13 @@ use super::*;
 use chrono::TimeZone;
 use tempfile::TempDir;
 
+// `TreeNode`, `level_from_node_id` and `derive_parent_id` used to arrive
+// through `super::*` while `ops.rs` still globbed the engine crate's runtime
+// module. `ops.rs` names the contract explicitly now (#5560) and imports only
+// the two items it uses, so these are named here — the same items, from the
+// same crate the sibling `tree_runtime/mod.rs` re-exports them from.
+use crate::openhuman::memory::api::tree::{derive_parent_id, level_from_node_id, TreeNode};
+
 fn rfc3339_z(ts: DateTime<Utc>) -> String {
     ts.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }

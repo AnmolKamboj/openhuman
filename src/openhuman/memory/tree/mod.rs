@@ -5,58 +5,50 @@
 //! `RpcOutcome` and `ControllerSchema`, which the engine crate cannot see.
 //! The glob re-export keeps every historical `memory::tree::…` path resolving.
 //!
-//! # What the glob still carries, checked rather than assumed (#5560)
+//! # What the glob still carries, re-measured rather than assumed (#5560)
 //!
 //! Four of the nine module names it supplies (`health`, `retrieval`, `tree`,
 //! `tree_runtime`) are shadowed by the `pub mod` declarations below — an
 //! explicit item beats a glob import — so its live contribution is narrower
-//! than it looks, and all of it is engine-owned:
+//! than it looks. **Measured by deleting the line and reading the compiler**,
+//! rather than by grepping for the paths, the production surface is now two
+//! names in two files:
 //!
-//! - `score`, `summarise`, `nlp`, `ingest` — real code in `tinymemory-core`,
-//!   not thin aliases: `score::embed::{Embedder, build_embedder_from_config,
-//!   effective_embedder_slug, EMBEDDING_DIM}`, `score::extract::EntityKind`,
-//!   `score::store`, `score::resolver`, `summarise::{summarise,
-//!   fallback_summary, SummaryContext, SummaryInput}` and
-//!   `nlp::extract_query_entities` are reached from the archivist, the
-//!   sub-agent runner, `read_rpc::entities`, `inference::embeddings::rpc` and
-//!   `retrieval/rpc.rs` in this directory.
+//! - `score` — `read_rpc::entities` reaches `score::store` and
+//!   `score::DEFAULT_DROP_THRESHOLD` for the chunk-score RPC.
+//! - `summarise` — `agent::harness::archivist::recap` reaches
+//!   `summarise::{summarise, SummaryContext, SummaryInput}`.
+//!
+//! Everything else the glob carries is now test-only or unreferenced.
+//! `ingest` (`ingest_summary` / `SummaryIngestInput`) survives for
+//! `tests/memory_sync_pipeline_e2e.rs`, `score::{embed, extract, resolver,
+//! signals}` and `summarise::fallback_summary` for the raw-coverage suites,
+//! and `nlp` and `graph` have no caller under this path at all — `nlp`
+//! **used** to be reached from `retrieval/rpc.rs` and no longer is. A glob is
+//! all-or-nothing, so the unused names ride along with the two that are left.
+//!
+//! Neither survivor has a contract equivalent: `tinymemory_api::tree` is the
+//! summary-node vocabulary, not an embedder and not an entity extractor. So
+//! this shim is pinned by the engine's *scoring and summarisation* internals
+//! reached from two files outside this directory, and it goes when those two
+//! move — not before.
 //!
 //! The seven `Tree{LabelStrategy, LeafPayload, ReadHit, ReadRequest,
-//! ReadResult, WriteOutcome, WriteRequest}` I/O types used to be on that list
-//! too. They are **not** engine-owned — the crate re-exports them out of
-//! `engine::backend::tree`, i.e. `tinycortex` — so they are named there
-//! directly below and no longer depend on this glob. Nothing in `src/` uses
-//! them; `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` names all
-//! seven, which is why they are still re-exported at all.
-//!
-//! (`graph` is the fifth unshadowed name and has no caller under this path at
-//! all — it is carried only because the glob is all-or-nothing.)
-//!
-//! None of it has a contract equivalent: `tinymemory_api::tree` is the summary
-//! node vocabulary, not an embedder or an entity extractor. So this shim is
-//! pinned by the engine's *scoring and summarisation* internals, and it goes
-//! when those move behind the bus — not before.
-
-// The seven tree I/O contracts, named at the crate that defines them
-// (`tinycortex::memory::tree::io`). `tinymemory_core::tree` re-exports them out
-// of `engine::backend::tree`, which is `pub use tinycortex::memory::tree`, so
-// this is the same item under a different crate alias — an explicit `use`
-// shadowing the glob below with itself. Nothing in `src/` names them;
-// `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` names all seven
-// through this path, which is why they are re-exported rather than dropped, and
-// why they now keep resolving once `tinymemory-core` leaves the build.
-pub use tinycortex::memory::tree::{
-    TreeLabelStrategy, TreeLeafPayload, TreeReadHit, TreeReadRequest, TreeReadResult,
-    TreeWriteOutcome, TreeWriteRequest,
-};
+//! ReadResult, WriteOutcome, WriteRequest}` I/O types were re-exported here
+//! explicitly until #5560's shed pass. **They are gone**: nothing in `src/`
+//! named them, and the one consumer —
+//! `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs` — names
+//! `tinycortex::memory::tree::…` directly now. A production `pub use` that
+//! exists only to serve a test is exactly what keeps a crate in
+//! `[dependencies]`, which is the thing this issue is removing.
 
 // What is left of the glob is the scoring and summarisation half, and it is
 // `tinymemory-core`'s own code rather than a re-export: `score` (embed /
-// extract / store / resolver), `summarise`, `nlp` and `ingest`, plus `graph`,
-// which the glob carries because a glob is all-or-nothing. `tinymemory_api::tree`
-// is the summary-node vocabulary — not an embedder and not an entity extractor
-// — so there is nothing on the contract to route these at. This shim goes when
-// scoring and summarisation move behind the bus, not before.
+// extract / store / resolver / signals), `summarise`, `nlp` and `ingest`, plus
+// `graph`, which the glob carries because a glob is all-or-nothing.
+// `tinymemory_api::tree` is the summary-node vocabulary — not an embedder and
+// not an entity extractor — so there is nothing on the contract to route these
+// at. Two production files pin it; see the module docs above for which.
 pub use tinymemory_core::tree::*;
 
 pub mod health;

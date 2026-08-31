@@ -4,9 +4,24 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
 use crate::openhuman::config::Config;
+// The summary-tree node vocabulary, named at the **contract** (#5560).
+//
+// This was `use tinycortex::memory::tree::runtime::*;`, a glob whose entire
+// live contribution to this file was two names: `estimate_tokens` (the token
+// figure reported on an ingest) and `QueryResult` (the node + children envelope
+// `tree_summarizer_query` serialises). Both are `tinymemory-bus` items that the
+// engine crate merely re-exported — `tinycortex::memory::tree::runtime` aliases
+// its `types` module to `tinycortex_api::tree`, and `tinycortex-api` is a
+// deprecated re-export of `tinymemory-bus` — so this names the *same items*
+// under the path the module contract already uses, and no wire byte changes.
+// The sibling `tree_runtime/mod.rs` re-exports the same set for the same
+// reason; see its comment on the node model.
+//
+// Everything else this file reaches still comes from `engine` / `store` below,
+// which are `tinymemory-core`'s and are what actually pins that crate here.
+use crate::openhuman::memory::api::tree::{estimate_tokens, QueryResult};
 use crate::openhuman::memory::tree::tree_runtime::{engine, store};
 use crate::rpc::RpcOutcome;
-use tinycortex::memory::tree::runtime::*;
 
 /// Append raw content to the ingestion buffer.
 pub async fn tree_summarizer_ingest(
@@ -166,7 +181,8 @@ pub async fn tree_summarizer_rebuild(
 ///    `memory_tree.cloud_summarization_opt_in` setting.
 ///
 /// Visibility note: `pub(crate)` so the embedded memory driver's
-/// [`MemoryTree`](tinycortex_api::provider::MemoryTree) `seal`/`cascade` reach
+/// [`MemoryTree`](crate::openhuman::memory::api::provider::MemoryTree)
+/// `seal`/`cascade` reach
 /// the **same** resolver the RPC path uses. Duplicating the local-AI /
 /// cloud-opt-in precedence in the driver would be new policy logic, and the
 /// `summarizer_available` doc below is explicit that this function is the

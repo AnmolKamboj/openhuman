@@ -19,7 +19,8 @@ use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::Config;
-use tinycortex::memory::goals::store;
+use crate::openhuman::memory::api::goals::GoalsDoc;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 
 /// Registry id of the bundled goals enrichment agent definition.
 pub const GOALS_AGENT_ID: &str = "goals_agent";
@@ -56,17 +57,50 @@ fn build_prompt(context_input: &str, first_run: bool) -> String {
     )
 }
 
+/// The current goals document, through the bound driver's goals family.
+///
+/// Resolved here rather than passed in because of [`spawn_enrich_goals`]: that
+/// entry point detaches a `'static` task, which cannot hold a borrowed
+/// `&dyn MemoryGoals` across the spawn. `active_memory_guard` works inside a
+/// spawned task — `CoreContext::current` falls back to the process default
+/// context, which a detached task still sees.
+///
+/// # Errors
+///
+/// When no workspace can be named, or when the driver's read fails. A driver
+/// that does not serve the family is reported rather than degraded to an empty
+/// document: this answer decides `first_run`, and a false "the list is empty"
+/// tells the agent to bootstrap a list that already exists.
+async fn read_goals() -> Result<GoalsDoc, String> {
+    let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+        .await
+        .map_err(|e| format!("goals load failed: {e}"))?;
+    let goals = guard
+        .as_goals()
+        .ok_or_else(|| "goals load failed: memory driver does not support goals".to_string())?;
+    goals
+        .goals()
+        .await
+        .map_err(|e| format!("goals load failed: {e}"))
+}
+
 /// Run the goals enrichment agent against `context_input` (typically a
 /// session recap/summary, or an on-demand nudge). Returns the agent's final
 /// text. Best-effort: the caller decides whether to ignore errors.
+///
+/// `workspace_dir` names the agent-definition registry's root, not the goals
+/// document — the list itself is reached through the driver (see
+/// [`read_goals`]).
 pub async fn enrich_goals(
     config: &Config,
     workspace_dir: &Path,
     context_input: &str,
 ) -> Result<String, String> {
     // Surface real storage failures instead of masking them as an empty
-    // first-run doc — `load` already maps a missing file to an empty doc.
-    let doc = store::load(workspace_dir).map_err(|e| format!("goals load failed: {e}"))?;
+    // first-run doc. The distinction still holds through the family: a driver
+    // with no goals yet answers an empty `GoalsDoc` rather than `NotFound`, so
+    // an `Err` here is a real backend failure and never "the file is missing".
+    let doc = read_goals().await?;
     let first_run = doc.is_empty();
     log::info!(
         "[memory_goals] enrich start (first_run={first_run}, existing_items={})",

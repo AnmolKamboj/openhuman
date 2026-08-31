@@ -187,8 +187,8 @@ pub(super) fn collect_tree_root_summaries(
         .collect()
 }
 
-/// Read TinyCortex root summaries from an already-resolved `memory-*` subtree.
-/// TinyCortex's compatibility helper hardcodes `<workspace>/memory`; dedicated
+/// Read summary-tree root summaries from an already-resolved `memory-*` subtree.
+/// The engine's compatibility helper hardcodes `<workspace>/memory`; dedicated
 /// profiles instead supply `<workspace>/memory-<id>`, so scan that equivalent
 /// namespace layout directly rather than falling back to shared memory.
 fn collect_profile_tree_root_summaries(
@@ -204,10 +204,7 @@ fn collect_profile_tree_root_summaries(
         .filter_map(|entry| {
             let namespace = entry.file_name().to_string_lossy().into_owned();
             let raw = std::fs::read_to_string(entry.path().join("tree").join("root.md")).ok()?;
-            let node = tinycortex::memory::tree::runtime::store::parse_node_markdown_pub(
-                &raw, &namespace, "root",
-            )
-            .ok()?;
+            let node = parse_node_markdown(&raw, &namespace, "root");
             Some((namespace, node))
         })
         .collect();
@@ -237,6 +234,151 @@ fn collect_profile_tree_root_summaries(
         out.push((namespace, rendered, node.updated_at));
     }
     out
+}
+
+/// Parse one summary-tree node's markdown file into a [`TreeNode`].
+///
+/// # Why this lives here rather than being called on the engine (#5560)
+///
+/// This is a verbatim port of `tinycortex`'s
+/// `memory::tree::runtime::store::parse_node_markdown`, which
+/// [`collect_profile_tree_root_summaries`] used to reach through
+/// `parse_node_markdown_pub`. It is brought home rather than routed at the
+/// module contract because there is nothing on the contract to route it *at*:
+/// `MemoryTree` is namespace-addressed and its summary members answer from the
+/// driver's own store, whereas this reads a `root.md` **the driver does not
+/// own** — a dedicated profile's `<workspace>/memory-<id>/namespaces/…` tree,
+/// which is exactly the subtree the engine's compatibility helper skips
+/// because it hardcodes `<workspace>/memory`. A bus round-trip cannot answer a
+/// question about a file the far end never opened.
+///
+/// It has no engine coupling to give up: every name it needs — [`TreeNode`],
+/// [`NodeLevel::from_str_label`], [`level_from_node_id`], [`derive_parent_id`]
+/// and [`estimate_tokens`] — is **contract** vocabulary, defined in
+/// `tinymemory-bus` and reached here through
+/// [`crate::openhuman::memory::api::tree`]. The engine crate re-exported the
+/// same items, so the types this produces are the same types it produced
+/// before, not host look-alikes.
+///
+/// # Two faithfulness notes for a reviewer
+///
+/// - **The engine's signature was `Result<TreeNode>`; this one is not.** Its
+///   body contains no `?` and no `Err` construction — every field falls back
+///   to a derived or default value, which is the documented point of it ("does
+///   not fail on malformed frontmatter", which is also what lets a truncated
+///   write go undetected). So the `.ok()?` the call site used could never skip
+///   a namespace, and dropping the `Result` changes no behaviour. Restore the
+///   `Result` if this ever grows a genuine failure.
+/// - **Timestamps fall back to `UNIX_EPOCH`, not to `now()`**, and
+///   `updated_at` falls back to `created_at` rather than to the epoch
+///   independently. `collect_profile_tree_root_summaries` returns
+///   `node.updated_at` straight to the prompt builder, so a node with no
+///   frontmatter reports 1970 — deliberately, since a missing timestamp
+///   sorting as "just updated" would be worse.
+fn parse_node_markdown(
+    raw: &str,
+    namespace: &str,
+    node_id: &str,
+) -> crate::openhuman::memory::api::tree::TreeNode {
+    use crate::openhuman::memory::api::tree::{
+        derive_parent_id, estimate_tokens, level_from_node_id, NodeLevel, TreeNode,
+    };
+    use chrono::{DateTime, Utc};
+
+    let (frontmatter, body_raw) = split_frontmatter(raw);
+    let body = body_raw.trim_end().to_string();
+
+    let level = frontmatter
+        .get("level")
+        .and_then(|v| NodeLevel::from_str_label(v))
+        .unwrap_or_else(|| level_from_node_id(node_id));
+    let parent_id = frontmatter
+        .get("parent_id")
+        .and_then(|v| {
+            let trimmed = v.trim().trim_matches('"');
+            if trimmed == "~" || trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .or_else(|| derive_parent_id(node_id));
+    let token_count = frontmatter
+        .get("token_count")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or_else(|| estimate_tokens(&body));
+    let child_count = frontmatter
+        .get("child_count")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+    let created_at = frontmatter
+        .get("created_at")
+        .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
+    let updated_at = frontmatter
+        .get("updated_at")
+        .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(created_at);
+    let metadata = frontmatter.get("metadata").map(|v| v.to_string());
+
+    TreeNode {
+        node_id: node_id.to_string(),
+        namespace: namespace.to_string(),
+        level,
+        parent_id,
+        summary: body,
+        token_count,
+        child_count,
+        created_at,
+        updated_at,
+        metadata,
+    }
+}
+
+/// Split markdown into a (frontmatter key-value map, body text) pair.
+///
+/// Ported alongside [`parse_node_markdown`] — it is that function's only
+/// helper and is `pub(crate)` in the engine for the engine's own callers, none
+/// of which exist here.
+///
+/// Looks for a leading `---` fence and the first subsequent `\n---`; each
+/// `key: value` line in between is parsed with a single `find(':')` split
+/// (values are trimmed and unwrapped of one layer of surrounding `"`). If the
+/// content doesn't start with `---`, or no closing fence is found, the whole
+/// input is returned unmodified as the body with an empty map — this function
+/// never errors, it degrades to "no frontmatter" instead. That degradation is
+/// what makes [`parse_node_markdown`] total.
+fn split_frontmatter(raw: &str) -> (std::collections::HashMap<String, String>, String) {
+    let mut map = std::collections::HashMap::new();
+    let trimmed = raw.trim_start();
+    if !trimmed.starts_with("---") {
+        return (map, raw.to_string());
+    }
+    let after_open = &trimmed[3..];
+    if let Some(close_pos) = after_open.find("\n---") {
+        let fm_block = &after_open[..close_pos];
+        let body = after_open[close_pos + 4..]
+            .trim_start_matches('\n')
+            .to_string();
+        for line in fm_block.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Some(colon_pos) = line.find(':') {
+                let key = line[..colon_pos].trim().to_string();
+                let raw_value = line[colon_pos + 1..].trim();
+                let value = serde_json::from_str::<String>(raw_value)
+                    .unwrap_or_else(|_| raw_value.trim_matches('"').to_string());
+                map.insert(key, value);
+            }
+        }
+        (map, body)
+    } else {
+        (map, raw.to_string())
+    }
 }
 
 /// Sanitize a learned memory entry before injecting into the system prompt.

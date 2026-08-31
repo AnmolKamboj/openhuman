@@ -3,8 +3,18 @@ use anyhow::{Context, Result};
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::ForgetSelector;
 use crate::rpc::RpcOutcome;
-use tinycortex::memory::sync::state::STATE_NAMESPACE as KV_NAMESPACE;
+// The KV namespace the Composio sync pipelines keep their per-connection
+// cursor state under, named at the **contract** (#5560).
+//
+// It used to be `tinycortex::memory::sync::state::STATE_NAMESPACE`. The
+// contract publishes the same string under `composio::KV_NAMESPACE`, and its
+// own docs mark it a compatibility surface for exactly the reason this handler
+// cares about: the value is on disk, so a wipe that spelled it differently
+// would leave every cursor behind while reporting a clean sweep. Taking the
+// constant rather than copying the literal is what keeps that impossible —
+// and it is the same constant the driver writing those rows reads.
 use tinymemory_api::chunks::SourceKind;
+use tinymemory_api::composio::KV_NAMESPACE;
 
 use super::types::{
     DeleteSourceResponse, FlushNowResponse, FlushSourceTreeResponse, ResetTreeResponse,

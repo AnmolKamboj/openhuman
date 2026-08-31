@@ -10,9 +10,13 @@ use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::{
-    ExtractionMode, IngestionState, MemoryIngestionConfig, MemoryIngestionRequest,
-    NamespaceDocumentInput,
+    ExtractionMode, MemoryIngestionConfig, MemoryIngestionRequest, NamespaceDocumentInput,
 };
+// The in-process ingest queue is the engine's and has no bus representation, so
+// `memory::mod` stopped re-exporting it for a consumer that was only ever this
+// test (#5560). Named on the crate directly, exactly as `upsert_chunks` below
+// already is — `tinymemory-core` is a dev-dependency, which this target links.
+use tinymemory_core::ingestion::IngestionState;
 use openhuman_core::openhuman::memory::sources::status::{source_status, FreshnessLabel};
 use openhuman_core::openhuman::memory::sources::{MemorySourceEntry, SourceKind};
 use tinymemory_core::store::chunks::store::upsert_chunks;

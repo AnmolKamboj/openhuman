@@ -25,6 +25,48 @@
 //! should be live. Seams that must be live (`ConfigLoader`) take a `&Config`
 //! argument and re-read instead.
 //!
+//! # They are not dead code, and the check is not the driver class (#5560)
+//!
+//! `memory::binding` refuses `DriverClass::Embedded` outright — "embedded
+//! memory drivers are no longer supported; use the 'tinymemory' module driver"
+//! — and `modules::memory_host` serves this same set of seven over the bus for
+//! the module. Both facts together read like an argument that the in-process
+//! installs below are only reached from tests, and #5560 acted on exactly that
+//! reading once and had to be reverted. **The driver class is the wrong thing
+//! to check.** It governs what answers a `MemoryProvider` call; it says nothing
+//! about the free-function engine surface this crate still reaches through the
+//! `memory::tree` re-export facade, which bypasses the binding entirely — the
+//! "second unpoliced door" `memory::direct_engine_refs` is a ratchet over.
+//!
+//! Two production paths through that door land on a seam today, both on
+//! [`ChatHost`]:
+//!
+//! - `agent::harness::archivist::recap` calls `memory::tree::summarise::
+//!   summarise` on every recap fold — the `#[cfg(not(test))]` arm, so no test
+//!   override is involved — and that is `tinymemory_core::tree::summarise`,
+//!   which builds its provider through `chat::build_chat_provider` →
+//!   `chat_host::{provider_for_role, create_chat_model_with_model_id}`;
+//! - `memory::tools::doctor` and the `memory_tree_doctor` RPC call
+//!   `memory::tree::health::async_run_doctor`, whose `doctor.rs` asks
+//!   `chat_host::summarizer_available(config)` for the report's summariser row.
+//!
+//! The seams fail **loudly** when unwired rather than degrading, so removing
+//! the installs would not silently misbehave — it would break every recap and
+//! every doctor run with "no ChatHost installed". That is the failure #5560
+//! shipped once, as "no EmbeddingHost installed" on the chat hot path.
+//!
+//! [`reset_in_process_chunk_store`] is live for a different reason and survives
+//! independently: `memory::sources::status` reaches the engine's chunk store
+//! over raw SQLite, and `openhuman.memory_sources_status_list` — polled every
+//! five seconds by the sources UI — is what keeps that connection cached here.
+//!
+//! **So the question to re-ask is not "is the driver embedded" but "does any
+//! production caller still reach an engine free function".** `grep -rn
+//! 'tinymemory_core::' src --include='*.rs'` outside comments, plus the
+//! `memory::{tree, sources}` re-export shims, is the whole inventory; when that
+//! is empty this file's installs are dead and go with the manifest entry, in
+//! the same change.
+//!
 //! # Composio no longer has a seam here
 //!
 //! `tinymemory_core::composio_host` was deleted in tinymemory v1.13.4 along

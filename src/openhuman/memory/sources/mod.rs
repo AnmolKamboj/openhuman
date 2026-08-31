@@ -16,32 +16,48 @@
 //! 2. **Two of the seven readers had no upstream twin.** `composio` and
 //!    `twitter` were implemented in the engine crate but named nothing
 //!    engine-shaped, so they came home unchanged. See [`readers`].
-//! 3. **`sync`, `status` and `reconcile` are wired into pieces that have not
-//!    moved.** This one still stands, and is why those three are still reached
-//!    from the engine by name below rather than through a glob.
+//! 3. **`sync` and `status` are wired into pieces that have not moved.** This
+//!    one still stands, and is why those two are still reached from the engine
+//!    by name below rather than through a glob. `reconcile` was on this line as
+//!    well and has since come home — see below.
 //!
 //! ## What is still the engine's, and why each one
 //!
 //! - [`sync`] reaches `engine::run_source_pipeline`, `engine::{needs_rebuild,
 //!   rebuild_tree_from_raw}`, `queue::store::retry_all_failed`,
 //!   `sync::composio` and `sync::audit` — the ingest pipeline, the re-embed
-//!   queue and the Composio sync half.
+//!   queue and the Composio sync half. Only `derive_scopes` is reached from
+//!   production today (`rpc::reconcile_rpc`); `sync_source` itself has no
+//!   caller left in `src/`, because the sync the product runs goes over the bus
+//!   through `MemorySourceSync`. The module is kept whole rather than narrowed
+//!   to the one live function: a re-export that hides which half is dead would
+//!   make the next audit harder, not easier.
 //! - [`status`] reaches `store::chunks::store::with_connection`, the raw SQLite
-//!   chunk door. **`MemoryChunks::source_totals` is not a substitute**, and
-//!   this is worth stating because it looks like one: `SourceTotal` carries
-//!   `chunk_count` and `most_recent_ms` but no `chunks_pending`, and pending —
-//!   "has no embedding, was not dropped, was not skipped for re-embed" — is the
-//!   whole point of a sync-status row. `source_totals` also omits a source with
-//!   zero chunks entirely, where `status_list` returns a row per *configured*
-//!   source. Migrating onto it would compile and quietly report a healthy
-//!   store. The ask upstream is a pending count.
-//! - [`reconcile`] is Composio source reconciliation, so it moves with
-//!   `sync::composio`.
+//!   chunk door, and is live in production behind
+//!   `memory_sources.status_list`. **`MemoryChunks::source_totals` is not a
+//!   substitute**, and this is worth stating because it looks like one:
+//!   `SourceTotal` carries `chunk_count` and `most_recent_ms` but no
+//!   `chunks_pending`, and pending — "has no embedding, was not dropped, was
+//!   not skipped for re-embed" — is the whole point of a sync-status row.
+//!   `source_totals` also omits a source with zero chunks entirely, where
+//!   `status_list` returns a row per *configured* source. Migrating onto it
+//!   would compile and quietly report a healthy store. The ask upstream is a
+//!   pending count.
 //!
-//! Porting those as they stand would move the ingest pipeline and the raw
+//! Porting those two as they stand would move the ingest pipeline and the raw
 //! chunk door *into* the host rather than behind the bus, which is the opposite
 //! of what #5560 is for: a second unpoliced door spelled differently is still a
 //! second unpoliced door.
+//!
+//! ## What came home, and why it was different
+//!
+//! [`reconcile`] was on the blocked list and no longer is. Both of its halves
+//! read the `[[memory_sources]]` table in **this host's own config file** and
+//! nothing below it: the scan came home when tinymemory v1.13.4 deleted the
+//! in-process Composio pipeline it used to call, and
+//! `apply_composio_source_caps_migration` followed in #5560. That is the line
+//! between the two lists — a config rewrite is host work that happened to live
+//! upstream, where an ingest pipeline and a SQLite cursor are not.
 //!
 //! `MemorySourceSink` is not the answer for the registry either — it is
 //! `accept_source_items` + `forget_source` + `forget_matching`, an *ingest*
@@ -74,13 +90,15 @@ pub use types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, Sourc
 // honest inventory of what is left. See the module docs for what blocks each.
 pub use tinymemory_core::sources::{status, sync};
 
-// `reconcile` used to be entirely the engine's too. tinymemory v1.13.4
-// deleted `ensure_composio_sources` along with the rest of the in-process
-// Composio pipeline it scanned (`sync::composio::scan_active_sync_targets`),
-// so this host now carries its own — built on
+// `reconcile` used to be entirely the engine's. tinymemory v1.13.4 deleted
+// `ensure_composio_sources` along with the rest of the in-process Composio
+// pipeline it scanned (`sync::composio::scan_active_sync_targets`), so this
+// host carries its own — built on
 // `memory::sync::composio::scan_active_sync_targets`, the tinyconnectors
-// replacement — while `apply_composio_source_caps_migration` (which never
-// touched the deleted pipeline) stays the engine's.
+// replacement. `apply_composio_source_caps_migration` followed it home in
+// #5560: it never touched the deleted pipeline, only this host's config file,
+// and reaching it through the engine bought a compile-time link to the engine
+// for a `config.toml` rewrite.
 pub mod reconcile;
 
 // The controller aggregators this domain's RPC surface defines. Aliased

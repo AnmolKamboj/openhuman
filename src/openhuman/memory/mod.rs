@@ -156,22 +156,27 @@ pub use tinycortex::memory::ingest::{
     ExtractedEntity, ExtractedRelation, ExtractionMode, MemoryIngestionConfig,
     MemoryIngestionRequest, MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
 };
-// The remaining four are genuinely `tinymemory-core`'s own: the in-process
-// ingest queue (`ingestion::queue`) and its status snapshot
-// (`ingestion::state`). They have no contract equivalent — the ingest queue is
-// named in `direct_engine_refs_tests`' upstream-gap list as one of the four
-// things with no bus representation at all — so this is what still pins the
-// engine crate here, and it is now visible as such rather than hidden in a
-// list of eleven.
+// The other four — `IngestionJob`, `IngestionQueue`, `IngestionState` and
+// `IngestionStatusSnapshot` — are genuinely `tinymemory-core`'s own: the
+// in-process ingest queue and its status snapshot, which `direct_engine_refs`
+// lists among the handful of things with no bus representation at all. They
+// used to be re-exported here beside the seven above, and that line is gone
+// (#5560).
 //
-// `IngestionState` is the one with a live consumer
-// (`tests/raw_coverage/memory_raw_coverage_e2e.rs`). The other three are kept
-// because they are one module's worth of a single domain and splitting a queue
-// from its own job type would leave a re-export that documents nothing; when
-// the queue moves behind the bus they go together.
-pub use tinymemory_core::ingestion::{
-    IngestionJob, IngestionQueue, IngestionState, IngestionStatusSnapshot,
-};
+// It was gone for want of a caller, not because the gap closed. Three of the
+// four had **no consumer anywhere** — not in `src/`, not in `tests/`, not in
+// the shell — and the fourth, `IngestionState`, had exactly one:
+// `tests/raw_coverage/memory_raw_coverage_e2e.rs`, an integration test, which
+// now names `tinymemory_core::ingestion` itself. That costs it nothing: the
+// engine crate stays a **dev-dependency**, which every `tests/` target links,
+// so the only thing this line was still buying was a *production* compile-time
+// link to the engine on behalf of nobody. Same reasoning, and the same
+// conclusion, as the `MemoryClient` / `UnifiedMemory` aliases dropped below.
+//
+// A production caller that genuinely needs the in-process queue should not get
+// it back through this facade — the queue belongs behind the bus, and reaching
+// it by re-export is the second unpoliced door `memory::binding` exists to
+// close.
 // The host's own JSON-RPC request/response shapes. They lived in
 // `tinymemory_core::rpc_models` and were re-exported here by a glob; nothing
 // in `tinymemory` ever named one, so the engine crate was carrying this host's
