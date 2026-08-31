@@ -158,24 +158,6 @@ export function classifyRpcError(
   data?: unknown
 ): CoreRpcErrorKind {
   if (isThreadNotFoundRpcData(data)) return 'thread_not_found';
-  // An HTTP 401 on the RPC endpoint itself is the LOCAL core's bearer gate
-  // (`src/core/auth.rs` — "Missing or invalid Authorization header"), never the
-  // TinyHumans backend. A backend session rejection cannot arrive this way: the
-  // core proxies those calls and surfaces them as a JSON-RPC error inside a 200
-  // (`SESSION_EXPIRED: backend rejected session token on GET /…`), which the
-  // message arms below classify. `httpStatus` is only ever populated from the
-  // transport branch, and custom transports (cloud / LAN / tunnel) return
-  // before it.
-  //
-  // This used to return `auth_expired`, and `classifyAuthExpiredReason` paired
-  // it with `confirmed` — which skips corroboration in `CoreStateProvider` and
-  // calls `clearSession()`, wiping the auth profile from disk. So a stale RPC
-  // bearer (the core restarting and minting a new per-launch token while the
-  // renderer holds the old one, or a browser session against a stale
-  // `core.token`) signed the user out of their TinyHumans account when the
-  // TinyHumans server had said nothing at all. Recovery is to re-read the
-  // bearer or restart the core, never to destroy the session.
-  if (httpStatus === 401) return 'core_auth';
   if (httpStatus === 429) return 'rate_limited';
   // The running core has no such method — a transport-boundary version skew
   // (older core than the UI bundle, a domain-gated `DomainSet`, or a slim
@@ -206,6 +188,28 @@ export function classifyRpcError(
     /unauthorized/i.test(message)
   )
     return 'auth_expired';
+  // Everything above matched an explicit backend marker in the message. What
+  // is left, if the transport gave us a 401, is the LOCAL core's bearer gate
+  // (`src/core/auth.rs` — "Missing or invalid Authorization header"), never the
+  // TinyHumans backend: the core proxies backend calls and surfaces their
+  // rejections as a JSON-RPC error inside a 200, with no `httpStatus` at all.
+  // Custom transports (cloud / LAN / tunnel) return before the branch that
+  // populates it.
+  //
+  // Ordered here, not before the marker arms, so a 401 whose body DOES carry an
+  // explicit expiry marker is still honoured — the status is the fallback, not
+  // the override.
+  //
+  // This used to return `auth_expired` from the top of the function, and
+  // `classifyAuthExpiredReason` paired it with `confirmed`, which skips
+  // corroboration in `CoreStateProvider` and calls `clearSession()` — wiping
+  // the auth profile from disk. So a stale RPC bearer (the core restarting and
+  // minting a new per-launch token while the renderer holds the old one, or a
+  // browser session against a stale `core.token`) signed the user out of their
+  // TinyHumans account when the TinyHumans server had said nothing at all.
+  // Recovery is to re-read the bearer or restart the core, never to destroy the
+  // session.
+  if (httpStatus === 401) return 'core_auth';
   // Downstream provider/integration 401 — NOT user session expiry.
   // e.g. "Discord API error: Discord list guilds failed (401): Unauthorized"
   // e.g. "OpenAI API error (401 Unauthorized): invalid api key"
