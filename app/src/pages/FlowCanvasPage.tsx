@@ -1339,7 +1339,6 @@ function FlowEditor({
               onProposal={handleProposal}
               onAccept={handleAcceptProposal}
               onReject={handleRejectProposal}
-              onClose={() => setSidePanel(null)}
               repairSeed={copilotRepairSeed}
               buildSeed={initialBuildSeed}
               onBuildSeedConsumed={onBuildSeedConsumed}
