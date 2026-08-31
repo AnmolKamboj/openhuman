@@ -44,6 +44,7 @@ import EditableFlowCanvas, {
   type EditableFlowCanvasHandle,
   type EditorSaveMeta,
 } from './EditableFlowCanvas';
+import { FLOW_FIT_VIEW_OPTIONS } from './fitView';
 import './flowCanvasStyles.css';
 import FlowNodeComponent from './FlowNodeComponent';
 import { StepNumberContext } from './stepNumbers';
@@ -97,21 +98,6 @@ interface FlowCanvasProps {
   /** Fired on every viewport change (editable only, F4/F5 fix). */
   onViewportChange?: (viewport: Viewport) => void;
 }
-
-/**
- * Shared `fitView` options for both canvases.
- *
- * React Flow's default is `{ padding: 0.1, maxZoom: 1 }`, so a small graph
- * opens at 100% and fills the viewport with three or four cards. `maxZoom`
- * 0.85 pulls back far enough to see the shape of a flow on open while the
- * 13px node titles stay readable, and the wider padding keeps the outermost
- * cards off the canvas edge.
- *
- * Exported because {@link EditableFlowCanvas} must fit identically — the
- * editable canvas persists its viewport, so a different initial zoom there
- * would be saved and then restored forever.
- */
-export const FLOW_FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 0.85 } as const;
 
 const NODE_TYPES = { [FLOW_NODE_TYPE]: FlowNodeComponent };
 

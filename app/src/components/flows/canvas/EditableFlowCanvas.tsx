@@ -64,6 +64,7 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { type FlowConnection, listFlowConnections } from '../../../services/api/flowsApi';
 import { Button } from '../../ui';
 import { type CanvasActions, CanvasActionsContext } from './canvasActions';
+import { FLOW_FIT_VIEW_OPTIONS } from './fitView';
 import './flowCanvasStyles.css';
 import FlowNodeComponent from './FlowNodeComponent';
 import FlowValidationBanner from './FlowValidationBanner';
