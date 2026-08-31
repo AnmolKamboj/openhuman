@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "OpenHuman"
-version = "0.63.18"
+version = "0.63.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4270,7 +4270,7 @@ dependencies = [
 
 [[package]]
 name = "openhuman"
-version = "0.63.18"
+version = "0.63.19"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -4348,7 +4348,7 @@ dependencies = [
  "tinyflows-sqlite",
  "tinyhosts",
  "tinyhumans-sdk",
- "tinyinference 0.2.1",
+ "tinyinference",
  "tinyjuice-bus",
  "tinymcp",
  "tinymcp-bus",
@@ -6927,7 +6927,7 @@ dependencies = [
  "tinyagents-harness",
  "tinyagents-language",
  "tinyagents-tracing",
- "tinyinference 0.2.1",
+ "tinyinference",
  "tokio",
 ]
 
@@ -6949,7 +6949,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "tinyagents-tracing",
- "tinyinference 0.2.1",
+ "tinyinference",
  "tinytools",
  "tokio",
 ]
@@ -6972,7 +6972,7 @@ dependencies = [
  "tinyagents-graph",
  "tinyagents-harness",
  "tinyagents-language",
- "tinyinference 0.2.1",
+ "tinyinference",
 ]
 
 [[package]]
@@ -7150,7 +7150,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.20",
  "tinycortex-api",
- "tinyinference 0.2.1 (git+https://github.com/tinyhumansai/tinyinference?rev=cc8aca484bb995fbab3b7358f0d72ab5056b587c)",
+ "tinyinference",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
@@ -7274,23 +7274,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinyinference"
-version = "0.2.1"
-source = "git+https://github.com/tinyhumansai/tinyinference?rev=cc8aca484bb995fbab3b7358f0d72ab5056b587c#cc8aca484bb995fbab3b7358f0d72ab5056b587c"
-dependencies = [
- "async-trait",
- "bytes",
- "futures",
- "httpdate",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
 name = "tinyjuice-bus"
 version = "0.2.5"
 dependencies = [
@@ -7386,7 +7369,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tinycortex",
  "tinycortex-api",
- "tinyinference 0.2.1",
+ "tinyinference",
  "tinymemory-api",
  "tinymemory-sources",
  "tinymemory-sync",
