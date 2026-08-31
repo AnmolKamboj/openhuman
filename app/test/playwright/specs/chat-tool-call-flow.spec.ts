@@ -171,6 +171,7 @@ test.describe('Chat Tool Call Flow', () => {
     await sendMessage(page, PROMPT);
 
     await expect(agentMessageText(page, CANARY_FINAL)).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText(`Here is the fetched content: ${CANARY_FINAL}`, { exact: true })).toHaveCount(1);
 
     // Regression: completed tool/reasoning arrays remain in Redux briefly, but
     // they must not create a synthetic running tail after the final answer.

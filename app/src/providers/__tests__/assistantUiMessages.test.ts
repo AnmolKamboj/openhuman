@@ -209,6 +209,19 @@ describe('buildRuntimeMessages', () => {
     ]);
   });
 
+  it('renders final streamed narration only once', () => {
+    const finalText = 'hey! what is up?';
+    const answer = msg({ id: 'answer', sender: 'agent', content: finalText });
+    const content = buildRuntimeMessages([answer], null, {
+      turnTranscripts: {
+        request: [{ kind: 'narration', round: 1, seq: 0, text: finalText }],
+      },
+      turnTimelines: { request: [] },
+    })[0]?.content;
+
+    expect(content).toEqual([{ type: 'text', text: finalText }]);
+  });
+
   /**
    * The crash this guards: assistant-ui keys tool parts as `toolCallId-${id}`
    * and throws "Duplicate key … in useResources" on a repeat, taking the whole

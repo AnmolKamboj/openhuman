@@ -140,11 +140,15 @@ function assistantParts(
         parts.push(toolPart(entry));
       }
     }
-    if (item.kind === 'narration' && item.text.trim().length > 0) {
+    if (
+      item.kind === 'narration' &&
+      item.text.trim().length > 0 &&
+      item.text.trim() !== text.trim()
+    ) {
       // Narration emitted before a tool call is assistant content in its own
       // right. Keep it inline in assistant-ui's ordered part stream; the final
-      // answer is appended separately below, so this preserves the real turn
-      // sequence without relying on the removed legacy processing pane.
+      // answer is appended separately below. A final-round narration is the
+      // same streamed bytes as that answer and must not render twice.
       parts.push({ type: 'text', text: item.text });
     }
   }
