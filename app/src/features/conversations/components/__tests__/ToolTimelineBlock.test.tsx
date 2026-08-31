@@ -4,8 +4,19 @@ import { Provider } from 'react-redux';
 import { describe, expect, it, vi } from 'vitest';
 
 import { store } from '../../../../store';
-import type { ToolTimelineEntry } from '../../../../store/chatRuntimeSlice';
-import { SubagentActivityBlock, ToolTimelineBlock } from '../ToolTimelineBlock';
+import type { SubagentActivity, ToolTimelineEntry } from '../../../../store/chatRuntimeSlice';
+import { AssistantUiSubagentCall } from '../AssistantUiSubagentCall';
+import { ToolTimelineBlock } from '../ToolTimelineBlock';
+
+function SubagentActivityBlock({
+  subagent,
+  onView,
+}: {
+  subagent: SubagentActivity;
+  onView?: () => void;
+}) {
+  return <AssistantUiSubagentCall activity={subagent} onView={onView} defaultOpen />;
+}
 
 // #1122 — guards the parent-thread live subagent rendering. The block
 // always expands subagent rows so the activity stays visible while the
@@ -928,6 +939,10 @@ describe('ToolTimelineBlock — subagent rendering', () => {
     };
     renderInStore(<ToolTimelineBlock entries={[entry]} />);
 
+    const subagent = screen.getByTestId('assistant-ui-subagent-call');
+    const trigger = within(subagent).getByRole('button');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
     const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(1);
     expect(calls[0].textContent).toContain('Searching the web');
@@ -1033,7 +1048,7 @@ describe('ToolTimelineBlock — compact chat mode (onViewDetails)', () => {
     },
   ];
 
-  it('collapses finished steps to a "View details" link but keeps the running step expanded inline', () => {
+  it('collapses finished steps to a link and keeps the running delegation card inline', () => {
     const onViewDetails = vi.fn();
     renderInStore(<ToolTimelineBlock entries={entries} onViewDetails={onViewDetails} />);
 
@@ -1041,8 +1056,12 @@ describe('ToolTimelineBlock — compact chat mode (onViewDetails)', () => {
     const links = screen.getAllByTestId('view-details');
     expect(links).toHaveLength(1);
 
-    // The currently-running sub-agent stays expanded inline in the main UI
-    // (its activity is visible) — and shows no "View details" link itself.
+    // The running delegation remains inline but its assistant-ui disclosure is
+    // collapsed by default like every other delegation card.
+    const subagent = screen.getByTestId('assistant-ui-subagent-call');
+    const trigger = within(subagent).getByRole('button');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
     const activity = screen.getByTestId('subagent-activity');
     expect(activity.textContent).toContain('pondering');
     // The finished step SUCCEEDED, so its raw output is no longer duplicated
@@ -1085,7 +1104,9 @@ describe('ToolTimelineBlock — compact chat mode (onViewDetails)', () => {
 
   it('still expands inline (no compact link) when onViewDetails is omitted (panel mode)', () => {
     renderInStore(<ToolTimelineBlock entries={entries} expandAllRows />);
-    // Panel/expandable path: sub-agent activity is shown, no "View details" link.
+    const subagent = screen.getByTestId('assistant-ui-subagent-call');
+    fireEvent.click(within(subagent).getByRole('button'));
+    // Panel path uses the same delegation card, with no compact details link.
     expect(screen.getByTestId('subagent-activity')).toBeInTheDocument();
     expect(screen.queryByTestId('view-details')).toBeNull();
   });
@@ -1398,6 +1419,8 @@ describe('ToolTimelineBlock — sub-agent activity survives the transcript path'
     expect(screen.getByTestId('processing-transcript')).toBeInTheDocument();
     // …and the nested child run is present, not collapsed to one line.
     expect(screen.getByTestId('processing-subagent')).toBeInTheDocument();
+    const subagent = screen.getByTestId('assistant-ui-subagent-call');
+    fireEvent.click(within(subagent).getByRole('button'));
     const calls = screen.getAllByTestId('assistant-ui-tool-call');
     expect(calls).toHaveLength(2);
     expect(calls[0].textContent).toContain('Searched the web');
@@ -1410,6 +1433,8 @@ describe('ToolTimelineBlock — sub-agent activity survives the transcript path'
   it('still renders child tool calls on the legacy row path (no transcript)', () => {
     renderInStore(<ToolTimelineBlock entries={[subagentEntry]} turnActive />);
     expect(screen.queryByTestId('processing-transcript')).toBeNull();
+    const subagent = screen.getByTestId('assistant-ui-subagent-call');
+    fireEvent.click(within(subagent).getByRole('button'));
     expect(screen.getAllByTestId('assistant-ui-tool-call')).toHaveLength(2);
   });
 

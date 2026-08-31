@@ -1,3 +1,11 @@
+import { CheckIcon, ChevronDownIcon, Loader2Icon, WorkflowIcon } from 'lucide-react';
+
+import { cn } from '../../../components/assistant-ui/lib/utils';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '../../../components/assistant-ui/ui/collapsible';
 import Badge from '../../../components/ui/Badge';
 import WorktreeActions from '../../../components/worktree/WorktreeActions';
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -28,26 +36,9 @@ function ChildToolCallCard({ call }: { call: ChildToolCall }) {
   );
 }
 
-/**
- * The agent's reasoning or visible narration, surfaced inline in the timeline
- * as quoted/italic prose at the position it streamed — so a thought shows up
- * wherever it occurred between tool calls. Shown directly (no "Thoughts"
- * heading, no collapse). Both `thinking` and `text` transcript items render
- * through here. Renders nothing for an all-whitespace delta so a half-streamed
- * item never flashes an empty quote.
- */
-export function ThoughtBlock({ text }: { text: string }) {
-  // Drop any inline `<tool_call>…</tool_call>` envelope the model emitted as
-  // text — the call already shows as its own row. Keep the original newlines
-  // (only trim the ends) so the markdown renderer can see headings, lists,
-  // code fences and emphasis instead of flattening them to one plain line.
+function Thought({ text }: { text: string }) {
   const clean = stripToolCallEnvelopes(text).trim();
   if (!clean) return null;
-  // Rendered through the shared `BubbleMarkdown` so a thought formats markdown
-  // (bold, code, lists) — but scaled back to the original quiet thought look:
-  // small (12px) and light/muted, not the larger, darker agent-bubble prose.
-  // Descendant overrides on `.prose` beat the typography plugin's base sizing;
-  // code keeps its accent colour so inline `tool_names` still read clearly.
   return (
     <div
       data-testid="subagent-thought"
@@ -57,24 +48,11 @@ export function ThoughtBlock({ text }: { text: string }) {
   );
 }
 
-/**
- * Render the live activity of one running (or completed) sub-agent inside its
- * parent timeline row — the mode/dedicated-thread badge, the child iteration
- * counter, the final-run statistics, and the ordered transcript of child tool
- * calls interleaved with the agent's "Thoughts" (reasoning + narration).
- *
- * Kept as a sibling of the existing worker-thread / detail block so the
- * surrounding disclosure chevron + status pill behaviour is unaffected — this
- * component only renders when `subagent` is present on the entry, which is true
- * for any row produced by the `subagent_*` socket events from a current core.
- */
-export function SubagentActivityBlock({
+function SubagentDetails({
   subagent,
   onView,
 }: {
   subagent: SubagentActivity;
-  /** Opens the full-transcript drawer for this subagent. Omitted in
-   * read-only contexts (e.g. a completed snapshot with no live driver). */
   onView?: () => void;
 }) {
   const { t } = useT();
@@ -82,13 +60,11 @@ export function SubagentActivityBlock({
   if (subagent.mode) headerBits.push(subagent.mode);
   if (subagent.dedicatedThread) headerBits.push(t('conversations.toolTimeline.workerThread'));
   if (subagent.childIteration != null) {
-    if (subagent.childMaxIterations != null) {
-      headerBits.push(
-        `${t('conversations.toolTimeline.turn')} ${subagent.childIteration}/${subagent.childMaxIterations}`
-      );
-    } else {
-      headerBits.push(`${t('conversations.toolTimeline.step')} ${subagent.childIteration}`);
-    }
+    headerBits.push(
+      subagent.childMaxIterations != null
+        ? `${t('conversations.toolTimeline.turn')} ${subagent.childIteration}/${subagent.childMaxIterations}`
+        : `${t('conversations.toolTimeline.step')} ${subagent.childIteration}`
+    );
   } else if (subagent.iterations != null) {
     headerBits.push(
       subagent.iterations === 1
@@ -103,12 +79,6 @@ export function SubagentActivityBlock({
         : `${subagent.elapsedMs}ms`
     );
   }
-
-  // The ordered transcript drives the inline activity: child tool-call rows
-  // and the agent's "Thoughts" (reasoning + visible narration) render in the
-  // exact order they streamed, so each thought appears wherever it occurred
-  // between tool calls. Falls back to the flat tool-call list when the prose
-  // transcript is absent (e.g. a rehydrated/interrupted snapshot).
   const transcript = subagent.transcript ?? [];
 
   return (
@@ -126,11 +96,11 @@ export function SubagentActivityBlock({
       ) : null}
       {transcript.length > 0 ? (
         <div className="ml-1 space-y-0.5" data-testid="subagent-transcript">
-          {transcript.map((item, i) =>
+          {transcript.map((item, index) =>
             item.kind === 'tool' ? (
               <ChildToolCallCard key={item.callId} call={item} />
             ) : (
-              <ThoughtBlock key={`thought-${i}`} text={item.text} />
+              <Thought key={`thought-${index}`} text={item.text} />
             )
           )}
         </div>
@@ -155,7 +125,7 @@ export function SubagentActivityBlock({
             <Badge variant={subagent.isDirty ? 'warning' : 'success'} className="rounded-full">
               {subagent.isDirty ? t('worktree.dirty') : t('worktree.clean')}
             </Badge>
-            {subagent.changedFiles && subagent.changedFiles.length > 0 ? (
+            {subagent.changedFiles?.length ? (
               <span className="text-[11px] text-content-faint">
                 {subagent.changedFiles.length}{' '}
                 {subagent.changedFiles.length === 1
@@ -177,5 +147,55 @@ export function SubagentActivityBlock({
         </button>
       ) : null}
     </div>
+  );
+}
+
+export function AssistantUiSubagentCall({
+  activity,
+  running = false,
+  description,
+  onView,
+  defaultOpen = false,
+}: {
+  activity: SubagentActivity;
+  running?: boolean;
+  description?: string;
+  onView?: () => void;
+  defaultOpen?: boolean;
+}) {
+  const name = activity.displayName ?? activity.agentId ?? 'subagent';
+  return (
+    <Collapsible
+      defaultOpen={defaultOpen}
+      data-slot="aui_subagent-call"
+      data-testid="assistant-ui-subagent-call"
+      className={cn(
+        'aui-subagent-call border-border/60 dark:border-muted-foreground/15 rounded-xl border',
+        running && 'border-dashed'
+      )}>
+      <CollapsibleTrigger className="group/subagent text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors">
+        <WorkflowIcon className="size-4 shrink-0" />
+        <span className="text-start leading-none">
+          Delegated to <b className="text-foreground">{name}</b>
+        </span>
+        {running ? (
+          <span className="bg-muted text-muted-foreground flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] leading-none">
+            <Loader2Icon className="size-3 animate-spin [animation-duration:0.6s]" /> running
+          </span>
+        ) : (
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-[11px] leading-none">
+            <CheckIcon className="size-3.5" />
+            {activity.elapsedMs != null ? (
+              <span className="tabular-nums">{(activity.elapsedMs / 1000).toFixed(1)}s</span>
+            ) : null}
+          </span>
+        )}
+        <ChevronDownIcon className="ml-auto size-4 shrink-0 -rotate-90 transition-transform group-data-[state=open]/subagent:rotate-0" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="px-3 pb-3">
+        {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}
+        <SubagentDetails subagent={activity} onView={onView} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
