@@ -75,6 +75,18 @@ fi
 # Source of truth: scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
 
+# The product test surface exercises Composio through its TinyConnectors module.
+# CI builds the pinned submodule and supplies this explicit override; mirror
+# that setup locally so the full runner never falls back to GitHub release
+# metadata (which makes an otherwise hermetic mock-backend suite network-bound).
+if [ -z "${TINYCONNECTORS_TEST_MODULE:-}" ]; then
+  connectors_manifest="vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml"
+  connectors_module="vendor/tinyconnectors/target/release/libtinyconnectors.so"
+  echo "Building TinyConnectors test module from the pinned submodule ..."
+  cargo build --release --manifest-path "$connectors_manifest"
+  export TINYCONNECTORS_TEST_MODULE="$REPO_ROOT/$connectors_module"
+fi
+
 cargo_test() {
   cargo test --manifest-path Cargo.toml --workspace \
     --features "${PRODUCT_FEATURES},bin-tools" "$@"
