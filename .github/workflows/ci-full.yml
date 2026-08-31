@@ -317,6 +317,22 @@ jobs:
       - name: Install Playwright Chromium headless shell
         run: pnpm --filter openhuman-app exec playwright install chromium-headless-shell
 
+      - name: Build TinyMemory module for Playwright E2E
+        run: |
+          # The web memory round-trip specs start a real core. Keep its module
+          # fully local: falling back to the GitHub-release resolver makes the
+          # suite depend on release metadata availability after the app has
+          # already started.
+          git submodule update --init --recursive vendor/tinymemory
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          memory_dir="$module_root/tinymemory"
+          mkdir -p "$memory_dir"
+          bash scripts/ci-cancel-aware.sh cargo build --release \
+            --manifest-path vendor/tinymemory/crates/tinymemory-module/Cargo.toml
+          cp vendor/tinymemory/crates/tinymemory-module/target/release/libtinymemory_module.so \
+            "$memory_dir/libtinymemory_module.so"
+          echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" >> "$GITHUB_ENV"
+
       - name: Run Playwright web E2E suite
         env:
           OPENHUMAN_WORKSPACE: ${{ runner.temp }}/openhuman-playwright-workspace
