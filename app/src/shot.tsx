@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { createRef } from 'react';
 import './index.css';
-import ThreadList from './features/conversations/threadList/ThreadList';
+import { ThreadList } from './features/conversations/threadList/ThreadList';
 
 const threads = Array.from({ length: 12 }, (_, i) => ({
   id: `t${i}`,
