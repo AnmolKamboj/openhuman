@@ -15,7 +15,7 @@
  * Separate file rather than an edit to the sibling: three of us are in this
  * directory.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../../test/test-utils';
@@ -69,6 +69,23 @@ async function renderLoaded(overrides: Partial<SandboxSettings> = {}) {
   await waitFor(() => expect(mockGet).toHaveBeenCalled());
 }
 
+/**
+ * Let any queued persist actually run before asserting it did NOT happen.
+ *
+ * `await waitFor(() => expect(mockGet).toHaveBeenCalled())` is NOT a readiness
+ * signal here: `mockGet` fires on mount, so the condition is already true and
+ * `waitFor` resolves on its first tick — before a blur handler's promise chain
+ * has had a chance to reach `mockUpdate`. The negative assertion that follows
+ * would then pass whether or not the guard exists. Two macrotasks is what a
+ * `void persist(...)` needs to get from the handler to the mock.
+ */
+async function flushPersist() {
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+}
+
 /** Blur a field after typing `value`, then report what (if anything) persisted. */
 function blurWith(input: HTMLElement, value: string) {
   fireEvent.change(input, { target: { value } });
@@ -95,8 +112,7 @@ describe('SandboxSettingsPanel — memory limit validation', () => {
     await renderLoaded();
     blurWith(memoryInput(), value);
 
-    // A moment for any stray async persist to land.
-    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    await flushPersist();
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -120,7 +136,7 @@ describe('SandboxSettingsPanel — CPU limit validation', () => {
     await renderLoaded();
     blurWith(cpuInput(), value);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    await flushPersist();
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -144,7 +160,7 @@ describe('SandboxSettingsPanel — docker image validation', () => {
     await renderLoaded();
     blurWith(imageInput(), '   ');
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalled());
+    await flushPersist();
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -160,7 +176,11 @@ describe('SandboxSettingsPanel — load shape', () => {
   it('renders empty limit fields when the core reports no limits', async () => {
     await renderLoaded({ docker_memory_limit_mb: null, docker_cpu_limit: null });
 
-    await waitFor(() => expect(screen.queryByDisplayValue('512')).not.toBeInTheDocument());
+    // Wait for a POSITIVE loaded signal first — the image field is populated
+    // from the same response. Waiting on the absence of '512' would pass while
+    // the panel was still empty because nothing had loaded at all.
+    expect(await screen.findByDisplayValue('alpine:3.20')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('512')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('1')).not.toBeInTheDocument();
   });
 

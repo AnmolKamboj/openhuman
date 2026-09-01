@@ -1,6 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { bootAuthenticatedPage, waitForAppReady } from '../helpers/core-rpc';
+import {
+  bootAuthenticatedPage,
+  dismissWalkthroughIfPresent,
+  waitForAppReady,
+} from '../helpers/core-rpc';
 
 /**
  * Settings navigation, driven in a real browser.
@@ -107,6 +111,11 @@ const panelHeading = (page: Page) => page.getByRole('heading', { level: 1 });
 async function gotoSettings(page: Page, route: string) {
   await page.goto(`/#/settings/${route}`);
   await waitForAppReady(page);
+  // Defence in depth: `seedBrowserCoreMode` already sets
+  // `openhuman:walkthrough_completed`, which is why this suite passed without
+  // it — but if that seed ever changes, an open walkthrough would intercept
+  // the sidebar clicks below rather than failing loudly.
+  await dismissWalkthroughIfPresent(page);
   // `waitForAppReady` only proves the shell painted; the routed panel mounts a
   // beat later. Wait for the panel's own heading before asserting on it.
   await expect(panelHeading(page)).toBeVisible({ timeout: 30_000 });

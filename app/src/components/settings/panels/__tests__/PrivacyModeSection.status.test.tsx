@@ -152,7 +152,11 @@ describe('PrivacyModeSection — save', () => {
     await act(async () => {
       vi.advanceTimersByTime(2000);
     });
-    await waitFor(() => expect(statusLine()).toHaveTextContent(''));
+    // `toHaveTextContent('')` is a false positive: jest-dom treats an empty
+    // expected string as matching anything (it now throws rather than assert),
+    // so it would pass whether or not the note cleared. `toBeEmptyDOMElement`
+    // is the matcher that actually checks emptiness.
+    await waitFor(() => expect(statusLine()).toBeEmptyDOMElement());
   });
 
   it('does not call the setter when the already-selected mode is re-chosen', async () => {
