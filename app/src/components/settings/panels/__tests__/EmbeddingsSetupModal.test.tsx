@@ -26,10 +26,14 @@ import EmbeddingsSetupModal, { type EmbeddingsSetupModalProps } from '../Embeddi
  */
 vi.mock('../../../../lib/i18n/I18nContext', () => ({
   useT: () => ({
-    t: (key: string) => {
+    // Mirror the real signature: `t: (key, fallback?) => string`
+    // (`lib/i18n/I18nContext.tsx:25`). Dropping the fallback made this mock
+    // return the raw key for any `t(key, fallback)` call, which is not what the
+    // component renders — the tooltip here is supplied as a fallback.
+    t: (key: string, fallback?: string) => {
       if (key === 'settings.embeddings.testSuccess') return 'Connected: {dims} dimensions';
       if (key === 'settings.embeddings.testFailed') return 'Failed: {error}';
-      return key;
+      return fallback ?? key;
     },
   }),
 }));
