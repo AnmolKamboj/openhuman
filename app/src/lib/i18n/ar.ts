@@ -926,7 +926,7 @@ const messages: TranslationMap = {
   'memoryTree.status.autoSyncDescription': 'توقف عن الابتلاع (ويكي) الحالي يبقى قابلاً للتساؤل',
   'memoryTree.status.statusTile': 'الحالة',
   'memoryTree.status.lastSyncTile': 'آخر تزامن',
-  'memoryTree.status.totalChunksTile': 'مجموع الشرائح',
+  'memoryTree.status.totalChunksTile': 'أوراق شجرة الملخصات',
   'memoryTree.status.wikiSizeTile': 'حجم ويك',
   'memoryTree.status.statusRunning': 'تشغيل',
   'memoryTree.status.statusPaused': 'مدفوع',

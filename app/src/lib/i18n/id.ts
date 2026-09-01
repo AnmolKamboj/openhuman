@@ -963,7 +963,7 @@ const messages: TranslationMap = {
     'Jeda untuk menghentikan ingest baru. Wiki yang ada tetap dapat dikueri.',
   'memoryTree.status.statusTile': 'Status',
   'memoryTree.status.lastSyncTile': 'Sinkronisasi terakhir',
-  'memoryTree.status.totalChunksTile': 'Total potongan',
+  'memoryTree.status.totalChunksTile': 'Daun pohon ringkasan',
   'memoryTree.status.wikiSizeTile': 'Ukuran wiki',
   'memoryTree.status.statusRunning': 'Berjalan',
   'memoryTree.status.statusPaused': 'Dijeda',

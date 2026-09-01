@@ -962,7 +962,7 @@ const messages: TranslationMap = {
     'Пауза, чтобы остановить новый прием. Существующая вики остается доступной для запросов.',
   'memoryTree.status.statusTile': 'Статус',
   'memoryTree.status.lastSyncTile': 'Последняя синхронизация',
-  'memoryTree.status.totalChunksTile': 'Всего кусков',
+  'memoryTree.status.totalChunksTile': 'Листья дерева сводок',
   'memoryTree.status.wikiSizeTile': 'Размер вики',
   'memoryTree.status.statusRunning': 'Бег',
   'memoryTree.status.statusPaused': 'Приостановлено',

@@ -910,7 +910,7 @@ const en: TranslationMap = {
     'Pause to stop new ingestion. Existing wiki stays queryable.',
   'memoryTree.status.statusTile': 'Status',
   'memoryTree.status.lastSyncTile': 'Last sync',
-  'memoryTree.status.totalChunksTile': 'Total chunks',
+  'memoryTree.status.totalChunksTile': 'Summary-tree leaves',
   'memoryTree.status.wikiSizeTile': 'Wiki size',
   'memoryTree.status.statusRunning': 'Running',
   'memoryTree.status.statusPaused': 'Paused',

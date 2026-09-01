@@ -974,7 +974,7 @@ const messages: TranslationMap = {
     'Pausa para detener la nueva ingestión. El wiki existente sigue siendo consultable.',
   'memoryTree.status.statusTile': 'Estado',
   'memoryTree.status.lastSyncTile': 'Última sincronización',
-  'memoryTree.status.totalChunksTile': 'Fragmentos totales',
+  'memoryTree.status.totalChunksTile': 'Hojas del árbol de resúmenes',
   'memoryTree.status.wikiSizeTile': 'Tamaño de la wiki',
   'memoryTree.status.statusRunning': 'Corriendo',
   'memoryTree.status.statusPaused': 'Pausado',

@@ -967,7 +967,7 @@ const messages: TranslationMap = {
     'Wstrzymaj, aby zatrzymać nowe pobieranie. Istniejąca wiki pozostanie dostępna do zapytań.',
   'memoryTree.status.statusTile': 'Stan',
   'memoryTree.status.lastSyncTile': 'Ostatnia synchronizacja',
-  'memoryTree.status.totalChunksTile': 'Fragmenty łącznie',
+  'memoryTree.status.totalChunksTile': 'Liście drzewa podsumowań',
   'memoryTree.status.wikiSizeTile': 'Rozmiar wiki',
   'memoryTree.status.statusRunning': 'Działa',
   'memoryTree.status.statusPaused': 'Wstrzymane',

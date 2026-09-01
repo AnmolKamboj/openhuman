@@ -952,7 +952,7 @@ const messages: TranslationMap = {
     'नए अंतर्ग्रहण को रोकने के लिए रोकें। मौजूदा विकि क्वेरी योग्य रहता है।',
   'memoryTree.status.statusTile': 'स्थिति',
   'memoryTree.status.lastSyncTile': 'अंतिम सिंक',
-  'memoryTree.status.totalChunksTile': 'कुल अंक',
+  'memoryTree.status.totalChunksTile': 'सारांश-वृक्ष की पत्तियाँ',
   'memoryTree.status.wikiSizeTile': 'विकी आकार',
   'memoryTree.status.statusRunning': 'दौड़ना',
   'memoryTree.status.statusPaused': 'दलित',

@@ -986,7 +986,7 @@ const messages: TranslationMap = {
     'Pausieren Sie, um die erneute Einnahme zu stoppen. Vorhandenes Wiki bleibt abfragbar.',
   'memoryTree.status.statusTile': 'Status',
   'memoryTree.status.lastSyncTile': 'Letzte Synchronisierung',
-  'memoryTree.status.totalChunksTile': 'Gesamtstückzahl',
+  'memoryTree.status.totalChunksTile': 'Blätter des Zusammenfassungsbaums',
   'memoryTree.status.wikiSizeTile': 'Wiki-Größe',
   'memoryTree.status.statusRunning': 'Laufend',
   'memoryTree.status.statusPaused': 'Angehalten',
