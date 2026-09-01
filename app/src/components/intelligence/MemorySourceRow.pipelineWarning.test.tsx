@@ -145,27 +145,34 @@ describe('MemorySourceRow — what suppresses the warning', () => {
     expect(warning()).not.toBeInTheDocument();
   });
 
-  it('ALSO stays hidden after a sync has finished, for as long as the result chip lives', () => {
-    // Pinned because it is surprising and load-bearing, not because it is right.
-    //
-    // `settled = !progress && !result` (MemorySourceRow.tsx:100). `result` is the
-    // terminal success/failure chip, and MemorySourcesRegistry only clears it
-    // when the NEXT sync starts (`:213`, `:358`) — nothing else drops it. So
-    // after any completed sync the "stored without vectors" warning is hidden
-    // indefinitely, which is exactly the shape of the incident this file exists
-    // for: chunks synced, none embedded, and no indicator anywhere.
-    //
-    // Recorded as a bug in ~/tinyhuman/bugs/W6-ui-bugs.md rather than asserted
-    // as correct. If someone narrows the suppression to `progress` alone, this
-    // test fails and should be updated to expect the warning — that failure is
-    // the fix landing, not a regression.
+  // Skipped, not deleted, and it asserts the DESIRED behaviour rather than the
+  // current one — which is the only framing that satisfies both reviews on this
+  // thread.
+  //
+  // The bug: `settled = !progress && !result` (MemorySourceRow.tsx:100), and
+  // MemorySourcesRegistry clears `result` only when the NEXT sync starts
+  // (`:213`, `:358`). Nothing else drops it. So after any completed or failed
+  // sync the "stored without vectors" warning is suppressed indefinitely —
+  // exactly the incident this file exists for.
+  //
+  // Asserting the suppression as correct would make the bug a required
+  // contract, so a genuine fix would turn this red (CodeRabbit's objection, and
+  // it is right). Deleting the case would leave it invisible again, which is
+  // how it hid in the first place (Codex's objection, also right). Defining the
+  // expected behaviour and skipping until it holds does neither: it is a
+  // written-down spec for the fix, and it goes green the moment the fix lands.
+  //
+  // UNSKIP when the suppression is narrowed to `!progress`, or when the
+  // registry clears `syncResults` once the row's status refreshes post-sync.
+  // Tracked in ~/tinyhuman/bugs/W6-ui-bugs.md #14.
+  it.skip('should still warn after a sync finishes while chunks remain unembedded', () => {
     renderRow({
       status: storedWithoutVectors(),
       progress: null,
       result: { ok: true } as unknown as React.ComponentProps<typeof MemorySourceRow>['result'],
     });
 
-    expect(warning()).not.toBeInTheDocument();
+    expect(warning()).toBeInTheDocument();
   });
 
   it('reports the truth again once the sync has settled', () => {
