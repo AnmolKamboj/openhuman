@@ -110,6 +110,27 @@ describe('presentProviderSetupError', () => {
     expect(summary).toBe('Provider setup failed.');
   });
 
+  // CHARACTERISES A GAP, not desired behaviour. `presentProviderSetupError`
+  // performs no redaction: `findProviderJsonMessage` lifts the provider's
+  // `message` verbatim and `details` is the raw error. The backend redacts a
+  // fixed set of known token prefixes, so a CUSTOM provider echoing an
+  // arbitrary-shaped credential reaches the DOM intact.
+  //
+  // Pinned so the gap is visible and regression-locked rather than implied.
+  // Redacting at this boundary is a product change — it would also hide
+  // diagnostics a user may need — so it belongs in its own PR, not in a
+  // test-only one. Recorded in ~/tinyhuman/bugs/W1-ui-bugs.md. When redaction
+  // lands, invert these assertions.
+  it('echoes an arbitrary provider credential verbatim (known gap)', () => {
+    const secret = 'zz-corp-9f8e7d6c5b4a3210';
+    const { summary, details } = present(
+      `Could not reach CustomLLM: {"error":{"message":"Invalid token: ${secret}"}}`
+    );
+
+    expect(summary).toContain(secret);
+    expect(details).toContain(secret);
+  });
+
   it('preserves the raw error as details, untouched', () => {
     const raw = 'Could not reach OpenAI: provider returned 401 {"message":"nope"}';
     expect(present(raw).details).toBe(raw);

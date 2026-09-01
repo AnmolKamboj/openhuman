@@ -78,14 +78,23 @@ describe('AgentInsightsPreview', () => {
     expect(running.some(e => e.status === 'running')).toBe(true);
     expect(running.some(e => e.status === 'success')).toBe(true);
     expect(running.some(e => e.subagent)).toBe(true);
+    expect(running.some(e => e.status === 'error')).toBe(true);
   });
 
   it('settles every non-error entry to success and leaves errors alone', () => {
     const { running, settled } = renderPreview();
 
+    // Precondition, not decoration: the "leaves errors alone" half of this test
+    // only exercises anything if the fixture actually contains an error entry.
+    // Without this, removing the error fixture (or flipping it to 'success')
+    // would leave the test green while it silently stopped checking
+    // preservation at all.
+    expect(running.some(e => e.status === 'error')).toBe(true);
+
     settled.forEach((entry, i) => {
       expect(entry.status).toBe(running[i].status === 'error' ? 'error' : 'success');
     });
+    expect(settled.some(e => e.status === 'error')).toBe(true);
     expect(settled.some(e => e.status === 'running')).toBe(false);
   });
 

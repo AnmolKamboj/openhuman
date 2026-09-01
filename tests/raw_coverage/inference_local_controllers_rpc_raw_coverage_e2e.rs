@@ -27,8 +27,20 @@
 //!
 //! # Offline discipline
 //!
-//! Temp workspaces, a temp PATH, and a stub `piper` shell script only. Nothing
-//! here starts a server, opens a socket, or downloads an asset: the download and
+//! Temp workspaces, a temp PATH, and a stub `piper` shell script only.
+//!
+//! Two of these controllers (`assets_status`, `downloads_progress`) reach
+//! `LocalAiService::assets_status`, which probes `GET {ollama_base_url}/api/tags`
+//! with a two-second timeout. That base URL defaults to `localhost:11434` and is
+//! also taken from the ambient `OLLAMA_HOST`, so without pinning it this suite
+//! would make real socket calls — behaving differently on a machine that
+//! happens to be running Ollama, and costing up to two seconds per call. Every
+//! test therefore pins `OPENHUMAN_OLLAMA_BASE_URL` (the app-specific override,
+//! `ollama.rs:76`) to a closed loopback port and clears `OLLAMA_HOST`, so the
+//! probe is refused immediately and deterministically.
+//!
+//! Beyond that, nothing here starts a server, opens a listening socket, or
+//! downloads an asset: the download and
 //! STT paths are driven to their *rejection* branches on purpose, because the
 //! bundled whisper.cpp engine was deleted and `transcribe` is now a hosted proxy
 //! call with no local binary to stub — see the note at
@@ -90,6 +102,19 @@ impl Drop for EnvVarGuard {
             None => unsafe { std::env::remove_var(self.key) },
         }
     }
+}
+
+/// Point the Ollama health probe at a closed loopback port and clear the
+/// ambient override, so `assets_status` fails its probe instantly instead of
+/// dialling a real service (or waiting out a two-second timeout).
+///
+/// Port 9 is the discard port: nothing listens, so connect() is refused rather
+/// than hanging. Returned as guards — hold them for the life of the test.
+fn pin_offline_ollama() -> (EnvVarGuard, EnvVarGuard) {
+    (
+        EnvVarGuard::set("OPENHUMAN_OLLAMA_BASE_URL", "http://127.0.0.1:9"),
+        EnvVarGuard::unset("OLLAMA_HOST"),
+    )
 }
 
 fn controller<'a>(
@@ -433,6 +458,9 @@ async fn inference_transcribe_controllers_cover_params_trimming_and_local_reject
 #[tokio::test]
 async fn inference_download_asset_controller_covers_disabled_unknown_and_case_folding() {
     let _lock = env_lock();
+    // `download_asset` ends in `assets_status`, which probes Ollama — pin it
+    // even though every branch asserted here errors before reaching that call.
+    let _ollama = pin_offline_ollama();
     let tmp = tempdir().expect("tempdir");
     let mut config = temp_config(&tmp);
     config.local_ai.runtime_enabled = false;
@@ -570,6 +598,7 @@ async fn inference_agent_chat_simple_controller_covers_params_and_prompt_guard()
 #[tokio::test]
 async fn inference_status_controllers_tolerate_extra_params_and_reject_bad_urls() {
     let _lock = env_lock();
+    let _ollama = pin_offline_ollama();
     let tmp = tempdir().expect("tempdir");
     let mut config = temp_config(&tmp);
     config.local_ai.runtime_enabled = false;

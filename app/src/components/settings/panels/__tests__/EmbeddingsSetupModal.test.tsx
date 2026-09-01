@@ -15,7 +15,24 @@ import type {
 } from '../../../../services/api/embeddingsApi';
 import EmbeddingsSetupModal, { type EmbeddingsSetupModalProps } from '../EmbeddingsSetupModal';
 
-vi.mock('../../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (key: string) => key }) }));
+/**
+ * The mock returns the key for most lookups, which keeps assertions readable.
+ * Two keys are the exception: `testSuccess` and `testFailed` are TEMPLATES that
+ * the component fills with `.replace('{dims}', …)` / `.replace('{error}', …)`
+ * (`EmbeddingsSetupModal.tsx:191-195`). Returning the bare key there makes
+ * `.replace()` a no-op, so the substituted value never reaches the DOM and a
+ * component that stopped surfacing it would keep the test green. Returning the
+ * real templates (from `en.ts`) is what makes the substitution assertable.
+ */
+vi.mock('../../../../lib/i18n/I18nContext', () => ({
+  useT: () => ({
+    t: (key: string) => {
+      if (key === 'settings.embeddings.testSuccess') return 'Connected: {dims} dimensions';
+      if (key === 'settings.embeddings.testFailed') return 'Failed: {error}';
+      return key;
+    },
+  }),
+}));
 
 const provider = (over: Partial<EmbeddingProviderEntry> = {}): EmbeddingProviderEntry => ({
   slug: 'openai',
@@ -155,12 +172,17 @@ describe('EmbeddingsSetupModal — feedback', () => {
 
   it('reports a successful test with the dimensions the provider returned', () => {
     renderModal({ setupTestResult: result({ actual_dimensions: 1536 }) });
-    expect(screen.getByText('settings.embeddings.testSuccess')).toBeInTheDocument();
+    expect(screen.getByText('Connected: 1536 dimensions')).toBeInTheDocument();
   });
 
-  it('reports a failed test', () => {
+  it('falls back to ? when the provider reports no dimension count', () => {
+    renderModal({ setupTestResult: result({ actual_dimensions: undefined }) });
+    expect(screen.getByText('Connected: ? dimensions')).toBeInTheDocument();
+  });
+
+  it('reports a failed test with the provider error', () => {
     renderModal({ setupTestResult: result({ success: false, error: 'bad key' }) });
-    expect(screen.getByText('settings.embeddings.testFailed')).toBeInTheDocument();
+    expect(screen.getByText('Failed: bad key')).toBeInTheDocument();
   });
 
   it('surfaces a save error verbatim', () => {
@@ -168,7 +190,9 @@ describe('EmbeddingsSetupModal — feedback', () => {
     expect(screen.getByText('could not write config')).toBeInTheDocument();
   });
 
-  it('shows progress labels and locks both buttons while testing', () => {
+  // Testing locks the Test button only — Save stays live on purpose, so a user
+  // who has already pasted a working key is not blocked behind a slow probe.
+  it('locks Test but leaves Save available while a test is running', () => {
     renderModal({ setupKey: 'sk-live', setupTesting: true });
 
     expect(screen.getByRole('button', { name: 'settings.embeddings.testing' })).toBeDisabled();
