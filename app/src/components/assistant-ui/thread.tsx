@@ -630,8 +630,19 @@ const AssistantMessage: FC = () => {
   } = useContext(ThreadComponentsContext);
 
   const ACTION_BAR_PT = 'pt-1.5';
-  // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
-  const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`;
+  // `min-h` reserves the bar's height so an autohidden bar appearing on hover
+  // does not shift the transcript; the matching `-mb` immediately compensates
+  // it so the reservation costs nothing in flow and message spacing stays the
+  // `gap-y-6` the message group sets. The two MUST stay on the same element —
+  // separating them (the `-mb` had drifted onto the root, where it merely
+  // cancelled that element's own `pb`) leaves the reservation uncompensated and
+  // adds a dead 30px band under every assistant turn.
+  // For `pt-[n]` use `-mb-[n + 6]` and `min-h-[n + 6]` to preserve compensation.
+  const ACTION_BAR_HEIGHT = `-mb-7.5 min-h-7.5 ${ACTION_BAR_PT}`;
+  // The root's own `-mb-7.5 pb-7.5` pair below is PAINT-ONLY and unrelated to
+  // that compensation: `content-visibility:auto` implies `contain: paint`, so
+  // `pb` widens the paint box to cover the bar the footer's `-mb` pulls past
+  // the content box, and the root's `-mb` cancels that padding in flow.
 
   return (
     <MessagePrimitive.Root
