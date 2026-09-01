@@ -19,7 +19,7 @@ import {
  *
  * A note on `/flows/draft`, because the brief expected it to open a canvas and
  * it deliberately does not: the draft graph rides in `location.state`
- * (`FlowCanvasPage.tsx:1536-1546`), so a direct URL hit or a hard reload has no
+ * (`FlowCanvasPage.tsx:1546-1558`), so a direct URL hit or a hard reload has no
  * draft and the route renders an empty state on purpose — "rather than a broken
  * canvas". That is the behaviour pinned below. Reaching the draft canvas needs
  * the chat WorkflowProposalCard's "Open in canvas" action, which is a chat-side
@@ -103,7 +103,7 @@ test.describe('Flows — an existing flow opens its canvas', () => {
     // The canvas header carries the flow name; `flow-canvas-not-found` is the
     // negative case and must NOT be what renders.
     await expect(page.getByTestId('flow-canvas-title')).toBeVisible({ timeout: 20_000 });
-    // `flow-canvas-title` is an <input> (the rename field, FlowCanvasPage:1145-1150),
+    // `flow-canvas-title` is an <input> (the rename field, FlowCanvasPage:1178),
     // so the name is its VALUE. `toContainText` reads text content and would
     // always see "" here — a green-looking assertion that checks nothing.
     await expect(page.getByTestId('flow-canvas-title')).toHaveValue(name);
@@ -132,7 +132,14 @@ test.describe('Flows — an existing flow opens its canvas', () => {
     await expect(page.getByTestId('flow-canvas-title')).toBeVisible({ timeout: 20_000 });
 
     await page.getByTestId('flow-canvas-back').click();
-    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('/flows');
+    // Not `toContain('/flows')` — `/flows/<id>` already satisfies that, so the
+    // poll would pass before the click navigated. Nobody flagged this one; it
+    // is the same defect `tinysweeper` found twice in the node-add spec, and
+    // the only reason it was not load-bearing here is the list-only assertion
+    // below. Fixed anyway, so the poll means what it appears to mean.
+    await expect
+      .poll(() => currentHash(page), { timeout: 15_000 })
+      .not.toContain(`/flows/${flowId}`);
     await expect(newWorkflowButton(page)).toBeVisible({ timeout: 20_000 });
   });
 });
@@ -141,14 +148,19 @@ test.describe('Flows — the unsaved draft route', () => {
   test('/flows/draft hit directly shows an empty state, not a broken canvas', async ({ page }) => {
     // Pinning documented behaviour: the draft graph lives in `location.state`,
     // so a direct hit or a reload legitimately has nothing to render
-    // (FlowCanvasPage.tsx:1541-1545).
+    // (FlowCanvasPage.tsx:1550-1558).
     await bootAuthenticatedPage(page, 'pw-flows-draft', '/home');
     await dismissWalkthroughIfPresent(page);
     await goto(page, '/flows/draft');
 
-    // No canvas, and no crash: the back affordance is what proves we landed on
-    // the deliberate empty state rather than a blank screen.
-    await expect(page.getByTestId('flow-canvas-back')).toBeVisible({ timeout: 20_000 });
+    // Assert the draft empty state BY NAME. An earlier draft asserted only
+    // "back button visible, no title", which the unknown-flow screen also
+    // satisfies — it has a back affordance and no title either — so the test
+    // passed on the wrong screen. `flow-canvas-draft-missing`
+    // (FlowCanvasPage.tsx:1595) is unique to this state. Caught in review by
+    // `coderabbitai`.
+    await expect(page.getByTestId('flow-canvas-draft-missing')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('flow-canvas-back')).toBeVisible();
     await expect(page.getByTestId('flow-canvas-title')).toHaveCount(0);
   });
 
@@ -161,8 +173,13 @@ test.describe('Flows — the unsaved draft route', () => {
     await dismissWalkthroughIfPresent(page);
     await goto(page, '/flows/draft');
 
-    await expect(page.getByTestId('flow-canvas-back')).toBeVisible({ timeout: 20_000 });
+    // Positively the draft state, not merely "not the not-found state": the
+    // previous form excluded `flow-canvas-not-found` but still accepted
+    // `flow-canvas-error`, so a `flows_get('draft')` that failed loudly would
+    // have passed this test.
+    await expect(page.getByTestId('flow-canvas-draft-missing')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('flow-canvas-not-found')).toHaveCount(0);
+    await expect(page.getByTestId('flow-canvas-error')).toHaveCount(0);
   });
 });
 

@@ -127,10 +127,42 @@ test.describe('Skills explorer — typing narrows what is on screen', () => {
 
   test('the typed text is preserved in the box while results load', async ({ page }) => {
     // A search box that clears itself mid-request loses what the user typed.
+    //
+    // The search RPC is HELD so the assertion lands while the request is
+    // genuinely outstanding. The earlier form typed, slept 800ms and asserted —
+    // which proves the value survives a fixed delay, not that it survives a
+    // request in flight. By 800ms the search may already have completed, in
+    // which case the test says nothing about the "while results load" case its
+    // own name claims. Caught in review by `coderabbitai`.
+    let releaseSearch!: () => void;
+    const searchHeld = new Promise<void>(resolve => {
+      releaseSearch = resolve;
+    });
+    let searchStarted = false;
+
     await openSkillsTab(page, 'pw-skills-preserve');
+
+    await page.route('**/rpc', async (route, request) => {
+      let method = '';
+      try {
+        method = JSON.parse(request.postData() || '{}').method ?? '';
+      } catch {
+        /* pass through */
+      }
+      if (method === 'openhuman.skill_registry_search') {
+        searchStarted = true;
+        await searchHeld;
+      }
+      await route.continue();
+    });
+
     await searchBox(page).fill('docker');
-    await page.waitForTimeout(800);
+
+    // Wait for the request to actually be in flight, then assert.
+    await expect.poll(() => searchStarted, { timeout: 15_000 }).toBe(true);
     await expect(searchBox(page)).toHaveValue('docker');
+
+    releaseSearch();
   });
 });
 
@@ -185,6 +217,19 @@ test.describe('Skills explorer — the install button', () => {
   test('a failed install re-enables the button rather than stranding it', async ({ page }) => {
     // If the button stayed disabled on failure the user could not retry, and
     // nothing on screen would say why.
+    //
+    // The install response is HELD rather than answered immediately. Without
+    // that, "enabled and reading Install" is also the button's INITIAL state,
+    // so the test passed whether or not the click ever did anything — it could
+    // not distinguish recovery from a no-op. Holding lets us prove the round
+    // trip: enabled -> (held) disabled/Installing -> released -> enabled again.
+    // Caught in review by `coderabbitai`.
+    let releaseInstall!: () => void;
+    const installHeld = new Promise<void>(resolve => {
+      releaseInstall = resolve;
+    });
+    let installBody: { id?: unknown } = {};
+
     await page.route('**/rpc', async (route, request) => {
       let body: { method?: string; id?: unknown } = {};
       try {
@@ -193,12 +238,14 @@ test.describe('Skills explorer — the install button', () => {
         /* pass through */
       }
       if (body.method === 'openhuman.skill_registry_install') {
+        installBody = body;
+        await installHeld;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
             jsonrpc: '2.0',
-            id: body.id,
+            id: installBody.id,
             error: { code: -32000, message: 'install refused by the registry' },
           }),
         });
@@ -209,7 +256,14 @@ test.describe('Skills explorer — the install button', () => {
 
     await openSkillsTab(page, 'pw-skills-install-fail');
     const button = await firstInstallButton(page);
+    await expect(button).toBeEnabled();
     await button.click();
+
+    // The pending state must actually be reached before the failure.
+    await expect(button).toBeDisabled({ timeout: 15_000 });
+    await expect(button).toHaveText(/installing/i);
+
+    releaseInstall();
 
     await expect(button).toBeEnabled({ timeout: 20_000 });
     await expect(button).toHaveText(/install/i);

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../../test/test-utils';
+import { LATEST_APP_DOWNLOAD_URL } from '../../../../utils/config';
 import type { AppUpdateInfo } from '../../../../utils/tauriCommands/core';
 import AboutPanel from '../AboutPanel';
 
@@ -271,6 +272,12 @@ describe('AboutPanel — releases link', () => {
     renderAbout();
     fireEvent.click(await screen.findByRole('button', { name: /releases/i }));
     expect(hoisted.mockOpenUrl).toHaveBeenCalledTimes(1);
-    expect(String(hoisted.mockOpenUrl.mock.calls[0]?.[0])).toMatch(/^https?:\/\//);
+    // Assert the CONFIGURED constant, not merely "some http(s) URL". The test
+    // is named for opening the configured URL "rather than a hardcoded one",
+    // and a shape check like /^https?:\/\// is satisfied by exactly the
+    // hardcoded URL it claims to rule out — the assertion contradicted the
+    // name. `AboutPanel.tsx:152` passes `LATEST_APP_DOWNLOAD_URL`, so that is
+    // what the assertion should name. Caught in review by `coderabbitai`.
+    expect(hoisted.mockOpenUrl).toHaveBeenCalledWith(LATEST_APP_DOWNLOAD_URL);
   });
 });

@@ -16,7 +16,7 @@ import {
  *   - **click** an entry → `onAdd(entry)` — "the path the unit tests drive"
  *   - **drag** an entry onto the canvas → an `application/tinyflows-node`
  *     payload on `dataTransfer`, resolved by the canvas's `onDrop`
- *     (`EditableFlowCanvas.tsx:552-566`)
+ *     (`EditableFlowCanvas.tsx:550,784`)
  *
  * The drag path is therefore the one with no coverage, and it is HTML5
  * drag-and-drop with a custom MIME type — **jsdom implements neither**, so a
@@ -25,8 +25,8 @@ import {
  *
  * The leave guard is included because losing canvas edits is the expensive
  * failure on this surface: adding a node makes the editor dirty
- * (`FlowCanvasPage.tsx:1099`), and navigating away must interrupt with a
- * confirm (`:1254`) offering both Stay (`:1265`) and Discard (`:1274`).
+ * (`FlowCanvasPage.tsx:359, badge :1132`), and navigating away must interrupt with a
+ * confirm (`:1339`) offering both Stay (`:1345`) and Discard (`:1347`).
  */
 
 const currentHash = (page: import('@playwright/test').Page) =>
@@ -93,9 +93,9 @@ async function openCanvas(page: import('@playwright/test').Page, userId: string)
   await expect(page.getByTestId('flow-canvas-title')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('flow-canvas-title')).toHaveValue(name);
 
-  // The insert palette is NOT visible by default. `FlowCanvasPage.tsx:1199`
+  // The insert palette is NOT visible by default. `FlowCanvasPage.tsx:1253`
   // passes `showPalette={sidePanel === 'legend'}` and `sidePanel` starts at
-  // 'copilot' (:417), so the palette lives behind the "legend" tab of the
+  // 'copilot' (:454), so the palette lives behind the "legend" tab of the
   // side-panel toggle. Worth knowing: the canvas empty state says "Add a node
   // from the palette on the left", but the palette is `absolute right-3`
   // (NodePalette.tsx:37) and hidden until this click.
@@ -211,8 +211,16 @@ test.describe('Flow canvas — the unsaved-changes guard', () => {
     await expect(page.getByTestId('flow-leave-confirm')).toBeVisible({ timeout: 15_000 });
     await page.getByTestId('flow-leave-discard').click();
 
-    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('/flows');
-    expect(await currentHash(page)).not.toContain(`/flows/${flowId}`);
+    // Poll the NARROW condition — the absence of this flow's own path. Polling
+    // `toContain('/flows')` first, as an earlier draft did, is vacuous here:
+    // `/flows/<id>` already contains `/flows`, so that poll returns true on its
+    // first evaluation, before the click has navigated anywhere. It then left
+    // the real assertion (`not.toContain('/flows/<id>')`) running unguarded
+    // against an in-flight navigation — a check that was simultaneously
+    // meaningless and racy. Caught in review by `tinysweeper`.
+    await expect
+      .poll(() => currentHash(page), { timeout: 15_000 })
+      .not.toContain(`/flows/${flowId}`);
 
     // And the discard was real: the stored graph still has its single node.
     const payload = await callCoreRpc<unknown>('openhuman.flows_get', { id: flowId });
@@ -223,12 +231,18 @@ test.describe('Flow canvas — the unsaved-changes guard', () => {
 
   test('a clean canvas leaves immediately, with no confirm', async ({ page }) => {
     // The guard must not nag when there is nothing to lose.
-    await openCanvas(page, 'pw-canvas-leave-clean');
+    const { flowId } = await openCanvas(page, 'pw-canvas-leave-clean');
     await expect(page.getByTestId('flow-editor-dirty')).toHaveCount(0);
 
     await page.getByTestId('flow-canvas-back').click();
 
     await expect(page.getByTestId('flow-leave-confirm')).toHaveCount(0, { timeout: 10_000 });
-    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('/flows');
+    // Same trap as the Discard test, and here it was the ONLY positive
+    // assertion: `toContain('/flows')` is already true on `/flows/<id>`, so
+    // this test reported success whether or not the back button navigated at
+    // all — it could not fail. Assert that we left THIS flow's route.
+    await expect
+      .poll(() => currentHash(page), { timeout: 15_000 })
+      .not.toContain(`/flows/${flowId}`);
   });
 });

@@ -117,7 +117,30 @@ function installWorkingClipboard() {
  * `ok` says, which is the branch the panel keys `setCopied` off.
  */
 function installExecCommand(ok: boolean) {
-  const execCommand = vi.fn(() => ok);
+  // Capture WHAT the legacy path put on the clipboard, not just that it tried.
+  // Returning a bare `ok` made both fallback tests pass even if the textarea
+  // were empty or held the wrong phrase: the rejected `writeText` proves the
+  // fallback was taken, never that it copied the right thing — and a false
+  // "Copied" here leaves the user without their recovery phrase. Caught in
+  // review by `chatgpt-codex-connector`.
+  //
+  // The panel appends a hidden textarea, assigns the phrase and selects it
+  // before calling copy (`RecoveryPhrasePanel.tsx:198-204`), so at this moment
+  // the value is readable from the selected element.
+  const copiedValues: string[] = [];
+  const execCommand = Object.assign(
+    vi.fn((command?: string) => {
+      if (command === 'copy') {
+        const active = document.activeElement;
+        const areas = Array.from(document.body.querySelectorAll('textarea'));
+        const source =
+          active instanceof HTMLTextAreaElement ? active : (areas[areas.length - 1] ?? null);
+        copiedValues.push(source ? source.value : '');
+      }
+      return ok;
+    }),
+    { copiedValues }
+  );
   Object.defineProperty(document, 'execCommand', {
     value: execCommand,
     configurable: true,
@@ -160,6 +183,9 @@ describe('RecoveryPhrasePanel — clipboard fallback when the async API fails', 
     await waitFor(() => expect(screen.getByText(/Copied/i)).toBeInTheDocument());
     expect(writeText).toHaveBeenCalledWith(PHRASE_12);
     expect(execCommand).toHaveBeenCalledWith('copy');
+    // The phrase actually reached the clipboard surface — "Copied" is only
+    // truthful if the copied text is the phrase itself.
+    expect(execCommand.copiedValues).toEqual([PHRASE_12]);
   });
 
   it('does NOT report Copied when the fallback itself fails', async () => {
@@ -173,6 +199,9 @@ describe('RecoveryPhrasePanel — clipboard fallback when the async API fails', 
 
     await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
     expect(screen.queryByText(/^Copied$/i)).not.toBeInTheDocument();
+    // The attempt still carried the right phrase — this test is about the
+    // panel honouring a FAILED copy, not about it copying the wrong thing.
+    expect(execCommand.copiedValues).toEqual([PHRASE_12]);
   });
 
   it('leaves no textarea behind in the DOM after the fallback runs', async () => {

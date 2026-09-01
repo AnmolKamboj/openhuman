@@ -86,7 +86,13 @@ const resetButtons = () => screen.getAllByRole('button', { name: /reset/i });
 beforeEach(() => {
   vi.clearAllMocks();
   mockList.mockResolvedValue(defaultList());
-  mockRemove.mockResolvedValue(undefined as never);
+  // `agentRegistryApi.remove` returns Promise<boolean> (agentRegistryApi.ts:147-154),
+  // so the success fixture must resolve `true`. Resolving `undefined as never`
+  // modelled a value the API cannot return, and the `as never` cast was the
+  // tell — it silenced the type error that was pointing this out. It also hid
+  // whether the panel handles a `false` (refused) result differently from a
+  // `true` one. Caught in review by `coderabbitai`.
+  mockRemove.mockResolvedValue(true);
   mockSetEnabled.mockResolvedValue(agent({ id: 'researcher', enabled: false }));
 });
 

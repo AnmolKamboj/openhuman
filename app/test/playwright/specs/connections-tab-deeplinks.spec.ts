@@ -70,6 +70,20 @@ async function openRoute(
 const currentHash = (page: import('@playwright/test').Page) =>
   page.evaluate(() => window.location.hash);
 
+/**
+ * Assert which nav row is selected.
+ *
+ * `TwoPaneNav.tsx:98` marks the active row with `aria-current="page"`. Asserting
+ * a row is *visible* says nothing — every row is visible on every tab — so any
+ * check of "did we land on the right tab" has to read the selection.
+ */
+async function expectSelectedTab(page: import('@playwright/test').Page, tab: string) {
+  await expect(page.getByTestId(`two-pane-nav-${tab}`)).toHaveAttribute('aria-current', 'page', {
+    timeout: 15_000,
+  });
+  await expect(page.locator('[data-testid^="two-pane-nav-"][aria-current="page"]')).toHaveCount(1);
+}
+
 test.describe('Connections — the URL follows the tab', () => {
   test('clicking a tab writes ?tab= into the address bar', async ({ page }) => {
     await openRoute(page, 'pw-conn-url-click', '/connections');
@@ -143,10 +157,12 @@ test.describe('Connections — deep links land on the named tab', () => {
     page,
   }) => {
     await openRoute(page, 'pw-conn-unknown-tab', '/connections?tab=not-a-real-tab');
-    // The nav must still be there — an unrecognised value must not strand the
-    // user on an empty page.
-    await expect(page.getByTestId('two-pane-nav-composio')).toBeVisible();
-    await expect(page.getByTestId('two-pane-nav-channels')).toBeVisible();
+    // Assert WHICH tab the fallback selected, not merely that the nav rendered.
+    // The nav rows are present on every tab, so the earlier form passed if an
+    // unknown value selected MCP, Channels, or anything else non-blank — it
+    // could not distinguish a working fallback from a wrong one. Caught in
+    // review by `coderabbitai`.
+    await expectSelectedTab(page, 'welcome');
   });
 });
 
@@ -170,8 +186,11 @@ test.describe('Connections — the /skills back-compat redirect', () => {
 
     const hash = await currentHash(page);
     expect(hash).not.toContain('tab=channels');
-    // The user asked for messaging and got the overview instead.
-    await expect(page.getByTestId('two-pane-nav-channels')).toBeVisible();
+    // The user asked for messaging and got the overview instead. Assert the
+    // SELECTED tab: the previous form asserted that the Channels nav row was
+    // visible, which is true on every tab and therefore proved nothing about
+    // the harm this test exists to document.
+    await expectSelectedTab(page, 'welcome');
   });
 
   test('/channels keeps working, because its redirect names the tab explicitly', async ({
