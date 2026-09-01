@@ -486,7 +486,7 @@ impl MemorySourceSink for ModuleMemoryProvider {
         items: Vec<SourceItem>,
         taint: MemoryTaint,
     ) -> Result<IngestOutcome, MemoryError> {
-        module_call!(
+        module_call_slow!(
             self,
             "accept_source_items",
             methods::ACCEPT_SOURCE_ITEMS,

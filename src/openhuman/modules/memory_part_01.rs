@@ -674,15 +674,35 @@ macro_rules! module_call {
     };
 }
 
+/// [`module_call!`] with a deadline sized for bulk work.
+///
+/// The default bus deadline (30s) fits request-shaped members. The bulk
+/// ingest members are not that: `AcceptSourceItems` embeds and writes a whole
+/// connector page of records inside the call — a 200-email Gmail handoff
+/// blew the 30s deadline live while the module went on to finish the work,
+/// and the sync retry loop then re-ran the same handoff forever. Same
+/// pathology, and same fix, as the connector module's `Sync` member.
+macro_rules! module_call_slow {
+    ($self:expr, $operation:literal, $method:expr, $args:expr) => {
+        $self
+            .proxy($operation)
+            .await?
+            .with_timeout(std::time::Duration::from_secs(15 * 60))
+            .call($method, $args)
+            .await
+            .map_err(|error| from_bus(&error))
+    };
+}
+
 #[async_trait]
 impl MemoryIngest for ModuleMemoryProvider {
     async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
         module_call!(self, "ingest_document", methods::INGEST_DOCUMENT, (item,))
     }
     async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_chat", methods::INGEST_CHAT, (messages,))
+        module_call_slow!(self, "ingest_chat", methods::INGEST_CHAT, (messages,))
     }
     async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_email", methods::INGEST_EMAIL, (messages,))
+        module_call_slow!(self, "ingest_email", methods::INGEST_EMAIL, (messages,))
     }
 }
