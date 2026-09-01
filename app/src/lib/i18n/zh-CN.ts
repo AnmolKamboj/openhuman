@@ -319,6 +319,7 @@ const messages: TranslationMap = {
   'brain.tabs.sync': '同步',
   'brain.empty': '你的大脑暂时是空的：连接一个来源即可开始构建记忆。',
   'brain.error': '无法加载你的大脑，请重试。',
+  'brain.refreshError': '无法刷新你的大脑，显示的是上次加载的数据。',
   'common.cancel': '取消',
   'common.save': '保存',
   'common.confirm': '确认',

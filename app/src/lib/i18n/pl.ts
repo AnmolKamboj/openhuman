@@ -356,6 +356,8 @@ const messages: TranslationMap = {
   'brain.tabs.sync': 'Synchronizacja',
   'brain.empty': 'Twój mózg jest na razie pusty: połącz źródło, aby zacząć budować pamięć.',
   'brain.error': 'Nie udało się załadować Twojego mózgu. Spróbuj ponownie.',
+  'brain.refreshError':
+    'Nie udało się odświeżyć Twojego mózgu. Wyświetlane są ostatnio załadowane dane.',
   'common.cancel': 'Anuluj',
   'common.save': 'Zapisz',
   'common.confirm': 'Potwierdź',

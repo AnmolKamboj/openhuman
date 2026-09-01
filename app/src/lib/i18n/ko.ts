@@ -342,6 +342,7 @@ const messages: TranslationMap = {
   'brain.tabs.sync': '동기화',
   'brain.empty': '아직 브레인이 비어 있습니다: 소스를 연결하여 메모리를 만들어 보세요.',
   'brain.error': '브레인을 불러올 수 없습니다. 다시 시도해 주세요.',
+  'brain.refreshError': '브레인을 새로고침할 수 없습니다. 마지막으로 불러온 데이터를 표시합니다.',
   'common.cancel': '취소',
   'common.save': '저장',
   'common.confirm': '확인',

@@ -334,6 +334,7 @@ const messages: TranslationMap = {
   'brain.tabs.sync': 'المزامنة',
   'brain.empty': 'دماغك فارغ في الوقت الحالي: قم بربط مصدر لبدء بناء الذاكرة.',
   'brain.error': 'تعذّر تحميل دماغك. يرجى المحاولة مرة أخرى.',
+  'brain.refreshError': 'تعذّر تحديث دماغك. يتم عرض آخر البيانات التي تم تحميلها.',
   'common.cancel': 'إلغاء',
   'common.save': 'حفظ',
   'common.confirm': 'تأكيد',
