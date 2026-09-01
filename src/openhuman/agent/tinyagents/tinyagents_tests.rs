@@ -98,3 +98,45 @@ fn run_policy_for_makes_invalid_tool_arguments_recoverable() {
         "schema-invalid calls must return a corrective tool result instead of aborting the turn"
     );
 }
+
+#[test]
+fn parse_model_call_wall_clock_defaults_to_fifteen_minutes() {
+    // Absent and unparseable values both fall back to the 900s default.
+    assert_eq!(parse_model_call_wall_clock_ms(None), Some(900_000));
+    assert_eq!(
+        parse_model_call_wall_clock_ms(Some("garbage")),
+        Some(900_000)
+    );
+    assert_eq!(parse_model_call_wall_clock_ms(Some("")), Some(900_000));
+}
+
+#[test]
+fn parse_model_call_wall_clock_honors_explicit_value_and_zero_opt_out() {
+    assert_eq!(parse_model_call_wall_clock_ms(Some("300")), Some(300_000));
+    assert_eq!(parse_model_call_wall_clock_ms(Some(" 300 ")), Some(300_000));
+    // `0` disables the per-call ceiling entirely (remainder-only, pre-#5766).
+    assert_eq!(parse_model_call_wall_clock_ms(Some("0")), None);
+}
+
+#[test]
+fn run_policy_arms_the_per_model_call_ceiling_under_the_turn_ceiling() {
+    // The policy must carry the per-call ceiling, and the default per-call
+    // value must sit strictly under the default turn ceiling — a ceiling at or
+    // above the turn deadline is dead code, because `min(ceiling, remainder)`
+    // would always pick the remainder.
+    let policy = run_policy_for(10, false);
+    let per_call = policy
+        .limits
+        .max_model_call_ms
+        .expect("the per-model-call ceiling is armed by default");
+    let turn = policy
+        .limits
+        .max_wall_clock_ms
+        .expect("the turn wall-clock ceiling is armed by default");
+    assert_eq!(per_call, DEFAULT_MODEL_CALL_TIMEOUT_SECS * 1_000);
+    assert_eq!(turn, DEFAULT_AGENT_TURN_TIMEOUT_SECS * 1_000);
+    assert!(
+        per_call < turn,
+        "per-call ceiling ({per_call} ms) must be under the turn ceiling ({turn} ms)"
+    );
+}
