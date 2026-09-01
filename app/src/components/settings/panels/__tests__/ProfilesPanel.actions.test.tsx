@@ -5,7 +5,7 @@
  * `ProfilesPanel.test.tsx` (sibling) covers the happy paths and the *load*
  * error. Neither `setActive` nor `remove` has its failure branch exercised
  * anywhere, which is how the `[object Object]` defect at `ProfilesPanel.tsx:46`
- * and `:59` survived — see `~/tinyhuman/bugs/W1-settings-bugs.md`. It also does
+ * and `:59` survived until #5900 fixed it. It also does
  * not assert which buttons a built-in or already-active profile may show; those
  * are the guards that stop a user deleting a built-in.
  *
@@ -88,7 +88,7 @@ describe('ProfilesPanel — action failures', () => {
     await waitFor(() => expect(mockSelect).toHaveBeenCalledWith('writer'));
     // The panel must say *something* — silence would leave the user believing
     // the switch took effect.
-    expect(await screen.findByText(/object Object|select blew up/)).toBeInTheDocument();
+    expect(await screen.findByText('select blew up')).toBeInTheDocument();
   });
 
   it('shows an error when deleting a profile fails', async () => {
@@ -100,29 +100,41 @@ describe('ProfilesPanel — action failures', () => {
     fireEvent.click(within(row('Writer')).getByText('Delete'));
 
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('writer'));
-    expect(await screen.findByText(/object Object|delete blew up/)).toBeInTheDocument();
+    expect(await screen.findByText('delete blew up')).toBeInTheDocument();
     confirmSpy.mockRestore();
   });
 
-  // BUG (`~/tinyhuman/bugs/W1-settings-bugs.md` #1): both handlers stringify
-  // Redux Toolkit's SerializedError — a plain object, not an `Error` — so
-  // `err instanceof Error ? err.message : String(err)` (`ProfilesPanel.tsx:46`
-  // and `:59`) yields "[object Object]". The message never reaches the user.
-  //
-  // Pinned as CURRENT behaviour. When it is fixed, assert the message here and
-  // delete this comment — do not delete the test.
-  it('renders both action failures as [object Object] (known defect)', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  // Was pinned as a known defect (#5900): both handlers stringified Redux
+  // Toolkit's SerializedError — a plain object, not an `Error` — so
+  // `err instanceof Error ? err.message : String(err)` yielded
+  // "[object Object]" and the message never reached the user. Fixed by routing
+  // through `lib/errorMessage`; the assertions are inverted rather than
+  // deleted, so a regression re-surfaces here.
+  it('renders the select failure message, not [object Object]', async () => {
     mockSelect.mockRejectedValueOnce(new Error('select blew up'));
     renderPanel();
 
     await screen.findByText('Writer');
     fireEvent.click(within(row('Writer')).getByText('Set as active'));
 
-    const shown = await screen.findByText('[object Object]');
-    expect(shown).toBeInTheDocument();
-    expect(screen.queryByText(/select blew up/)).not.toBeInTheDocument();
-    confirmSpy.mockRestore();
+    expect(await screen.findByText('select blew up')).toBeInTheDocument();
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+  });
+
+  // The production shape: `.unwrap()` rethrows a SerializedError, not an Error.
+  it('renders the message from a SerializedError-shaped rejection', async () => {
+    mockSelect.mockRejectedValueOnce({
+      name: 'Error',
+      message: 'profile is not selectable',
+      stack: 'at …',
+    });
+    renderPanel();
+
+    await screen.findByText('Writer');
+    fireEvent.click(within(row('Writer')).getByText('Set as active'));
+
+    expect(await screen.findByText('profile is not selectable')).toBeInTheDocument();
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
   });
 
   it('clears a previous action error when the next action succeeds', async () => {
@@ -132,10 +144,10 @@ describe('ProfilesPanel — action failures', () => {
 
     await screen.findByText('Writer');
     fireEvent.click(within(row('Writer')).getByText('Set as active'));
-    expect(await screen.findByText('[object Object]')).toBeInTheDocument();
+    expect(await screen.findByText('first attempt fails')).toBeInTheDocument();
 
     fireEvent.click(within(row('Writer')).getByText('Set as active'));
-    await waitFor(() => expect(screen.queryByText('[object Object]')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('first attempt fails')).not.toBeInTheDocument());
   });
 
   it('does not delete, and raises no error, when the confirm is dismissed', async () => {
@@ -146,7 +158,7 @@ describe('ProfilesPanel — action failures', () => {
     fireEvent.click(within(row('Writer')).getByText('Delete'));
 
     expect(mockDelete).not.toHaveBeenCalled();
-    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     confirmSpy.mockRestore();
   });
 });

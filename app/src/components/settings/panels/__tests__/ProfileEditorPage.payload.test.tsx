@@ -260,16 +260,13 @@ describe('ProfileEditorPage — failure path', () => {
     await waitFor(() => expect(create).not.toBeDisabled());
   });
 
-  // BUG (see ~/tinyhuman/bugs/W1-settings-bugs.md): the alert reads
-  // "[object Object]", not the message. `dispatch(thunk).unwrap()` rejects with
-  // Redux Toolkit's SerializedError — a PLAIN OBJECT, not an `Error` — so the
-  // `err instanceof Error ? err.message : String(err)` guard at
-  // `ProfileEditorPage.tsx:170` takes the `String(err)` branch and stringifies
-  // an object. Every failed profile save shows this.
-  //
-  // Pinned as CURRENT behaviour so the defect is visible and regression-locked.
-  // When it is fixed, change this to assert the message and delete the comment.
-  it('renders the failure as [object Object] instead of the message (known defect)', async () => {
+  // Was pinned as a known defect (#5900): the alert read "[object Object]"
+  // because `dispatch(thunk).unwrap()` rejects with Redux Toolkit's
+  // SerializedError — a plain object, not an `Error` — and the old
+  // `err instanceof Error ? err.message : String(err)` guard stringified it.
+  // Fixed by routing through `lib/errorMessage`; the assertion is inverted
+  // rather than deleted, so a regression re-surfaces here.
+  it('renders the failure message, not [object Object]', async () => {
     mockUpsert.mockRejectedValueOnce(new Error('backend refused the profile'));
     renderAt('/settings/profiles/new');
 
@@ -277,8 +274,26 @@ describe('ProfileEditorPage — failure path', () => {
     fireEvent.click(submit('Create'));
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('[object Object]');
-    expect(alert).not.toHaveTextContent('backend refused the profile');
+    expect(alert).toHaveTextContent('backend refused the profile');
+    expect(alert).not.toHaveTextContent('[object Object]');
+  });
+
+  // The shape that actually reaches this catch in production: a thunk that
+  // threw is rethrown by `.unwrap()` as a SerializedError, never an `Error`.
+  it('renders the message from a SerializedError-shaped rejection', async () => {
+    mockUpsert.mockRejectedValueOnce({
+      name: 'Error',
+      message: 'profile id already taken',
+      stack: 'at …',
+    });
+    renderAt('/settings/profiles/new');
+
+    fireEvent.change(nameField(), { target: { value: 'Doomed' } });
+    fireEvent.click(submit('Create'));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('profile id already taken');
+    expect(alert).not.toHaveTextContent('[object Object]');
   });
 
   it('clears a previous error when the next save succeeds', async () => {
