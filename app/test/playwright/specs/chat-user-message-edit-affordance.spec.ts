@@ -124,7 +124,9 @@ test.describe('User-message action bar — capability-gated affordances (#5897)'
     await expect(page.locator('.aui-edit-composer-input')).toHaveCount(0);
   });
 
-  test('the action bar still renders, and Copy still works', async ({ page }) => {
+  test('the action bar itself still renders after the Edit button is withheld', async ({
+    page,
+  }) => {
     const input = await openChat(page);
     const userMessage = await sendOneTurn(page, input, 'copy me');
 
@@ -135,6 +137,12 @@ test.describe('User-message action bar — capability-gated affordances (#5897)'
     // the Edit button must not remove the bar it lived in. Without this, a
     // regression that dropped the whole action bar — or never rendered the
     // message — would satisfy "no Edit button" and look like a pass.
+    //
+    // This asserts the Copy button is PRESENT, not that copying works. The
+    // title used to say "Copy still works", which overclaimed — clipboard
+    // behaviour is a separate feature this PR does not touch, and testing it
+    // here would need clipboard permissions and would not make the control any
+    // stronger.
     await expect(page.getByRole('button', { name: 'Copy response' })).toBeVisible();
   });
 
