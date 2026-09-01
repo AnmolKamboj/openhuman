@@ -119,20 +119,28 @@ fn parse_model_call_wall_clock_honors_explicit_value_and_zero_opt_out() {
 }
 
 #[test]
-fn run_policy_arms_the_per_model_call_ceiling_under_the_turn_ceiling() {
-    // The policy must carry the per-call ceiling, and the default per-call
-    // value must sit strictly under the default turn ceiling — a ceiling at or
-    // above the turn deadline is dead code, because `min(ceiling, remainder)`
-    // would always pick the remainder.
+fn run_policy_wires_both_wall_clock_ceilings_from_their_resolvers() {
+    // Compare the policy against the same-process resolvers rather than
+    // hard-coded defaults, so a dev/CI environment exporting either
+    // `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS` or `OPENHUMAN_AGENT_TURN_TIMEOUT_SECS`
+    // (including `0` = disabled, or a per-call value above the turn value)
+    // cannot fail the test while the wiring is correct. No env mutation —
+    // whatever the environment says, the policy must carry exactly what the
+    // resolvers produce.
     let policy = run_policy_for(10, false);
-    let per_call = policy
-        .limits
-        .max_model_call_ms
-        .expect("the per-model-call ceiling is armed by default");
-    let turn = policy
-        .limits
-        .max_wall_clock_ms
-        .expect("the turn wall-clock ceiling is armed by default");
+    assert_eq!(policy.limits.max_model_call_ms, model_call_wall_clock_ms());
+    assert_eq!(policy.limits.max_wall_clock_ms, agent_turn_wall_clock_ms());
+}
+
+#[test]
+fn default_per_call_ceiling_sits_under_the_default_turn_ceiling() {
+    // Env-free: assert the *defaults* through the pure parsers, not through
+    // the env-reading policy path. A per-call ceiling at or above the turn
+    // deadline is dead code, because `min(ceiling, remainder)` would always
+    // pick the remainder.
+    let per_call =
+        parse_model_call_wall_clock_ms(None).expect("the per-call ceiling is armed by default");
+    let turn = parse_agent_turn_wall_clock_ms(None).expect("the turn ceiling is armed by default");
     assert_eq!(per_call, DEFAULT_MODEL_CALL_TIMEOUT_SECS * 1_000);
     assert_eq!(turn, DEFAULT_AGENT_TURN_TIMEOUT_SECS * 1_000);
     assert!(
