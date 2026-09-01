@@ -177,13 +177,22 @@ const VoicePanelKeyModal = ({
                   setIsTestingKey(true);
                   setKeyTestResult(null);
                   try {
-                    await handleEnableExternalProvider(pendingKeySlug, pendingKeyValue);
+                    // Test is a DRY RUN. It must not call
+                    // `handleEnableExternalProvider`: that writes the key to
+                    // the keychain and activates the provider before it is
+                    // known to work, and it clears `pendingKeySlug`, which
+                    // unmounts this modal — so the result below would be set
+                    // on a dead component and the user would never see it
+                    // (#5896). The candidate key goes to the core for
+                    // validation only; "Save & Enable" remains the one way to
+                    // commit it.
                     const meta = BUILTIN_VOICE_PROVIDER_META[pendingKeySlug];
                     const workload = meta?.capability === 'tts' ? 'tts' : 'stt';
                     const result = await testVoiceProvider(
                       workload as 'stt' | 'tts',
                       pendingKeySlug,
-                      true
+                      true,
+                      pendingKeyValue
                     );
                     setKeyTestResult(result);
                   } catch (err) {
