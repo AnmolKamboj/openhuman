@@ -353,10 +353,14 @@ async fn load_config() -> Result<crate::openhuman::config::Config> {
     }
     #[cfg(not(feature = "modules"))]
     {
+        // Mirrors the helper's contract: a config error propagates as the
+        // true cause instead of silently dropping operator settings, and the
+        // event sink installs exactly as it always has on this path.
         let mut config = crate::openhuman::config::Config::load_or_init()
             .await
-            .unwrap_or_default();
+            .map_err(|error| anyhow::anyhow!("load config: {error}"))?;
         config.apply_env_overrides();
+        crate::openhuman::memory::host::install_memory_event_sink();
         Ok(config)
     }
 }

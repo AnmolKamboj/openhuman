@@ -50,6 +50,7 @@ vi.mock('../../utils/tauriCommands', async importOriginal => {
     memoryTreeSetEnabled: (...args: unknown[]) => mockSetEnabled(...args),
     memorySyncStatusList: (...args: unknown[]) => mockSyncStatusList(...args),
     memoryTreeRetryFailed: (...args: unknown[]) => mockRetryFailed(...args),
+    memoryNamespaceSummaries: vi.fn(async () => ({ namespaces: [], total_documents: 0 })),
   };
 });
 

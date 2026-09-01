@@ -51,8 +51,12 @@ export function useMemoryTreeStatus(): {
     // number, from a different store than every tree tile (#5932 field
     // finding — a user watched 100 items land while the tree figure sat at 2).
     void memoryNamespaceSummaries()
-      .then(r => setStoredItems(r.total_documents))
-      .catch(() => setStoredItems(null));
+      .then(r => {
+        if (!cancelledRef.current) setStoredItems(r.total_documents);
+      })
+      .catch(() => {
+        if (!cancelledRef.current) setStoredItems(null);
+      });
     try {
       // Fetch pipeline + per-integration health in parallel so the strip
       // and the tiles share a single 1.5s / 4s adaptive tick (#2763).
