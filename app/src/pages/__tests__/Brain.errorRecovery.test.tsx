@@ -252,6 +252,33 @@ describe('Brain graph — transient failure recovery', () => {
     });
   });
 
+  it('still warns when a REFRESH failure carries an empty message', async () => {
+    // The sibling test covers an empty message on the FIRST load, which is the
+    // destructive branch. This covers the warning branch, and the two need
+    // separate cases: a truthiness regression in only one of them would
+    // otherwise slip through on the strength of the other.
+    graphExportMock.mockResolvedValueOnce(makeGraph(5)).mockRejectedValue(new Error(''));
+
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=graph'] });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:5');
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+
+    await waitFor(() => {
+      const alert = document.querySelector('[data-slot="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert).toHaveAttribute('data-variant', 'warning');
+    });
+    // And the stale graph is still there, as in the non-empty case.
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:5');
+  });
+
   it('does not warn when an older load succeeds after a newer one failed', async () => {
     // Two `load()` calls overlap and share `graph`/`error`: the initial one and
     // one started by `memory-tree-completed`. If the NEWER fails while the
@@ -276,6 +303,15 @@ describe('Brain graph — transient failure recovery', () => {
     // The newer load starts and fails while the first is still pending.
     await act(async () => {
       window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+
+    // Assert the PRECONDITION before resolving anything. Without this the test
+    // passes vacuously: if the event never started a second load, resolving the
+    // first would render a graph with no warning and the final assertions would
+    // be satisfied for entirely the wrong reason.
+    await waitFor(() => {
+      expect(graphExportMock).toHaveBeenCalledTimes(2);
+      expect(document.querySelector('[data-slot="alert"]')).not.toBeNull();
     });
 
     // Now the older, superseded call finally succeeds.
