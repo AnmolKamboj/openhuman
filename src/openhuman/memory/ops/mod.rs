@@ -42,9 +42,10 @@ pub mod tool_memory;
 pub use documents::{
     clear_namespace, context_query, context_recall, doc_delete, doc_ingest, doc_list, doc_put,
     memory_delete_document, memory_init, memory_list_documents, memory_list_namespaces,
-    memory_query_namespace, memory_recall_context, memory_recall_memories, namespace_list,
-    ClearNamespaceParams, ClearNamespaceResult, DeleteDocParams, IngestDocParams,
-    NamespaceOnlyParams, PutDocParams, PutDocResult, QueryNamespaceParams, RecallNamespaceParams,
+    memory_namespace_summaries, memory_query_namespace, memory_recall_context,
+    memory_recall_memories, namespace_list, ClearNamespaceParams, ClearNamespaceResult,
+    DeleteDocParams, IngestDocParams, NamespaceOnlyParams, NamespaceSummariesResponse,
+    PutDocParams, PutDocResult, QueryNamespaceParams, RecallNamespaceParams,
 };
 pub use files::{ai_list_memory_files, ai_read_memory_file, ai_write_memory_file};
 pub use kv_graph::{

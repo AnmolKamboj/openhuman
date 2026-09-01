@@ -57,7 +57,7 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   const { t } = useT();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { status, integrations, loading, error, refresh } = useMemoryTreeStatus();
+  const { status, storedItems, integrations, loading, error, refresh } = useMemoryTreeStatus();
   const [toggleBusy, setToggleBusy] = useState(false);
   const [retryBusy, setRetryBusy] = useState(false);
 
@@ -322,6 +322,22 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
           ) : (
             <div className={valueClass} data-testid="memory-tree-last-sync">
               {formatRelativeMs(status.last_sync_ms, t, t('memoryTree.status.never'))}
+            </div>
+          )}
+        </Card>
+
+        {/* Stored items tile — the document/search-index store, the number a
+            user checks after a sync. Distinct from the summary-tree leaves
+            tile beside it, which counts a different, much smaller store. */}
+        <Card
+          divided={false}
+          className="bg-surface-muted p-3 transition-colors hover:bg-surface-hover">
+          <div className={labelClass}>{t('memoryTree.status.storedItemsTile')}</div>
+          {storedItems === null ? (
+            <div className={skeletonClass} />
+          ) : (
+            <div className={valueClass} data-testid="memory-stored-items">
+              {new Intl.NumberFormat().format(storedItems)}
             </div>
           )}
         </Card>

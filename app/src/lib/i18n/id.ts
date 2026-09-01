@@ -964,6 +964,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'Status',
   'memoryTree.status.lastSyncTile': 'Sinkronisasi terakhir',
   'memoryTree.status.totalChunksTile': 'Daun pohon ringkasan',
+  'memoryTree.status.storedItemsTile': 'Item tersimpan',
   'memoryTree.status.wikiSizeTile': 'Ukuran wiki',
   'memoryTree.status.statusRunning': 'Berjalan',
   'memoryTree.status.statusPaused': 'Dijeda',

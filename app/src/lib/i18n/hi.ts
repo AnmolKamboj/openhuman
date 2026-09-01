@@ -953,6 +953,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'स्थिति',
   'memoryTree.status.lastSyncTile': 'अंतिम सिंक',
   'memoryTree.status.totalChunksTile': 'सारांश-वृक्ष की पत्तियाँ',
+  'memoryTree.status.storedItemsTile': 'संग्रहीत आइटम',
   'memoryTree.status.wikiSizeTile': 'विकी आकार',
   'memoryTree.status.statusRunning': 'दौड़ना',
   'memoryTree.status.statusPaused': 'दलित',

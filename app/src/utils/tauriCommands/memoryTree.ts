@@ -1073,3 +1073,32 @@ export async function memorySyncStatusList(): Promise<MemorySyncStatusRow[]> {
   console.debug('[memory-tree-rpc] memorySyncStatusList: exit rows=%d', rows.length);
   return rows;
 }
+
+// ── memory_namespace_summaries (#5932 — sync-verification counts) ────────────
+
+/** One namespace's stored-document count, from the mandatory driver surface. */
+export interface NamespaceSummaryRow {
+  namespace: string;
+  count: number;
+  last_updated?: string | null;
+}
+
+export interface NamespaceSummariesResponse {
+  namespaces: NamespaceSummaryRow[];
+  total_documents: number;
+}
+
+/**
+ * Per-namespace stored-document counts plus the grand total — the number a
+ * user checks to verify a sync's items actually landed (`list_namespaces`
+ * answers names alone).
+ */
+export async function memoryNamespaceSummaries(): Promise<NamespaceSummariesResponse> {
+  const resp = await callCoreRpc<
+    NamespaceSummariesResponse | ResultEnvelope<NamespaceSummariesResponse>
+  >({
+    method: 'openhuman.memory_namespace_summaries',
+    params: {},
+  });
+  return unwrapResult(resp);
+}

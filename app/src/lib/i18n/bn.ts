@@ -954,6 +954,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'অবস্থা',
   'memoryTree.status.lastSyncTile': 'সর্বশেষ সুসংগতি',
   'memoryTree.status.totalChunksTile': 'সারাংশ-বৃক্ষের পাতা',
+  'memoryTree.status.storedItemsTile': 'সংরক্ষিত আইটেম',
   'memoryTree.status.wikiSizeTile': 'উইকি মাপ',
   'memoryTree.status.statusRunning': 'চলমান',
   'memoryTree.status.statusPaused': 'সাময়িক বিরতি চলছে',

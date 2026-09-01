@@ -46,6 +46,7 @@ pub(super) const FUNCTIONS_CORE_RECALL: &[&str] = &[
     "init",
     "list_documents",
     "list_namespaces",
+    "namespace_summaries",
     "delete_document",
     "query_namespace",
     "recall_context",
@@ -75,6 +76,10 @@ pub(super) fn controllers_core_recall() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schema("list_namespaces").unwrap(),
             handler: handle_list_namespaces,
+        },
+        RegisteredController {
+            schema: schema("namespace_summaries").unwrap(),
+            handler: handle_namespace_summaries,
         },
         RegisteredController {
             schema: schema("delete_document").unwrap(),
@@ -182,6 +187,28 @@ pub(super) fn schema(function: &str) -> Option<ControllerSchema> {
                 comment: "Envelope with namespaces array and count.",
                 required: true,
             }],
+        },
+        "namespace_summaries" => ControllerSchema {
+            namespace: "memory",
+            function: "namespace_summaries",
+            description: "Per-namespace stored-document counts plus the grand total -- the \
+                          verification surface for whether a sync's items actually landed. \
+                          list_namespaces answers names alone; this carries the numbers.",
+            inputs: vec![],
+            outputs: vec![
+                FieldSchema {
+                    name: "namespaces",
+                    ty: TypeSchema::Json,
+                    comment: "One row per namespace: namespace, count, last_updated.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "total_documents",
+                    ty: TypeSchema::U64,
+                    comment: "Sum of every namespace's stored-document count.",
+                    required: true,
+                },
+            ],
         },
         "delete_document" => ControllerSchema {
             namespace: "memory",
@@ -478,6 +505,10 @@ fn handle_list_documents(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_list_namespaces(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move { to_json(rpc::memory_list_namespaces(EmptyRequest {}).await?) })
+}
+
+fn handle_namespace_summaries(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move { to_json(rpc::memory_namespace_summaries().await?) })
 }
 
 fn handle_delete_document(params: Map<String, Value>) -> ControllerFuture {

@@ -911,6 +911,7 @@ const en: TranslationMap = {
   'memoryTree.status.statusTile': 'Status',
   'memoryTree.status.lastSyncTile': 'Last sync',
   'memoryTree.status.totalChunksTile': 'Summary-tree leaves',
+  'memoryTree.status.storedItemsTile': 'Stored items',
   'memoryTree.status.wikiSizeTile': 'Wiki size',
   'memoryTree.status.statusRunning': 'Running',
   'memoryTree.status.statusPaused': 'Paused',

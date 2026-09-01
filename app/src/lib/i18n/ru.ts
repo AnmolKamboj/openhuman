@@ -963,6 +963,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'Статус',
   'memoryTree.status.lastSyncTile': 'Последняя синхронизация',
   'memoryTree.status.totalChunksTile': 'Листья дерева сводок',
+  'memoryTree.status.storedItemsTile': 'Сохранённые элементы',
   'memoryTree.status.wikiSizeTile': 'Размер вики',
   'memoryTree.status.statusRunning': 'Бег',
   'memoryTree.status.statusPaused': 'Приостановлено',

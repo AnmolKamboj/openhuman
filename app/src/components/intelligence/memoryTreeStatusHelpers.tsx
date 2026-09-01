@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
+import { memoryNamespaceSummaries,
   memorySyncStatusList,
   type MemorySyncStatusRow,
   memoryTreePipelineStatus,
@@ -28,12 +28,15 @@ const DEFAULT_POLL_MS = 4000;
  */
 export function useMemoryTreeStatus(): {
   status: MemoryTreePipelineStatus | null;
+  /** Stored-document grand total from the mandatory namespaces surface. */
+  storedItems: number | null;
   integrations: MemorySyncStatusRow[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 } {
   const [status, setStatus] = useState<MemoryTreePipelineStatus | null>(null);
+  const [storedItems, setStoredItems] = useState<number | null>(null);
   const [integrations, setIntegrations] = useState<MemorySyncStatusRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +46,12 @@ export function useMemoryTreeStatus(): {
 
   const fetchOnce = useCallback(async () => {
     console.debug('[ui-flow][memory-tree-status] fetchOnce: entry');
+    // Stored-document total rides the same poll: it is the sync-verification
+    // number, from a different store than every tree tile (#5932 field
+    // finding — a user watched 100 items land while the tree figure sat at 2).
+    void memoryNamespaceSummaries()
+      .then(r => setStoredItems(r.total_documents))
+      .catch(() => setStoredItems(null));
     try {
       // Fetch pipeline + per-integration health in parallel so the strip
       // and the tiles share a single 1.5s / 4s adaptive tick (#2763).
@@ -99,7 +108,8 @@ export function useMemoryTreeStatus(): {
     };
   }, [fetchOnce]);
 
-  return { status, integrations, loading, error, refresh: fetchOnce };
+  return { status,
+    storedItems, integrations, loading, error, refresh: fetchOnce };
 }
 
 /**

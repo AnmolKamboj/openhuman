@@ -895,6 +895,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': '状态',
   'memoryTree.status.lastSyncTile': '上次同步',
   'memoryTree.status.totalChunksTile': '摘要树叶子节点',
+  'memoryTree.status.storedItemsTile': '已存储条目',
   'memoryTree.status.wikiSizeTile': 'Wiki 大小',
   'memoryTree.status.statusRunning': '运行中',
   'memoryTree.status.statusPaused': '已暂停',

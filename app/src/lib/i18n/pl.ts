@@ -968,6 +968,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'Stan',
   'memoryTree.status.lastSyncTile': 'Ostatnia synchronizacja',
   'memoryTree.status.totalChunksTile': 'Liście drzewa podsumowań',
+  'memoryTree.status.storedItemsTile': 'Zapisane elementy',
   'memoryTree.status.wikiSizeTile': 'Rozmiar wiki',
   'memoryTree.status.statusRunning': 'Działa',
   'memoryTree.status.statusPaused': 'Wstrzymane',

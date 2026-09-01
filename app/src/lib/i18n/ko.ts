@@ -943,6 +943,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': '상태',
   'memoryTree.status.lastSyncTile': '마지막 동기화',
   'memoryTree.status.totalChunksTile': '요약 트리 리프',
+  'memoryTree.status.storedItemsTile': '저장된 항목',
   'memoryTree.status.wikiSizeTile': '위키 크기',
   'memoryTree.status.statusRunning': '실행 중',
   'memoryTree.status.statusPaused': '일시 중지됨',

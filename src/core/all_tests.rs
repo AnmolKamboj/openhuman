@@ -1644,6 +1644,9 @@ const MEMORY_FUNCTION_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("init", Some(Capability::Core)),
     ("list_documents", Some(Capability::Core)),
     ("list_namespaces", Some(Capability::Core)),
+    // Same tier as list_namespaces beside it: the per-namespace counts are
+    // the sync-verification surface, gated with the core partition.
+    ("namespace_summaries", Some(Capability::Core)),
     ("delete_document", Some(Capability::Core)),
     ("query_namespace", Some(Capability::Core)),
     ("recall_context", Some(Capability::Core)),

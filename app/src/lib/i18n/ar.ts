@@ -927,6 +927,7 @@ const messages: TranslationMap = {
   'memoryTree.status.statusTile': 'الحالة',
   'memoryTree.status.lastSyncTile': 'آخر تزامن',
   'memoryTree.status.totalChunksTile': 'أوراق شجرة الملخصات',
+  'memoryTree.status.storedItemsTile': 'العناصر المخزنة',
   'memoryTree.status.wikiSizeTile': 'حجم ويك',
   'memoryTree.status.statusRunning': 'تشغيل',
   'memoryTree.status.statusPaused': 'مدفوع',
