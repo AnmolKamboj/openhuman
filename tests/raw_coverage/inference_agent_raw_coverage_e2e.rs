@@ -100,9 +100,7 @@ use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::agent::{
     all_agent_controller_schemas, all_agent_registered_controllers,
 };
-use openhuman_core::openhuman::memory::agent::memory_loader::{
-    collect_recall_citations, DefaultMemoryLoader, MemoryLoader, CROSS_CHAT_HEADER,
-};
+use openhuman_core::openhuman::memory::agent::memory_loader::collect_recall_citations;
 use openhuman_core::openhuman::agent::registry::agents::BUILTINS;
 use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
@@ -172,7 +170,7 @@ use openhuman_core::openhuman::agent::tinyagents::thread_context::{current_threa
 use openhuman_core::openhuman::threads::todos::ops::BoardLocation;
 use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{Tool, ToolResult, ToolSpec};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
 
 static ENV_LOCK: &std::sync::OnceLock<std::sync::Mutex<()>> = &crate::SHARED_ENV_LOCK;
 
@@ -248,7 +246,7 @@ impl ChatModel<()> for EchoModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         Ok(ModelResponse::assistant(
             request
                 .messages
@@ -1811,33 +1809,9 @@ async fn inference_public_helpers_cover_context_windows_and_sentiment_fallbacks(
 }
 
 #[tokio::test]
-async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citations() {
+async fn agent_memory_recall_citations_filter_by_relevance_and_truncate() {
     let memory = ScriptedMemory {
         normal: Arc::new(vec![
-            memory_entry(
-                "working-1",
-                "working.user.timezone",
-                "Prefers UTC for release plans.",
-                Some("profile"),
-                None,
-                Some(0.95),
-            ),
-            memory_entry(
-                "working-low",
-                "working.user.low",
-                "Too weak to include.",
-                Some("profile"),
-                None,
-                Some(0.1),
-            ),
-            memory_entry(
-                "prior-1",
-                "high.preference.database",
-                "[high preference] Prefer Postgres for production services.\n[provenance] {\"thread_id\":\"older\"}",
-                Some("conversation_memory"),
-                Some("older-thread"),
-                Some(0.92),
-            ),
             memory_entry(
                 "citation-1",
                 "project.summary",
@@ -1855,44 +1829,8 @@ async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citation
                 Some(0.2),
             ),
         ]),
-        cross_session: Arc::new(vec![
-            memory_entry(
-                "episodic-cross:old",
-                "old-thread",
-                "Earlier chat mentioned round seven coverage priorities.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"old-thread","client_id":"client"}"#),
-                Some(0.91),
-            ),
-            memory_entry(
-                "episodic-cross:current",
-                "current-thread",
-                "Current chat should be excluded from cross chat context.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"current-thread"}"#),
-                Some(0.99),
-            ),
-        ]),
+        cross_session: Arc::new(Vec::new()),
     };
-
-    let context = with_thread_id("current-thread", async {
-        DefaultMemoryLoader::new(5, 0.4)
-            .with_max_chars(2_000)
-            .load_context(&memory, "coverage priorities")
-            .await
-    })
-    .await
-    .expect("memory context");
-
-    assert!(context.contains("[User working memory]"));
-    assert!(context.contains("working.user.timezone (as of 2026-05-29)"));
-    assert!(!context.contains("Too weak to include"));
-    assert!(context.contains("[Prior conversations]"));
-    assert!(context.contains("(noted 2026-05-29) [high preference] Prefer Postgres"));
-    assert!(!context.contains("[provenance]"));
-    assert!(context.contains(CROSS_CHAT_HEADER.trim_end()));
-    assert!(context.contains("Earlier chat mentioned round seven coverage priorities"));
-    assert!(!context.contains("Current chat should be excluded"));
 
     let citations = collect_recall_citations(&memory, "project", 8, 0.4)
         .await
@@ -1905,13 +1843,6 @@ async fn agent_memory_loader_public_paths_cover_working_prior_cross_and_citation
     assert!(!citations
         .iter()
         .any(|citation| citation.id == "citation-low"));
-
-    let tiny_budget = DefaultMemoryLoader::new(5, 0.4)
-        .with_max_chars("[User working memory]\n".len() - 1)
-        .load_context(&memory, "coverage priorities")
-        .await
-        .expect("tiny budget context");
-    assert!(tiny_budget.is_empty());
 }
 
 #[tokio::test]
@@ -2033,8 +1964,8 @@ async fn inference_provider_factory_and_classifiers_cover_user_state_edges() {
 
 #[tokio::test]
 async fn inference_openhuman_backend_provider_covers_authless_and_streaming_edges() {
-    use tinyagents::harness::message::Message;
-    use tinyagents::harness::model::{ChatModel, ModelRequest};
+    use tinyinference::message::Message;
+    use tinyinference::model::{ChatModel, ModelRequest};
 
     let state_dir = tempdir().expect("openhuman provider state");
     let provider = OpenHumanBackendModel::new(
@@ -2991,7 +2922,7 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
     .expect("subagent builder");
     assert!(built.contains("coverage soul"));
     assert!(built.contains("coverage profile"));
-    assert!(built.contains("Output style"));
+    assert!(built.contains("# Writing style"));
 
     let narrow = render_subagent_system_prompt(
         workspace.path(),
@@ -3944,6 +3875,10 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             workspace_dir: workspace.path().join("ws"),
             text: "# planner\nbody\n".to_string(),
             tool_names: vec!["todo".to_string(), "delegate".to_string()],
+            tool_specs: vec![
+                json!({"name": "todo", "description": "manage todos", "parameters": {}}),
+                json!({"name": "delegate", "description": "delegate a task", "parameters": {}}),
+            ],
             skill_tool_count: 0,
         },
         DumpedPrompt {
@@ -3954,6 +3889,11 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             workspace_dir: workspace.path().join("ws"),
             text: "# integrations\nbody\n".to_string(),
             tool_names: vec!["GMAIL_SEND_EMAIL".to_string()],
+            tool_specs: vec![json!({
+                "name": "GMAIL_SEND_EMAIL",
+                "description": "send an email",
+                "parameters": {},
+            })],
             skill_tool_count: 1,
         },
     ];
@@ -3988,6 +3928,32 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
     let summary_text = std::fs::read_to_string(summary.summary_path).expect("summary");
     assert!(summary_text.contains("planner/coverage"));
     assert!(summary_text.contains("integrations_agent@gmail+calendar"));
+
+    // Each per-dump tools sidecar carries the rendered tool schemas verbatim,
+    // one entry per tool in `tool_names` order — compare the full payload
+    // (name, description and parameters), not just count and names.
+    let planner_tools: Vec<Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            workspace.path().join("1_planner_coverage.tools.json"),
+        )
+        .expect("planner tools sidecar"),
+    )
+    .expect("planner tools json");
+    assert_eq!(planner_tools.as_slice(), dumps[0].tool_specs.as_slice());
+
+    let integrations_tools: Vec<Value> = serde_json::from_str(
+        &std::fs::read_to_string(
+            workspace
+                .path()
+                .join("2_integrations_agent_gmail_calendar.tools.json"),
+        )
+        .expect("integrations tools sidecar"),
+    )
+    .expect("integrations tools json");
+    assert_eq!(
+        integrations_tools.as_slice(),
+        dumps[1].tool_specs.as_slice()
+    );
 
     let identities = openhuman_core::openhuman::agent::prompts::render_connected_identities();
     assert_eq!(identities, "");

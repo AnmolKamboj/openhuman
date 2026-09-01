@@ -24,6 +24,8 @@ mod context;
 mod dashboard;
 mod defaults;
 mod dictation;
+mod hooks;
+pub use hooks::HooksConfig;
 mod heartbeat_cron;
 pub mod hosting;
 pub use hosting::HostingConfig;
@@ -46,11 +48,9 @@ pub(crate) use load::CONFIG_OWNER_MISMATCH_MARKER;
 pub mod claude_agent_sdk;
 pub use claude_agent_sdk::ClaudeAgentSdkConfig;
 mod local_ai;
-mod meet;
 mod modules;
 mod node;
 mod observability;
-mod orchestration;
 mod privacy;
 mod proxy;
 mod routes;
@@ -85,14 +85,9 @@ pub use heartbeat_cron::{CronConfig, HeartbeatConfig, SubconsciousMode};
 pub use identity_cost::{CostConfig, ModelPricing};
 pub use learning::{LearningConfig, ReflectionSource};
 pub use local_ai::{LocalAiConfig, LocalAiUsage};
-pub use meet::{AutoJoinPolicy, AutoSummarizePolicy, CalendarProvider, MeetConfig};
 pub use modules::{ModuleOverride, ModulesConfig};
 pub use node::NodeConfig;
 pub use observability::{AgentTracingBackend, AgentTracingConfig, ObservabilityConfig};
-pub use orchestration::{
-    MedullaClientConfig, MedullaCycleConfig, MedullaCycleLimits, MedullaPromptOverrides,
-    MedullaVerification, OrchestrationConfig,
-};
 pub use privacy::{PrivacyConfig, PrivacyMode};
 pub use proxy::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,

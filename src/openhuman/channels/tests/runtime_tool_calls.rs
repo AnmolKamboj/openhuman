@@ -12,7 +12,7 @@ use crate::openhuman::inference::provider;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tinyagents::harness::model::ChatModel;
+use tinyinference::model::ChatModel;
 
 #[tokio::test]
 async fn process_channel_message_executes_native_tool_calls() {

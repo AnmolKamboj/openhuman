@@ -13,9 +13,37 @@
 #![cfg(feature = "mcp")]
 
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::mcp::registry::connections;
-use openhuman_core::openhuman::mcp::registry::store;
-use openhuman_core::openhuman::mcp::registry::types::{CommandKind, InstalledServer, Transport};
+use tinymcp_bus::{CommandKind, InstalledServer, Transport};
+
+/// The service over `config`'s workspace.
+///
+/// Resolved the same way the RPC handlers resolve it, so a connection this test
+/// opens directly is the same one a handler sees. Each case uses its own
+/// workspace, so each gets its own store.
+fn host(config: &Config) -> std::sync::Arc<openhuman_core::openhuman::mcp::host::McpHost> {
+    openhuman_core::openhuman::mcp::host::for_config(config).expect("the mcp host opens")
+}
+
+/// Runs exactly one supervision cycle against `host`.
+///
+/// Driven a tick at a time rather than through the loop, so the test does not
+/// wait on a timer for something it can ask for directly.
+async fn supervise_once(host: &openhuman_core::openhuman::mcp::host::McpHost) {
+    let mut supervisor = tinymcp::Supervisor::new(
+        tinymcp::SupervisorConfig::default(),
+        tinymcp_bus::McpClientIdentityConfig::default(),
+        None,
+    );
+
+    supervisor
+        .tick(
+            host.dynamic().store(),
+            host.dynamic().connections(),
+            host.dynamic().oauth(),
+            std::time::Instant::now(),
+        )
+        .await;
+}
 
 fn fresh_workspace_config() -> (tempfile::TempDir, Config) {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -47,22 +75,29 @@ fn make_installed_server() -> InstalledServer {
 #[tokio::test]
 async fn connect_lists_one_tool_then_disconnect() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
 
     // Insert into the store so `all_status` (which reads from store) sees it,
     // and so a follow-up `boot::spawn_installed_servers` would pick it up.
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
     // Connect: spawns the stub subprocess and runs `initialize` + `tools/list`.
-    let tools = connections::connect(&cfg, &server)
+    let tools = h
+        .dynamic()
+        .connect(&server.server_id)
         .await
-        .expect("connect succeeds");
+        .expect("connect succeeds")
+        .tools;
     assert_eq!(tools.len(), 1, "stub advertises one tool");
     assert_eq!(tools[0].name, "echo");
     assert!(tools[0].input_schema.is_object());
 
     // Status reflects the live connection.
-    let statuses = connections::all_status(&cfg).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -70,15 +105,18 @@ async fn connect_lists_one_tool_then_disconnect() {
     assert_eq!(mine.tool_count, 1);
 
     // Call the `echo` tool and verify the response payload.
-    let result = connections::call_tool(
-        &server.server_id,
-        "echo",
-        serde_json::json!({ "message": "hello mcp" }),
-    )
-    .await
-    .expect("call_tool succeeds");
+    let result = h
+        .dynamic()
+        .tool_call(
+            &server.server_id,
+            "echo",
+            serde_json::json!({ "message": "hello mcp" }),
+        )
+        .await
+        .expect("call_tool succeeds");
 
     let text = result
+        .result
         .get("content")
         .and_then(|c| c.as_array())
         .and_then(|arr| arr.first())
@@ -88,54 +126,85 @@ async fn connect_lists_one_tool_then_disconnect() {
     assert_eq!(text, "hello mcp", "echo tool returns the input verbatim");
 
     // Disconnect: removes from the registry and closes the subprocess.
-    let removed = connections::disconnect(&server.server_id).await;
+    let removed = h
+        .dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
     assert!(removed, "disconnect drops the live connection");
 
     // Subsequent call fails because the server_id is no longer connected.
-    let err = connections::call_tool(
-        &server.server_id,
-        "echo",
-        serde_json::json!({ "message": "post-disconnect" }),
-    )
-    .await
-    .expect_err("call_tool fails after disconnect");
-    assert!(err.contains("not connected"));
+    let err = h
+        .dynamic()
+        .tool_call(
+            &server.server_id,
+            "echo",
+            serde_json::json!({ "message": "post-disconnect" }),
+        )
+        .await
+        .expect_err("call_tool fails after disconnect");
+    assert!(err.to_string().contains("not connected"));
 }
 
 #[tokio::test]
 async fn unknown_tool_call_returns_error() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
 
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
-    connections::connect(&cfg, &server).await.expect("connect");
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
 
-    let err = connections::call_tool(&server.server_id, "does_not_exist", serde_json::json!({}))
+    let err = h
+        .dynamic()
+        .tool_call(&server.server_id, "does_not_exist", serde_json::json!({}))
         .await
         .expect_err("stub rejects unknown tools");
     assert!(
-        err.to_lowercase().contains("unknown tool") || err.contains("error"),
+        err.to_string().to_lowercase().contains("unknown tool")
+            || err.to_string().contains("error"),
         "expected unknown-tool error, got: {err}"
     );
 
-    let _ = connections::disconnect(&server.server_id).await;
+    let _ = h
+        .dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
 }
 
 #[tokio::test]
 async fn failed_connect_records_last_error() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.command = "/this/path/does/not/exist".to_string();
 
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
-    let err = connections::connect(&cfg, &server)
+    let err = h
+        .dynamic()
+        .connect(&server.server_id)
         .await
         .expect_err("connect should fail for bogus command");
     assert!(!err.to_string().is_empty());
 
-    let recorded = connections::last_error_for(&server.server_id).await;
+    let recorded = h
+        .dynamic()
+        .connections()
+        .last_error(&server.server_id)
+        .await;
     assert!(
         recorded.is_some(),
         "LAST_ERRORS must hold the connect failure for server_id={}",
@@ -146,35 +215,60 @@ async fn failed_connect_records_last_error() {
 #[tokio::test]
 async fn successful_connect_clears_last_error() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
+
+    // Connecting resolves the install from the store, so a change to the record
+    // only takes effect once it is written there.
     server.command = "/nonexistent".to_string();
-    let _ = connections::connect(&cfg, &server).await;
-    assert!(connections::last_error_for(&server.server_id)
+    h.dynamic().store().insert_server(&server).expect("insert");
+    let _ = h.dynamic().connect(&server.server_id).await;
+    assert!(h
+        .dynamic()
+        .connections()
+        .last_error(&server.server_id)
         .await
         .is_some());
 
     server.command = env!("CARGO_BIN_EXE_test-mcp-stub").to_string();
-    connections::connect(&cfg, &server)
+    h.dynamic()
+        .store()
+        .delete_server(&server.server_id)
+        .expect("drop the bogus record");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("reinsert");
+    h.dynamic()
+        .connect(&server.server_id)
         .await
-        .expect("real connect succeeds");
+        .expect("real connect succeeds")
+        .tools;
     assert!(
-        connections::last_error_for(&server.server_id)
+        h.dynamic()
+            .connections()
+            .last_error(&server.server_id)
             .await
             .is_none(),
         "successful connect must clear the prior error"
     );
 
-    let _ = connections::disconnect(&server.server_id).await;
+    let _ = h
+        .dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
 }
 
 #[tokio::test]
 async fn status_priority_disabled_outranks_connected() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
-    let statuses = connections::all_status(&cfg).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -190,12 +284,13 @@ async fn status_priority_disabled_outranks_connected() {
 #[tokio::test]
 async fn status_reflects_last_connect_error() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.command = "/nonexistent".to_string();
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
-    let _ = connections::connect(&cfg, &server).await;
-    let statuses = connections::all_status(&cfg).await;
+    let _ = h.dynamic().connect(&server.server_id).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -215,17 +310,18 @@ async fn boot_skips_disabled_servers_and_records_errors() {
     use openhuman_core::openhuman::mcp::registry::boot;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
 
     // Server A: enabled, real stub → connects.
     let mut a = make_installed_server();
     a.server_id = format!("a-{}", uuid::Uuid::new_v4());
-    store::insert_server(&cfg, &a).expect("insert a");
+    h.dynamic().store().insert_server(&a).expect("insert a");
 
     // Server B: enabled but command does not exist → records error, doesn't crash boot.
     let mut b = make_installed_server();
     b.server_id = format!("b-{}", uuid::Uuid::new_v4());
     b.command = "/nonexistent-mcp".to_string();
-    store::insert_server(&cfg, &b).expect("insert b");
+    h.dynamic().store().insert_server(&b).expect("insert b");
 
     // Server C: disabled AND command is bogus. If boot ever attempts to
     // connect this server, the bogus command will fail and LAST_ERRORS will
@@ -236,13 +332,13 @@ async fn boot_skips_disabled_servers_and_records_errors() {
     c.server_id = format!("c-{}", uuid::Uuid::new_v4());
     c.enabled = false;
     c.command = "/nonexistent-disabled-server".to_string();
-    store::insert_server(&cfg, &c).expect("insert c");
+    h.dynamic().store().insert_server(&c).expect("insert c");
 
     boot::spawn_installed_servers(&cfg).await;
 
     // A is connected; B recorded an error; C never attempted (no error
     // recorded despite the bogus command).
-    let statuses = connections::all_status(&cfg).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let by_id = |id: &str| {
         statuses
             .iter()
@@ -254,11 +350,15 @@ async fn boot_skips_disabled_servers_and_records_errors() {
     assert_eq!(by_id(&b.server_id).status.as_str(), "error");
     assert_eq!(by_id(&c.server_id).status.as_str(), "disabled");
     assert!(
-        connections::last_error_for(&c.server_id).await.is_none(),
+        h.dynamic()
+            .connections()
+            .last_error(&c.server_id)
+            .await
+            .is_none(),
         "disabled server with bogus command must not have been connect-attempted"
     );
 
-    let _ = connections::disconnect(&a.server_id).await;
+    let _ = h.dynamic().connections().disconnect(&a.server_id).await;
 }
 
 #[tokio::test]
@@ -266,18 +366,34 @@ async fn set_enabled_false_disconnects_running_server() {
     use openhuman_core::openhuman::mcp::registry::ops;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
-    store::insert_server(&cfg, &server).expect("insert");
-    connections::connect(&cfg, &server).await.expect("connect");
+    h.dynamic().store().insert_server(&server).expect("insert");
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
 
     let outcome = ops::mcp_clients_set_enabled(&cfg, server.server_id.clone(), false)
         .await
         .expect("set_enabled ok");
     assert_eq!(outcome.value["enabled"], serde_json::json!(false));
 
-    let loaded = store::get_server(&cfg, &server.server_id).unwrap();
+    let loaded = h.dynamic().store().get_server(&server.server_id).unwrap();
     assert!(!loaded.enabled);
-    let statuses = connections::all_status(&cfg).await;
+    // The `enabled` flag and the `disabled` status string are both derived from
+    // the store record, so on their own they would not catch a connection that
+    // survived the toggle. Disabling a running server must drop the live
+    // connection too.
+    assert!(
+        !h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await,
+        "disabling a running server must drop its live connection"
+    );
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -290,14 +406,18 @@ async fn connect_refuses_disabled_server() {
     use openhuman_core::openhuman::mcp::registry::ops;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
     let err = ops::mcp_clients_connect(&cfg, server.server_id.clone())
         .await
         .expect_err("connect must reject disabled server");
-    assert!(err.to_lowercase().contains("disabled"), "got: {err}");
+    assert!(
+        err.to_string().to_lowercase().contains("disabled"),
+        "got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -305,14 +425,15 @@ async fn set_enabled_true_clears_disabled_status_but_does_not_auto_connect() {
     use openhuman_core::openhuman::mcp::registry::ops;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
     ops::mcp_clients_set_enabled(&cfg, server.server_id.clone(), true)
         .await
         .expect("set_enabled true ok");
-    let statuses = connections::all_status(&cfg).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -330,9 +451,10 @@ async fn update_env_on_disabled_server_persists_but_does_not_reconnect() {
     use std::collections::HashMap;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
     let mut env = HashMap::new();
     env.insert("API_KEY".to_string(), "deadbeef".to_string());
@@ -345,7 +467,7 @@ async fn update_env_on_disabled_server_persists_but_does_not_reconnect() {
         "disabled server reports status=disabled instead of reconnecting"
     );
 
-    let statuses = connections::all_status(&cfg).await;
+    let statuses = h.dynamic().status().await.expect("status");
     let mine = statuses
         .iter()
         .find(|s| s.server_id == server.server_id)
@@ -363,17 +485,21 @@ async fn update_env_merges_partial_update_preserving_other_secrets() {
     use std::collections::HashMap;
 
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     // Disabled so update_env persists without attempting a live reconnect —
     // we only assert the persisted env here.
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert");
+    h.dynamic().store().insert_server(&server).expect("insert");
 
     // Seed two stored secrets.
     let mut initial = HashMap::new();
     initial.insert("API_KEY".to_string(), "key-1".to_string());
     initial.insert("OTHER_SECRET".to_string(), "other-1".to_string());
-    store::set_env_values(&cfg, &server.server_id, &initial).expect("seed env");
+    h.dynamic()
+        .store()
+        .set_env_values(&server.server_id, &initial.clone().into_iter().collect())
+        .expect("seed env");
 
     // Partial update: only API_KEY, as the connect modal would send for a
     // single edited field.
@@ -383,7 +509,11 @@ async fn update_env_merges_partial_update_preserving_other_secrets() {
         .await
         .expect("update_env returns Ok");
 
-    let stored = store::load_env_values(&cfg, &server.server_id).expect("load env");
+    let stored = h
+        .dynamic()
+        .store()
+        .load_env_values(&server.server_id)
+        .expect("load env");
     assert_eq!(
         stored.get("API_KEY").map(String::as_str),
         Some("key-2"),
@@ -401,81 +531,154 @@ async fn update_env_merges_partial_update_preserving_other_secrets() {
 #[tokio::test]
 async fn probe_alive_reflects_transport_liveness() {
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
-    connections::connect(&cfg, &server).await.expect("connect");
-    assert!(connections::is_connected(&server.server_id).await);
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
     assert!(
-        connections::probe_alive(&server.server_id, std::time::Duration::from_secs(8)).await,
+        h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await
+    );
+    assert!(
+        h.dynamic()
+            .connections()
+            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+            .await
+            .is_alive(),
         "a live stub answers the tools/list probe"
     );
 
-    connections::disconnect(&server.server_id).await;
-    assert!(!connections::is_connected(&server.server_id).await);
+    h.dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
     assert!(
-        !connections::probe_alive(&server.server_id, std::time::Duration::from_secs(8)).await,
+        !h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await
+    );
+    assert!(
+        !h.dynamic()
+            .connections()
+            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+            .await
+            .is_alive(),
         "a disconnected server is not alive"
     );
 }
 
 #[tokio::test]
 async fn supervisor_reconnects_a_dropped_server() {
-    use openhuman_core::openhuman::mcp::registry::supervisor;
-
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
     // Bring it up, then simulate a silent transport drop by disconnecting while
     // it stays installed + enabled in the store.
-    connections::connect(&cfg, &server).await.expect("connect");
-    connections::disconnect(&server.server_id).await;
-    assert!(!connections::is_connected(&server.server_id).await);
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
+    h.dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
+    assert!(
+        !h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await
+    );
 
     // One supervisor tick should notice the enabled-but-disconnected server and
     // reconnect it.
-    supervisor::run_single_tick_for_test(&cfg).await;
+    supervise_once(&h).await;
 
     assert!(
-        connections::is_connected(&server.server_id).await,
+        h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await,
         "supervisor reconnects a dropped-but-installed server"
     );
-    assert!(connections::probe_alive(&server.server_id, std::time::Duration::from_secs(8)).await);
+    assert!(h
+        .dynamic()
+        .connections()
+        .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+        .await
+        .is_alive());
 
-    connections::disconnect(&server.server_id).await;
+    h.dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
 }
 
 #[tokio::test]
 async fn supervisor_leaves_a_healthy_connection_intact() {
-    use openhuman_core::openhuman::mcp::registry::supervisor;
-
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let server = make_installed_server();
-    store::insert_server(&cfg, &server).expect("insert installed server");
-    connections::connect(&cfg, &server).await.expect("connect");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
 
     // A tick over a healthy server must keep it connected (probe succeeds → no
     // disconnect/reconnect churn).
-    supervisor::run_single_tick_for_test(&cfg).await;
-    assert!(connections::is_connected(&server.server_id).await);
+    supervise_once(&h).await;
+    assert!(
+        h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await
+    );
 
-    connections::disconnect(&server.server_id).await;
+    h.dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
 }
 
 #[tokio::test]
 async fn supervisor_skips_a_disabled_server() {
-    use openhuman_core::openhuman::mcp::registry::supervisor;
-
     let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
     let mut server = make_installed_server();
     server.enabled = false;
-    store::insert_server(&cfg, &server).expect("insert installed server");
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
 
     // A disabled server must never be connected by the supervisor.
-    supervisor::run_single_tick_for_test(&cfg).await;
+    supervise_once(&h).await;
     assert!(
-        !connections::is_connected(&server.server_id).await,
+        !h.dynamic()
+            .connections()
+            .is_connected(&server.server_id)
+            .await,
         "supervisor does not connect disabled servers"
     );
 }

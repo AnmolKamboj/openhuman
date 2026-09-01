@@ -17,14 +17,13 @@ dead-string rot the ratchet exists to prevent.
 
 ## Scope
 
-The lint scans `src/` for twelve patterns, keyed on `(file, pattern)` so the
+The lint scans the host and vendored `tinymemory-core` sources for nine
+patterns, keyed on `(file, pattern)` so the
 failure message names the needle that tripped:
 
 | Pattern | What it hands out |
 | --- | --- |
-| `active_memory_client(` | `MemoryClientRef` |
-| `global::client_if_ready(` / `global::client(` | `MemoryClientRef` |
-| `.memory_handle(` | raw `Arc<dyn Memory>` |
+| `global::client_if_ready(` | `MemoryClientRef` |
 | `.profile_conn(` | raw `Arc<Mutex<rusqlite::Connection>>` (one in-family site) |
 | `.profile_store(` | a typed `ProfileStore` — confined, but still unguarded |
 | `.get_document(` | `pub(crate)` read-one escape hatch |
@@ -47,7 +46,6 @@ workspace; it does not read or write memory, and every call site is a
 login / active-user-switch / boot / CLI-entry lifecycle event
 (`security/credentials/ops.rs`, `desktop/app_state/ops.rs`,
 `core/runtime/context.rs`, `core/memory_cli.rs`, `core/subconscious_cli.rs`,
-`bin/slack_backfill.rs`, `bin/gmail_backfill_3d.rs`,
 `memory/ops/documents.rs`'s `memory_init`, `memory/tinycortex/sync.rs`).
 
 ## What M4b re-pointed
@@ -125,24 +123,11 @@ is the only path" is not yet a true invariant.**
 
 | Path | Sites |
 | --- | --- |
-| `memory/sync/composio/providers/profile.rs` | 5 |
-| `agent/learning/startup.rs` | 2 |
-| `memory/store/client_tests.rs` | 2 (test) |
-| `memory/store/golden.rs` | 2 (test infrastructure — see below) |
+| `vendor/tinymemory/crates/tinymemory-core/src/store/identity.rs` | 2 — the engine's cross-toolkit identity matcher resolves its global client and then reads the typed profile store. This is below the module contract, not a host-side path. |
 
-`memory/store/golden.rs` is the seeder / read-back engine behind the
-`memory_golden_fixture_e2e` schema gate. It is `#[doc(hidden)]` and has no
-caller outside `tests/`, so it is not a product bypass. It needs
-`profile_conn()` for the same reason `agent/learning/*` does: the episodic,
-conversation-segment, event and `user_profile` tiers have no guard-routed
-writer, and a fixture that omitted them would leave the FTS5 shadow tables and
-six sync triggers unrepresented — exactly the schema the gate exists to pin.
-Its document / KV / graph writes and all of its read-back **do** go through
-`memory::ops`. If those four tiers ever gain a guarded writer, re-point this
-module and drop both entries.
-
-The brief named only the first two files. The other two were found by grep and
-are recorded here so M4c starts from the real set.
+TinyMemory v1.13.4 removed the old in-process Composio sync pipeline, so its
+former profile-store entries are intentionally absent. The identity matcher is
+the remaining vendor-internal reader counted by this guard.
 
 ### C. Needs a concrete engine type the contract does not expose
 
@@ -157,7 +142,6 @@ are recorded here so M4c starts from the real set.
 
 | Path | Reason |
 | --- | --- |
-| `memory/ops/documents.rs` — `doc_ingest` and retrieval envelope handlers | These still depend on engine-only ingestion and retrieval shapes. Namespace/document listing, deletion, context query, and context recall now use the shared Documents API. |
 | `memory/ops/sync.rs` | `client.ingestion_state().snapshot()` — queue telemetry, absent from the contract. |
 | `flows/ops.rs` | The production namespace clear uses `MemoryDocuments`; only the directly injected `MemoryClientRef` test seam remains raw. |
 | `integrations/composio/schemas.rs` | Passes `&MemoryClientRef` into `user_scopes::save`. |
@@ -170,9 +154,9 @@ are recorded here so M4c starts from the real set.
 `integrations/composio/ops_tests.rs`, `core/runtime/context.rs` (its `#[cfg(test)]`
 module).
 
-`vendor/tinymemory/core/src/tinycortex/sync.rs` also has an inline `#[cfg(test)]`
-module whose isolated-workspace fixtures construct `MemoryClient` directly; it
-is counted because the scanner does not brace-track inline test modules.
+TinyMemory v1.13.4 removed the in-process Composio sync test support along with
+the pipeline itself. The remaining vendored global-client use is the
+engine-internal identity matcher described above.
 
 ## Honest scorecard
 

@@ -1,6 +1,7 @@
 use super::*;
 use crate::openhuman::security::SecurityPolicy;
 use tempfile::TempDir;
+use tinyagents_harness::tool::ToolExecutionContext;
 
 fn test_tool(dir: &std::path::Path) -> GitOperationsTool {
     let security = Arc::new(SecurityPolicy {
@@ -90,8 +91,8 @@ fn sanitize_git_allows_safe() {
 /// the behaviour the deleted `worktree_context.rs` task-local used to provide.
 #[test]
 fn git_resolves_cwd_from_workspace_descriptor() {
-    use tinyagents::harness::context::{RunConfig, RunContext};
-    use tinyagents::harness::workspace::WorkspaceDescriptor;
+    use tinyagents_harness::context::{RunConfig, RunContext};
+    use tinyagents_harness::workspace::WorkspaceDescriptor;
 
     let action_tmp = TempDir::new().unwrap();
     let worktree_tmp = TempDir::new().unwrap();

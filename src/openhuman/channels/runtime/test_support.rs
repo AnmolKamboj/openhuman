@@ -17,7 +17,6 @@ use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig, ReliabilityConfig};
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
-use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry};
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -25,7 +24,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
+use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 
 #[derive(Debug, Clone)]
 pub struct DispatchHarnessOptions {
@@ -188,7 +188,7 @@ impl ChatModel<()> for HarnessModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let message = request
             .messages
             .last()
@@ -210,7 +210,7 @@ struct HarnessMemory {
 }
 
 #[async_trait]
-impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
+impl tinymemory_api::provider::MemoryCore for HarnessMemory {
     async fn store(
         &self,
         _namespace: &str,
@@ -218,8 +218,8 @@ impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
         _content: &str,
         _category: MemoryCategory,
         _session_id: Option<&str>,
-        _taint: crate::openhuman::memory::api::types::MemoryTaint,
-    ) -> std::result::Result<(), crate::openhuman::memory::api::error::MemoryError> {
+        _taint: tinymemory_api::types::MemoryTaint,
+    ) -> std::result::Result<(), tinymemory_api::error::MemoryError> {
         Ok(())
     }
 
@@ -227,8 +227,7 @@ impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
         &self,
         _namespace: &str,
         _key: &str,
-    ) -> std::result::Result<Option<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
-    {
+    ) -> std::result::Result<Option<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(None)
     }
 
@@ -236,7 +235,7 @@ impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
         &self,
         _namespace: &str,
         _key: &str,
-    ) -> std::result::Result<bool, crate::openhuman::memory::api::error::MemoryError> {
+    ) -> std::result::Result<bool, tinymemory_api::error::MemoryError> {
         Ok(false)
     }
 
@@ -245,75 +244,73 @@ impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
         _namespace: Option<&str>,
         _category: Option<&MemoryCategory>,
         _session_id: Option<&str>,
-    ) -> std::result::Result<Vec<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
-    {
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(Vec::new())
     }
 
     async fn namespaces(
         &self,
     ) -> std::result::Result<
-        Vec<crate::openhuman::memory::api::types::NamespaceSummary>,
-        crate::openhuman::memory::api::error::MemoryError,
+        Vec<tinymemory_api::types::NamespaceSummary>,
+        tinymemory_api::error::MemoryError,
     > {
         Ok(Vec::new())
     }
 }
 
 #[async_trait]
-impl crate::openhuman::memory::api::provider::MemoryRecall for HarnessMemory {
+impl tinymemory_api::provider::MemoryRecall for HarnessMemory {
     async fn recall(
         &self,
         _query: &str,
         _limit: usize,
-        _opts: &crate::openhuman::memory::api::recall::OwnedRecallOpts,
-        _scope: Option<&crate::openhuman::memory::api::provider::types::SourceScope>,
-    ) -> std::result::Result<Vec<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
-    {
+        _opts: &tinymemory_api::recall::OwnedRecallOpts,
+        _scope: Option<&tinymemory_api::provider::types::SourceScope>,
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(self.entries.clone())
     }
 }
 
 #[async_trait]
-impl crate::openhuman::memory::api::provider::MemoryPortability for HarnessMemory {
+impl tinymemory_api::provider::MemoryPortability for HarnessMemory {
     async fn export_page(
         &self,
         _cursor: Option<&str>,
         _limit: usize,
     ) -> std::result::Result<
-        crate::openhuman::memory::api::provider::types::ExportPage,
-        crate::openhuman::memory::api::error::MemoryError,
+        tinymemory_api::provider::types::ExportPage,
+        tinymemory_api::error::MemoryError,
     > {
-        Err(crate::openhuman::memory::api::error::MemoryError::Other(
-            anyhow::anyhow!("harness memory does not export"),
-        ))
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not export"
+        )))
     }
 
     async fn import_records(
         &self,
-        _records: Vec<crate::openhuman::memory::api::provider::types::ExportRecord>,
+        _records: Vec<tinymemory_api::provider::types::ExportRecord>,
     ) -> std::result::Result<
-        crate::openhuman::memory::api::provider::types::ImportOutcome,
-        crate::openhuman::memory::api::error::MemoryError,
+        tinymemory_api::provider::types::ImportOutcome,
+        tinymemory_api::error::MemoryError,
     > {
-        Err(crate::openhuman::memory::api::error::MemoryError::Other(
-            anyhow::anyhow!("harness memory does not import"),
-        ))
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not import"
+        )))
     }
 }
 
 #[async_trait]
-impl crate::openhuman::memory::api::provider::MemoryProvider for HarnessMemory {
+impl tinymemory_api::provider::MemoryProvider for HarnessMemory {
     fn driver_id(&self) -> &str {
         "harness-memory"
     }
 
-    fn capabilities(&self) -> crate::openhuman::memory::api::capabilities::Capabilities {
-        crate::openhuman::memory::api::capabilities::Capabilities::mandatory()
+    fn capabilities(&self) -> tinymemory_api::capabilities::Capabilities {
+        tinymemory_api::capabilities::Capabilities::mandatory()
     }
 
-    async fn health(&self) -> crate::openhuman::memory::api::health::MemoryHealth {
-        crate::openhuman::memory::api::health::MemoryHealth::Ready
+    async fn health(&self) -> tinymemory_api::health::MemoryHealth {
+        tinymemory_api::health::MemoryHealth::Ready
     }
 }
 
@@ -348,7 +345,7 @@ fn memory_entry(input: TestMemoryEntry) -> MemoryEntry {
         timestamp: "now".to_string(),
         session_id: None,
         score: input.score,
-        taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
+        taint: tinymemory_api::types::MemoryTaint::Internal,
     }
 }
 

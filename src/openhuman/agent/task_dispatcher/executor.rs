@@ -157,7 +157,6 @@ pub(super) async fn run_autonomous(
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
         &executor.agent_id,
-        None,
         executor.prompt_suffix.clone(),
         executor.profile.as_ref(),
     )
@@ -223,7 +222,7 @@ pub(super) async fn run_autonomous(
         .profile
         .as_ref()
         .and_then(|p| p.memory_sources.clone());
-    let run = tinymemory_core::source_scope::with_source_scope(
+    let run = crate::openhuman::memory::source_scope::with_source_scope(
         memory_scope,
         crate::openhuman::agent::turn_origin::with_origin(
             crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli,
@@ -365,7 +364,8 @@ pub(super) async fn write_back(
             Vec::new(),
         ),
     };
-    if let Err(e) = runs::complete_run(location, run_id, run_outcome, run_error, run_evidence) {
+    if let Err(e) = runs::complete_run(location, run_id, run_outcome, run_error, run_evidence).await
+    {
         tracing::warn!(
             run_id = %run_id,
             error = %e,

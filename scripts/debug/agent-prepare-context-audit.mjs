@@ -656,7 +656,7 @@ function printCase(opts, caseInfo, scout, root, ms) {
       "  ⚠ no context_scout transcript found — prepared context did not run.",
     );
     console.log(
-      "    (Is the core built from this branch? Is super context enabled?)",
+      "    (Is the core built from this branch?)",
     );
     return;
   }

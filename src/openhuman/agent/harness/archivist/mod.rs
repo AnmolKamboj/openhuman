@@ -17,10 +17,16 @@
 //!    end so the last segment always gets a recap + embedding + tree ingest.
 
 pub mod boundary;
+mod events_heuristic;
 mod helpers;
 mod hook_impl;
 mod lifecycle;
 mod recap;
+// The md-backed per-turn capture store the hook dual-writes into. It lives
+// here rather than behind the memory engine because nothing but this hook ever
+// called it — see the module's own docs for the round trip and for why the
+// contract's episodic family is not where it belongs (#5560).
+mod store;
 #[cfg(test)]
 mod test_constructors;
 mod tree_ingest;
@@ -33,13 +39,7 @@ pub(crate) use crate::openhuman::agent::hooks::PostTurnHook;
 #[cfg(test)]
 pub(crate) use helpers::extract_profile_key;
 #[cfg(test)]
-pub(crate) use parking_lot::Mutex;
-#[cfg(test)]
-pub(crate) use rusqlite::Connection;
-#[cfg(test)]
 pub(crate) use std::sync::Arc;
-#[cfg(test)]
-pub(crate) use tinymemory_core::store::profile;
 
 #[cfg(test)]
 #[path = "../archivist_tests.rs"]

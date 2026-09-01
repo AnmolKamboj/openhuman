@@ -21,9 +21,15 @@
 //! This module is the OpenHuman **build pipeline** around that TinyAgents
 //! run: definition lookup/allowlists, archetype prompt assembly, toolkit
 //! filtering, sandbox/action-root narrowing, checkpoint/handback, and
-//! worker-thread transcript mirroring. Mapping it onto TinyAgents
-//! `SubAgent`/`SubAgentSession`/subgraph primitives is tracked in WP-5 of
-//! `docs/tinyagents-migration-plan-2026-07-22.md`.
+//! worker-thread transcript mirroring.
+//!
+//! It **stays host-owned**. The generic contract it would map onto already
+//! exists as `tinyagents_harness::host::HostCapabilities` — `ContextComposer`,
+//! `DefinitionRegistry`, `SecurityGate`, `ModelResolver` are exactly the phases
+//! named above. So the open question is not whether to relocate this pipeline
+//! into the crate (that would push product policy across the GPL boundary) but
+//! whether OpenHuman should implement those four traits and let the crate
+//! drive. That is its own design-gated package, not part of WP-5.
 //!
 //! ## Layout
 //!

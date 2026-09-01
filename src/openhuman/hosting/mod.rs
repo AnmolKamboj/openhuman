@@ -12,9 +12,11 @@
 //!
 //! # What the agent gets
 //!
-//! Six tools, in [`tools`]. `hosting_launch_site` is the one that matters: it
+//! Nine tools, in [`tools`]. `hosting_launch_site` is the one that matters: it
 //! turns a directory in the workspace into a live site with a database behind
-//! it. The other five read or adjust what it produced.
+//! it. `hosting_rollback` is its counterweight — it points production back at
+//! an earlier deployment, so an agent that ships a broken site has a way back
+//! rather than only a way forward. The rest read or adjust what they produced.
 //!
 //! # The credential
 //!
@@ -35,6 +37,7 @@ use crate::openhuman::config::Config;
 pub mod tools;
 
 #[cfg(test)]
+#[path = "hosting_tests.rs"]
 mod test;
 
 /// One hosting account the agent may act on, and the workspace it deploys from.

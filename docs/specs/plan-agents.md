@@ -132,14 +132,25 @@ program can be halted at any phase boundary without leaving the tree broken.
 | `harness/run_queue/`, `harness/memory_context*.rs` | ~1,000 | `harness::runtime`, behind `MemoryProvider` |
 | `task_dispatcher/`, `dispatcher.rs` (parse half), `pformat.rs`, `stop_hooks.rs`, `hooks.rs` (trait defs) | ~3,000 | `harness::{tool_calling, hooks}` |
 | `progress_tracing/` | ~3,186 | deleted, not moved — crate observability already covers it (parent spec DS-5) |
+| `multimodal.rs` (resolution half) | ~1,300 | `harness::multimodal` behind the `multimodal` cargo feature — **landed**, see §5 Phase 5 |
 
 ### Stays in OpenHuman as the adapter layer
 
 `messages.rs` (`ChatMessage`), `message_convert.rs`, `progress.rs`
 (`AgentProgress`), `turn_origin.rs`, `prompts/`, `triage/`, `bus.rs`,
-`host_runtime.rs`, `error.rs`, `cost.rs`, `tool_policy.rs`, `multimodal.rs`,
+`host_runtime.rs`, `error.rs`, `cost.rs`, `tool_policy.rs`,
 `agent/tools/`, `archivist/`, `schemas.rs`, plus **every impl of the ~10 new
 traits**. Estimated ~20–25k LOC including tests.
+
+> **`multimodal.rs` moved off this list.** It read `multimodal.rs` until
+> 2026-08-21, when the maintainer reversed that row and the module was split.
+> The row was not wrong about the part that matters — the `ChatMessage`
+> adapters, the config mapping, the proxy client, the PDF extractor and the
+> on-disk attachment stash are all still here — it was wrong that *nothing*
+> generic was underneath them. Marker parsing, `data:` URI decoding, MIME
+> detection, the limit clamps and the rendered payload are the same for any
+> host, and they are now `harness::multimodal`. The host file is ~1,300 lines
+> lighter and reads as what §5 calls the irreducible remainder.
 
 ---
 
@@ -551,10 +562,10 @@ per-thread prose rollup exists) and `SecurityGate::screen_input` never returning
 `Redacted` (OpenHuman can detect PII but exposes no public text-rewriting
 helper).
 
-**Phase 5 — Relocate, module family at a time.** — *2 of 6 families landed*
+**Phase 5 — Relocate, module family at a time.** — *3 of 7 families landed*
 Order by inbound coupling, lowest first: `artifact_offload` → `run_queue` →
-`parse`/`tool_calling` (merges with DS-5b) → `subagent_runner` → `session/turn`
-→ `session/{builder,runtime,types}`. Each family: move to
+`multimodal` → `parse`/`tool_calling` (merges with DS-5b) → `subagent_runner` →
+`session/turn` → `session/{builder,runtime,types}`. Each family: move to
 `vendor/tinyagents/src/harness/`, re-export from the host adapter for one
 release, then repoint consumers.
 *Exit per family:* crate tests green; host `cargo check` both worlds; the
@@ -564,6 +575,7 @@ family's tests live upstream.
 | --- | --- |
 | `artifact_offload` | **landed** — crate `harness::artifacts` (tinyagents#101), host keeps the prompt contract + two policy adapters |
 | `run_queue` | **landed** — crate `harness::run_queue` owns the FIFO mechanics; host wrapper keeps `QueueMode::{Interrupt,Parallel}` and the `QueuedMessage` payload |
+| `multimodal` | **landed** — crate `harness::multimodal` owns marker parsing, `data:` URIs, MIME detection, limits and payload rendering; host keeps the `ChatMessage` adapters, the config mapping, the proxy client, the `documents` PDF extractor and the attachment stash |
 | `parse`/`tool_calling` | not started |
 | `subagent_runner` | not started |
 | `session/turn` | blocked on Phase 2's soak |

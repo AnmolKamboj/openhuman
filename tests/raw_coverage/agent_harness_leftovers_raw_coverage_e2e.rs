@@ -25,10 +25,10 @@ use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock, Message};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinyagents::harness::tool::ToolCall;
-use tinyagents::harness::usage::Usage;
+use tinyinference::message::{AssistantMessage, ContentBlock, Message};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 
 struct ScriptedModel {
     responses: Mutex<VecDeque<anyhow::Result<ModelResponse>>>,
@@ -70,7 +70,7 @@ impl ChatModel<()> for ScriptedModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         self.requests.lock().push(CapturedRequest {
             messages: request.messages,
             tool_names: request.tools.iter().map(|tool| tool.name.clone()).collect(),
@@ -79,7 +79,7 @@ impl ChatModel<()> for ScriptedModel {
             .lock()
             .pop_front()
             .unwrap_or_else(|| Ok(text_response("fallback final")))
-            .map_err(|error| tinyagents::TinyAgentsError::Model(error.to_string()))
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))
     }
 }
 
@@ -690,7 +690,7 @@ fn subagent_prompt_renderer_handles_formats_caps_and_stale_tool_indices() -> Res
     assert!(json_prompt.contains("extra"));
     assert!(json_prompt.contains("truncated at 2000 chars"));
     assert!(json_prompt.contains("## Safety"));
-    assert!(json_prompt.contains("## Output style"));
+    assert!(json_prompt.contains("# Writing style"));
 
     let native_prompt = render_subagent_system_prompt(
         tmp.path(),
