@@ -128,14 +128,22 @@ async function openFeedWith(page: Page, items: SeedItem[]): Promise<void> {
   await waitForAppReady(page);
   const user = await resolveActiveUserId(page);
 
+  // One-shot. `addInitScript` runs before EVERY new document, `page.reload()`
+  // included, so without the marker the reload in "read state survives a reload"
+  // would re-apply the original payload — restoring `read: false` over the state
+  // that test just marked read, and destroying the very thing it asserts. The
+  // marker lives in localStorage, so it survives the reload alongside the
+  // persisted blob and the seed applies to the first seeded navigation only.
   await page.addInitScript(
-    ({ key, payload }) => {
+    ({ key, marker, payload }) => {
+      if (window.localStorage.getItem(marker)) return;
+      window.localStorage.setItem(marker, '1');
       const raw = window.localStorage.getItem(key);
       const blob: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {};
       blob.items = JSON.stringify(payload);
       window.localStorage.setItem(key, JSON.stringify(blob));
     },
-    { key: `${user}:persist:notifications`, payload: items }
+    { key: `${user}:persist:notifications`, marker: 'pw:notif-seed-applied', payload: items }
   );
 
   // A fresh document: the init script above runs first, so the store rehydrates
