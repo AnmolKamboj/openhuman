@@ -68,7 +68,8 @@ describe('TokenUsagePanel', () => {
     it('enables all switches and the CCR min-tokens field once settings load', async () => {
       render(<TokenUsagePanel embedded />);
 
-      // Wait for the async load to complete — all 7 switches must be enabled.
+      // waitFor retries until switches transition from disabled (initial null state)
+      // to enabled (after async settings load), proving the load actually settled.
       await waitFor(() => {
         const switches = screen.getAllByRole('switch');
         expect(switches).toHaveLength(7);
@@ -102,16 +103,18 @@ describe('TokenUsagePanel', () => {
       expect(mockUpdate).toHaveBeenCalledWith({ router_enabled: false });
     });
 
-    it('keeps controls enabled when only savings fails', async () => {
+    it('keeps controls enabled and shows error when only savings fails', async () => {
       mockGetSavings.mockRejectedValue(new Error('savings rpc down'));
       render(<TokenUsagePanel embedded />);
 
-      // Settings loaded OK — all 7 switches and the number field must still become enabled.
-      await waitFor(() => {
-        const switches = screen.getAllByRole('switch');
-        expect(switches).toHaveLength(7);
-        for (const sw of switches) expect(sw).not.toBeDisabled();
-      });
+      // Wait for the rendered savings error — proves the rejection settled and
+      // React re-rendered (not just the initial settings === null disabled state).
+      await screen.findByText('savings rpc down');
+
+      // Controls remain interactive despite the savings failure.
+      const switches = screen.getAllByRole('switch');
+      expect(switches).toHaveLength(7);
+      for (const sw of switches) expect(sw).not.toBeDisabled();
       expect(
         screen.getByRole('spinbutton', { name: 'settings.tokenUsage.ccrMinTokens' })
       ).not.toBeDisabled();
@@ -126,13 +129,13 @@ describe('TokenUsagePanel', () => {
     it('disables all switches and the CCR min-tokens field while settings are unavailable', async () => {
       render(<TokenUsagePanel embedded />);
 
-      // Wait directly for the disabled state — this proves the rejection has
-      // settled and React has re-rendered with settings === null.
-      await waitFor(() => {
-        const switches = screen.getAllByRole('switch');
-        expect(switches).toHaveLength(7);
-        for (const sw of switches) expect(sw).toBeDisabled();
-      });
+      // Wait for the rendered error — proves the settings rejection settled and
+      // React re-rendered, ruling out the initial settings === null disabled state.
+      await screen.findByText('rpc down');
+
+      const switches = screen.getAllByRole('switch');
+      expect(switches).toHaveLength(7);
+      for (const sw of switches) expect(sw).toBeDisabled();
       expect(
         screen.getByRole('spinbutton', { name: 'settings.tokenUsage.ccrMinTokens' })
       ).toBeDisabled();
@@ -142,11 +145,11 @@ describe('TokenUsagePanel', () => {
       const user = userEvent.setup();
       render(<TokenUsagePanel embedded />);
 
-      const sw = await waitFor(() => {
-        const el = screen.getByRole('switch', { name: 'settings.tokenUsage.routerEnabled' });
-        expect(el).toBeDisabled();
-        return el;
-      });
+      // Wait for the rendered error before interacting.
+      await screen.findByText('rpc down');
+
+      const sw = screen.getByRole('switch', { name: 'settings.tokenUsage.routerEnabled' });
+      expect(sw).toBeDisabled();
       await user.click(sw);
       expect(mockUpdate).not.toHaveBeenCalled();
     });

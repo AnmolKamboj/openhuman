@@ -95,8 +95,8 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
       try {
         const v = await getTokenjuiceSavings();
         if (!cancelled) setSavings(v);
-      } catch {
-        // Non-fatal: savings stats stay blank; user can refresh manually.
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
     };
     void load();
