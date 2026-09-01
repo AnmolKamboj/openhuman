@@ -621,6 +621,31 @@ fn binding_to_agent_schema_missing_field_is_rejected() {
 }
 
 #[test]
+fn binding_to_agent_without_any_schema_is_unverifiable_not_rejected() {
+    // TinyFlows deliberately permits a schema-less agent (see the test above):
+    // with no `output_parser.schema` at all the runtime response shape is
+    // host-defined, the bound field MAY exist, and the gate treats the
+    // binding as unverifiable rather than invalid. Pinned so the rejection
+    // tests above cannot silently drift back to the pre-v0.8.2 contract.
+    let g = graph(json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "summarize", "kind": "agent", "name": "Summarize",
+              "config": { "agent_ref": "researcher", "prompt": "summarize" } },
+            { "id": "post", "kind": "tool_call", "name": "Post",
+              "config": { "slug": "SLACK_SEND_MESSAGE",
+                "args": { "channel": "=nodes.summarize.item.json.channel" } } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "summarize" },
+            { "from_node": "summarize", "to_node": "post" }
+        ]
+    }));
+    let errors = validate_binding_resolvability(&g);
+    assert_eq!(errors, Vec::<String>::new(), "unverifiable is not invalid");
+}
+
+#[test]
 fn binding_to_agent_with_schema_missing_field_is_rejected() {
     // A schema IS declared, but it doesn't cover the field the binding reads.
     let g = graph(json!({

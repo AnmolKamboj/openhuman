@@ -157,7 +157,7 @@ jobs:
           # Appium builds; install idempotently and ignore "already installed".
           bash scripts/ci-cancel-aware.sh appium driver install --source=npm appium-chromium-driver >/dev/null 2>&1 || true
 
-      - name: Install native test modules
+      - name: Install checksum-pinned TinyMemory test module
         run: |
           # Keep memory E2E independent of the GitHub release-metadata API.
           # tinybus validates every directory ancestor, so the fixture must
@@ -168,30 +168,20 @@ jobs:
           # and leave a stale digest that only fails after the download. Both values
           # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
           # which is the authoritative pin — copy them from there, never recompute.
-          memory_version="1.13.4"
-          memory_sha256="c1fe0d38dd3bb610088822375d73a126c99eaaf35a94f34e1c173a3f80393225"
+          memory_version="1.13.6"
+          memory_sha256="d96be20eb93b0d5ed512c643dce6fdb2f53908a8d311c3cfe8d50ff6e7c7dd33"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
-          connectors_dir="$module_root/tinyconnectors"
           memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
-          rm -rf "$memory_dir" "$connectors_dir"
-          mkdir -p "$memory_dir" "$connectors_dir"
+          rm -rf "$memory_dir"
+          mkdir -p "$memory_dir"
           curl --fail --location --silent --show-error \
             "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
             --output "$memory_archive"
           echo "${memory_sha256}  $memory_archive" \
             | sha256sum --check
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
-          # Composio controllers are served by TinyConnectors. Build the
-          # pinned checkout rather than consulting release metadata so the
-          # selected desktop gate covers the same module boundary as CI Full.
-          bash scripts/ci-cancel-aware.sh cargo build --release \
-            --manifest-path vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml
-          cp vendor/tinyconnectors/target/release/libtinyconnectors.so \
-            "$connectors_dir/libtinyconnectors.so"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
-            >> "$GITHUB_ENV"
-          echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors.so" \
             >> "$GITHUB_ENV"
 
       - name: Build E2E app
@@ -287,17 +277,8 @@ jobs:
           STAGE="$(mktemp -d)"
           mkdir -p "$STAGE/repo/app/src-tauri/target/debug"
           mkdir -p "$STAGE/repo/app/dist"
-          mkdir -p "$STAGE/repo/test-modules"
-          # The Composio E2E specs use the TinyConnectors module. Build it
-          # once with the desktop binary and fan it out with that artifact;
-          # compiling it independently in every shard needlessly defeats the
-          # build-once topology above.
-          bash scripts/ci-cancel-aware.sh cargo build --release \
-            --manifest-path vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml
           cp -a app/src-tauri/target/debug/OpenHuman "$STAGE/repo/app/src-tauri/target/debug/"
           cp -a app/dist/. "$STAGE/repo/app/dist/"
-          cp vendor/tinyconnectors/target/release/libtinyconnectors.so \
-            "$STAGE/repo/test-modules/libtinyconnectors.so"
           tar -czf e2e-build-linux.tar.gz -C "$STAGE" repo
           ls -lh e2e-build-linux.tar.gz
 
@@ -377,33 +358,24 @@ jobs:
           mkdir -p app/src-tauri/target/debug app/dist
           cp -a repo/app/src-tauri/target/debug/OpenHuman app/src-tauri/target/debug/
           cp -a repo/app/dist/. app/dist/
-          # TinyBus rejects module paths beneath the runner-owned checkout,
-          # so move the build-once connector module into a root-owned
-          # ephemeral directory before discarding the artifact staging tree.
-          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          connectors_dir="$module_root/tinyconnectors"
-          rm -rf "$connectors_dir"
-          mkdir -p "$connectors_dir"
-          cp repo/test-modules/libtinyconnectors.so "$connectors_dir/libtinyconnectors.so"
-          echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors.so" \
-            >> "$GITHUB_ENV"
           rm -rf repo e2e-build-linux.tar.gz
           chmod +x app/src-tauri/target/debug/OpenHuman
           ls -la app/src-tauri/target/debug/OpenHuman app/dist | head
 
       - name: Install checksum-pinned TinyMemory test module
+        if: matrix.shard.name == 'providers'
         run: |
-          # test_reset clears the memory tree before every desktop spec, not
-          # only the memory-roundtrip suite. Supply the native module for each
-          # shard so that reset never falls back to GitHub release metadata.
+          # memory-roundtrip runs in this shard. Supply the native module
+          # directly so the packaged app never depends on GitHub's release
+          # metadata API while the test is running.
           # Version and digest are ONE decision and live on adjacent lines for that
           # reason: the archive name, the release tag and the checksum each used to
           # carry the version independently, so a bump could update two of the three
           # and leave a stale digest that only fails after the download. Both values
           # are the ubuntu-22.04-x86_64 row of `src/openhuman/modules/registry.rs`,
           # which is the authoritative pin — copy them from there, never recompute.
-          memory_version="1.13.4"
-          memory_sha256="c1fe0d38dd3bb610088822375d73a126c99eaaf35a94f34e1c173a3f80393225"
+          memory_version="1.13.6"
+          memory_sha256="d96be20eb93b0d5ed512c643dce6fdb2f53908a8d311c3cfe8d50ff6e7c7dd33"
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"

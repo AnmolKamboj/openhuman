@@ -3928,17 +3928,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2-contacts"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b034b578389f89a85c055eacc8d8b368be5f04a6c1b07f672bf3aec21d0ef621"
-dependencies = [
- "block2 0.6.2",
- "objc2 0.6.4",
- "objc2-foundation 0.3.2",
-]
-
-[[package]]
 name = "objc2-core-data"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4339,8 +4328,6 @@ dependencies = [
  "tinychannels",
  "tinychannels-bus",
  "tinyconnectors-bus",
- "tinycortex",
- "tinycortex-api",
  "tinydocs-bus",
  "tinyflows",
  "tinyflows-catalog",
@@ -4352,12 +4339,9 @@ dependencies = [
  "tinyjuice-bus",
  "tinymcp",
  "tinymcp-bus",
- "tinymemory",
  "tinymemory-api",
  "tinymemory-bus",
- "tinymemory-core",
  "tinymemory-sources",
- "tinymemory-tinycortex",
  "tinyruntime-bus",
  "tinytools",
  "tinyvoice-bus",
@@ -7126,46 +7110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinycortex"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "block2 0.6.2",
- "chrono",
- "dirs 6.0.0",
- "futures",
- "log",
- "objc2 0.6.4",
- "objc2-contacts",
- "objc2-foundation 0.3.2",
- "parking_lot",
- "rand 0.10.2",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "schemars 1.2.2",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "tinycortex-api",
- "tinyinference",
- "tokio",
- "toml 1.1.4+spec-1.1.0",
- "tracing",
- "uuid",
- "walkdir",
-]
-
-[[package]]
-name = "tinycortex-api"
-version = "0.1.1"
-dependencies = [
- "tinymemory-api",
-]
-
-[[package]]
 name = "tinydocs-bus"
 version = "0.1.15"
 dependencies = [
@@ -7311,18 +7255,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinymemory"
-version = "1.13.4"
-dependencies = [
- "anyhow",
- "async-trait",
- "log",
- "serde",
- "serde_json",
- "tinymemory-api",
-]
-
-[[package]]
 name = "tinymemory-api"
 version = "0.1.1"
 dependencies = [
@@ -7349,38 +7281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinymemory-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs 6.0.0",
- "futures",
- "log",
- "parking_lot",
- "rand 0.10.2",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tinycortex",
- "tinycortex-api",
- "tinyinference",
- "tinymemory-api",
- "tinymemory-sources",
- "tinymemory-sync",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "walkdir",
-]
-
-[[package]]
 name = "tinymemory-sources"
 version = "0.1.0"
 dependencies = [
@@ -7399,35 +7299,6 @@ dependencies = [
  "tracing",
  "uuid",
  "walkdir",
-]
-
-[[package]]
-name = "tinymemory-sync"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "log",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "tinymemory-tinycortex"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "log",
- "rusqlite",
- "serde",
- "serde_json",
- "tinycortex",
- "tinymemory-api",
- "tinymemory-core",
- "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -9532,3 +9403,11 @@ dependencies = [
  "syn 3.0.4",
  "winnow 1.0.4",
 ]
+
+[[patch.unused]]
+name = "tinycortex"
+version = "0.1.2"
+
+[[patch.unused]]
+name = "tinycortex-api"
+version = "0.1.1"

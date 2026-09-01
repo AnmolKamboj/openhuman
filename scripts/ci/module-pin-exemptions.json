@@ -9,15 +9,9 @@
     "is a deliberate edit to this file, which is a reviewable diff.",
     "",
     "Delete an entry the moment the pins are reconciled. An exemption that has",
-    "stopped being true fails the gate too — `expect` must still match."
+    "stopped being true fails the gate too \u2014 `expect` must still match."
   ],
   "exemptions": [
-    {
-      "id": "tinymemory",
-      "submodule": "vendor/tinymemory",
-      "expect": "v1.13.4-31-g97d3e08",
-      "reason": "The source pin is 31 commits past the published v1.13.4 release; registry and CI intentionally use the published artifact set until a newer release exists."
-    },
     {
       "id": "tinyruntime-nodejs",
       "submodule": "vendor/tinyruntime",

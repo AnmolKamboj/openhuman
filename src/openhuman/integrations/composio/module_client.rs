@@ -38,15 +38,25 @@ pub fn is_unsupported_by_route(error: &str) -> bool {
 
 /// Keep the structured Composio classification at the start of the error.
 ///
-/// TinyBus prefixes member failures (for example, `Execute: `), but the
-/// frontend parser intentionally requires the classification at byte zero.
-/// Other errors retain the member context unchanged.
+/// TinyBus prefixes member failures twice — the member name (`Execute: `) and,
+/// since the module extraction, the wire error name
+/// (`ai.tinyhumans.tinybus.Error.Failed: `) — but the frontend parser
+/// intentionally requires the classification at byte zero. Both layers are
+/// peeled before checking; other errors retain their full context unchanged.
 fn normalize_error(member: &str, error: String) -> String {
     const CLASSIFIED: &str = "[composio:error:";
-    if let Some(module_error) = error
+    const WIRE_ERROR_PREFIX: &str = "ai.tinyhumans.tinybus.Error.";
+    if let Some(remainder) = error
         .strip_prefix(member)
         .and_then(|remainder| remainder.strip_prefix(": "))
     {
+        // Optionally peel the bus wire-name layer: `ai.tinyhumans.tinybus.
+        // Error.<Kind>: `. `<Kind>` is a bare identifier, so the next `: `
+        // ends it; anything shaped differently is left alone.
+        let module_error = remainder
+            .strip_prefix(WIRE_ERROR_PREFIX)
+            .and_then(|rest| rest.split_once(": ").map(|(_, tail)| tail))
+            .unwrap_or(remainder);
         if module_error.starts_with(CLASSIFIED) {
             return module_error.to_string();
         }
@@ -98,6 +108,23 @@ where
         .map_err(|error| normalize_error(member, error))
 }
 
+/// Call a long-running member with a deadline sized for it (see
+/// `modules::connectors::call_slow` for why `Sync` needs one).
+#[cfg(feature = "modules")]
+pub async fn call_slow<Request, Reply>(
+    config: &crate::openhuman::config::Config,
+    member: &str,
+    request: Request,
+) -> Result<Reply, String>
+where
+    Request: serde::Serialize + Send,
+    Reply: serde::de::DeserializeOwned,
+{
+    crate::openhuman::modules::connectors::call_slow(config, member, request)
+        .await
+        .map_err(|error| normalize_error(member, error))
+}
+
 /// Call one member with an argument. Always fails without the `modules` feature.
 ///
 /// # Errors
@@ -105,6 +132,24 @@ where
 /// Always, explaining that this build has no module loader.
 #[cfg(not(feature = "modules"))]
 pub async fn call<Request, Reply>(
+    _config: &crate::openhuman::config::Config,
+    member: &str,
+    _request: Request,
+) -> Result<Reply, String>
+where
+    Request: serde::Serialize + Send,
+    Reply: serde::de::DeserializeOwned,
+{
+    Err(format!("{member}: {WITHOUT_MODULES}"))
+}
+
+/// Call a long-running member. Always fails without the `modules` feature.
+///
+/// # Errors
+///
+/// Always, explaining that this build has no module loader.
+#[cfg(not(feature = "modules"))]
+pub async fn call_slow<Request, Reply>(
     _config: &crate::openhuman::config::Config,
     member: &str,
     _request: Request,
