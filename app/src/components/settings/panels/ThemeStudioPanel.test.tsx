@@ -82,15 +82,21 @@ describe('<ThemeStudioPanel />', () => {
 
   // #5901: `typeof null === 'object'` and `typeof [] === 'object'`, so the old
   // shape check let both through; `{ ...null }` and `{ ...[] }` each yield `{}`,
-  // and a zero-token theme was stored and could be activated from the gallery.
-  // `{}` is refused for the same reason — `applyTheme` writes one custom
-  // property per token, so a colourless theme applies nothing at all.
+  // and a malformed paste was stored as a theme.
+  //
+  // A non-string token value is rejected for a different reason: `swatchChannels`
+  // falls back only on null/undefined, so `{"surface": 42}` reaches
+  // `channelsToCss`, which calls `.trim()` and throws — crashing the panel on a
+  // theme already in the store.
   it.each([
     ['null colors', null],
     ['an array of colors', []],
-    ['an empty colors object', {}],
     ['a string colors value', 'surface'],
     ['a numeric colors value', 42],
+    ['a numeric token value', { surface: 42 }],
+    ['a null token value', { surface: null }],
+    ['an object token value', { surface: {} }],
+    ['one bad value among good ones', { surface: '1 2 3', content: 7 }],
   ])('refuses to import a theme with %s', (_label, colors) => {
     const { store } = renderWithProviders(<ThemeStudioPanel />, {
       preloadedState: { theme: themeState },
@@ -98,7 +104,7 @@ describe('<ThemeStudioPanel />', () => {
     });
 
     fireEvent.change(screen.getByLabelText('Import theme'), {
-      target: { value: JSON.stringify({ name: 'Colourless', isDark: false, colors }) },
+      target: { value: JSON.stringify({ name: 'Malformed', isDark: false, colors }) },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
 
@@ -123,6 +129,33 @@ describe('<ThemeStudioPanel />', () => {
     expect(store.getState().theme.customThemes[0]).toMatchObject({
       name: 'Minimal',
       colors: { surface: '1 2 3' },
+    });
+  });
+
+  // An empty colour map is VALID, not malformed. CLASSIC_LIGHT and CLASSIC_DARK
+  // both carry `colors: {}` (presets.ts:63-78) and mean it — they inherit the
+  // base tokens and express themselves through `isDark`. The panel's export
+  // serialises the effective theme, so rejecting `{}` would break its own
+  // export -> import round trip for the two most common themes.
+  it('imports a theme with an empty colour map, preserving isDark', () => {
+    const { store } = renderWithProviders(<ThemeStudioPanel />, {
+      preloadedState: { theme: themeState },
+      initialEntries: ['/settings/theme'],
+    });
+
+    fireEvent.change(screen.getByLabelText('Import theme'), {
+      target: {
+        value: JSON.stringify({ name: 'Inherits base', isDark: true, colors: {}, fonts: {} }),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+
+    expect(screen.queryByText('Could not parse that theme JSON.')).not.toBeInTheDocument();
+    expect(store.getState().theme.customThemes).toHaveLength(1);
+    expect(store.getState().theme.customThemes[0]).toMatchObject({
+      name: 'Inherits base',
+      isDark: true,
+      colors: {},
     });
   });
 });
