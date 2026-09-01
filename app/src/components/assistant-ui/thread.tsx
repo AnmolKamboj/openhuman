@@ -350,12 +350,30 @@ const Composer: FC<{
     };
   }, []);
 
-  // DOM text -> composer store. Deferred by a microtask so the editor has
-  // finished applying the event before the DOM is read.
+  // Set for as long as an IME composition is open. The gate is a ref rather
+  // than state because it is read from a microtask, not from a render.
+  //
+  // Adopted from #5764 (@ligjn), which identified the hazard this closes: the
+  // store write below is deferred, and a fast CJK typist can open the next
+  // composition before it runs. That stale write would rebuild the editor
+  // mid-composition and cancel it -- #5763 again, one composition later.
+  const isComposingTextRef = useRef(false);
+
+  // DOM text -> composer store. The text is read at event time; only the write
+  // is deferred by a microtask, so the editor has finished applying the event
+  // before the store changes under it.
+  //
+  // The gate is re-checked INSIDE the microtask, not just at event time: a
+  // composition that started in between makes this write stale, and dropping it
+  // loses nothing, because the DOM is the source of truth and that
+  // composition's own commit reads the whole of it.
   const syncComposerFromDom = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return;
     const text = target.textContent ?? '';
-    globalThis.queueMicrotask(() => aui.composer.setText(text));
+    globalThis.queueMicrotask(() => {
+      if (isComposingTextRef.current) return;
+      aui.composer.setText(text);
+    });
   };
 
   return (
@@ -380,6 +398,9 @@ const Composer: FC<{
             <LexicalComposerInput
               ref={inputWrapperRef}
               placeholder="Send a message..."
+              onCompositionStartCapture={() => {
+                isComposingTextRef.current = true;
+              }}
               onInputCapture={event => {
                 // An IME fires `input` per keystroke while the candidate window is
                 // still open, and the text on the DOM then is the pre-edit, not the
@@ -387,16 +408,25 @@ const Composer: FC<{
                 // cancels the composition, so `nihao` + Enter committed as
                 // `n ni nihao 你好` (#5763). The keydown guard below already refuses
                 // to act mid-composition; this bridge was the one that did not.
+                //
+                // Two checks, because they catch different things: the ref covers
+                // the whole composition from `compositionstart`, and the native flag
+                // covers an `input` that arrives without one.
+                if (isComposingTextRef.current) return;
                 if ('isComposing' in event.nativeEvent && event.nativeEvent.isComposing) {
                   return;
                 }
                 syncComposerFromDom(event.target);
               }}
               onCompositionEndCapture={event => {
+                // Re-open the gate before syncing: what the DOM holds now is what the
+                // user committed, and it is the store's turn to catch up.
+                //
                 // Chromium emits a trailing `input` with `isComposing === false` that
                 // the handler above picks up; WebKit does not, so on Safari the
                 // committed text exists only here. Running in both is harmless -- the
                 // second write carries the same string.
+                isComposingTextRef.current = false;
                 syncComposerFromDom(event.target);
               }}
               onKeyDownCapture={event => {

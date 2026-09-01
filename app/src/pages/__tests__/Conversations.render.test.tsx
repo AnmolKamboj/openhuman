@@ -1030,6 +1030,70 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     );
   });
 
+  // The store write is deferred by a microtask, so a fast typist can open the
+  // NEXT composition before it runs. #5764 (@ligjn) named that hazard: the stale
+  // write rebuilds the editor mid-composition and cancels it, which is #5763 one
+  // composition later. The gate is therefore re-checked inside the microtask.
+  it('drops a deferred store write once the next composition has begun', async () => {
+    const { textarea, thread } = await renderSelectedConversation();
+
+    await act(async () => {
+      fireEvent.compositionStart(textarea);
+      typeImePreEdits(textarea, ['n', 'ni', 'nihao']);
+      commitIme(textarea, '你好');
+      // Still inside the same task, so the write queued by `commitIme` has not
+      // run yet — and the user has already started composing the next word.
+      fireEvent.compositionStart(textarea);
+    });
+
+    // The stale write was dropped: nothing reached the store while a
+    // composition is open.
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+
+    // Nothing was lost either — the next commit reads the whole DOM.
+    await act(async () => {
+      typeImePreEdits(textarea, ['你好sh', '你好shi']);
+      commitIme(textarea, '你好世界');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    });
+    await waitFor(() => {
+      expect(chatSend).toHaveBeenCalledTimes(1);
+    });
+    expect(chatSend).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: thread.id, message: '你好世界' })
+    );
+  });
+
+  // A cancelled composition (Escape, or clicking away) still fires
+  // `compositionend`, but the finalized DOM is legitimately empty. The store
+  // must end up empty too rather than holding the last pre-edit.
+  it('does not resurrect the pre-edit when a composition is cancelled', async () => {
+    const { textarea } = await renderSelectedConversation();
+
+    await act(async () => {
+      fireEvent.compositionStart(textarea);
+      typeImePreEdits(textarea, ['n', 'ni', 'nihao']);
+      commitIme(textarea, '');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    });
+
+    // The gate reopened, so ordinary typing after the cancellation still syncs.
+    await act(async () => {
+      setComposerText(textarea, 'after cancel');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+    });
+  });
+
   // The gate keys on `isComposing`, so ordinary typing must be untouched. This is
   // the property the 22 existing composer tests depend on: in jsdom the bridge is
   // the only path from a synthetic `input` to the store.
