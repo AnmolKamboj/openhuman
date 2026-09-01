@@ -149,16 +149,34 @@ describe('EmbeddingsSetupModal — custom-endpoint branch', () => {
     expect(saveButton()).toBeEnabled();
   });
 
-  // The Test button is rendered enabled for a custom provider (the disabled
-  // predicate short-circuits on `!isCustom`), but its handler is wrapped in
-  // `if (!isCustom)`. So it looks actionable and does nothing. Pinned as the
-  // current behaviour — see the bug list; it is a UX defect, not a crash.
-  it('renders Test as enabled for a custom provider but does not call onTest', () => {
+  // Was: "renders Test as enabled for a custom provider but does not call
+  // onTest" — the button looked actionable and its handler opened with
+  // `if (!isCustom)`, so a click produced no request, no result and no error
+  // (#5909). It is now disabled instead, because `embeddings_test_connection`
+  // takes only `{ provider, model, dimensions }` and cannot express a custom
+  // endpoint, so there is genuinely nothing to test against.
+  it('disables Test for a custom provider rather than rendering a dead control', () => {
     const { onTest } = renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
 
-    expect(testButton()).toBeEnabled();
+    expect(testButton()).toBeDisabled();
     fireEvent.click(testButton());
     expect(onTest).not.toHaveBeenCalled();
+  });
+
+  it('explains on hover why Test is unavailable for a custom endpoint', () => {
+    // A silently disabled control is only marginally better than a dead one;
+    // the reason is what makes it honest.
+    renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
+
+    expect(testButton().getAttribute('title') ?? '').toContain('custom endpoint');
+  });
+
+  it('leaves Save reachable for a custom endpoint', () => {
+    // Disabling Test must not disable the path that still works: a custom
+    // endpoint is saved and then checked from the Embeddings panel.
+    renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
+
+    expect(saveButton()).toBeEnabled();
   });
 });
 

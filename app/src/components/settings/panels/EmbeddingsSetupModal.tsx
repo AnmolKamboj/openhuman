@@ -68,13 +68,28 @@ const EmbeddingsSetupModal = ({
       contentClassName="px-5 py-4 space-y-4"
       footer={
         <div className="flex justify-between pt-1">
+          {/* Disabled for a custom endpoint, deliberately, and with a reason
+              the user can read. `setupTest` calls
+              `openhuman.embeddings_test_connection` with only
+              `{ provider, model, dimensions }` — there is no parameter for an
+              endpoint URL — so a custom provider has nothing to test against.
+              Previously the button stayed enabled and its handler opened with
+              `if (!isCustom)`, so a click did nothing at all: no request, no
+              result, no error. A dead control that looks live is worse than an
+              absent one, and worse still than an honest explanation. */}
           <Button
             variant="secondary"
             size="xs"
-            onClick={() => {
-              if (!isCustom) onTest();
-            }}
-            disabled={setupTesting || setupSaving || (!isCustom && !setupKey.trim())}>
+            onClick={onTest}
+            title={
+              isCustom
+                ? t(
+                    'settings.embeddings.testUnavailableCustom',
+                    'Testing a custom endpoint is not supported yet — save it and check the status on the Embeddings panel.'
+                  )
+                : undefined
+            }
+            disabled={setupTesting || setupSaving || isCustom || !setupKey.trim()}>
             {setupTesting
               ? t('settings.embeddings.testing')
               : t('settings.embeddings.testConnection')}
