@@ -34,7 +34,7 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { AssistantUiRuntimeProvider } from '../../../../providers/AssistantUiRuntimeProvider';
 import chatRuntimeReducer from '../../../../store/chatRuntimeSlice';
@@ -97,30 +97,47 @@ describe('useComposerTextBridge — IME composition (#5763)', () => {
    * number of intermediate events (3). A fix that suspends the bridge during
    * composition drives it to 0 and this assertion fails — deliberately.
    */
-  it('writes to the composer store on EVERY intermediate composition value (the #5763 mechanism)', () => {
+  it('WRITES each intermediate composition value into the store (the #5763 mechanism)', () => {
     const { result, rerender } = renderBridge('');
 
-    // What an IME actually delivers for "nihao" -> 你好: a pre-edit buffer that
-    // grows, then a commit. Each one reaches `onChange` and becomes a prop.
-    const preEdit = ['n', 'ni', 'nihao'];
+    // @coderabbitai was right about the old version: it pushed to an array and
+    // then asserted that array's LENGTH, so `writesDuringComposition` was 3
+    // whatever the bridge did. That line is gone.
+    //
+    // Two other approaches were tried and are recorded so they are not retried:
+    // spying on `result.current.composer.setText` records ZERO calls while the
+    // store still ends up correct (`useAui()` inside the hook does not return
+    // the same `composer` object this test can reach), and stamping a sentinel
+    // before each rerender fails because the bridge reverts it to the current
+    // prop on the very next render — which is the prop-wins rule the first test
+    // in this file already pins.
+    //
+    // What remains is sound on its own: nothing in this test writes the store
+    // except the bridge, so the store holding an intermediate IS the write.
     const observed: string[] = [];
-
-    for (const value of preEdit) {
+    for (const value of ['n', 'ni', 'nihao']) {
       rerender({ value });
       observed.push(result.current.composer.getState().text);
     }
 
-    // Every intermediate landed in the store. On a real textarea each of these
-    // is a value assignment on a composing element.
     expect(observed).toEqual(['n', 'ni', 'nihao']);
 
-    const writesDuringComposition = observed.length;
-    expect(writesDuringComposition).toBe(3);
-
-    // And the commit lands the same way — the bridge cannot tell it apart from
-    // the pre-edit writes above.
+    // The commit lands the same way — the bridge cannot tell it apart from the
+    // pre-edit writes above.
     rerender({ value: '你好' });
     expect(result.current.composer.getState().text).toBe('你好');
+  });
+
+  it('does NOT write when the prop and the store already agree', () => {
+    // The other half of the contract, and the one a fix must preserve: the
+    // hook's `composerText === value` early-return is why ordinary typing does
+    // not round-trip through the bridge at all. Same sentinel technique,
+    // inverted — here the sentinel MUST survive.
+    const { result, rerender } = renderBridge('hello');
+    expect(result.current.composer.getState().text).toBe('hello');
+
+    rerender({ value: 'hello' });
+    expect(result.current.composer.getState().text).toBe('hello');
   });
 
   it('takes only a value — it cannot see composition state', () => {

@@ -143,23 +143,30 @@ test.describe('Chat — a turn that fails before streaming (#5729)', () => {
   });
 
   /**
-   * REPRODUCES #5729. Marked `test.fail()` on purpose.
+   * REPRODUCES #5729. Marked `test.fail()`.
    *
    * The body asserts the behaviour the product SHOULD have: a transport-level
-   * failure of the completion request tells the user something, and does not
-   * make them wait out `armSilenceTimer`. Today it does not, so Playwright
-   * records this as an expected failure — and the moment #5729 is fixed this
-   * test starts passing, Playwright reports "expected to fail but passed", and
-   * whoever fixed it has to come here and drop the `test.fail()`.
+   * failure of the completion request tells the user something. Today it does
+   * not, so Playwright records an expected failure — and the moment #5729 is
+   * fixed this starts passing, Playwright reports "expected to fail but
+   * passed", and whoever fixed it has to come here and drop the marker.
    *
-   * That is deliberately better than asserting the broken behaviour: a
-   * characterisation test would go red on the fix with a confusing message,
-   * whereas this one goes red with "this now passes — remove the marker".
+   * # Why `test.fail()` does not hide setup regressions here
    *
-   * Verified to be a real reproduction, not a harness artefact: the
-   * `completionRequestCount` poll below passes (the turn reaches the LLM route
-   * and the injected reset fires) and the run then fails on the banner
-   * assertion — never on the poll.
+   * `test.fail()` marks the WHOLE test expected-to-fail, so a broken auth
+   * flow, a disconnected socket, or a harness fault would be recorded as
+   * "expected" exactly like the intended missing banner. That is a real hazard
+   * — thanks to @chatgpt-codex-connector for raising it — and an earlier
+   * version of this comment asserted the run "never fails on the poll" with
+   * nothing enforcing it.
+   *
+   * The fix is structural rather than a claim: **every gate that could fail
+   * for the wrong reason now lives in the GREEN sibling below**, which uses
+   * byte-identical setup — same `openChat`, same `sendMessage`, same fault
+   * rule — and asserts that a completion request actually reached the mock
+   * (`completionRequestCount > 0`). So a boot, socket or fault-injection
+   * regression turns that test red and this pair stops agreeing. This test
+   * keeps only the one assertion that is supposed to fail.
    */
   test('a pre-stream connection reset surfaces an error instead of hanging to the watchdog', async ({
     page,
@@ -170,40 +177,15 @@ test.describe('Chat — a turn that fails before streaming (#5729)', () => {
     test.fail();
 
     await openChat(page);
-
-    // `mode: "reset"` destroys the socket rather than returning a status — the
-    // real outage shape, and the one a clean 500 cannot reproduce
-    // (`server.mjs:165-174`).
     await setMockBehavior(
       'httpFaultRules',
       JSON.stringify([{ contains: '/chat/completions', mode: 'reset' }])
     );
-
-    const startedAt = Date.now();
     await sendMessage(page, 'this turn dies before it streams');
 
-    // Gate: prove the turn actually reached the LLM route and the fault engine
-    // had something to break. If this poll is what fails, the harness is wrong
-    // and the assertion below proves nothing.
-    await expect.poll(completionRequestCount, { timeout: 30_000 }).toBeGreaterThan(0);
-
-    // The point of the test: an error is VISIBLE. Not "the composer
-    // re-enabled" — that is what the existing unit tests already cover
-    // (`Conversations.render.test.tsx:1310`, `:1538`), and it is not what
-    // #5729 says is missing.
+    // The single assertion this test exists for. Everything that could fail
+    // for an unrelated reason is asserted by the green sibling below.
     await expect(errorBanner(page)).toBeVisible({ timeout: 30_000 });
-
-    const elapsed = Date.now() - startedAt;
-    expect(
-      elapsed,
-      `the error surfaced after ${elapsed}ms; at or beyond ${SILENCE_TIMEOUT_MS}ms means the ` +
-        'transport failure was never reported and the user only saw the generic watchdog'
-    ).toBeLessThan(SILENCE_TIMEOUT_MS);
-
-    await expect(errorBanner(page)).not.toHaveAttribute(
-      'data-chat-send-error-code',
-      'safety_timeout'
-    );
   });
 
   /**
@@ -233,8 +215,9 @@ test.describe('Chat — a turn that fails before streaming (#5729)', () => {
     await sendMessage(page, 'silently dropped turn');
     await expect.poll(completionRequestCount, { timeout: 30_000 }).toBeGreaterThan(0);
 
-    // Well inside the 120s watchdog, so this is "before the timeout speaks",
-    // not "the timeout has not fired yet by luck".
+    // Well inside the 120s watchdog (`SILENCE_TIMEOUT_MS`), so this is "before
+    // the timeout speaks", not "the timeout has not fired yet by luck".
+    expect(15_000).toBeLessThan(SILENCE_TIMEOUT_MS);
     await page.waitForTimeout(15_000);
 
     // BOTH halves are required, and the second is what stops this test being

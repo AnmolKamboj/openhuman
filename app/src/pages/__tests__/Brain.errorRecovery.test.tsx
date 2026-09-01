@@ -144,7 +144,6 @@ describe('Brain graph — transient failure recovery', () => {
     await waitFor(() => {
       expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:2');
     });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(graphExportMock).toHaveBeenCalledTimes(2);
   });
 
@@ -174,6 +173,13 @@ describe('Brain graph — transient failure recovery', () => {
     // by surfacing the error alongside stale data, or by clearing `graph` on
     // error — this test goes red and must be rewritten to assert whichever
     // was chosen. That is the intent: right now the swallow is invisible.
+    //
+    // The alert assertion below is STRUCTURAL, not behavioural: the render is
+    // `graph ? <graph> : error ? <alert> : null`, so with `graph` truthy the
+    // alert branch is unreachable whatever `error` holds. That unreachability
+    // IS the defect, which is why it is asserted here and was deleted from the
+    // recovery test above (where it proved nothing) — thanks to @YellowSnnowmann
+    // for catching the difference.
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:3');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

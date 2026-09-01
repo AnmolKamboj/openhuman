@@ -279,9 +279,25 @@ test.describe('Chat composer — caret on mid-string edits', () => {
     await page.keyboard.press('Shift+Enter');
     await page.waitForTimeout(300);
 
-    // The newline lands at the caret; the message is not sent.
-    expect(await composerText(input)).toContain('hello');
-    expect(await composerText(input)).toContain('world');
+    // The content must actually CHANGE. `toContain('hello')` /
+    // `toContain('world')` were both trivially true of the unmodified
+    // "hello world", so they passed whether or not Shift+Enter did anything —
+    // thanks to @coderabbitai for catching it.
+    //
+    // The break is asserted in the DOM rather than in `textContent`. Lexical
+    // renders a hard break as a `<br>` element, and whether that contributes a
+    // character to `textContent` is a Lexical implementation detail I did not
+    // want this test to depend on — counting the element is unambiguous either
+    // way, and it is what "a newline was inserted" actually means here.
+    const breaks = await input.evaluate(node => node.querySelectorAll('br').length);
+    expect(breaks, 'Shift+Enter inserted no line break into the composer').toBeGreaterThan(0);
+
+    // The surrounding text is intact and still in order, so the break landed
+    // between them rather than replacing anything.
+    const after = await composerText(input);
+    expect(after.replace(/\s+/g, '')).toBe('helloworld');
+
+    // And it inserts rather than sends.
     await expect(page.getByTestId('agent-message')).toHaveCount(0);
   });
 });
