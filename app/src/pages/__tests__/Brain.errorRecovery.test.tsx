@@ -21,9 +21,17 @@
  *   3. A FIRST load that fails still shows the destructive "couldn't load"
  *      alert and no graph — the branch that must not be swallowed by (2).
  *
- * Both drive the retry through the `openhuman:memory-tree-completed` window
- * event, which is the in-product refetch trigger (`Brain.tsx:113-117`) and
- * needs no DOM control.
+ *   4. A failure whose message is EMPTY still surfaces. `load()` stores
+ *      `err.message`, so `new Error('')` becomes `''`; a truthiness test would
+ *      swallow it silently, which is (2) again through a different door.
+ *
+ *   5. An older load succeeding after a newer one failed must NOT leave a
+ *      stale-data warning on data that is not stale. The two overlap and share
+ *      state; the warning is what turns that pre-existing race into a visible
+ *      false alarm, so the success path clears the error.
+ *
+ * These drive the refetch through the `openhuman:memory-tree-completed` window
+ * event, which is the in-product refetch trigger and needs no DOM control.
  */
 import { act, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -192,9 +200,15 @@ describe('Brain graph — transient failure recovery', () => {
     // than on `role="alert"`: BOTH the warning and the destructive variant are
     // in `ASSERTIVE_VARIANTS` (`Alert.tsx:62`) and so both carry that role, and
     // an assertion that cannot tell the two apart would pass on either branch.
-    const alert = document.querySelector('[data-slot="alert"]');
-    expect(alert).not.toBeNull();
-    expect(alert).toHaveAttribute('data-variant', 'warning');
+    // Inside `waitFor`: the `toHaveBeenCalledTimes(2)` above only waits until
+    // the mock is CALLED, not until React has committed the state its rejection
+    // sets. Querying synchronously after it can read the DOM one commit early
+    // and fail intermittently.
+    await waitFor(() => {
+      const alert = document.querySelector('[data-slot="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert).toHaveAttribute('data-variant', 'warning');
+    });
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:3');
   });
 
@@ -218,5 +232,60 @@ describe('Brain graph — transient failure recovery', () => {
     );
     expect(document.querySelector('[data-variant="warning"]')).toBeNull();
     expect(screen.queryByTestId('memory-graph')).not.toBeInTheDocument();
+  });
+
+  it('still surfaces a failure whose message is empty', async () => {
+    // `load()` stores `err.message`, so `new Error('')` lands as `''`. Under a
+    // truthiness test (`error ? ...`) that failure renders NOTHING and is
+    // silently swallowed — the very defect this PR exists to remove, reachable
+    // through a different door. Hence `error !== null` in both branches.
+    graphExportMock.mockRejectedValue(new Error(''));
+
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=graph'] });
+    });
+
+    await waitFor(() => {
+      const alert = document.querySelector('[data-slot="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert).toHaveAttribute('data-variant', 'destructive');
+    });
+  });
+
+  it('does not warn when an older load succeeds after a newer one failed', async () => {
+    // Two `load()` calls overlap and share `graph`/`error`: the initial one and
+    // one started by `memory-tree-completed`. If the NEWER fails while the
+    // OLDER is still in flight, and the older then succeeds, the success
+    // renders a good graph — and must not leave a "your data is stale" warning
+    // attached to data that is not stale.
+    //
+    // Before this PR the leftover error was invisible, so the race was
+    // harmless; the warning is what would have made it a visible false alarm.
+    let resolveFirst!: (value: unknown) => void;
+    const firstCall = new Promise(resolve => {
+      resolveFirst = resolve;
+    });
+    graphExportMock
+      .mockImplementationOnce(() => firstCall)
+      .mockImplementationOnce(() => Promise.reject(new Error('newer load failed')));
+
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=graph'] });
+    });
+
+    // The newer load starts and fails while the first is still pending.
+    await act(async () => {
+      window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+
+    // Now the older, superseded call finally succeeds.
+    await act(async () => {
+      resolveFirst(makeGraph(4));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:4');
+    });
+    expect(document.querySelector('[data-variant="warning"]')).toBeNull();
   });
 });

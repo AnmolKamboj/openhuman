@@ -105,6 +105,15 @@ export default function Brain() {
           resp.edges.length
         );
         setGraph(resp);
+        // Clear the error on an ACCEPTED SUCCESS, not only when a load starts.
+        // Two `load()` calls can overlap (the initial one and a
+        // `memory-tree-completed` event, or two events in quick succession),
+        // and they share this state with no request-generation guard. If the
+        // newer call fails and the older then succeeds, `error` stays set from
+        // the newer one while a perfectly good graph renders — which before
+        // this PR was invisible, and with the warning below would be a FALSE
+        // "your data is stale" on data that is not.
+        setError(null);
       } catch (err) {
         if (cancelled) return;
         console.error('[brain] graph fetch failed', err);
@@ -258,7 +267,14 @@ export default function Brain() {
                         this one means "what you see is old", the one below
                         means "there is nothing to see".
                       */}
-                      {error && graph ? (
+                      {/*
+                        `error !== null`, not truthiness: `load()`'s catch does
+                        `setError(err.message)`, and an Error carrying an empty
+                        message yields `''`, which is falsy. Under a truthiness
+                        test that failure suppresses BOTH alerts and is silent
+                        again — the exact defect this PR exists to remove.
+                      */}
+                      {error !== null && graph ? (
                         <Alert variant="warning">
                           <AlertDescription>{t('brain.refreshError')}</AlertDescription>
                         </Alert>
@@ -271,7 +287,7 @@ export default function Brain() {
                           mode={mode}
                           emptyHint={t('brain.empty')}
                         />
-                      ) : error ? (
+                      ) : error !== null ? (
                         <Alert variant="destructive">
                           <AlertDescription>{t('brain.error')}</AlertDescription>
                         </Alert>
