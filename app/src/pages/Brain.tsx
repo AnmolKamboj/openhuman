@@ -128,7 +128,7 @@ export default function Brain() {
     // allowed through, because there is no newer data for it to clobber.
     let renderedGeneration = 0;
 
-    const load = async () => {
+    const load = async (isAutomaticRetry = false) => {
       const myGeneration = ++generation;
       // Any load supersedes a retry still waiting, so a manual Refresh or a
       // `memory-tree-completed` event cannot race a timer into a double fetch.
@@ -136,8 +136,22 @@ export default function Brain() {
         clearTimeout(retryTimer);
         retryTimer = undefined;
       }
-      console.debug('[brain] graph fetch: entry mode=%s attempt=%d', mode, attempt);
-      setError(null);
+      console.debug(
+        '[brain] graph fetch: entry mode=%s attempt=%d retry=%s',
+        mode,
+        attempt,
+        isAutomaticRetry
+      );
+      // An AUTOMATIC retry must not clear the error while it is in flight.
+      // Clearing it here is right for a load the user or the app asked for —
+      // mount, Refresh, `memory-tree-completed` — because the previous failure
+      // is no longer what is being reported. A timer-driven retry is different:
+      // nothing has changed from the user's point of view, so blanking the
+      // alert (or the stale-data warning) for the duration of the request makes
+      // the failure flicker out and back for no reason they can perceive. The
+      // success path clears it on an accepted success, which is when the error
+      // has actually stopped being true.
+      if (!isAutomaticRetry) setError(null);
       try {
         const resp = await memoryTreeGraphExport(mode);
         // Discard this success only if NEWER DATA already rendered — not merely
@@ -191,7 +205,7 @@ export default function Brain() {
         console.debug('[brain] graph fetch: scheduling retry %d in %dms', attempt + 1, delay);
         attempt += 1;
         retryTimer = setTimeout(() => {
-          void load();
+          void load(true);
         }, delay);
       }
     };

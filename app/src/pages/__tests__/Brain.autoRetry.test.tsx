@@ -189,12 +189,59 @@ describe('Brain graph — automatic retry', () => {
       window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
     });
     expect(graphExportMock).toHaveBeenCalledTimes(3);
+    // Prove the CATCH ran before advancing timers, not merely that the call was
+    // made. The retry timer is armed inside the catch, so without this the
+    // advance below could race the rejection's microtask and the ladder
+    // assertion would be measuring an arming that had not happened yet.
+    //
+    // Asserted directly rather than through `waitFor`: this file runs on fake
+    // timers, and `waitFor` polls on real timers that never advance, so it hangs
+    // to the 30s test timeout instead of retrying. The enclosing `act` above has
+    // already flushed the rejection's microtask, which is what makes the direct
+    // read sound here.
+    expect(document.querySelector('[data-slot="alert"]')).not.toBeNull();
 
     // The full ladder is available again: 3 more retries on top of that call.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TOTAL_LADDER_MS);
     });
     expect(graphExportMock).toHaveBeenCalledTimes(3 + RETRY_DELAYS_MS.length);
+  });
+
+  it('keeps the failure visible while an automatic retry is in flight', async () => {
+    // A timer-driven retry must not blank the alert for the duration of its
+    // request. Nothing has changed from the user's point of view, so the
+    // failure flickering out and back is noise they cannot account for. The
+    // error is cleared on an accepted SUCCESS, which is when it stops being
+    // true, rather than at the top of every retry.
+    let resolveRetry!: (value: unknown) => void;
+    const retryCall = new Promise(resolve => {
+      resolveRetry = resolve;
+    });
+    graphExportMock
+      .mockImplementationOnce(() => Promise.reject(new Error('down')))
+      .mockImplementationOnce(() => retryCall);
+
+    await renderBrain();
+    // Direct, not `waitFor` — see the note in the ladder test: `waitFor` polls
+    // on real timers and this file fakes them.
+    expect(document.querySelector('[data-slot="alert"]')).not.toBeNull();
+
+    // The automatic retry starts and stays pending.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]);
+    });
+    expect(graphExportMock).toHaveBeenCalledTimes(2);
+
+    // Still on screen while that request is outstanding.
+    expect(document.querySelector('[data-slot="alert"]')).not.toBeNull();
+
+    // And it goes away only once the retry actually succeeds.
+    await act(async () => {
+      resolveRetry(makeGraph(2));
+    });
+    expect(document.querySelector('[data-slot="alert"]')).toBeNull();
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:2');
   });
 
   it('cancels a pending retry when the panel unmounts', async () => {
