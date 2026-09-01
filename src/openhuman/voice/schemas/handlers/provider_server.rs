@@ -327,10 +327,20 @@ pub(crate) fn handle_voice_test_provider(params: Map<String, Value>) -> Controll
         // always answered with a live transcription (#5896).
         //
         // Reserved slugs (`cloud`/`openhuman`/`backend`/`piper`/`whisper`/
-        // `local`/empty) have no user-held API key to check, so they fall
-        // through to the live test, where the factory reports misconfiguration
-        // by name.
-        if p.validate_only && !crate::openhuman::config::schema::is_voice_slug_reserved(trimmed) {
+        // `local`/empty) are managed or local engines with no user-held API
+        // key, so there is nothing to validate. They must still return here
+        // rather than fall through: `validate_only` promises no inference
+        // call, and falling through would quietly bill the caller for a real
+        // transcription/synthesis. `ok: true` because nothing is wrong — a
+        // managed provider with no key to check is not a failed check.
+        if p.validate_only {
+            if crate::openhuman::config::schema::is_voice_slug_reserved(trimmed) {
+                return Ok(serde_json::json!({
+                    "ok": true,
+                    "detail": "No API key to validate — this provider is managed by OpenHuman.",
+                    "latency_ms": start.elapsed().as_millis(),
+                }));
+            }
             return match validate_provider_key(trimmed, &config, p.api_key.as_deref()).await {
                 Ok(detail) => {
                     let elapsed = start.elapsed().as_millis();

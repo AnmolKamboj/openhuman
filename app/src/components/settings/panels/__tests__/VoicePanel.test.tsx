@@ -859,6 +859,38 @@ describe('VoicePanel', () => {
     expect(screen.getByTestId('voice-provider-key-modal')).toBeInTheDocument();
   });
 
+  it('discards an in-flight Test Key result when the key is edited', async () => {
+    // The key field stays editable during a test (it is disabled only while
+    // *saving*). Without the request-id guard, key A's verdict lands next to
+    // key B and reads as a validation of B.
+    let resolveTest: (r: { ok: boolean; detail: string }) => void = () => {};
+    vi.mocked(testVoiceProvider).mockReturnValueOnce(
+      // Annotated: `VoiceTestResult` is not exported, and a bare `new Promise`
+      // would infer `Promise<unknown>` and fail typecheck on the mock.
+      new Promise<{ ok: boolean; detail: string }>(resolve => {
+        resolveTest = resolve;
+      })
+    );
+
+    renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+    await screen.findByTestId('voice-providers-section');
+    fireEvent.click(screen.getByTestId('voice-provider-chip-elevenlabs'));
+    await screen.findByTestId('voice-provider-key-modal');
+
+    const keyInput = screen.getByPlaceholderText(/sk/i);
+    fireEvent.change(keyInput, { target: { value: 'sk-key-AAAA-1234567890' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Test Key$/i }));
+
+    // User edits to a different key before the verdict for the first arrives.
+    fireEvent.change(keyInput, { target: { value: 'sk-key-BBBB-0987654321' } });
+
+    resolveTest({ ok: true, detail: 'STALE VERDICT FOR KEY A' });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Test Key$/i })).toBeEnabled());
+    expect(screen.queryByText(/STALE VERDICT FOR KEY A/i)).not.toBeInTheDocument();
+  });
+
   it('the ElevenLabs modal Cancel button closes without saving', async () => {
     renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
 

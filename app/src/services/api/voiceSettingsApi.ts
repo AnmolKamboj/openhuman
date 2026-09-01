@@ -245,7 +245,10 @@ export async function testVoiceProvider(
       // candidate as "fall back to the stored credential", and sending one
       // for a provider with no stored key would report a confusing
       // "no API key configured" instead of the real validation result.
-      ...(apiKey?.trim() ? { api_key: apiKey } : {}),
+      // Trimmed on the way out so the guard and the payload agree — a key
+      // pasted with a trailing newline should be tested as the key the user
+      // will actually save, not as a different string.
+      ...(apiKey?.trim() ? { api_key: apiKey.trim() } : {}),
     },
     timeoutMs: VOICE_TEST_TIMEOUT_MS,
   });
