@@ -438,6 +438,16 @@ async fn inference_transcribe_controllers_cover_params_trimming_and_local_reject
     // is hosted now, so gating it on the local runtime would be a regression
     // (the same assertion `inference_local_ops_piper_...:190` makes for the op,
     // held here at the controller boundary).
+    //
+    // The runtime is turned OFF first, and that is what gives the assertion
+    // teeth: with it enabled, "local ai is disabled" could not appear whether
+    // or not the gate existed, so the check passed vacuously. Disabled, a
+    // regression that gated hosted STT on the local runtime WOULD produce that
+    // string and this would catch it.
+    let mut hosted_config = temp_config(&tmp);
+    hosted_config.local_ai.runtime_enabled = false;
+    hosted_config.save().await.expect("save config");
+
     let hosted = call(
         transcribe_bytes,
         json!({ "audio_bytes": [1_u8, 2, 3], "extension": ".WEBM" }),
