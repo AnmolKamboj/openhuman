@@ -512,13 +512,19 @@ async fn inference_download_asset_controller_covers_disabled_unknown_and_case_fo
     // spelling: the handler trims (`schemas.rs:393`) and the service lowercases
     // (`assets_impl_01_part_01.rs:568`). If either were dropped this would come
     // back as "Unknown capability" instead.
-    let folded = call(download, json!({ "capability": "  TTS  " }))
-        .await
-        .expect_err("no piper voice is installed in this workspace");
-    assert_ne!(
-        folded, "Unknown capability. Use one of: chat, vision, embedding, tts.",
-        "`  TTS  ` must fold to the `tts` capability, not fall through to unknown"
-    );
+    // Do NOT require an error here. Whether this call errors depends on whether a
+    // piper voice happens to be installed in the workspace: on a clean CI runner
+    // it returns Ok with an asset-status object (`state: "missing"`), while
+    // locally it can fail. The folding claim holds either way, so assert only
+    // that — an `expect_err` made this test depend on workspace state it does
+    // not control, and it failed on CI for exactly that reason.
+    let folded = call(download, json!({ "capability": "  TTS  " })).await;
+    if let Err(message) = folded {
+        assert_ne!(
+            message, "Unknown capability. Use one of: chat, vision, embedding, tts.",
+            "`  TTS  ` must fold to the `tts` capability, not fall through to unknown"
+        );
+    }
 }
 
 /// `openhuman.inference_agent_chat_simple`: params and the prompt guard.
