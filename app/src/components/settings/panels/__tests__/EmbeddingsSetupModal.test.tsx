@@ -167,12 +167,23 @@ describe('EmbeddingsSetupModal — custom-endpoint branch', () => {
     expect(onTest).not.toHaveBeenCalled();
   });
 
-  it('explains on hover why Test is unavailable for a custom endpoint', () => {
-    // A silently disabled control is only marginally better than a dead one;
-    // the reason is what makes it honest.
+  it('shows the reason as visible text, not as a title on the disabled button', () => {
+    // `Button` applies `disabled:pointer-events-none` (ui/Button.tsx:40), so a
+    // disabled control cannot be hovered, and a disabled button is out of the
+    // tab order — a `title` there is unreachable by mouse AND by keyboard.
+    // The reason is therefore rendered beside the button as ordinary text.
     renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
 
-    expect(testButton().getAttribute('title') ?? '').toContain('custom endpoint');
+    const reason = screen.getByTestId('embeddings-test-unavailable-reason');
+    expect(reason).toBeVisible();
+    expect(reason.textContent ?? '').toContain('custom endpoint');
+    expect(testButton()).not.toHaveAttribute('title');
+  });
+
+  it('shows no such reason for a built-in provider', () => {
+    renderModal({ setupKey: 'sk-test' });
+
+    expect(screen.queryByTestId('embeddings-test-unavailable-reason')).not.toBeInTheDocument();
   });
 
   it('leaves Save reachable for a custom endpoint', () => {
