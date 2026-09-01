@@ -178,7 +178,7 @@ impl AuthProfilesStore {
             PERSIST_RETRY_BASE_MS,
             || {
                 self.consume_test_transient_failure_write()?;
-                fs::write(&tmp_path, &json).context("write auth profile tmp")
+                write_owner_only(&tmp_path, &json).context("write auth profile tmp")
             },
         )
         .with_context(|| {
