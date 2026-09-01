@@ -249,6 +249,48 @@ describe('Brain graph — automatic retry', () => {
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:7');
   });
 
+  it('renders an older success when the newer load FAILED, and still retries', async () => {
+    // The collision between this PR's guard and #5942's "clear the error on an
+    // accepted success". The guard's job is to stop a stale response clobbering
+    // NEWER DATA — but when the newer request failed there is no newer data,
+    // and dropping the older success leaves the user with an error and no
+    // graph, which is worse than anything either PR intends.
+    //
+    // Both halves are asserted, because they are in tension and a fix that got
+    // only one would look right:
+    //   - the older success renders (the guard let it through), AND
+    //   - the ladder is still armed, because the NEWEST thing we know about the
+    //     backend is that it failed. Showing data and continuing to retry is
+    //     the correct combination, not a leftover.
+    let resolveFirst!: (value: unknown) => void;
+    const firstCall = new Promise(resolve => {
+      resolveFirst = resolve;
+    });
+    graphExportMock
+      .mockImplementationOnce(() => firstCall)
+      .mockImplementationOnce(() => Promise.reject(new Error('newer load failed')))
+      .mockResolvedValue(makeGraph(6));
+
+    await renderBrain();
+    await act(async () => {
+      window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+    expect(graphExportMock).toHaveBeenCalledTimes(2);
+
+    // The superseded call succeeds. Nothing newer has rendered, so it must show.
+    await act(async () => {
+      resolveFirst(makeGraph(3));
+    });
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:3');
+
+    // And the retry the failure armed still fires.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]);
+    });
+    expect(graphExportMock).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:6');
+  });
+
   it('ignores a superseded SUCCESS instead of overwriting a newer graph', async () => {
     // The other direction of the same race: a slow older call resolving after a
     // newer one must not roll the graph back to its stale payload.

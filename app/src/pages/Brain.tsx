@@ -120,6 +120,13 @@ export default function Brain() {
     // distinguishes this effect run from the next one, never two loads within
     // the same run.
     let generation = 0;
+    // Generation of the response currently ON SCREEN, which is NOT the same as
+    // the newest request. That difference is the whole point: `generation` says
+    // which request is newest, `renderedGeneration` says which one produced the
+    // data the user is looking at. They diverge exactly when a newer request
+    // FAILED — and that is the case where a superseded success must still be
+    // allowed through, because there is no newer data for it to clobber.
+    let renderedGeneration = 0;
 
     const load = async () => {
       const myGeneration = ++generation;
@@ -133,13 +140,22 @@ export default function Brain() {
       setError(null);
       try {
         const resp = await memoryTreeGraphExport(mode);
-        if (cancelled || myGeneration !== generation) return;
+        // Discard this success only if NEWER DATA already rendered — not merely
+        // because a newer request exists. Testing `myGeneration !== generation`
+        // here also dropped the older success when the newer request had
+        // failed, which leaves the user with an error and no graph: strictly
+        // worse than either behaviour this guard was meant to produce.
+        if (cancelled || myGeneration < renderedGeneration) {
+          console.debug('[brain] graph fetch: dropping success behind newer data');
+          return;
+        }
         console.debug(
           '[brain] graph fetch: exit n=%d edges=%d',
           resp.nodes.length,
           resp.edges.length
         );
         setGraph(resp);
+        renderedGeneration = myGeneration;
         // Clear the error on an ACCEPTED SUCCESS, not only when a load starts.
         // Two `load()` calls can overlap (the initial one and a
         // `memory-tree-completed` event, or two events in quick succession),
