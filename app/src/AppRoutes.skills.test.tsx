@@ -42,10 +42,10 @@ vi.mock('./pages/WorkflowsRun', () => ({ default: () => <div /> }));
 function LocationSpy({
   onCapture,
 }: {
-  onCapture: (loc: { pathname: string; search: string }) => void;
+  onCapture: (loc: { pathname: string; search: string; hash: string }) => void;
 }) {
-  const { pathname, search } = useLocation();
-  onCapture({ pathname, search });
+  const { pathname, search, hash } = useLocation();
+  onCapture({ pathname, search, hash });
   return null;
 }
 
@@ -64,7 +64,7 @@ describe('/skills back-compat redirect', () => {
   it('forwards ?tab= query params from /skills to /connections', () => {
     // Object.assign so the last render-pass wins (initial /skills is overwritten
     // by the settled /connections after Navigate fires via useLayoutEffect).
-    const loc = { pathname: '', search: '' };
+    const loc = { pathname: '', search: '', hash: '' };
     render(
       <MemoryRouter initialEntries={['/skills?tab=mcp']}>
         <AppRoutes />
@@ -75,8 +75,20 @@ describe('/skills back-compat redirect', () => {
     expect(loc.search).toBe('?tab=mcp');
   });
 
+  it('forwards a hash fragment from /skills to /connections', () => {
+    const loc = { pathname: '', search: '', hash: '' };
+    render(
+      <MemoryRouter initialEntries={['/skills#section-mcp']}>
+        <AppRoutes />
+        <LocationSpy onCapture={l => Object.assign(loc, l)} />
+      </MemoryRouter>
+    );
+    expect(loc.pathname).toBe('/connections');
+    expect(loc.hash).toBe('#section-mcp');
+  });
+
   it('produces an empty search when /skills has no query string', () => {
-    const loc = { pathname: '', search: '(init)' };
+    const loc = { pathname: '', search: '(init)', hash: '' };
     render(
       <MemoryRouter initialEntries={['/skills']}>
         <AppRoutes />

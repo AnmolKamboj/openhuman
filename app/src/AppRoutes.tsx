@@ -26,8 +26,8 @@ import Welcome from './pages/Welcome';
 import WorkflowsRun from './pages/WorkflowsRun';
 
 function ForwardSearch({ to }: { to: string }) {
-  const { search } = useLocation();
-  return <Navigate to={`${to}${search}`} replace />;
+  const { search, hash } = useLocation();
+  return <Navigate to={`${to}${search}${hash}`} replace />;
 }
 
 interface AppRoutesProps {
