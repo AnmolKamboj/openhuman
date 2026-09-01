@@ -209,25 +209,6 @@ static MODULES_POLICY: std::sync::OnceLock<Arc<Config>> = std::sync::OnceLock::n
 /// Call once during boot, before any workspace is bound. Later calls are
 /// ignored — a driver already resolved against the first value must not have the
 /// policy change underneath it.
-/// Load config and publish the module host policy, for a CLI process.
-///
-/// The server does this during boot; every CLI family that crosses the memory
-/// module binding (`memory`, `tree-summarizer`, the raw `call` dispatcher) is
-/// its own process and must do the same before its first driver call, or that
-/// call fails with "the module host policy was never published". One helper so
-/// the sequence lives in the openhuman layer — `src/core/` is transport and
-/// carries a one-line call, not the business of loading config and installing
-/// sinks (review finding on #5932).
-pub async fn publish_cli_boot_policy() -> Result<Config, String> {
-    let mut config = Config::load_or_init()
-        .await
-        .map_err(|error| format!("load config for module policy: {error}"))?;
-    config.apply_env_overrides();
-    crate::openhuman::memory::host::install_memory_event_sink();
-    set_modules_policy(Arc::new(config.clone()));
-    Ok(config)
-}
-
 pub fn set_modules_policy(config: Arc<Config>) {
     let _ = MODULES_POLICY.set(config);
 }

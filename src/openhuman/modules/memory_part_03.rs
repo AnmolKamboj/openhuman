@@ -533,8 +533,11 @@ impl MemoryConversationIngest for ModuleMemoryProvider {
         messages: Vec<IngestItem>,
     ) -> Result<IngestOutcome, MemoryError> {
         // The wire member is the chat batch: the conversation trait is the
-        // typed rename of the same ordered-batch operation.
-        module_call!(
+        // typed rename of the same ordered-batch operation — and it rides the
+        // bulk deadline for the same reason ingest_chat does (review finding:
+        // a large batch on the default 30s deadline is the AcceptSourceItems
+        // timeout all over again).
+        module_call_slow!(
             self,
             "typed_ingest_conversation",
             methods::INGEST_CHAT,
