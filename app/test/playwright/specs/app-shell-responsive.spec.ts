@@ -108,13 +108,17 @@ test.describe('App shell — narrow viewports', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1280);
 
+    // No early return here. Returning on a null or zero box let a failed
+    // render or a collapsed sidebar pass as success — the very outcome this
+    // test exists to notice (#5941, CodeRabbit).
     const box = await sidebar(page).boundingBox();
-    if (box === null || box.width === 0) return;
+    expect(box, 'sidebar has no layout box at 1280px — it did not render').not.toBeNull();
+    expect(box!.width).toBeGreaterThan(0);
 
     // Well clear of the 640px the clamp would allow here, and at or above the
     // 188px floor — i.e. the clamp is not what is deciding this width.
-    expect(box.width).toBeGreaterThanOrEqual(188);
-    expect(box.width).toBeLessThan(640);
+    expect(box!.width).toBeGreaterThanOrEqual(188);
+    expect(box!.width).toBeLessThan(640);
   });
 
   test('resizing back to full width restores the layout', async ({ page }) => {
