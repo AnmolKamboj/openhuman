@@ -13025,7 +13025,12 @@ async fn json_rpc_memory_sources_list_filters_to_active_connections() {
     let composio_base = format!("http://{composio_addr}");
     let _backend_url_guard = EnvVarGuard::set("BACKEND_URL", &composio_base);
 
-    write_composio_direct_config(&openhuman_home, "http://127.0.0.1:1");
+    // The api_url in the written config must ALSO point at the mock: the
+    // connector module is (re-)routed per call from the loaded config's
+    // backend base (`ensure_routed`), not from the BACKEND_URL env — a dead
+    // api_url here routes the module at a black hole and the scan fails into
+    // its fail-open arm, unfiltered.
+    write_composio_direct_config(&openhuman_home, &composio_base);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
@@ -13168,7 +13173,12 @@ async fn json_rpc_memory_sources_list_keeps_multiple_active_connections_per_tool
     let composio_base = format!("http://{composio_addr}");
     let _backend_url_guard = EnvVarGuard::set("BACKEND_URL", &composio_base);
 
-    write_composio_direct_config(&openhuman_home, "http://127.0.0.1:1");
+    // The api_url in the written config must ALSO point at the mock: the
+    // connector module is (re-)routed per call from the loaded config's
+    // backend base (`ensure_routed`), not from the BACKEND_URL env — a dead
+    // api_url here routes the module at a black hole and the scan fails into
+    // its fail-open arm, unfiltered.
+    write_composio_direct_config(&openhuman_home, &composio_base);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
