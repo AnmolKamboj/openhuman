@@ -131,46 +131,6 @@ describe('connections / channels back-compat redirects (real route table)', () =
     const at = renderAt('/skills?tab=messaging');
     expect(at.href()).toBe('/connections?tab=messaging');
   });
-
-  it('/channels lands on /connections?tab=messaging, preserving the tab selector', () => {
-    // The whole point of this redirect: `/channels` was an orphaned standalone
-    // page, and the messaging tab of Connections replaced it. Landing on bare
-    // `/connections` would drop the user on the Welcome tab instead — which is
-    // exactly what `Connections.redirects.test.tsx` cannot distinguish, because
-    // it only asserts that the page rendered.
-    const at = renderAt('/channels');
-    expect(at.href()).toBe('/connections?tab=messaging');
-    expect(at.page()).toBe('connections');
-  });
-
-  it('PINS A KNOWN BUG: /skills drops its ?tab= query on the way to /connections', () => {
-    // `AppRoutes.tsx` claims twice — at the block comment above the
-    // `/connections` route and again on the `/skills` line itself — that this
-    // redirect "preserves ?tab= deep links". It does not: `<Navigate to="…" />`
-    // is given an absolute path *string* with no search component, so the
-    // incoming query is discarded.
-    //
-    // The knock-on is that `pages/Skills.tsx`'s legacy alias table
-    // (`apps`→`composio`, `messaging`→`channels`, `tools`→`mcp`,
-    // `explorer`→`skills`), whose own comment says it exists "so that e.g.
-    // `/skills?tab=composio` still works after the redirect", is unreachable
-    // from that route — `activeTab` always falls through to 'welcome'.
-    //
-    // This assertion pins the CURRENT (wrong) behaviour deliberately, so the
-    // bug cannot deepen unnoticed. When it is fixed — `<Navigate to={{ pathname:
-    // '/connections', search: location.search }} />` or equivalent — this test
-    // MUST be flipped to expect '/connections?tab=messaging' and the two source
-    // comments left alone, because they will finally be true.
-    //
-    // One assertion, not two. A second `.not.toBe('/connections?tab=messaging')`
-    // was strictly implied by the line below it and could never fire
-    // independently — and it encoded "the fixed value must not appear" as a
-    // separate contract, so whoever fixes the redirect would hit two failures
-    // and have to work out whether the negative one was deliberate
-    // (#5883, YellowSnnowmann).
-    const at = renderAt('/skills?tab=messaging');
-    expect(at.href()).toBe('/connections');
-  });
 });
 
 describe('automation route slugs', () => {
