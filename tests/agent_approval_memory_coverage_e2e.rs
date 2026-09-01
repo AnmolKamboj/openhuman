@@ -706,10 +706,13 @@ async fn agent_graph_topologies_exports_structure_without_run_state() {
     let body = payload(&response, "agent_graph_topologies");
 
     // `is_some()` would accept `null` or a scalar, so a schema regression that
-    // dropped the object could still pass. Require the object itself.
+    // dropped the field could still pass. Require the array itself — the handler
+    // builds `graphs` as a `Vec<Value>` and returns
+    // `json!({ "graphs": graphs, "agents": agents })`
+    // (`src/openhuman/agent/schemas.rs:486`), so it is an array, not an object.
     body.get("graphs")
-        .and_then(Value::as_object)
-        .unwrap_or_else(|| panic!("graph_topologies must return a `graphs` object: {body}"));
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("graph_topologies must return a `graphs` array: {body}"));
 
     let serialized = body.to_string();
     for leaked in ["system_prompt", "prompt_text", "api_key", "tool_arguments"] {
