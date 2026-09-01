@@ -81,7 +81,9 @@ pub(super) fn schema(function: &str) -> Option<ControllerSchema> {
             function: "scheduler_override",
             description: "Open a bounded manual-override window on the memory module's background \
                           scheduler gate, so user-requested maintenance runs even while the gate \
-                          is paused (mode=off, signed out, on battery). Clamped to one hour.",
+                          is paused (mode=off, signed out, on battery). Clamped to one hour. \
+                          Operator/CLI surface by design for now -- the in-app affordance is \
+                          tracked in #5935 and lands with the UI half of that issue.",
             inputs: vec![FieldSchema {
                 name: "seconds",
                 ty: TypeSchema::Option(Box::new(TypeSchema::U64)),

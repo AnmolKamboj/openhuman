@@ -386,7 +386,24 @@ pub async fn memory_scheduler_override(
         crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy()
             .override_scheduler_gate(seconds)
             .await
-            .map_err(|error| format!("scheduler override: {error}"))?;
+            .map_err(|error| {
+                let rendered = error.to_string();
+                // Against the released v1.13.6 module the member does not
+                // exist yet (it ships in tinymemory#127), and the bus answers
+                // with a member-resolution error. An operator running this
+                // today should read a version gap, not an internal fault
+                // (review finding on #5932).
+                if rendered.contains("MemberNotFound")
+                    || rendered.contains("UnknownMethod")
+                    || rendered.contains("no such member")
+                {
+                    "this build's memory module does not support the scheduler override \
+                     (requires tinymemory >= 1.13.7)"
+                        .to_string()
+                } else {
+                    format!("scheduler override: {rendered}")
+                }
+            })?;
         Ok(RpcOutcome::new(
             SchedulerOverrideResult {
                 overridden: true,
