@@ -226,6 +226,24 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         data-collapsible={collapsible}
         className={cn(
           'flex h-full min-h-0 min-w-0 flex-none flex-col overflow-hidden text-content',
+          // Viewport clamp (#5907). The stored width is clamped against
+          // SIDEBAR_MIN_WIDTH/SIDEBAR_MAX_WIDTH only, never against the window,
+          // so a narrow window left the sidebar owning most of it — 224px of a
+          // 414px viewport, 54%, with a hard 188px floor below that.
+          //
+          // `max-w-[50vw]` rather than a resize listener, deliberately. The
+          // width arrives as an inline style, and `max-width` always constrains
+          // `width`, so the browser applies this continuously with no listener,
+          // no re-render and no extra state. A JS clamp would need both halves:
+          // the arithmetic AND something that re-renders on resize, because
+          // `clamp()` in RootShellLayout only runs at render and nothing in the
+          // shell listens for `resize` — measured, by injecting a viewport clamp
+          // there and observing no change at all.
+          //
+          // Inert on desktop: 50vw exceeds SIDEBAR_MAX_WIDTH (420) above an
+          // 840px window, so this can only engage on a genuinely narrow one.
+          // The collapsed icon column is far below it and unaffected.
+          'max-w-[50vw]',
           className
         )}
         style={{ width: collapsed ? SIDEBAR_ICON_WIDTH : width, ...(style ?? {}) }}

@@ -71,23 +71,22 @@ test.describe('App shell — narrow viewports', () => {
     });
   }
 
-  test('PINS CURRENT BEHAVIOUR: the sidebar width has no viewport-relative clamp', async ({
-    page,
-  }) => {
-    // Measured, not assumed. `clampWidth` (`RootShellLayout.tsx:38`) clamps the
-    // sidebar against the constants `SIDEBAR_MIN_WIDTH = 188` and
-    // `SIDEBAR_MAX_WIDTH = 420` (`components/ui/Sidebar.tsx:48-49`) and never
-    // against `window.innerWidth`. So the sidebar keeps its full width however
-    // narrow the window gets, and takes a majority of the screen below ~450px.
+  test('the sidebar never takes more than half a narrow window (#5907)', async ({ page }) => {
+    // This test used to pin the OPPOSITE — it asserted `width > 414 / 2`, as a
+    // deliberate characterization of the defect, with a note saying that adding
+    // a viewport clamp should be the thing that makes it fail. #5907 added the
+    // clamp, so this is that flip.
     //
-    // Whether that matters is a product call, and `tauri.conf.json` does not
-    // settle it: the window is `resizable: true` with NO `minWidth`, so a user
-    // can drag below 414px and the 188px floor then owns half the app.
+    // Before: `clamp()` (`RootShellLayout.tsx:38`) constrained the width against
+    // SIDEBAR_MIN_WIDTH = 188 and SIDEBAR_MAX_WIDTH = 420 and never against the
+    // window, so the sidebar measured 224px of a 414px viewport — 54% — with a
+    // hard 188px floor below that. `tauri.conf.json` declares the main window
+    // `resizable: true` with no `minWidth`, so that was reachable by dragging.
     //
-    // I originally wrote this as `expect(width).toBeLessThan(414 / 2)` — an
-    // invariant the product never promised. It failed at 224px. Pinning the
-    // real behaviour instead, so that adding a viewport clamp is a deliberate
-    // change that updates this test rather than a silent one. See W5 BUG-10.
+    // After: `max-w-[50vw]` on the sidebar column (`components/ui/Sidebar.tsx`).
+    // A CSS max-width rather than a JS clamp, because the width arrives as an
+    // inline style and nothing in the shell listens for `resize` — a JS clamp
+    // alone changes nothing at all until some unrelated render happens.
     await page.setViewportSize({ width: 414, height: 896 });
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(414);
 
@@ -97,11 +96,25 @@ test.describe('App shell — narrow viewports', () => {
     const box = await sidebar(page).boundingBox();
     if (box === null || box.width === 0) return; // collapsed away entirely
 
-    // The floor is absolute: never below SIDEBAR_MIN_WIDTH, whatever the window.
+    // 1px of slack for sub-pixel rounding on a fractional device pixel ratio.
+    expect(box.width).toBeLessThanOrEqual(414 / 2 + 1);
+  });
+
+  test('the clamp is inert at desktop widths (#5907)', async ({ page }) => {
+    // The clamp must not become a second, quieter way to shrink the sidebar on
+    // a normal window. 50vw exceeds SIDEBAR_MAX_WIDTH (420) above an 840px
+    // viewport, so at the 1280x900 default it can never bind — the stored width
+    // decides, exactly as before.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1280);
+
+    const box = await sidebar(page).boundingBox();
+    if (box === null || box.width === 0) return;
+
+    // Well clear of the 640px the clamp would allow here, and at or above the
+    // 188px floor — i.e. the clamp is not what is deciding this width.
     expect(box.width).toBeGreaterThanOrEqual(188);
-    // And it currently exceeds half the window at this size. If this ever
-    // stops being true, the clamp changed — update the test with the reason.
-    expect(box.width).toBeGreaterThan(414 / 2);
+    expect(box.width).toBeLessThan(640);
   });
 
   test('resizing back to full width restores the layout', async ({ page }) => {
