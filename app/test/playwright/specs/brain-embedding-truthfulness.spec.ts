@@ -130,15 +130,23 @@ function classifyModuleFailure(error: unknown): Error {
     message
   );
 
-  if (moduleUnavailable && !process.env.CI) {
-    test.skip(true, `memory module unavailable in this lane: ${message}`);
-  }
   if (moduleUnavailable) {
-    return new Error(
-      'the tinymemory module is not staged in this lane, so the embedding-state ' +
-        'render cannot be exercised. Provision the checksum-pinned module here as ' +
-        `the Rust E2E job does, or move this spec to that lane. Underlying: ${message}`
-    );
+    // CI first, and it RETURNS — so the loud path and the skip path are mutually
+    // exclusive. The previous shape called `test.skip` and then fell through to
+    // build the error unconditionally, which meant the caller threw it whether
+    // the skip had taken effect or not, making the skip meaningless.
+    if (process.env.CI) {
+      return new Error(
+        'the tinymemory module is not staged in this lane, so the embedding-state ' +
+          'render cannot be exercised. Provision the checksum-pinned module here as ' +
+          `the Rust E2E job does, or move this spec to that lane. Underlying: ${message}`
+      );
+    }
+
+    // Locally this aborts the test. Nothing is built after it on this path; if
+    // it ever stopped aborting, the fall-through below surfaces the ORIGINAL
+    // module error rather than a misleading "not staged in this lane".
+    test.skip(true, `memory module unavailable in this lane: ${message}`);
   }
   return error instanceof Error ? error : new Error(message);
 }

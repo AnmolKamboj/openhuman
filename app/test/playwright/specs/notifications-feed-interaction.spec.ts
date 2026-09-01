@@ -139,7 +139,25 @@ async function openFeedWith(page: Page, items: SeedItem[]): Promise<void> {
       if (window.localStorage.getItem(marker)) return;
       window.localStorage.setItem(marker, '1');
       const raw = window.localStorage.getItem(key);
-      const blob: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      // Merge onto whatever the first boot wrote. When the key does not exist
+      // yet, a blob carrying only `items` is not what redux-persist writes —
+      // the real one also has `preferences` and `_persist`, and a missing
+      // `_persist` is what tells it the blob is not rehydratable. Supply both
+      // defaults so a fresh namespace behaves like a returning user's.
+      const blob: Record<string, string> = raw
+        ? (JSON.parse(raw) as Record<string, string>)
+        : {
+            preferences: JSON.stringify({
+              messages: true,
+              agents: true,
+              skills: true,
+              system: true,
+              meetings: true,
+              reminders: true,
+              important: true,
+            }),
+            _persist: JSON.stringify({ version: -1, rehydrated: true }),
+          };
       blob.items = JSON.stringify(payload);
       window.localStorage.setItem(key, JSON.stringify(blob));
     },
