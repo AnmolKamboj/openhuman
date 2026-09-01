@@ -8,10 +8,9 @@ import TokenUsagePanel from '../TokenUsagePanel';
 vi.mock('../../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 
 vi.mock('../../../../utils/tauriCommands/tokenjuice', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../../../utils/tauriCommands/tokenjuice')>(
-      '../../../../utils/tauriCommands/tokenjuice'
-    );
+  const actual = await vi.importActual<typeof import('../../../../utils/tauriCommands/tokenjuice')>(
+    '../../../../utils/tauriCommands/tokenjuice'
+  );
   return {
     ...actual,
     getTokenjuiceSettings: vi.fn(),
@@ -86,12 +85,8 @@ describe('TokenUsagePanel', () => {
           screen.getByRole('switch', { name: 'settings.tokenUsage.routerEnabled' })
         ).toBeChecked()
       );
-      expect(
-        screen.getByRole('switch', { name: 'settings.tokenUsage.search' })
-      ).toBeChecked();
-      expect(
-        screen.getByRole('switch', { name: 'settings.tokenUsage.code' })
-      ).not.toBeChecked();
+      expect(screen.getByRole('switch', { name: 'settings.tokenUsage.search' })).toBeChecked();
+      expect(screen.getByRole('switch', { name: 'settings.tokenUsage.code' })).not.toBeChecked();
     });
 
     it('calls patch when a switch is toggled', async () => {
@@ -99,9 +94,7 @@ describe('TokenUsagePanel', () => {
       mockUpdate.mockResolvedValue({ ...stubSettings, router_enabled: false });
       render(<TokenUsagePanel embedded />);
 
-      const sw = await screen.findByRole('switch', {
-        name: 'settings.tokenUsage.routerEnabled',
-      });
+      const sw = await screen.findByRole('switch', { name: 'settings.tokenUsage.routerEnabled' });
       await user.click(sw);
       expect(mockUpdate).toHaveBeenCalledWith({ router_enabled: false });
     });
