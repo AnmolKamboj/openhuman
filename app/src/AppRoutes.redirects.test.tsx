@@ -127,7 +127,10 @@ describe('AppRoutes back-compat redirects', () => {
         const from = match.index ?? 0;
         const to =
           index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
-        return /<Navigate\b/.test(source.slice(from, to));
+        // `ForwardSearch` (#5924) renders `<Navigate>` internally after copying
+        // the query string and hash, so the route body has no literal
+        // `<Navigate`. Matching only that dropped `/skills` from this list.
+        return /<(?:Navigate|ForwardSearch)\b/.test(source.slice(from, to));
       })
       .map(match => match[1]);
 

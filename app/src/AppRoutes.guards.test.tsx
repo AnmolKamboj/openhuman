@@ -220,7 +220,11 @@ describe('AppRoutes — the whole route table stays classified', () => {
       const to =
         index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
       const body = source.slice(from, to);
-      if (/<Navigate\b/.test(body)) out[match[1]] = 'redirect';
+      // `ForwardSearch` (added by #5924) is a redirect too: it renders a
+      // `<Navigate>` internally after copying the query string and hash, so the
+      // route body never contains the literal `<Navigate`. Matching only that
+      // classified `/skills` as 'none' and silently dropped it from this table.
+      if (/<(?:Navigate|ForwardSearch)\b/.test(body)) out[match[1]] = 'redirect';
       else if (/<ProtectedRoute\b[^>]*requireAuth=\{false\}/.test(body))
         out[match[1]] = 'protected-but-open';
       else if (/<ProtectedRoute\b/.test(body)) out[match[1]] = 'protected';
