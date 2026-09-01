@@ -1,9 +1,10 @@
-import { type Location, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { type Location, Navigate, Route, Routes } from 'react-router-dom';
 
 import AppRoutesIOS from './AppRoutesIOS';
 import DefaultRedirect from './components/DefaultRedirect';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
+import ForwardSearch from './components/routing/ForwardSearch';
 import HumanPage from './features/human/HumanPage';
 import { getIsMobile } from './lib/platform';
 import Accounts from './pages/Accounts';
@@ -24,11 +25,6 @@ import Skills from './pages/Skills';
 import WebCallbackPage from './pages/WebCallbackPage';
 import Welcome from './pages/Welcome';
 import WorkflowsRun from './pages/WorkflowsRun';
-
-function ForwardSearch({ to }: { to: string }) {
-  const { search, hash } = useLocation();
-  return <Navigate to={`${to}${search}${hash}`} replace />;
-}
 
 interface AppRoutesProps {
   /**
@@ -240,7 +236,7 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
       />
 
       {/* Webhooks retired from the UI — land on the Integrations settings. */}
-      <Route path="/webhooks" element={<Navigate to="/settings/integrations" replace />} />
+      <Route path="/webhooks" element={<ForwardSearch to="/settings/integrations" />} />
 
       {/* Settings is a routed page like every other surface: the shared route
           table renders inside `SettingsLayout`, which projects the settings nav
