@@ -341,22 +341,24 @@ fn build_runtime() -> Result<tokio::runtime::Runtime> {
 }
 
 async fn load_config() -> Result<crate::openhuman::config::Config> {
-    let mut config = crate::openhuman::config::Config::load_or_init()
-        .await
-        .unwrap_or_default();
-    config.apply_env_overrides();
-
-    // Every subcommand reaches the memory driver, and since the round-2
-    // migration that is a module binding: without the host policy published
-    // the driver binds but its first call fails with "the module host policy
-    // was never published". The server publishes it during boot; this CLI is
-    // its own process and must do the same (the `memory` subcommand family
-    // already does, in memory_cli.rs). Idempotent, so once per load is fine.
-    crate::openhuman::memory::host::install_memory_event_sink();
+    // Every subcommand reaches the memory driver over the module binding, and
+    // this CLI is its own process: the shared helper loads config, installs
+    // the event sink and publishes the module host policy exactly as the
+    // server's boot does (one sequence, owned by the module host — #5932).
     #[cfg(feature = "modules")]
-    crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config.clone()));
-
-    Ok(config)
+    {
+        crate::openhuman::modules::memory::publish_cli_boot_policy()
+            .await
+            .map_err(|error| anyhow::anyhow!(error))
+    }
+    #[cfg(not(feature = "modules"))]
+    {
+        let mut config = crate::openhuman::config::Config::load_or_init()
+            .await
+            .unwrap_or_default();
+        config.apply_env_overrides();
+        Ok(config)
+    }
 }
 
 fn init_logging(verbose: bool) {

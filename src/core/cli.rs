@@ -507,18 +507,11 @@ fn run_call_command(args: &[String]) -> Result<()> {
             // fails with "the module host policy was never published"
             // without this — the same per-process publish the memory and
             // tree-summarizer subcommand families already do.
+            // One line by design: `src/core/` is transport, and the load-
+            // config-install-sink-publish-policy sequence lives with the
+            // module host in the openhuman layer (review finding on #5932).
             #[cfg(feature = "modules")]
-            {
-                // Propagated, not discarded: a method that crosses the module
-                // binding would otherwise run against an unpublished policy
-                // and fail with the misleading "policy was never published"
-                // (review finding) — the config error is the true cause.
-                let config = crate::openhuman::config::Config::load_or_init()
-                    .await
-                    .map_err(|error| format!("load config for module policy: {error}"))?;
-                crate::openhuman::memory::host::install_memory_event_sink();
-                crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config));
-            }
+            crate::openhuman::modules::memory::publish_cli_boot_policy().await?;
             invoke_method(default_state(), &method, params).await
         })
         .map_err(anyhow::Error::msg)?;

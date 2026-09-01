@@ -705,11 +705,21 @@ impl ModuleMemoryProvider {
     /// embedding's vocabulary. The module serves it as a plain member
     /// (`OverrideSchedulerGate`), and only this host client names it.
     pub(crate) async fn override_scheduler_gate(&self, seconds: u64) -> Result<(), MemoryError> {
-        module_call!(
-            self,
-            "override_scheduler_gate",
-            methods::OVERRIDE_SCHEDULER_GATE,
-            (seconds,)
-        )
+        self.proxy("override_scheduler_gate")
+            .await?
+            .call(methods::OVERRIDE_SCHEDULER_GATE, (seconds,))
+            .await
+            .map_err(|error| {
+                // Typed, not text-matched: a module predating the member
+                // answers `tinybus::Error::UnknownMethod`, and mapping that
+                // variant to `Unsupported` here lets the RPC report a version
+                // gap on the type rather than by grepping arbitrary error
+                // strings (review finding on #5932).
+                if matches!(error, tinybus::Error::UnknownMethod { .. }) {
+                    MemoryError::unsupported_raw("scheduler_override")
+                } else {
+                    from_bus(&error)
+                }
+            })
     }
 }
