@@ -42,7 +42,7 @@ pub(crate) use error_utils::{report_composio_op_error, should_forward_tags};
 pub use execute::composio_execute;
 pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,
-    RefreshIdentitiesReport,
+    composio_sync_for_source, RefreshIdentitiesReport,
 };
 // The tinyconnectors-mediated sync pass, shared with
 // `memory::sync::composio::providers::slack::rpc` — see its doc comment.

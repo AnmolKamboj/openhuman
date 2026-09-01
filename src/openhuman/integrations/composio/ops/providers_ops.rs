@@ -187,6 +187,21 @@ pub async fn composio_sync(
     connection_id: &str,
     reason: Option<String>,
 ) -> OpResult<RpcOutcome<SyncOutcome>> {
+    composio_sync_for_source(config, connection_id, reason, None).await
+}
+
+/// [`composio_sync`], carrying the originating memory-source row id so the
+/// background task can publish `MemorySyncStageChanged` events the Brain
+/// sources row keys its per-row indicator on (#3295). The composio path never
+/// emitted them — the driver pipeline's events come from the module host
+/// bridge, which this path does not cross — so a successful sync left the row
+/// on "Syncing" forever, waiting for a terminal stage that never arrived.
+pub async fn composio_sync_for_source(
+    config: &Config,
+    connection_id: &str,
+    reason: Option<String>,
+    source_id: Option<String>,
+) -> OpResult<RpcOutcome<SyncOutcome>> {
     let reason = parse_sync_reason(reason.as_deref())?;
     tracing::debug!(
         connection_id = %connection_id,
@@ -213,37 +228,68 @@ pub async fn composio_sync(
     )
     .unwrap_or(u64::MAX);
 
-    let config_for_task = config.clone();
     let toolkit_for_task = toolkit.clone();
     let connection_for_task = connection_id.to_string();
     let reason_for_task = reason.as_str().to_string();
+    let source_for_task = source_id.clone();
+
+    let publish_stage = move |stage: &str, detail: Option<String>| {
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::MemorySyncStageChanged {
+            trigger: "manual".to_string(),
+            stage: stage.to_string(),
+            provider: Some(toolkit_for_task.clone()),
+            connection_id: Some(connection_for_task.clone()),
+            detail,
+            source_id: source_for_task.clone(),
+        });
+    };
+
+    let toolkit_for_log = toolkit.clone();
+    let connection_for_log = connection_id.to_string();
+    let config_for_run = config.clone();
 
     tokio::spawn(async move {
+        publish_stage("running", None);
         let outcome = run_sync_pass(
-            &config_for_task,
-            &toolkit_for_task,
-            &connection_for_task,
+            &config_for_run,
+            &toolkit_for_log,
+            &connection_for_log,
             &reason_for_task,
         )
         .await;
         match outcome {
-            Ok(pass) => tracing::info!(
-                toolkit = %toolkit_for_task,
-                connection_id = %connection_for_task,
-                items_ingested = pass.records_read,
-                written = pass.written,
-                already_ingested = pass.already_ingested,
-                more_pending = pass.more_pending,
-                "[composio] background sync ok"
-            ),
+            Ok(pass) => {
+                tracing::info!(
+                    toolkit = %toolkit_for_log,
+                    connection_id = %connection_for_log,
+                    items_ingested = pass.records_read,
+                    written = pass.written,
+                    already_ingested = pass.already_ingested,
+                    more_pending = pass.more_pending,
+                    "[composio] background sync ok"
+                );
+                publish_stage(
+                    "completed",
+                    Some(format!(
+                        "{} items{}",
+                        pass.written,
+                        if pass.more_pending {
+                            ", more pending"
+                        } else {
+                            ""
+                        }
+                    )),
+                );
+            }
             Err(error) => {
                 report_composio_op_error("sync", &anyhow::anyhow!("{error}"));
                 tracing::warn!(
-                    toolkit = %toolkit_for_task,
-                    connection_id = %connection_for_task,
+                    toolkit = %toolkit_for_log,
+                    connection_id = %connection_for_log,
                     error = %error,
                     "[composio] background sync failed"
                 );
+                publish_stage("failed", Some(error.clone()));
             }
         }
     });
