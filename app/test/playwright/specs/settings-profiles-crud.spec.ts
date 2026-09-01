@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import {
   bootAuthenticatedPage,
@@ -43,7 +43,11 @@ async function coreProfiles(): Promise<{ profiles: Profile[]; activeId?: string 
   return { profiles: res.profiles ?? [], activeId: res.activeProfileId };
 }
 
-const coreIds = async () => (await coreProfiles()).profiles.map(p => p.id).filter(Boolean).sort();
+const coreIds = async () =>
+  (await coreProfiles()).profiles
+    .map(p => p.id)
+    .filter(Boolean)
+    .sort();
 
 async function openProfiles(page: Page) {
   await page.goto('/#/settings/profiles');
@@ -55,8 +59,7 @@ async function openProfiles(page: Page) {
 }
 
 /** The list row for a profile, addressed by its visible name. */
-const row = (page: Page, name: string) =>
-  page.locator('li').filter({ hasText: name }).first();
+const row = (page: Page, name: string) => page.locator('li').filter({ hasText: name }).first();
 
 /** Remove a profile directly, so a test's own leftovers cannot leak forward. */
 async function deleteFromCore(id: string) {

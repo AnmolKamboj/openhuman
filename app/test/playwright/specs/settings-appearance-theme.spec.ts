@@ -1,6 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
-import { bootAuthenticatedPage, dismissWalkthroughIfPresent, waitForAppReady } from '../helpers/core-rpc';
+import {
+  bootAuthenticatedPage,
+  dismissWalkthroughIfPresent,
+  waitForAppReady,
+} from '../helpers/core-rpc';
 
 /**
  * Theme switching, asserted where it actually lands: on the document.
@@ -26,8 +30,7 @@ const variant = (page: Page, label: string) =>
   page.getByLabel('Theme variant').getByText(label, { exact: true });
 
 /** A palette family tile in the grid. */
-const family = (page: Page, name: string) =>
-  page.getByRole('button', { name, exact: true });
+const family = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 
 /** What the document actually holds after a theme is applied. */
 function documentTheme(page: Page) {

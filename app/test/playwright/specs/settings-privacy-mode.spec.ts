@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import {
   bootAuthenticatedPage,
@@ -148,9 +148,7 @@ test.describe('Privacy mode — selecting a posture reaches the core', () => {
       // false here and would make this assertion vacuous.
       const checked = await page.evaluate(
         () =>
-          Array.from(
-            document.querySelectorAll('[data-testid^="privacy-mode-option-"]')
-          ).filter(
+          Array.from(document.querySelectorAll('[data-testid^="privacy-mode-option-"]')).filter(
             el =>
               el.getAttribute('aria-checked') === 'true' ||
               el.getAttribute('data-state') === 'checked' ||

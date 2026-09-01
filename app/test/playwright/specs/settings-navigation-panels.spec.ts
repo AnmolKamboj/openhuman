@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import { bootAuthenticatedPage, waitForAppReady } from '../helpers/core-rpc';
 
@@ -50,10 +50,34 @@ const PANELS = [
   { id: 'appearance', route: 'appearance', heading: 'Appearance', marker: 'font-size-slider' },
   { id: 'privacy', route: 'privacy', heading: 'Privacy', marker: 'privacy-mode-options' },
   { id: 'devices', route: 'devices', heading: 'Devices', marker: null, text: 'Pair iPhone' },
-  { id: 'security', route: 'security', heading: 'Security', marker: null, text: 'Retry keychain detection' },
-  { id: 'notifications', route: 'notifications', heading: 'Notifications', marker: null, text: 'Categories' },
-  { id: 'profiles', route: 'profiles', heading: 'Agent Profiles', marker: null, text: 'New profile' },
-  { id: 'agent-access', route: 'agent-access', heading: 'Agent OS access', marker: null, text: 'View approval history' },
+  {
+    id: 'security',
+    route: 'security',
+    heading: 'Security',
+    marker: null,
+    text: 'Retry keychain detection',
+  },
+  {
+    id: 'notifications',
+    route: 'notifications',
+    heading: 'Notifications',
+    marker: null,
+    text: 'Categories',
+  },
+  {
+    id: 'profiles',
+    route: 'profiles',
+    heading: 'Agent Profiles',
+    marker: null,
+    text: 'New profile',
+  },
+  {
+    id: 'agent-access',
+    route: 'agent-access',
+    heading: 'Agent OS access',
+    marker: null,
+    text: 'View approval history',
+  },
   // Sandbox is a desktop-only panel: in the web lane its body is the
   // desktop-only notice, not the Docker fields. Asserting what this build
   // actually renders, rather than what the Tauri build would.

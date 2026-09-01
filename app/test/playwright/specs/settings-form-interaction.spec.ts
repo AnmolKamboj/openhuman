@@ -1,6 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
-import { bootAuthenticatedPage, dismissWalkthroughIfPresent, waitForAppReady } from '../helpers/core-rpc';
+import {
+  bootAuthenticatedPage,
+  dismissWalkthroughIfPresent,
+  waitForAppReady,
+} from '../helpers/core-rpc';
 
 /**
  * Real keyboard interaction with settings text fields.

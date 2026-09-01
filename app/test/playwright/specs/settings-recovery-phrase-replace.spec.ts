@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import {
   bootAuthenticatedPage,
@@ -98,9 +98,7 @@ async function ensureConfiguredWallet(page: Page) {
 
     // Wait on the CORE, not the DOM: the saved-note is transient and the panel
     // re-renders as the wallet lands.
-    await expect
-      .poll(async () => (await walletState()).configured, { timeout: 45_000 })
-      .toBe(true);
+    await expect.poll(async () => (await walletState()).configured, { timeout: 45_000 }).toBe(true);
   }
 
   // Re-enter so the panel reads the now-configured status from a clean mount.
