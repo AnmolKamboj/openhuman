@@ -80,14 +80,23 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, v] = await Promise.all([getTokenjuiceSettings(), getTokenjuiceSavings()]);
+        const s = await getTokenjuiceSettings();
         if (cancelled) return;
         setSettings(s);
-        setSavings(v);
         setMinTokensInput(String(s.ccr_min_tokens));
         savedMinTokensRef.current = s.ccr_min_tokens;
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        // Settings failure disables all controls — don't bother loading savings.
+        return;
+      }
+      // Load savings independently: a savings failure must not prevent the
+      // configuration controls from becoming interactive.
+      try {
+        const v = await getTokenjuiceSavings();
+        if (!cancelled) setSavings(v);
+      } catch {
+        // Non-fatal: savings stats stay blank; user can refresh manually.
       }
     };
     void load();
