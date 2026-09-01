@@ -69,6 +69,11 @@ async function deleteFromCore(id: string) {
 }
 
 test.describe('Agent profiles — create', () => {
+  // These tests share one hard-coded profile id against a single core, so they
+  // must not interleave: a parallel worker's afterEach delete can land between
+  // another test's create and its assertion. Serialising the describe is the
+  // fix that keeps the id stable and readable (tinysweeper, test-isolation).
+  test.describe.configure({ mode: 'serial' });
   const NAME = 'W1 Browser Profile';
   const ID = 'w1-browser-profile';
 
@@ -132,6 +137,11 @@ test.describe('Agent profiles — create', () => {
 });
 
 test.describe('Agent profiles — activate and delete', () => {
+  // These tests share one hard-coded profile id against a single core, so they
+  // must not interleave: a parallel worker's afterEach delete can land between
+  // another test's create and its assertion. Serialising the describe is the
+  // fix that keeps the id stable and readable (tinysweeper, test-isolation).
+  test.describe.configure({ mode: 'serial' });
   const NAME = 'W1 Lifecycle Profile';
   const ID = 'w1-lifecycle-profile';
 
@@ -190,7 +200,11 @@ test.describe('Agent profiles — activate and delete', () => {
     await row(page, NAME).getByText('Edit').click();
 
     await expect(page.getByLabel('Name', { exact: true })).toHaveValue(NAME, { timeout: 30_000 });
-    // The id is read-only in edit mode — there is no ID field to type into.
+    // Edit mode renders the id as a non-editable `<code>`, not a read-only input:
+    // `ProfileEditorPage.tsx:224-229` branches on `isCreate` and only the create
+    // branch renders a `SettingsTextField` with an `aria-label`. So there is no
+    // labelled control to find and the count is 0, not 1 (tinysweeper flagged this
+    // as possibly a hidden-but-present field; it is genuinely absent).
     await expect(page.getByLabel('ID', { exact: true })).toHaveCount(0);
   });
 });
