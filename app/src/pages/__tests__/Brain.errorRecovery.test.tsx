@@ -174,12 +174,24 @@ describe('Brain graph — transient failure recovery', () => {
     // error — this test goes red and must be rewritten to assert whichever
     // was chosen. That is the intent: right now the swallow is invisible.
     //
-    // The alert assertion below is STRUCTURAL, not behavioural: the render is
-    // `graph ? <graph> : error ? <alert> : null`, so with `graph` truthy the
-    // alert branch is unreachable whatever `error` holds. That unreachability
-    // IS the defect, which is why it is asserted here and was deleted from the
-    // recovery test above (where it proved nothing) — thanks to @YellowSnnowmann
-    // for catching the difference.
+    // The alert assertion below looks like the one deleted from the recovery
+    // test above, and the difference is FALSIFIABILITY, not intent.
+    //
+    // Up there, the alert was absent after a SUCCESSFUL recovery — and it would
+    // have been absent whether or not `setError(null)` ran, in both the broken
+    // and the fixed product. No change to `Brain.tsx` could have made it fail,
+    // which is what made it worthless.
+    //
+    // Here the alert is absent after a FAILED refresh, and it is absent
+    // *because of BUG-W4-3*: `graph ? <graph> : error ? <alert> : null` cannot
+    // reach the alert branch while `graph` stays truthy, and the catch at
+    // `Brain.tsx:108-112` never clears `graph`. Fix that — surface the error
+    // beside the stale data, or clear `graph` on error — and an alert appears
+    // and this line fails. It is the notification, which is exactly the job.
+    //
+    // Thanks to @YellowSnnowmann for forcing the distinction; I had only
+    // asserted "the unreachability is the defect", which is not the same
+    // argument.
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:3');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
