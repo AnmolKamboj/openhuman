@@ -50,15 +50,9 @@ vi.mock('./pages/WebCallbackPage', () => ({ default: () => <div /> }));
 
 // The pages this file actually asserts on. Each renders a probe that reports
 // the landing location, so an assertion failure names the URL we landed on.
-vi.mock('./pages/Skills', () => ({
-  default: () => <div data-testid="page">connections</div>,
-}));
-vi.mock('./pages/FlowsPage', () => ({
-  default: () => <div data-testid="page">flows</div>,
-}));
-vi.mock('./pages/Activity', () => ({
-  default: () => <div data-testid="page">activity</div>,
-}));
+vi.mock('./pages/Skills', () => ({ default: () => <div data-testid="page">connections</div> }));
+vi.mock('./pages/FlowsPage', () => ({ default: () => <div data-testid="page">flows</div> }));
+vi.mock('./pages/Activity', () => ({ default: () => <div data-testid="page">activity</div> }));
 vi.mock('./pages/WorkflowsRun', () => ({
   default: () => <div data-testid="page">workflows-run</div>,
 }));
