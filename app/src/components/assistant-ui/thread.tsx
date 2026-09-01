@@ -859,6 +859,19 @@ const UserActionBar: FC = () => {
   // appears by itself the day the adapter grows `onEdit`.
   const { canEdit } = useAuiEditCapabilities();
 
+  // Hoisted out of the JSX rather than written as `{canEdit && (…)}` inline: a
+  // bare JSX logical expression emits no coverage record on its own line, so
+  // `diff-cover` reported the gate as an uncovered changed line even while the
+  // v8 report showed the surrounding function fully exercised. As a `const` it
+  // is an ordinary statement, instrumented like any other.
+  const editAction = canEdit ? (
+    <ActionBarPrimitive.Edit asChild>
+      <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
+        <PencilIcon />
+      </TooltipIconButton>
+    </ActionBarPrimitive.Edit>
+  ) : null;
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -869,13 +882,7 @@ const UserActionBar: FC = () => {
           <CopyIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      {canEdit && (
-        <ActionBarPrimitive.Edit asChild>
-          <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
-            <PencilIcon />
-          </TooltipIconButton>
-        </ActionBarPrimitive.Edit>
-      )}
+      {editAction}
     </ActionBarPrimitive.Root>
   );
 };
