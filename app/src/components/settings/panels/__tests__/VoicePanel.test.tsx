@@ -859,6 +859,27 @@ describe('VoicePanel', () => {
     expect(screen.getByTestId('voice-provider-key-modal')).toBeInTheDocument();
   });
 
+  it('renders a thrown Test Key error without saving the key', async () => {
+    // A rejected RPC (transport dead, core down) takes the `catch` branch,
+    // which is a different path from a resolved `{ ok: false }` verdict.
+    vi.mocked(testVoiceProvider).mockRejectedValueOnce(new Error('core unreachable'));
+
+    renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+    await screen.findByTestId('voice-providers-section');
+    fireEvent.click(screen.getByTestId('voice-provider-chip-elevenlabs'));
+    await screen.findByTestId('voice-provider-key-modal');
+
+    fireEvent.change(screen.getByPlaceholderText(/sk/i), {
+      target: { value: 'sk-key-for-a-dead-core' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Test Key$/i }));
+
+    expect(await screen.findByText(/core unreachable/i)).toBeInTheDocument();
+    expect(screen.getByTestId('voice-provider-key-modal')).toBeInTheDocument();
+    expect(vi.mocked(setVoiceProviderKey)).not.toHaveBeenCalled();
+  });
+
   it('discards an in-flight Test Key result when the key is edited', async () => {
     // The key field stays editable during a test (it is disabled only while
     // *saving*). Without the request-id guard, key A's verdict lands next to
