@@ -128,6 +128,21 @@ impl MemoryProvider for RecordingProvider {
     fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
         Some(self)
     }
+    fn as_document_ingest(&self) -> Option<&dyn MemoryDocumentIngest> {
+        Some(self)
+    }
+    fn as_conversation_ingest(&self) -> Option<&dyn MemoryConversationIngest> {
+        Some(self)
+    }
+    fn as_learning_ingest(&self) -> Option<&dyn MemoryLearningIngest> {
+        Some(self)
+    }
+    fn as_event_ingest(&self) -> Option<&dyn MemoryEventIngest> {
+        Some(self)
+    }
+    fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
+        Some(self)
+    }
 }
 
 // The two families tinymemory v1.7.0 added. `capabilities()` above answers
@@ -620,5 +635,94 @@ impl MemoryScoring for RecordingProvider {
     async fn embedder_slug(&self) -> Result<String, MemoryError> {
         self.record(Call::plain("scoring.embedder_slug"));
         Ok(String::new())
+    }
+}
+
+// ── The v1.13.7 typed-ingestion round + Answer ──────────────────────────────
+// Same contract as every family above: `capabilities()` answers all(), so the
+// audit demands a live accessor and a recording impl for each.
+
+#[async_trait]
+impl MemoryDocumentIngest for RecordingProvider {
+    async fn ingest_document(&self, document: IngestItem) -> Result<IngestOutcome, MemoryError> {
+        self.record(Call {
+            method: "document_ingest.ingest_document".into(),
+            content: Some(document.content),
+            taint: Some(document.taint),
+            scoped: None,
+        });
+        Ok(IngestOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryConversationIngest for RecordingProvider {
+    async fn ingest_conversation(
+        &self,
+        messages: Vec<IngestItem>,
+    ) -> Result<IngestOutcome, MemoryError> {
+        for message in messages {
+            self.record(Call {
+                method: "conversation_ingest.ingest_conversation".into(),
+                content: Some(message.content),
+                taint: Some(message.taint),
+                scoped: None,
+            });
+        }
+        Ok(IngestOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryLearningIngest for RecordingProvider {
+    async fn ingest_learning(
+        &self,
+        _learning: tinymemory_api::learning::LearningCandidate,
+    ) -> Result<IngestOutcome, MemoryError> {
+        self.record(Call {
+            method: "learning_ingest.ingest_learning".into(),
+            content: None,
+            taint: None,
+            scoped: None,
+        });
+        Ok(IngestOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryEventIngest for RecordingProvider {
+    async fn ingest_event(
+        &self,
+        _event: crate::openhuman::memory::api::provider::operations::RawMemoryEvent,
+    ) -> Result<IngestOutcome, MemoryError> {
+        self.record(Call {
+            method: "event_ingest.ingest_event".into(),
+            content: None,
+            taint: None,
+            scoped: None,
+        });
+        Ok(IngestOutcome::default())
+    }
+}
+
+#[async_trait]
+impl MemoryAnswer for RecordingProvider {
+    async fn answer(
+        &self,
+        _request: crate::openhuman::memory::api::provider::operations::AnswerRequest,
+    ) -> Result<crate::openhuman::memory::api::provider::operations::AnswerResponse, MemoryError>
+    {
+        self.record(Call {
+            method: "answer.answer".into(),
+            content: None,
+            taint: None,
+            scoped: None,
+        });
+        Ok(crate::openhuman::memory::api::provider::operations::AnswerResponse {
+            answer: String::new(),
+            model: None,
+            citations: Vec::new(),
+            steps: Vec::new(),
+        })
     }
 }
