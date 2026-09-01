@@ -28,6 +28,7 @@ import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button
 import { Button } from '@/components/assistant-ui/ui/button';
 import { Skeleton } from '@/components/assistant-ui/ui/skeleton';
 import ModelQualityPill from '@/components/chat/ModelQualityPill';
+import { useAuiEditCapabilities } from '@/features/conversations/components/aui/auiThreadState';
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -848,6 +849,16 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
+  // Edit is offered only when the bound runtime can honour it. The
+  // external-store adapter supplies `onNew` / `onCancel` and neither `onEdit`
+  // nor `setMessages`, so assistant-ui reports `edit: false` and
+  // `EditComposer` below never renders — the button was clickable and did
+  // nothing (#5897).
+  //
+  // Gated on the capability rather than hard-coded off, so the affordance
+  // appears by itself the day the adapter grows `onEdit`.
+  const { canEdit } = useAuiEditCapabilities();
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -858,11 +869,13 @@ const UserActionBar: FC = () => {
           <CopyIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
-          <PencilIcon />
-        </TooltipIconButton>
-      </ActionBarPrimitive.Edit>
+      {canEdit && (
+        <ActionBarPrimitive.Edit asChild>
+          <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
+            <PencilIcon />
+          </TooltipIconButton>
+        </ActionBarPrimitive.Edit>
+      )}
     </ActionBarPrimitive.Root>
   );
 };
@@ -895,6 +908,15 @@ const EditComposer: FC = () => {
 };
 
 const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({ className, ...rest }) => {
+  // The same defect class as the Edit button above, one step from biting: this
+  // is rendered unconditionally at both call sites and is invisible today only
+  // because `hideWhenSingleBranch` happens to hold — the adapter implements no
+  // `setMessages`, so there is never more than one branch. That is
+  // assistant-ui's guard doing the work this app intended to do itself, and it
+  // would become a second dead control if the prop ever went away.
+  const { canSwitchToBranch } = useAuiEditCapabilities();
+  if (!canSwitchToBranch) return null;
+
   return (
     <BranchPickerPrimitive.Root
       hideWhenSingleBranch
