@@ -621,7 +621,6 @@ fn prompt_sections_cover_dynamic_roster_identity_and_subagent_edges() {
         SubagentRenderOptions {
             include_identity: true,
             include_safety_preamble: true,
-            include_skills_catalog: false,
             include_profile: false,
             include_memory_md: true,
         },

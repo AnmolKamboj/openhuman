@@ -26,7 +26,6 @@ fn profile_md_and_memory_md_are_capped_at_user_file_max_chars() {
         SubagentRenderOptions {
             include_identity: false,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: true,
         },
@@ -70,7 +69,6 @@ fn rendered_subagent_system_prompt_is_byte_stable_across_repeat_calls() {
     let opts = SubagentRenderOptions {
         include_identity: false,
         include_safety_preamble: false,
-        include_skills_catalog: false,
         include_profile: true,
         include_memory_md: true,
     };
@@ -168,7 +166,6 @@ fn for_subagent_builder_injects_user_files_even_when_identity_omitted() {
         "You are a specialist agent.".into(),
         true, // omit_identity  — drops SOUL/IDENTITY preamble
         true, // omit_safety_preamble
-        true, // omit_skills_catalog
     );
     let rendered = builder.build(&ctx).unwrap();
 
