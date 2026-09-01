@@ -41,7 +41,9 @@ pub use direct_mode::{composio_clear_api_key, composio_get_mode, composio_set_ap
 pub(crate) use error_utils::{report_composio_op_error, should_forward_tags};
 pub use execute::composio_execute;
 #[cfg(test)]
-pub(crate) use providers_ops::completed_sync_detail;
+pub(crate) use providers_ops::{
+    completed_sync_detail, completed_sync_detail_for_test, next_pass_budget,
+};
 pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,
     composio_sync_budgeted, composio_sync_for_source, RefreshIdentitiesReport, SYNC_PASS_MAX_ITEMS,

@@ -1796,6 +1796,15 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             // is represented by that same partition; Portability is RPC-less.
             Capability::Core => true,
             Capability::Recall | Capability::Portability => false,
+            // v1.13.7's ingestion round: engine-side families (typed document
+            // /conversation/learning/event ingest and the answer surface) the
+            // host reaches through existing controllers, not per-family RPC
+            // namespaces — no controller carries these tags yet.
+            Capability::DocumentIngest
+            | Capability::ConversationIngest
+            | Capability::LearningIngest
+            | Capability::EventIngest
+            | Capability::Answer => false,
             // Folded into `Tree`: the tree registry's ~25 methods span tree,
             // entities, graph and maintenance and are tagged as ONE family.
             // See the push site in `all.rs` for why that trade was chosen.

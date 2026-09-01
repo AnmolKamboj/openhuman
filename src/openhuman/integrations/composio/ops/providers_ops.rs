@@ -42,13 +42,41 @@ const SOURCE_KIND: &str = "composio";
 /// a call means".
 pub const SYNC_PASS_MAX_ITEMS: usize = 500;
 
+/// The next pass's item budget, or `None` when the configured per-run cap is
+/// spent and the run should end.
+///
+/// Pure on purpose: this is the arithmetic the budgeted loop stands on —
+/// unlimited slices at the pass ceiling, a cap slices to `min(remaining,
+/// ceiling)`, an exhausted cap stops — and a unit test can hold it still.
+pub(crate) fn next_pass_budget(source_max_items: Option<u32>, total_written: u64) -> Option<usize> {
+    match source_max_items {
+        None => Some(SYNC_PASS_MAX_ITEMS),
+        Some(cap) => {
+            let remaining = u64::from(cap).saturating_sub(total_written);
+            if remaining == 0 {
+                None
+            } else {
+                Some(
+                    usize::try_from(remaining)
+                        .unwrap_or(usize::MAX)
+                        .min(SYNC_PASS_MAX_ITEMS),
+                )
+            }
+        }
+    }
+}
+
 /// The `completed` stage's detail string.
 ///
 /// A parse contract, not prose: the Sources UI extracts the count with
 /// `/ingested\s+(\d+)\s+item/i` and falls back to a generic "up to date"
 /// when it cannot (#3295). Pinned by a unit test against that exact pattern.
-pub(crate) fn completed_sync_detail(total_written: u64) -> String {
-    format!("ingested {total_written} item(s)")
+pub(crate) fn completed_sync_detail(total_written: u64, more_pending: bool) -> String {
+    if more_pending {
+        format!("ingested {total_written} item(s), more pending — Sync again to continue")
+    } else {
+        format!("ingested {total_written} item(s)")
+    }
 }
 
 /// Aggregate result of [`composio_refresh_all_identities`].
@@ -296,20 +324,16 @@ pub async fn composio_sync_budgeted(
     tokio::spawn(async move {
         let mut total_written: u64 = 0;
         let mut passes = 0usize;
+        let mut more_pending = false;
         let outcome = loop {
             passes += 1;
             // The source's configured per-run cap wins over the pass ceiling:
             // a budget of 200 means one 200-item pass, not 50 passes of 500
-            // (review finding). `None` = unlimited, the loop's own bounds
-            // still apply.
-            let remaining_budget =
-                source_max_items.map(|cap| u64::from(cap).saturating_sub(total_written));
-            if remaining_budget == Some(0) {
+            // (review finding). `None` from the arithmetic = cap spent, and a
+            // spent cap is a completed run, not a failed one.
+            let Some(pass_budget) = next_pass_budget(source_max_items, total_written) else {
                 break Ok(());
-            }
-            let pass_budget = remaining_budget.map_or(SYNC_PASS_MAX_ITEMS, |remaining| {
-                (remaining as usize).min(SYNC_PASS_MAX_ITEMS)
-            });
+            };
             match run_sync_pass(
                 &config_for_run,
                 &toolkit_for_log,
@@ -321,6 +345,7 @@ pub async fn composio_sync_budgeted(
             {
                 Ok(pass) => {
                     total_written = total_written.saturating_add(u64::from(pass.written));
+                    more_pending = pass.more_pending;
                     tracing::info!(
                         toolkit = %toolkit_for_log,
                         connection_id = %connection_for_log,
@@ -335,13 +360,12 @@ pub async fn composio_sync_budgeted(
                         break Ok(());
                     }
                     if passes >= MAX_PASSES {
-                        // Not a failure of anything fetched — those pages are
-                        // ingested and the next click resumes — but claiming
-                        // `completed` would be the same lie one page earlier.
-                        break Err(format!(
-                            "paused after {passes} pages; ingested {total_written} item(s) so far \
-                             — click Sync again to continue"
-                        ));
+                        // The cap is pacing, not failure: everything fetched is
+                        // ingested and the next click resumes from the cursor.
+                        // Routing this through the failed stage put an error
+                        // toast on a working feature (review finding); the row
+                        // settles with the honest count and the remainder named.
+                        break Ok(());
                     }
                 }
                 Err(error) => break Err(error),
@@ -352,7 +376,10 @@ pub async fn composio_sync_budgeted(
                 // The detail is a parse contract, not prose: the Sources UI
                 // extracts the count with `/ingested\s+(\d+)\s+item/i` and
                 // falls back to a generic "up to date" when it cannot (#3295).
-                publish_stage("completed", Some(completed_sync_detail(total_written)));
+                publish_stage(
+                    "completed",
+                    Some(completed_sync_detail(total_written, more_pending)),
+                );
             }
             Err(error) => {
                 report_composio_op_error("sync", &anyhow::anyhow!("{error}"));
@@ -518,4 +545,11 @@ pub(crate) fn parse_sync_reason(raw: Option<&str>) -> OpResult<SyncReason> {
              'manual', 'periodic', 'connection_created'"
         )),
     }
+}
+
+/// Test window over the two-arg detail (the one-arg-era test path kept its
+/// name; this avoids re-plumbing the cfg(test) re-export).
+#[cfg(test)]
+pub(crate) fn completed_sync_detail_for_test(total: u64, more: bool) -> String {
+    completed_sync_detail(total, more)
 }

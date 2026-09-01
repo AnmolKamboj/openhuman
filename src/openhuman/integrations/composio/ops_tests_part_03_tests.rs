@@ -648,7 +648,8 @@ async fn composio_list_connections_returns_empty_when_direct_mode_no_key() {
 fn completed_sync_detail_matches_the_ui_parse_contract() {
     let re = regex::Regex::new(r"(?i)ingested\s+(\d+)\s+item").expect("ui parse regex");
     for count in [0u64, 1, 200, 25_000] {
-        let detail = crate::openhuman::integrations::composio::ops::completed_sync_detail(count);
+        let detail =
+            crate::openhuman::integrations::composio::ops::completed_sync_detail(count, false);
         let caps = re
             .captures(&detail)
             .unwrap_or_else(|| panic!("detail must parse: {detail}"));
@@ -679,4 +680,38 @@ fn sync_reasons_map_to_distinct_triggers() {
         );
     }
     assert_eq!(seen.len(), 3);
+}
+
+/// The budgeted loop's arithmetic, held still: unlimited slices at the pass
+/// ceiling, a cap slices to min(remaining, ceiling), a spent cap ends the run
+/// (review finding on #5932 — this is the PR's core behavioural change).
+#[test]
+fn next_pass_budget_slices_and_exhausts_the_configured_cap() {
+    use crate::openhuman::integrations::composio::ops::{next_pass_budget, SYNC_PASS_MAX_ITEMS};
+    // Unlimited: every pass gets the ceiling.
+    assert_eq!(next_pass_budget(None, 0), Some(SYNC_PASS_MAX_ITEMS));
+    assert_eq!(next_pass_budget(None, 1_000_000), Some(SYNC_PASS_MAX_ITEMS));
+    // A cap below the ceiling is one exact slice, then exhaustion.
+    assert_eq!(next_pass_budget(Some(200), 0), Some(200));
+    assert_eq!(next_pass_budget(Some(200), 200), None);
+    // A cap above the ceiling slices page by page and ends on the remainder.
+    assert_eq!(next_pass_budget(Some(1_200), 0), Some(SYNC_PASS_MAX_ITEMS));
+    assert_eq!(next_pass_budget(Some(1_200), 1_000), Some(200));
+    assert_eq!(next_pass_budget(Some(1_200), 1_200), None);
+    // Over-written past the cap (dedupe drift) still ends, never underflows.
+    assert_eq!(next_pass_budget(Some(100), 150), None);
+}
+
+/// Both detail variants keep the UI parse contract; the remainder text rides
+/// after the count, never inside it.
+#[test]
+fn completed_detail_keeps_the_contract_with_a_remainder() {
+    let re = regex::Regex::new(r"(?i)ingested\s+(\d+)\s+item").expect("ui parse regex");
+    let capped =
+        crate::openhuman::integrations::composio::ops::completed_sync_detail_for_test(7, true);
+    assert!(
+        re.captures(&capped).is_some(),
+        "capped detail parses: {capped}"
+    );
+    assert!(capped.contains("more pending"));
 }

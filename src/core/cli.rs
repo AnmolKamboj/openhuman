@@ -508,7 +508,14 @@ fn run_call_command(args: &[String]) -> Result<()> {
             // without this — the same per-process publish the memory and
             // tree-summarizer subcommand families already do.
             #[cfg(feature = "modules")]
-            if let Ok(config) = crate::openhuman::config::Config::load_or_init().await {
+            {
+                // Propagated, not discarded: a method that crosses the module
+                // binding would otherwise run against an unpublished policy
+                // and fail with the misleading "policy was never published"
+                // (review finding) — the config error is the true cause.
+                let config = crate::openhuman::config::Config::load_or_init()
+                    .await
+                    .map_err(|error| format!("load config for module policy: {error}"))?;
                 crate::openhuman::memory::host::install_memory_event_sink();
                 crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config));
             }
