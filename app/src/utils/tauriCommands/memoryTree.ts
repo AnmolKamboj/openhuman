@@ -1096,9 +1096,6 @@ export interface NamespaceSummariesResponse {
 export async function memoryNamespaceSummaries(): Promise<NamespaceSummariesResponse> {
   const resp = await callCoreRpc<
     NamespaceSummariesResponse | ResultEnvelope<NamespaceSummariesResponse>
-  >({
-    method: 'openhuman.memory_namespace_summaries',
-    params: {},
-  });
+  >({ method: 'openhuman.memory_namespace_summaries', params: {} });
   return unwrapResult(resp);
 }

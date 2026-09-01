@@ -5,7 +5,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { memoryNamespaceSummaries,
+import {
+  memoryNamespaceSummaries,
   memorySyncStatusList,
   type MemorySyncStatusRow,
   memoryTreePipelineStatus,
@@ -108,8 +109,7 @@ export function useMemoryTreeStatus(): {
     };
   }, [fetchOnce]);
 
-  return { status,
-    storedItems, integrations, loading, error, refresh: fetchOnce };
+  return { status, storedItems, integrations, loading, error, refresh: fetchOnce };
 }
 
 /**
