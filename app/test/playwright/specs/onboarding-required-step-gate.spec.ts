@@ -31,11 +31,17 @@ import { bootAuthenticatedPage, callCoreRpc, waitForAppReady } from '../helpers/
 const MOCK_ADMIN_BASE = `http://127.0.0.1:${process.env.E2E_MOCK_PORT || '18473'}`;
 
 async function resetMock(): Promise<void> {
-  await fetch(`${MOCK_ADMIN_BASE}/__admin/reset`, {
+  // Deliberately NOT swallowed. A failed reset leaves shared mock state from a
+  // previous test, and onboarding then runs against a fixture nobody chose —
+  // which surfaces as an unrelated assertion failure further down.
+  const response = await fetch(`${MOCK_ADMIN_BASE}/__admin/reset`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
-  }).catch(() => undefined);
+  });
+  if (!response.ok) {
+    throw new Error(`mock admin reset failed with HTTP ${response.status}`);
+  }
 }
 
 async function bootIntoOnboarding(page: Page, userId: string): Promise<void> {
@@ -133,7 +139,12 @@ test.describe('Onboarding — the runtime choice is a required step', () => {
       'openhuman.config_get_onboarding_completed',
       {}
     );
-    const value = typeof completed === 'boolean' ? completed : Boolean(completed?.result);
+    // `Boolean(completed?.result)` alone would turn a malformed response — one
+    // with no `result` at all — into `false` and quietly satisfy the assertion.
+    // Require an actual boolean first, so a shape change fails loudly here
+    // instead of being read as "onboarding is incomplete".
+    const value = typeof completed === 'boolean' ? completed : completed?.result;
+    expect(typeof value).toBe('boolean');
     expect(value).toBe(false);
   });
 });

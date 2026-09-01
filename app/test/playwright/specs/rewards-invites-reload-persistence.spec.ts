@@ -35,11 +35,17 @@ test.describe.configure({ timeout: 150_000 });
 const MOCK_ADMIN_BASE = `http://127.0.0.1:${process.env.E2E_MOCK_PORT || '18473'}`;
 
 async function mockAdmin(path: string, body: unknown): Promise<void> {
-  await fetch(`${MOCK_ADMIN_BASE}${path}`, {
+  // Errors propagate on purpose. Swallowing them lets a failed reset leave the
+  // shared mock stale, and the persistence result this file reports would then
+  // be about the previous test's fixture rather than this one's.
+  const response = await fetch(`${MOCK_ADMIN_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }).catch(() => undefined);
+  });
+  if (!response.ok) {
+    throw new Error(`mock admin ${path} failed with HTTP ${response.status}`);
+  }
 }
 
 const resetMock = () => mockAdmin('/__admin/reset', {});

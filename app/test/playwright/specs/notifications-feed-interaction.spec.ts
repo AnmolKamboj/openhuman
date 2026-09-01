@@ -230,6 +230,31 @@ test.describe.skip('Notifications — read state', () => {
       timeout: 10_000,
     });
 
+    // `toBeDisabled()` above only proves in-memory state. redux-persist queues
+    // its writes through an async `userScopedStorage.setItem`, so reloading
+    // immediately can race the write and re-read the pre-mark blob — which
+    // would look like "read state does not survive a reload" when in fact the
+    // reload simply happened first. Wait for the persisted payload to show the
+    // item as read before reloading.
+    const user = await page.evaluate(() => localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID'));
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(key => {
+            const raw = window.localStorage.getItem(key);
+            if (!raw) return false;
+            try {
+              const blob = JSON.parse(raw) as { items?: string };
+              const items = JSON.parse(blob.items ?? '[]') as Array<{ read?: boolean }>;
+              return items.length > 0 && items.every(item => item.read === true);
+            } catch {
+              return false;
+            }
+          }, `${user}:persist:notifications`),
+        { timeout: 10_000, message: 'the read state was never persisted' }
+      )
+      .toBe(true);
+
     await page.reload();
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);

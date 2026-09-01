@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -64,9 +64,22 @@ async function openSources(page: Page, user: string): Promise<void> {
   await expect(page.getByTestId('memory-sources')).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * Every corpus this file creates, so none is left behind in the OS temp
+ * directory. Each run would otherwise leak a directory of generated markdown.
+ */
+const createdCorpora: string[] = [];
+
+test.afterAll(() => {
+  for (const root of createdCorpora.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /** Absolute path on purpose — see the note above. */
 function makeCorpus(files: number): string {
   const root = mkdtempSync(join(tmpdir(), 'openhuman-pw-brain-'));
+  createdCorpora.push(root);
   mkdirSync(join(root, 'notes'), { recursive: true });
   for (let i = 0; i < files; i += 1) {
     writeFileSync(
@@ -90,8 +103,44 @@ async function addAndSync(label: string, files = 3): Promise<{ id: string; root:
   if (!id) throw new Error(`source ${label} was not created`);
   // `source_id`, not `id` — the core rejects the latter with
   // "missing required param 'source_id'". Cost the first run of this spec.
-  await callCoreRpc('openhuman.memory_sources_sync', { source_id: id });
+  try {
+    await callCoreRpc('openhuman.memory_sources_sync', { source_id: id });
+  } catch (error) {
+    throw classifyModuleFailure(error);
+  }
   return { id, root };
+}
+
+/**
+ * The memory engine is a downloaded cdylib, and the Playwright web harness does
+ * not stage it — `e2e-web-session.sh` packages and starts `openhuman-core` only,
+ * unlike the Rust E2E job which installs the checksum-pinned tinymemory module.
+ * With a cold module cache and no GitHub release access, `memory_sources_sync`
+ * fails with `module 'tinymemory' could not be loaded` before any UI assertion
+ * runs.
+ *
+ * That is infrastructure, not the behaviour under test, so it must not fail a
+ * developer's offline run. It must equally not pass silently in CI, where a
+ * missing module means this spec asserted nothing — the same void this file
+ * exists to close. So: skip locally, fail loudly in CI, and say which.
+ */
+function classifyModuleFailure(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const moduleUnavailable = /module '[^']*' could not be loaded|github-release refused/.test(
+    message
+  );
+
+  if (moduleUnavailable && !process.env.CI) {
+    test.skip(true, `memory module unavailable in this lane: ${message}`);
+  }
+  if (moduleUnavailable) {
+    return new Error(
+      'the tinymemory module is not staged in this lane, so the embedding-state ' +
+        'render cannot be exercised. Provision the checksum-pinned module here as ' +
+        `the Rust E2E job does, or move this spec to that lane. Underlying: ${message}`
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
 }
 
 async function statusFor(id: string): Promise<SourceStatus | undefined> {
@@ -100,6 +149,34 @@ async function statusFor(id: string): Promise<SourceStatus | undefined> {
     {}
   );
   return res.statuses.find(s => s.source_id === id);
+}
+
+/**
+ * Gate a test on the degraded precondition — loud in CI, quiet locally.
+ *
+ * `test.skip` alone is not safe here. If a lane has a working embeddings
+ * provider (or the sync settles before the poll), `chunks_pending` is 0, all
+ * three tests skip, and the file reports success having asserted nothing about
+ * the render path. That is the same shape as the incident this spec exists for:
+ * the incident was a correct verdict rendered into a void; a silently skipped
+ * spec is a correct assertion executed into a void.
+ *
+ * So in CI the absence of the precondition is a FAILURE — a lane that stops
+ * producing the degraded state must be fixed or the spec moved, not quietly
+ * passed. Locally it still skips, because the memory engine is a downloaded
+ * cdylib and a developer without release access genuinely cannot reach the
+ * state.
+ */
+function requireDegraded(status: SourceStatus | undefined): void {
+  const degraded = (status?.chunks_pending ?? 0) > 0;
+  if (!degraded && process.env.CI) {
+    throw new Error(
+      'no unembedded chunks: this lane cannot exercise the degraded-state render. ' +
+        'Stage the memory module without an embeddings provider, or move this spec ' +
+        'to a lane that can.'
+    );
+  }
+  test.skip(!degraded, 'this core embedded every chunk, so there is no degraded state to surface');
 }
 
 test.describe('Brain — the UI tells the truth about embedding state', () => {
@@ -124,10 +201,7 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       )
       .toBeGreaterThan(0);
 
-    test.skip(
-      (status?.chunks_pending ?? 0) === 0,
-      'this core embedded every chunk, so there is no degraded state to surface'
-    );
+    requireDegraded(status);
 
     await openSources(page, 'pw-brain-unembedded');
 
@@ -152,12 +226,15 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
 
     let status: SourceStatus | undefined;
     await expect
-      .poll(async () => {
-        status = await statusFor(id);
-        return status?.chunks_synced ?? 0;
-      }, { timeout: 60_000 })
+      .poll(
+        async () => {
+          status = await statusFor(id);
+          return status?.chunks_synced ?? 0;
+        },
+        { timeout: 60_000 }
+      )
       .toBeGreaterThan(0);
-    test.skip((status?.chunks_pending ?? 0) === 0, 'no degraded state on this core');
+    requireDegraded(status);
 
     await openSources(page, 'pw-brain-reload');
     const warning = page.getByTestId(`memory-source-pipeline-warning-${id}`);
@@ -180,12 +257,15 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
 
     let status: SourceStatus | undefined;
     await expect
-      .poll(async () => {
-        status = await statusFor(id);
-        return status?.chunks_synced ?? 0;
-      }, { timeout: 60_000 })
+      .poll(
+        async () => {
+          status = await statusFor(id);
+          return status?.chunks_synced ?? 0;
+        },
+        { timeout: 60_000 }
+      )
       .toBeGreaterThan(0);
-    test.skip((status?.chunks_pending ?? 0) === 0, 'no degraded state on this core');
+    requireDegraded(status);
 
     await openSources(page, 'pw-brain-health');
     await expect(page.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
