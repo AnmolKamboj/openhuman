@@ -637,3 +637,46 @@ async fn composio_list_connections_returns_empty_when_direct_mode_no_key() {
         outcome.logs
     );
 }
+
+// ── sync stage-event contracts (#5932) ───────────────────────────────────────
+
+/// The completed-stage detail is a parse contract with the Sources UI, which
+/// extracts the count via `/ingested\s+(\d+)\s+item/i` and shows a generic
+/// "up to date" when the pattern misses (#3295). This is the exact regex,
+/// ported, against the exact producer.
+#[test]
+fn completed_sync_detail_matches_the_ui_parse_contract() {
+    let re = regex::Regex::new(r"(?i)ingested\s+(\d+)\s+item").expect("ui parse regex");
+    for count in [0u64, 1, 200, 25_000] {
+        let detail = crate::openhuman::integrations::composio::ops::completed_sync_detail(count);
+        let caps = re
+            .captures(&detail)
+            .unwrap_or_else(|| panic!("detail must parse: {detail}"));
+        assert_eq!(
+            caps[1].parse::<u64>().unwrap(),
+            count,
+            "count survives: {detail}"
+        );
+    }
+}
+
+/// Every parsed sync reason is a distinct event trigger — the stage events
+/// must not collapse periodic and connection-created syncs into "manual"
+/// (review finding on #5932).
+#[test]
+fn sync_reasons_map_to_distinct_triggers() {
+    use crate::openhuman::integrations::composio::providers::SyncReason;
+    let all = [
+        SyncReason::Manual,
+        SyncReason::Periodic,
+        SyncReason::ConnectionCreated,
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for reason in all {
+        assert!(
+            seen.insert(reason.as_str().to_string()),
+            "duplicate trigger"
+        );
+    }
+    assert_eq!(seen.len(), 3);
+}

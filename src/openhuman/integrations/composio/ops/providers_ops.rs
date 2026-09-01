@@ -34,6 +34,23 @@ use tinyconnectors_bus::records::{ConnectorSyncRequest, ConnectorSyncResponse};
 /// Slack are both Composio records; the *toolkit* lives in the source id.
 const SOURCE_KIND: &str = "composio";
 
+/// Per-pass item budget handed to the connector's `Sync` member.
+///
+/// One pass is one budgeted slice of the account; the pass loop in
+/// `composio_sync_for_source` multiplies this by its `MAX_PASSES` bound into a
+/// worst case of 25k items per click, instead of "whatever the module decides
+/// a call means".
+const SYNC_PASS_MAX_ITEMS: usize = 500;
+
+/// The `completed` stage's detail string.
+///
+/// A parse contract, not prose: the Sources UI extracts the count with
+/// `/ingested\s+(\d+)\s+item/i` and falls back to a generic "up to date"
+/// when it cannot (#3295). Pinned by a unit test against that exact pattern.
+pub(crate) fn completed_sync_detail(total_written: u64) -> String {
+    format!("ingested {total_written} item(s)")
+}
+
 /// Aggregate result of [`composio_refresh_all_identities`].
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefreshIdentitiesReport {
@@ -233,9 +250,10 @@ pub async fn composio_sync_for_source(
     let reason_for_task = reason.as_str().to_string();
     let source_for_task = source_id.clone();
 
+    let trigger_for_task = reason.as_str().to_string();
     let publish_stage = move |stage: &str, detail: Option<String>| {
         crate::core::bus::BUS.publish(crate::core::events::DomainEvent::MemorySyncStageChanged {
-            trigger: "manual".to_string(),
+            trigger: trigger_for_task.clone(),
             stage: stage.to_string(),
             provider: Some(toolkit_for_task.clone()),
             connection_id: Some(connection_for_task.clone()),
@@ -304,10 +322,7 @@ pub async fn composio_sync_for_source(
                 // The detail is a parse contract, not prose: the Sources UI
                 // extracts the count with `/ingested\s+(\d+)\s+item/i` and
                 // falls back to a generic "up to date" when it cannot (#3295).
-                publish_stage(
-                    "completed",
-                    Some(format!("ingested {total_written} item(s)")),
-                );
+                publish_stage("completed", Some(completed_sync_detail(total_written)));
             }
             Err(error) => {
                 report_composio_op_error("sync", &anyhow::anyhow!("{error}"));
@@ -384,6 +399,11 @@ pub(crate) async fn run_sync_pass(
             toolkit: toolkit.to_string(),
             connection_id: Some(connection_id.to_string()),
             reason: Some(reason.to_string()),
+            // One pass is one budgeted slice, not "the whole account": without
+            // a budget the module pages until its own limits and the caller's
+            // pass loop bounds nothing (review finding). complete=false at the
+            // budget → more_pending → the loop (or the next click) resumes.
+            max_items: Some(SYNC_PASS_MAX_ITEMS),
             ..ConnectorSyncRequest::default()
         },
     )
