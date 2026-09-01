@@ -40,6 +40,7 @@ pub use connections::{composio_authorize, composio_delete_connection, composio_l
 pub use direct_mode::{composio_clear_api_key, composio_get_mode, composio_set_api_key};
 pub(crate) use error_utils::{report_composio_op_error, should_forward_tags};
 pub use execute::composio_execute;
+#[cfg(test)]
 pub(crate) use providers_ops::completed_sync_detail;
 pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,

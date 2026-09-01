@@ -695,3 +695,21 @@ impl MemorySourceSync for ModuleMemoryProvider {
         )
     }
 }
+
+impl ModuleMemoryProvider {
+    /// Open a bounded manual-override window on the module's scheduler gate.
+    ///
+    /// Not part of the `MemoryProvider` contract traits: the override is a
+    /// host-initiated maintenance action, not a memory capability, and adding
+    /// it to `tinymemory-api` would put a consent-bypass lever into every
+    /// embedding's vocabulary. The module serves it as a plain member
+    /// (`OverrideSchedulerGate`), and only this host client names it.
+    pub(crate) async fn override_scheduler_gate(&self, seconds: u64) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "override_scheduler_gate",
+            methods::OVERRIDE_SCHEDULER_GATE,
+            (seconds,)
+        )
+    }
+}

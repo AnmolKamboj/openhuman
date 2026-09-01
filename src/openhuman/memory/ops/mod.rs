@@ -54,8 +54,9 @@ pub use kv_graph::{
 pub use learn::{memory_learn_all, LearnAllParams, LearnAllResult, NamespaceLearnResult};
 pub use provider::{memory_provider_status, memory_subsystem_status};
 pub use sync::{
-    memory_ingestion_status, memory_sync_all, memory_sync_channel, IngestionStatusResult,
-    SyncAllResult, SyncChannelParams, SyncChannelResult,
+    memory_ingestion_status, memory_scheduler_override, memory_sync_all, memory_sync_channel,
+    IngestionStatusResult, SchedulerOverrideResult, SyncAllResult, SyncChannelParams,
+    SyncChannelResult,
 };
 pub use tool_memory::{
     tool_rule_delete, tool_rule_get, tool_rule_list, tool_rule_put, tool_rules_for_prompt,

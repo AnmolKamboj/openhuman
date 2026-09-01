@@ -392,6 +392,40 @@ impl RuntimeCallbacks {
         Ok(())
     }
 
+    /// The host's background-AI policy, as wire strings.
+    ///
+    /// Answered from `cron::scheduler_gate` — the same process-global the
+    /// in-process `OpenHumanSchedulerGate` seam reads — so mode
+    /// (`auto`/`always_on`/`off`), battery, CPU pressure and signed-out state
+    /// all reach a loaded module. The module polls this and caches it; see
+    /// `BusSchedulerGate` in tinymemory-module. The tier crosses as a string
+    /// pair rather than the `Policy` enum so the wire stays additive: a tier
+    /// this host grows later degrades to `normal` on an older module instead
+    /// of failing decode.
+    async fn scheduler_policy(&self) -> tinybus::Result<(String, Option<String>)> {
+        use tinymemory_api::host::{PauseReason, Policy};
+        Ok(
+            match crate::openhuman::cron::scheduler_gate::gate::current_policy() {
+                Policy::Aggressive => ("aggressive".to_string(), None),
+                Policy::Normal => ("normal".to_string(), None),
+                Policy::Throttled => ("throttled".to_string(), None),
+                Policy::Paused { reason } => (
+                    "paused".to_string(),
+                    Some(
+                        match reason {
+                            PauseReason::UserDisabled => "user_disabled",
+                            PauseReason::OnBattery => "on_battery",
+                            PauseReason::CpuPressure => "cpu_pressure",
+                            PauseReason::SignedOut => "signed_out",
+                            PauseReason::Unknown => "unknown",
+                        }
+                        .to_string(),
+                    ),
+                ),
+            },
+        )
+    }
+
     async fn extract_spacy(&self, text: String) -> tinybus::Result<SpacyResponse> {
         let response = crate::openhuman::runtime::python_server::extract_spacy(&self.0, &text)
             .await

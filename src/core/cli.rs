@@ -500,7 +500,20 @@ fn run_call_command(args: &[String]) -> Result<()> {
         .max_blocking_threads(crate::core::runtime::MAX_BLOCKING_THREADS)
         .build()?;
     let value = rt
-        .block_on(async { invoke_method(default_state(), &method, params).await })
+        .block_on(async {
+            // A raw call is its own process: the server publishes the module
+            // host policy during boot, and a method that crosses the memory
+            // module binding (since the round-2 migration, most of them)
+            // fails with "the module host policy was never published"
+            // without this — the same per-process publish the memory and
+            // tree-summarizer subcommand families already do.
+            #[cfg(feature = "modules")]
+            if let Ok(config) = crate::openhuman::config::Config::load_or_init().await {
+                crate::openhuman::memory::host::install_memory_event_sink();
+                crate::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(config));
+            }
+            invoke_method(default_state(), &method, params).await
+        })
         .map_err(anyhow::Error::msg)?;
 
     // Output the result as pretty-printed JSON to stdout.

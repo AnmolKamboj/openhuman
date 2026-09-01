@@ -360,3 +360,49 @@ async fn ingestion_status_for_config(config: &Config) -> Result<IngestionStatusR
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod tests;
+
+/// `openhuman.memory_scheduler_override` result.
+#[derive(Debug, serde::Serialize)]
+pub struct SchedulerOverrideResult {
+    pub overridden: bool,
+    pub seconds: u64,
+}
+
+/// `openhuman.memory_scheduler_override` — open a bounded manual-override
+/// window on the module's scheduler gate.
+///
+/// The gate's pauses (`mode = off`, signed-out, battery) protect the user
+/// from background cost they did not ask for; this RPC is the sanctioned
+/// exception for work they explicitly did — "process my memory now" while
+/// the gate is off (openhuman#5935). The window is clamped module-side to an
+/// hour; the default asks for ten minutes.
+pub async fn memory_scheduler_override(
+    seconds: Option<u64>,
+) -> Result<RpcOutcome<SchedulerOverrideResult>, String> {
+    let seconds = seconds.unwrap_or(600).min(3600);
+    #[cfg(feature = "modules")]
+    {
+        crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy()
+            .override_scheduler_gate(seconds)
+            .await
+            .map_err(|error| format!("scheduler override: {error}"))?;
+        Ok(RpcOutcome::new(
+            SchedulerOverrideResult {
+                overridden: true,
+                seconds,
+            },
+            vec![format!(
+                "memory: scheduler gate overridden for {seconds}s — background maintenance runs \
+                 now regardless of the gate's pause"
+            )],
+        ))
+    }
+    #[cfg(not(feature = "modules"))]
+    {
+        Err(
+            "scheduler override needs the modules feature: the gate lives in the loaded memory \
+             module"
+                .to_string(),
+        )
+    }
+}
