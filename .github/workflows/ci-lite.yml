@@ -853,7 +853,11 @@ jobs:
             >> "$GITHUB_ENV"
           echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
             >> "$GITHUB_ENV"
-          echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors_module.so" \
+          # NOTE the artifact's library is `libtinyconnectors.so` — this release
+          # predates the `lib<id>_module.so` naming the other modules use; the
+          # name comes from the tarball's own modules.toml, not from
+          # platform_library_name().
+          echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors.so" \
             >> "$GITHUB_ENV"
 
       - name: Run TinyJuice host-module regression
