@@ -28,6 +28,7 @@ import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button
 import { Button } from '@/components/assistant-ui/ui/button';
 import { Skeleton } from '@/components/assistant-ui/ui/skeleton';
 import ModelQualityPill from '@/components/chat/ModelQualityPill';
+import { useAuiEditCapabilities } from '@/features/conversations/components/aui/auiThreadState';
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -359,7 +360,64 @@ const Composer: FC<{
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
             data-slot="aui_composer-shell"
-            className="border-line focus-within:border-line-strong data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
+            // Keyed to `content-faint` rather than `line`/`line-strong`, which
+            // sat too close to the composer's own surface to read as an edge at
+            // all; `content-faint` is a real step along the grey ramp in both
+            // themes and the alpha then pulls it back.
+            //
+            // The border is deliberately fainter than the content card's edge
+            // (0.65 in `index.css`) because it is not carrying the definition
+            // alone: `shadow-soft` lifts the composer off the transcript, and a
+            // lifted surface needs less outline than a flat one to read as
+            // separate. Border and shadow together at low strength read calmer
+            // than either at full — a hard 0.65 line under a shadow reads as
+            // two competing edges.
+            //
+            // Two roles, kept apart: the SHADOW is constant and the BORDER is
+            // what moves.
+            //
+            // The shadow is an explicit near-black pair rather than
+            // `shadow-soft`/`shadow-medium`. Those tokens are black at 0.08
+            // alpha, which is a diffuse haze — on the themed chrome behind this
+            // composer it reads as a smudge rather than a cast shadow.
+            //
+            // Both layers are pushed DOWN rather than spread evenly, because an
+            // even shadow reads as a glow: it implies light from everywhere,
+            // which is no light at all, and the composer ends up looking fuzzy
+            // instead of raised. The offsets (6px, 22px) exceed each layer's
+            // negative spread (-4px, -16px), so the cast clears the box on the
+            // bottom edge and is pulled in at the top — the asymmetry is what
+            // says "lit from above".
+            //
+            //   0 8px  12px -4px  / 0.34  — contact: tight, near the edge
+            //   0 30px 44px -16px / 0.48  — cast: far, wide, and the stronger
+            //
+            // The far layer carrying more alpha than the near one is
+            // deliberate and is what gives depth; the usual instinct is the
+            // reverse, which flattens it back out.
+            //
+            // `animate-composer-shadow` then orbits those offsets clockwise on
+            // a slow loop (`composerShadowOrbit`, `index.css`), as though the
+            // light above the composer circles the room. The static values here
+            // are the orbit's 25% stop, so the animation starts from roughly
+            // where the unanimated composer sits rather than jumping on load. The static `shadow-[…]` above is
+            // not redundant: it is what `motion-reduce:animate-none` falls back
+            // to, so the composer keeps its elevation when the OS asks for less
+            // motion and merely stops moving. Keyframes override the utility
+            // while the animation runs, which is why the two can coexist.
+            //
+            // Focus is now carried entirely by the border — 0.35 → 0.90 on the
+            // same token, so the edge sharpens rather than changing colour —
+            // and `transition` names border-color alone. Animating the shadow
+            // as well meant two things moving at once for a single event; with
+            // the elevation fixed, the composer stays put and only its outline
+            // responds. `duration-200 ease-out` is the settle, and
+            // `motion-reduce` drops it for anyone who asked the OS for less
+            // motion — the cue still lands, just instantly.
+            //
+            // `border-ring` on drag is untouched — that state is meant to break
+            // the pattern.
+            className="border-content-faint/35 focus-within:border-content-faint/90 data-[dragging=true]:border-ring shadow-[0_8px_12px_-4px_rgb(0_0_0/0.34),0_30px_44px_-16px_rgb(0_0_0/0.48)] animate-composer-shadow motion-reduce:animate-none flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color] duration-200 ease-out motion-reduce:transition-none data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]">
             {HostComposerAttachments ? <HostComposerAttachments /> : <ComposerAttachments />}
             {/*
              * Lexical rather than the plain `ComposerPrimitive.Input` textarea,
@@ -492,13 +550,27 @@ const ComposerAction: FC<{
           {showIdleAction ? (
             <ComposerIdleAction />
           ) : hasComposerAttachments && composerText.trim().length === 0 ? (
+            // Pinned to `primary-500` rather than left on `variant="default"`.
+            // That variant paints `bg-primary`, which `styles/shadcn-tokens.css`
+            // aliases to `primary-500` in light but `primary-400` in DARK — a
+            // pale sky blue. Its label is `--content-inverted`, which is white
+            // in both themes (not actually inverted per theme), so in dark the
+            // send button was white-on-pale-blue: washed out, and about 2.4:1,
+            // which is below AA for a control. `primary-500` under white is
+            // ~4.6:1 and reads as the accent in both themes.
+            // Overriding here rather than repointing the dark `--primary`
+            // alias: that token backs every `variant="default"` button in the
+            // app, and dark-mode-lightens-the-accent is a defensible palette
+            // choice to make deliberately, not as a side effect of fixing one
+            // button. `cn` is tailwind-merge, so the later `bg-primary-500`
+            // replaces the variant's `bg-primary` cleanly.
             <TooltipIconButton
               tooltip="Send message"
               side="bottom"
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-send size-7 rounded-full"
+              className="aui-composer-send size-7 rounded-full bg-primary-500 text-content-inverted hover:bg-primary-600"
               data-testid="send-message-button"
               aria-label="Send message"
               onClick={() => {
@@ -515,7 +587,7 @@ const ComposerAction: FC<{
                 type="button"
                 variant="default"
                 size="icon"
-                className="aui-composer-send size-7 rounded-full"
+                className="aui-composer-send size-7 rounded-full bg-primary-500 text-content-inverted hover:bg-primary-600"
                 data-testid="send-message-button"
                 aria-label="Send message">
                 <ArrowUpIcon className="aui-composer-send-icon size-4" />
@@ -559,8 +631,25 @@ const AssistantMessage: FC = () => {
   } = useContext(ThreadComponentsContext);
 
   const ACTION_BAR_PT = 'pt-1.5';
-  // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
-  const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`;
+  // `min-h` reserves the bar's height (`pt-1.5` + a `size-6` button = 7.5) so a
+  // bar revealed on hover does not shift the transcript, and `-mb` gives that
+  // reservation back to the flow so it does not stack on top of the spacing the
+  // message group already provides. Both MUST sit on this one element: the `-mb`
+  // had drifted onto the root, where it only cancelled that element's own `pb`,
+  // leaving the reservation uncompensated — a dead 30px band under every turn.
+  //
+  // The `-mb` step is `gap-y-6` from the message group, NOT the full `min-h`.
+  // The bar is pulled into the inter-message gap and must stay inside it: give
+  // back more than the gap and the bar's tail paints over the next message's
+  // first line, which sits at the same left inset (`ms-2` here, `px-2` there).
+  // So the bar occupies the gap exactly and the turns end up 7.5 apart.
+  // Keep this in step with `aui_message-group`'s `gap-y-*`; the pairing is
+  // asserted in `thread.actionBarSpacing.test.tsx`.
+  const ACTION_BAR_HEIGHT = `-mb-6 min-h-7.5 ${ACTION_BAR_PT}`;
+  // The root's own `-mb-7.5 pb-7.5` pair below is PAINT-ONLY and unrelated to
+  // the above: `content-visibility:auto` implies `contain: paint`, so `pb`
+  // widens the paint box to cover the bar that `-mb` pulls past the content
+  // box, and the root's `-mb` cancels that padding again in flow.
 
   return (
     <MessagePrimitive.Root
@@ -760,6 +849,29 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
+  // Edit is offered only when the bound runtime can honour it. The
+  // external-store adapter supplies `onNew` / `onCancel` and neither `onEdit`
+  // nor `setMessages`, so assistant-ui reports `edit: false` and
+  // `EditComposer` below never renders — the button was clickable and did
+  // nothing (#5897).
+  //
+  // Gated on the capability rather than hard-coded off, so the affordance
+  // appears by itself the day the adapter grows `onEdit`.
+  const { canEdit } = useAuiEditCapabilities();
+
+  // Hoisted out of the JSX rather than written as `{canEdit && (…)}` inline: a
+  // bare JSX logical expression emits no coverage record on its own line, so
+  // `diff-cover` reported the gate as an uncovered changed line even while the
+  // v8 report showed the surrounding function fully exercised. As a `const` it
+  // is an ordinary statement, instrumented like any other.
+  const editAction = canEdit ? (
+    <ActionBarPrimitive.Edit asChild>
+      <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
+        <PencilIcon />
+      </TooltipIconButton>
+    </ActionBarPrimitive.Edit>
+  ) : null;
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -770,11 +882,7 @@ const UserActionBar: FC = () => {
           <CopyIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="aui-user-action-edit">
-          <PencilIcon />
-        </TooltipIconButton>
-      </ActionBarPrimitive.Edit>
+      {editAction}
     </ActionBarPrimitive.Root>
   );
 };
@@ -807,6 +915,15 @@ const EditComposer: FC = () => {
 };
 
 const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({ className, ...rest }) => {
+  // The same defect class as the Edit button above, one step from biting: this
+  // is rendered unconditionally at both call sites and is invisible today only
+  // because `hideWhenSingleBranch` happens to hold — the adapter implements no
+  // `setMessages`, so there is never more than one branch. That is
+  // assistant-ui's guard doing the work this app intended to do itself, and it
+  // would become a second dead control if the prop ever went away.
+  const { canSwitchToBranch } = useAuiEditCapabilities();
+  if (!canSwitchToBranch) return null;
+
   return (
     <BranchPickerPrimitive.Root
       hideWhenSingleBranch

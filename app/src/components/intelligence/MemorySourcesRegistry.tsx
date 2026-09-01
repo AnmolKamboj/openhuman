@@ -32,6 +32,7 @@ import {
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
 } from '../../utils/tauriCommands/memoryTree';
+import { Card } from '../ui';
 import Button from '../ui/Button';
 import { AddMemorySourceDialog } from './AddMemorySourceDialog';
 import { ConfirmationModal } from './ConfirmationModal';
@@ -437,7 +438,28 @@ export function MemorySourcesRegistry({
     try {
       const result = await applyAllIn();
       setSources(result.sources);
-      onToast?.({ type: 'success', title: t('memorySources.allIn.success') });
+      // openhuman#5820: the RPC resolves even when triggers failed, so the
+      // verdict comes from the counts, not from "the call did not throw".
+      // Every trigger failing (the incident: `no memory source registered`
+      // x4) is an error; a partial start is a warning that names both
+      // counts. Only a clean sweep is a success.
+      if (result.sync_failed > 0 && result.sync_triggered === 0) {
+        onToast?.({
+          type: 'error',
+          title: t('memorySources.allIn.allFailed'),
+          message: result.sync_errors[0],
+        });
+      } else if (result.sync_failed > 0) {
+        onToast?.({
+          type: 'warning',
+          title: t('memorySources.allIn.partial')
+            .replace('{triggered}', String(result.sync_triggered))
+            .replace('{failed}', String(result.sync_failed)),
+          message: result.sync_errors[0],
+        });
+      } else {
+        onToast?.({ type: 'success', title: t('memorySources.allIn.success') });
+      }
     } catch (err) {
       onToast?.({
         type: 'error',
@@ -475,7 +497,7 @@ export function MemorySourcesRegistry({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-4" data-testid="memory-sources">
+    <Card padded divided={false} data-testid="memory-sources">
       <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-content-secondary">{t('memorySources.title')}</h3>
         <div className="flex items-center gap-2">
@@ -551,6 +573,6 @@ export function MemorySourcesRegistry({
       {allInModalOpen && (
         <ConfirmationModal modal={allInModal} onClose={() => setAllInModalOpen(false)} />
       )}
-    </section>
+    </Card>
   );
 }

@@ -312,7 +312,7 @@ const CronJobFormModal = ({
       onClose={onClose}
       maxWidthClassName="max-w-lg"
       panelClassName="flex max-h-[90vh] flex-col"
-      contentClassName="overflow-y-auto px-6 py-4"
+      contentClassName="overflow-y-auto px-5 py-4"
       footer={
         <div className="flex items-center justify-end gap-3">
           <Button

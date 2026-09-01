@@ -25,10 +25,10 @@ use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinyagents::harness::tool::ToolCall;
-use tinyagents::harness::usage::Usage;
+use tinyinference::message::{AssistantMessage, ContentBlock};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 
 struct ScriptedModel {
     responses: Mutex<VecDeque<anyhow::Result<ModelResponse>>>,
@@ -93,7 +93,7 @@ impl ChatModel<()> for ScriptedModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         self.requests.lock().push(
             request
                 .messages
@@ -106,13 +106,13 @@ impl ChatModel<()> for ScriptedModel {
             tokio::time::sleep(delay).await;
         }
         if let Some(message) = &self.always_fail {
-            return Err(tinyagents::TinyAgentsError::Model(message.clone()));
+            return Err(tinyinference::Error::Model(message.clone()));
         }
         self.responses
             .lock()
             .pop_front()
             .unwrap_or_else(|| Ok(text_response("fallback final")))
-            .map_err(|error| tinyagents::TinyAgentsError::Model(error.to_string()))
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))
     }
 }
 
@@ -391,7 +391,7 @@ fn prompt_sections_render_files_identity_memory_tools_and_ambient_blocks() -> Re
     assert!(rendered.contains("curated user body"));
     assert!(rendered.contains("### work (last updated 2026-05-29)"));
     assert!(rendered.contains("Call as: `echo[a|b]`"));
-    assert!(rendered.contains("## Output style"));
+    assert!(rendered.contains("# Writing style"));
 
     let user_files = render_user_files(&ctx)?;
     assert!(user_files.contains("curated memory body"));

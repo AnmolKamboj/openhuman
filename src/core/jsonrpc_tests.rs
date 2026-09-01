@@ -1712,7 +1712,7 @@ async fn desktop_auth_rejects_embedded_fetch_metadata() {
 #[cfg(feature = "http-server")]
 fn is_wallet_not_configured_error_matches_wallet_constant() {
     // The classifier keys off the wallet layer's exact "not configured"
-    // message so a wallet-less user's tinyplace RPC stays out of Sentry.
+    // message so wallet-backed RPCs stay out of Sentry.
     assert!(is_wallet_not_configured_error(
         crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE
     ));
@@ -1736,7 +1736,7 @@ fn is_wallet_not_configured_error_does_not_match_other_errors() {
     // Other wallet/seed-derivation failures (decrypt, key derivation, locked
     // keychain) are real defects and must keep reaching Sentry.
     assert!(!is_wallet_not_configured_error(
-        "tinyplace signer init: bad seed"
+        "wallet signer init: bad seed"
     ));
     assert!(!is_wallet_not_configured_error(
         "decrypt secret: kms timeout"

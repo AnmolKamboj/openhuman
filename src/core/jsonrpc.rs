@@ -131,11 +131,8 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                     display_message
                 );
             } else if is_wallet_not_configured_error(&display_message) {
-                // A `tinyplace_*` RPC needs a wallet-derived signer but the user
-                // has not set one up. Expected user-state (the UI shows a
-                // "set up wallet" prompt), not an internal failure — skip Sentry
-                // here so the message is left untouched for direct (agent-tool)
-                // callers. See `is_wallet_not_configured_error`.
+                // A wallet-backed RPC cannot run before wallet setup. This is
+                // expected user state, not an internal failure.
                 tracing::info!(
                     method = %method,
                     "[rpc] wallet-not-configured (expected user-state) — skipping Sentry"
@@ -426,17 +423,9 @@ fn is_param_validation_error(msg: &str) -> bool {
 
 /// Returns `true` when the error is the wallet's "not configured yet" message.
 ///
-/// Several `tinyplace_*` RPCs derive a signer seed from the wallet before they
-/// can run (the feed, signal/messaging, etc. — backend `GraphQLAuth::Agent`
-/// requires a signer). For a user who has not set up a wallet, the wallet layer
-/// returns [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`]. That is
-/// an expected user-state, not an internal failure: the UI already renders a
-/// "set up wallet" prompt, and there is no local lever to make the call succeed
-/// until the user creates a wallet. Classifying it here — at the single Sentry
-/// boundary — keeps it out of Sentry for *every* path that surfaces it (the
-/// shared client builder and the direct `signal_store` seed call alike) without
-/// the controllers returning a structured envelope, which would leak the raw
-/// sentinel string to agent tools that call those handlers directly.
+/// Wallet-backed RPCs return
+/// [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`] before
+/// setup. That is expected user state, not an internal failure.
 ///
 /// Matched against the shared wallet constant (exact equality) so a wording
 /// change in the wallet layer fails the coupling test in `jsonrpc_tests.rs`
@@ -2261,15 +2250,6 @@ fn register_domain_subscribers(
         );
     }
 
-    // Hosted: ingest tiny.place harness session DMs off the stream bus.
-    if plan.hosted {
-        if group_first_time(DomainGroup::Hosted) {
-            crate::openhuman::hosted::orchestration::register_orchestration_ingest_subscriber();
-        }
-    } else {
-        log::debug!("[event_bus] orchestration ingest SKIPPED — Hosted domain disabled");
-    }
-
     // Agent: native agent handlers + background-completion delivery +
     // run-ledger finalizer.
     if plan.agent {
@@ -2402,7 +2382,7 @@ pub async fn bootstrap_core_runtime(
     // the finalizer never settled it. Stamp such rows `interrupted` so they stop
     // rendering as perpetual "running" timeline entries on thread reopen.
     if agent_enabled {
-        match tinyagents::session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
+        match tinyagents_session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
             Ok(0) => {}
             Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
             Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),

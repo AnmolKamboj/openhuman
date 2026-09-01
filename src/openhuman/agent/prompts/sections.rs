@@ -12,8 +12,8 @@ use super::render_helpers::{
 use super::types::*;
 use anyhow::Result;
 use std::fmt::Write;
-use tinyagents::harness::tool::ToolSchema;
-use tinyagents::harness::tool_calling::dialect::render_pformat_catalogue;
+use tinyagents_harness::tool_calling::dialect::render_pformat_catalogue;
+use tinyinference::tool::ToolSchema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Special sections (archetype, dynamic, reflection)

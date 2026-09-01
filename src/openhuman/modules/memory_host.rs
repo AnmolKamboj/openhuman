@@ -35,9 +35,9 @@
 use crate::core::bus::BUS;
 use crate::openhuman::config::Config;
 use std::sync::Arc;
-use tinyagents::harness::model::{ModelRequest, ModelResponse};
 use tinybus::ObjectPath;
-use tinymemory_api::host::composio::{ComposioConnection, ComposioExecuteResponse};
+use tinyconnectors_bus::{ComposioConnection, ComposioExecuteResponse};
+use tinyinference::model::{ModelRequest, ModelResponse};
 use tinymemory_api::host::{MemoryEvent, SpacyResponse};
 
 const EMBEDDING_NAME: &str = "ai.tinyhumans.tinymemory.EmbeddingHost";
@@ -89,14 +89,46 @@ impl ChatCallbacks {
         role: String,
         request: ModelRequest,
     ) -> tinybus::Result<ModelResponse> {
-        let (model, _) = crate::openhuman::inference::provider::create_chat_model_with_model_id(
-            &role,
-            &self.0,
-            self.0.default_temperature,
-        )
-        .map_err(method_error)?;
+        let model = resolve_chat_model(&role, &self.0).map_err(method_error)?;
         model.invoke(&(), request).await.map_err(method_error)
     }
+}
+
+/// Resolve the model a module-side chat call runs on, by role.
+///
+/// The `"summarization"` role is special-cased through the tree summarizer's
+/// provider ladder (`tree_runtime::ops::create_provider`) rather than the
+/// role factory, because every memory fold the module performs — an explicit
+/// `tree_summarizer_run`/`rebuild`, the scheduled `seal`/`cascade` passes, and
+/// the archivist's recap `summarise` — reaches the host through this one seam,
+/// and the ladder is where the host's routing *policy* lives: local Ollama
+/// when `local_ai.runtime_enabled`, the configured cloud provider only under
+/// `memory_tree.cloud_summarization_opt_in`, and a refusal otherwise.
+///
+/// Routing the role factory directly here was a consent hole, not just a
+/// preference miss: with local AI enabled and the cloud opt-in `false`, the
+/// host-side `create_provider` precondition in `tree_runtime::ops` succeeds
+/// (a local model is constructible), and the blind role factory then resolved
+/// `"summarization"` to the configured cloud provider anyway — memory content
+/// leaving the machine against an explicit opt-out. The ladder cannot make
+/// that move: local wins while it is enabled, and cloud requires the opt-in.
+///
+/// Every other role keeps the role factory unchanged.
+fn resolve_chat_model(
+    role: &str,
+    config: &Config,
+) -> anyhow::Result<std::sync::Arc<dyn tinyinference::model::ChatModel<()>>> {
+    if role == "summarization" {
+        let (model, _) = crate::openhuman::memory::tree::tree_runtime::ops::create_provider(config)
+            .map_err(anyhow::Error::msg)?;
+        return Ok(model);
+    }
+    let (model, _) = crate::openhuman::inference::provider::create_chat_model_with_model_id(
+        role,
+        config,
+        config.default_temperature,
+    )?;
+    Ok(model)
 }
 
 /// Composio, as the engine's sync pipelines need it.
@@ -312,6 +344,25 @@ struct RuntimeCallbacks(Arc<Config>);
 
 #[tinybus::interface(name = "ai.tinyhumans.tinymemory.RuntimeHost")]
 impl RuntimeCallbacks {
+    /// Bridge a module-side memory event onto this host.
+    ///
+    /// Every arm is [`into_domain_event`]'s: it either maps the event onto a
+    /// [`DomainEvent`](crate::core::events::DomainEvent) for the bus or handles
+    /// it web-channel-side and answers `None`. `StoreCorruptQuarantined` is the
+    /// second kind — it publishes the durable user error and returns `None`,
+    /// the same shape the in-process sink's arm has in `memory::host`.
+    ///
+    /// **There is deliberately no in-process chunk-store reset here any more
+    /// (#5560).** It existed because this process embedded a second copy of the
+    /// engine whose cached SQLite handle still pointed at the inode the module
+    /// had just renamed, so an in-process read kept failing with `database disk
+    /// image is malformed` until restart (openhuman#5820). Every in-process
+    /// reader it protected is gone: `sources::status` asks
+    /// `MemoryChunks::source_ingest_status`, recall goes through
+    /// `memory::binding` to this same driver, and the only surviving openers of
+    /// the host's chunk store are `#[cfg(test)]`. Nothing else in the corruption
+    /// path needs an engine either — `user_error`'s detectors classify text, and
+    /// `tree::tree::rpc`'s `latest_quarantine` reads the directory.
     async fn publish_event(&self, event: MemoryEvent) -> tinybus::Result<()> {
         if let Some(event) = into_domain_event(event) {
             BUS.publish(event);
@@ -552,6 +603,20 @@ fn into_domain_event(event: MemoryEvent) -> Option<crate::core::events::DomainEv
         }
         MemoryEvent::LocalModelUnavailable { origin } => {
             crate::openhuman::memory::tree::health::user_error::publish_local_model_unavailable_user_error(&origin);
+            return None;
+        }
+        // Web-channel-only (openhuman#5820): the module's engine already
+        // quarantined and rebuilt its store; the host's job is to make sure
+        // the user durably hears it — this is the arm the incident lacked,
+        // where a module-side quarantine was invisible to every host surface.
+        MemoryEvent::StoreCorruptQuarantined {
+            origin,
+            quarantined_path,
+        } => {
+            crate::openhuman::memory::tree::health::user_error::publish_store_corrupt_user_error(
+                &origin,
+                quarantined_path.as_deref(),
+            );
             return None;
         }
     })

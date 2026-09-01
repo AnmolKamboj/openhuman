@@ -44,21 +44,20 @@ pub use schema::{
     HeartbeatConfig, HttpHeader, HttpRequestConfig, IMessageConfig, IntegrationToggle,
     IntegrationsConfig, LarkConfig, LearningConfig, LinqConfig, LlmBackend, LocalAiConfig,
     MatrixConfig, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpServerConfig,
-    MedullaClientConfig, MedullaCycleConfig, MedullaCycleLimits, MedullaPromptOverrides,
-    MedullaVerification, MemoryConfig, MemoryTreeConfig, ModelRouteConfig, MultimodalConfig,
-    MultimodalFileConfig, ObservabilityConfig, OrchestratorModelConfig, PrivacyConfig, PrivacyMode,
-    ProxyConfig, ProxyScope, ReflectionSource, ReliabilityConfig, ResourceLimitsConfig,
-    RuntimeConfig, RuntimePoolConfig, RuntimePoolLangConfig, SandboxBackend, SandboxConfig,
-    SchedulerConfig, SchedulerGateConfig, SchedulerGateMode, SearchConfig, SearchEngine,
-    SearchEngineCredentials, SearxngConfig, SecretsConfig, SecurityConfig, ShellConfig,
-    SlackConfig, StorageConfig, StorageProviderConfig, StorageProviderSection, StreamMode,
-    SttEngine, TeamModelConfig, TelegramConfig, TokenjuiceConfig, UpdateConfig,
-    UpdateRestartStrategy, VoiceActivationMode, VoiceServerConfig, WebSearchConfig, WebhookConfig,
-    YuanbaoConfig, DEFAULT_CLOUD_LLM_MODEL, DEFAULT_MEMORY_SYNC_INTERVAL_SECS, DEFAULT_MODEL,
-    MEMORY_SYNC_INTERVAL_PRESETS_SECS, MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1,
-    MODEL_CODING_V1, MODEL_REASONING_QUICK_V1, MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1,
-    MODEL_VISION_V1, SEARCH_ENGINE_BRAVE, SEARCH_ENGINE_DISABLED, SEARCH_ENGINE_EXA,
-    SEARCH_ENGINE_MANAGED, SEARCH_ENGINE_PARALLEL, SEARCH_ENGINE_QUERIT,
+    MemoryConfig, MemoryTreeConfig, ModelRouteConfig, MultimodalConfig, MultimodalFileConfig,
+    ObservabilityConfig, OrchestratorModelConfig, PrivacyConfig, PrivacyMode, ProxyConfig,
+    ProxyScope, ReflectionSource, ReliabilityConfig, ResourceLimitsConfig, RuntimeConfig,
+    RuntimePoolConfig, RuntimePoolLangConfig, SandboxBackend, SandboxConfig, SchedulerConfig,
+    SchedulerGateConfig, SchedulerGateMode, SearchConfig, SearchEngine, SearchEngineCredentials,
+    SearxngConfig, SecretsConfig, SecurityConfig, ShellConfig, SlackConfig, StorageConfig,
+    StorageProviderConfig, StorageProviderSection, StreamMode, SttEngine, TeamModelConfig,
+    TelegramConfig, TokenjuiceConfig, UpdateConfig, UpdateRestartStrategy, VoiceActivationMode,
+    VoiceServerConfig, WebSearchConfig, WebhookConfig, YuanbaoConfig, DEFAULT_CLOUD_LLM_MODEL,
+    DEFAULT_MEMORY_SYNC_INTERVAL_SECS, DEFAULT_MODEL, MEMORY_SYNC_INTERVAL_PRESETS_SECS,
+    MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+    MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1, SEARCH_ENGINE_BRAVE,
+    SEARCH_ENGINE_DISABLED, SEARCH_ENGINE_EXA, SEARCH_ENGINE_MANAGED, SEARCH_ENGINE_PARALLEL,
+    SEARCH_ENGINE_QUERIT,
 };
 // Kept as a separate re-export (issue #4117) so the large alphabetized group
 // above stays byte-identical and rustfmt-stable.
@@ -77,51 +76,5 @@ pub use schemas::{
 pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reexported_config_default_is_constructible() {
-        let config = Config::default();
-
-        assert!(config.default_model.is_some());
-        assert!(config.default_temperature > 0.0);
-    }
-
-    #[test]
-    fn reexported_channel_configs_are_constructible() {
-        let telegram = TelegramConfig {
-            bot_token: "token".into(),
-            chat_id: None,
-            allowed_users: vec!["alice".into()],
-            stream_mode: StreamMode::default(),
-            draft_update_interval_ms: 1000,
-            silent_streaming: true,
-            mention_only: false,
-        };
-
-        let discord = DiscordConfig {
-            bot_token: "token".into(),
-            guild_id: Some("123".into()),
-            channel_id: None,
-            allowed_users: vec![],
-            listen_to_bots: false,
-            mention_only: false,
-        };
-
-        let lark = LarkConfig {
-            app_id: "app-id".into(),
-            app_secret: "app-secret".into(),
-            encrypt_key: None,
-            verification_token: None,
-            allowed_users: vec![],
-            use_feishu: false,
-            receive_mode: crate::openhuman::config::schema::LarkReceiveMode::Websocket,
-            port: None,
-        };
-
-        assert_eq!(telegram.allowed_users.len(), 1);
-        assert_eq!(discord.guild_id.as_deref(), Some("123"));
-        assert_eq!(lark.app_id, "app-id");
-    }
-}
+#[path = "mod_tests.rs"]
+mod tests;

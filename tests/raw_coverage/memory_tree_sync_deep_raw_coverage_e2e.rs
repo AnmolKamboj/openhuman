@@ -18,23 +18,23 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::{Config, SchedulerGateMode};
-use openhuman_core::openhuman::memory::tree::score::embed::EMBEDDING_DIM;
-use openhuman_core::openhuman::memory::tree::score::extract::{
-    EntityExtractor, EntityKind, ExtractedEntities, LlmEntityExtractor, LlmExtractorConfig,
-};
-use openhuman_core::openhuman::memory::tree::score::resolver::{canonicalise, CanonicalEntity};
-use openhuman_core::openhuman::memory::tree::score::store::{index_entity, lookup_entity};
 use openhuman_core::openhuman::memory::tree::tree::rpc::{
     get_chunk_rpc, ingest_rpc, list_chunks_rpc, set_enabled_rpc, GetChunkRequest, IngestRequest,
     ListChunksRequest, SetEnabledRequest,
 };
-use openhuman_core::openhuman::memory::tree::tree::set_summary_embedding;
-use openhuman_core::openhuman::memory::tree::tree::store as tree_store;
-use openhuman_core::openhuman::memory::tree::tree::TreeStatus;
 use tinymemory_core::chat::{ChatPrompt, ChatProvider};
 use tinymemory_core::store::chunks::store::{set_chunk_embedding, upsert_chunks, with_connection};
 use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
 use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind};
+use tinymemory_core::tree::score::embed::EMBEDDING_DIM;
+use tinymemory_core::tree::score::extract::{
+    EntityExtractor, EntityKind, ExtractedEntities, LlmEntityExtractor, LlmExtractorConfig,
+};
+use tinymemory_core::tree::score::resolver::{canonicalise, CanonicalEntity};
+use tinymemory_core::tree::score::store::{index_entity, lookup_entity};
+use tinymemory_core::tree::tree::set_summary_embedding;
+use tinymemory_core::tree::tree::store as tree_store;
+use tinymemory_core::tree::tree::TreeStatus;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -470,6 +470,15 @@ async fn memory_tree_rpc_chunk_reads_set_enabled_and_ingest_errors() {
     let _workspace = EnvVarGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
     let _triage = EnvVarGuard::set_str("OPENHUMAN_TRIGGER_TRIAGE_DISABLED", "1");
     let mut cfg = test_config(&tmp);
+    // `list_chunks_rpc` below reads through the bound memory driver, which
+    // under the `modules` gate is the loaded tinymemory artifact and resolves
+    // its config from the process-wide boot policy. Publish it from THIS
+    // test's config: the policy is first-call-wins and the module captures
+    // its workspace at load, so the chunk seeded in-process and the rows the
+    // module lists must name one store. The only driver-routed case in this
+    // aggregated module, so nothing contends for the slot.
+    #[cfg(feature = "modules")]
+    openhuman_core::openhuman::modules::memory::set_modules_policy(Arc::new(cfg.clone()));
 
     let chunk = sample_chunk(
         &cfg,

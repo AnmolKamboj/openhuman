@@ -9,7 +9,6 @@ use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::{
     ConversationSegment, EpisodicEvent, EpisodicTurn, FacetType, MemoryEpisodic, MemoryProvider,
 };
-use crate::openhuman::memory::tree::score::embed::{build_embedder_from_config, Embedder};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -36,7 +35,6 @@ impl ArchivistHook {
             summariser_available: false,
             #[cfg(test)]
             chat_provider: None,
-            embedder: None,
         }
     }
 
@@ -46,16 +44,17 @@ impl ArchivistHook {
     /// When `config.learning.chat_to_tree_enabled` is `true`, each closed
     /// segment's raw prose turns are ingested into the memory tree as
     /// `source_id="conversations:agent"` (one batch per segment, not per turn).
-    /// Both the summariser probe and the embedder are soft-fallback: if
-    /// construction fails, the archivist falls back to the heuristic summary /
-    /// no embedding rather than failing the turn.
+    /// The summariser probe is soft-fallback: if construction fails, the
+    /// archivist falls back to the heuristic summary rather than failing the
+    /// turn. Embedding is also non-fatal and goes through the provider's
+    /// `as_scoring()` family.
     ///
     /// # Why the summariser is probed and not held
     ///
     /// This used to call `tinymemory_core::chat::build_chat_provider(&config)`
     /// and store the `Arc<dyn ChatProvider>` it returned. Nothing ever called
     /// that handle: the summariser the archivist drives is
-    /// `memory::tree::summarise::summarise`, which builds
+    /// `tinymemory_core::tree::summarise::summarise`, which builds
     /// its own provider from the same `Config` on every call. So the stored
     /// value was only ever read as `is_some()`, and what it actually asserted
     /// was "a chat model for the summarise role can be constructed".
@@ -101,22 +100,7 @@ impl ArchivistHook {
             }
         };
 
-        // Build the embedder for segment recap vectors.
-        let embedder: Option<Arc<dyn Embedder>> = match build_embedder_from_config(&config) {
-            Ok(e) => {
-                tracing::debug!("[archivist] segment embed provider={} registered", e.name());
-                Some(Arc::from(e))
-            }
-            Err(e) => {
-                tracing::warn!(
-                        "[archivist] failed to build embedder for segment recap (embedding skipped): {e}"
-                    );
-                None
-            }
-        };
-
         self.summariser_available = summariser_available;
-        self.embedder = embedder;
         self.config = Some(config);
         self
     }
@@ -131,7 +115,6 @@ impl ArchivistHook {
             summariser_available: false,
             #[cfg(test)]
             chat_provider: None,
-            embedder: None,
         }
     }
 
@@ -526,15 +509,44 @@ impl ArchivistHook {
             );
             return;
         }
-        let Some(ref embedder) = self.embedder else {
+        let Some(ref provider) = self.provider else {
             tracing::debug!(
-                "[archivist] no embedder — skipping segment embedding segment={segment_id}"
+                "[archivist] no provider — skipping segment embedding segment={segment_id}"
             );
             return;
         };
-        let model_signature = embedder.name().to_string();
+        let Some(scoring) = provider.as_scoring() else {
+            #[cfg(feature = "modules")]
+            {
+                use tinymemory_api::capabilities::Capability;
+                if crate::openhuman::modules::memory::ARTIFACT_CAPABILITIES
+                    .contains(&Capability::Scoring)
+                {
+                    tracing::warn!(
+                        "[archivist] driver does not expose scoring but the pinned artifact is \
+                         expected to serve it — check module version; \
+                         skipping segment embedding segment={segment_id}"
+                    );
+                    return;
+                }
+            }
+            tracing::debug!(
+                "[archivist] driver does not support scoring — skipping segment embedding \
+                 segment={segment_id}"
+            );
+            return;
+        };
+        let model_signature = match scoring.embedder_slug().await {
+            Ok(slug) => slug,
+            Err(e) => {
+                tracing::warn!(
+                    "[archivist] embedder_slug failed (non-fatal) segment={segment_id}: {e}"
+                );
+                return;
+            }
+        };
         tracing::debug!("[archivist] embedding recap segment={segment_id} model={model_signature}");
-        match embedder.embed(summary).await {
+        match scoring.embed_text(summary).await {
             Ok(vec) => {
                 let Some(episodic) = self.episodic() else {
                     return;

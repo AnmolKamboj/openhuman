@@ -170,7 +170,7 @@ use openhuman_core::openhuman::agent::tinyagents::thread_context::{current_threa
 use openhuman_core::openhuman::threads::todos::ops::BoardLocation;
 use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{Tool, ToolResult, ToolSpec};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
 
 static ENV_LOCK: &std::sync::OnceLock<std::sync::Mutex<()>> = &crate::SHARED_ENV_LOCK;
 
@@ -246,7 +246,7 @@ impl ChatModel<()> for EchoModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         Ok(ModelResponse::assistant(
             request
                 .messages
@@ -1964,8 +1964,8 @@ async fn inference_provider_factory_and_classifiers_cover_user_state_edges() {
 
 #[tokio::test]
 async fn inference_openhuman_backend_provider_covers_authless_and_streaming_edges() {
-    use tinyagents::harness::message::Message;
-    use tinyagents::harness::model::{ChatModel, ModelRequest};
+    use tinyinference::message::Message;
+    use tinyinference::model::{ChatModel, ModelRequest};
 
     let state_dir = tempdir().expect("openhuman provider state");
     let provider = OpenHumanBackendModel::new(
@@ -2922,7 +2922,7 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
     .expect("subagent builder");
     assert!(built.contains("coverage soul"));
     assert!(built.contains("coverage profile"));
-    assert!(built.contains("Output style"));
+    assert!(built.contains("# Writing style"));
 
     let narrow = render_subagent_system_prompt(
         workspace.path(),

@@ -117,8 +117,8 @@ impl Channel for RecordingChannel {
 }
 
 fn runtime_context(workspace_dir: PathBuf) -> ChannelRuntimeContext {
-    let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
-        Arc::new(tinyagents::harness::testkit::ScriptedModel::replies(vec![
+    let model: Arc<dyn tinyinference::model::ChatModel<()>> =
+        Arc::new(tinyagents_harness::testkit::ScriptedModel::replies(vec![
             "ok",
         ]));
     ChannelRuntimeContext {

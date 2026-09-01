@@ -9,24 +9,22 @@
 //! that looks like a working app. Hence a test rather than a comment.
 //!
 //! **What this can and cannot check, stated rather than implied.**
-//! `tinymemory-core`'s own `user_scopes::KV_NAMESPACE` is a private `const`, so
-//! there is no way to assert the two strings equal from here. What *is* public
-//! is the sibling `sync_state::KV_NAMESPACE`, and the engine's doc is explicit
-//! that the two must differ ("Separate from `composio-sync-state` so the two
-//! never collide") — so that is the half asserted against the engine, and the
-//! literal is asserted against itself. A round-trip test (engine writes, host
-//! constants read it back) would be strictly stronger and is the thing to add
-//! when a test-support seam for building an in-process client exists again;
-//! `memory::host_impls::install_for_tests` was that seam and left with the
-//! second engine.
+//! `tinymemory-core`'s own `user_scopes::KV_NAMESPACE` no longer exists —
+//! tinymemory v1.13.4 deleted the whole in-process Composio pipeline, this
+//! constant included — so there is nothing left in that crate to assert
+//! against. What *is* still public and load-bearing is `tinycortex`'s own
+//! `memory::sync::state::STATE_NAMESPACE` (`"composio-sync-state"`), which is
+//! the literal `memory_cleanup.rs` reads and writes under, and the two must
+//! differ so prefs and Composio sync cursors never collide — that is the half
+//! asserted here, and the literal is asserted against itself.
 //!
-//! The engine path below resolves because `tinymemory-core` is a
-//! **dev-dependency** of this crate (`Cargo.toml`); production code in
-//! `user_scopes.rs` names neither it nor any engine item.
+//! `tinycortex` resolves because it is an ordinary dependency of this crate
+//! (`Cargo.toml`); production code in `user_scopes.rs` names neither it nor
+//! any engine item.
 
 use super::*;
 
-use tinymemory_core::sync::composio::providers::sync_state as engine_sync_state;
+use tinycortex::memory::sync::state::STATE_NAMESPACE as ENGINE_SYNC_STATE_NAMESPACE;
 
 /// The scopes namespace is the literal the engine writes, and it is not the
 /// sync-state namespace.
@@ -40,8 +38,7 @@ fn user_scopes_namespace_is_the_engine_literal_and_not_sync_state() {
         "must stay the literal tinymemory-core's user_scopes::KV_NAMESPACE holds"
     );
     assert_ne!(
-        KV_NAMESPACE,
-        engine_sync_state::KV_NAMESPACE,
+        KV_NAMESPACE, ENGINE_SYNC_STATE_NAMESPACE,
         "prefs must not share a namespace with Composio sync state"
     );
 }

@@ -249,7 +249,6 @@ export const CustomRoutingDialog = ({
       // title alone drops the workload, so keep the subtitle in the name.
       labelledBy="workload-routing-dialog-title workload-routing-dialog-subtitle"
       onClose={onClose}
-      contentClassName="px-6 py-4"
       footer={
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={onClose}>

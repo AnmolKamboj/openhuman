@@ -46,7 +46,6 @@ tinymemory_core::<domain>::*;` plus the handler/schema modules that name
 | Module                          | Role                                                     |
 | -------------------------------- | --------------------------------------------------------- |
 | [`conversations/`](conversations/) | Conversation-scoped memory RPC.                          |
-| [`diff/`](diff/)                 | Git-backed diff RPC (gated by the `memory-git` feature). |
 | [`goals/`](goals/)               | Goal tracking RPC.                                       |
 | [`people/`](people/)             | People/contacts RPC.                                     |
 | [`sources/`](sources/)           | Source-registration RPC.                                 |

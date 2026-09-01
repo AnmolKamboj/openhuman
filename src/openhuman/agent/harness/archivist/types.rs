@@ -3,7 +3,6 @@
 use super::boundary::BoundaryConfig;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::MemoryProvider;
-use crate::openhuman::memory::tree::score::embed::Embedder;
 use std::sync::Arc;
 // Test-only. See [`ArchivistHook::chat_provider`] for why the engine's chat
 // trait is still named here and why it is not named in a production build.
@@ -25,7 +24,7 @@ pub struct ArchivistHook {
     /// Boundary detection configuration.
     pub(super) boundary_config: BoundaryConfig,
     /// Optional runtime config — used to gate the tree-ingest path and to
-    /// build the LLM chat provider + embedder.
+    /// build the LLM chat provider.
     ///
     /// When `None`, the tree-ingest path is skipped. Set via
     /// [`ArchivistHook::with_config`] on the production path.
@@ -36,7 +35,7 @@ pub struct ArchivistHook {
     /// This was `chat_provider.is_some()` — the archivist built a chat provider
     /// in [`ArchivistHook::with_config`], stored it, and then never called it.
     /// It could not: the summariser it drives is
-    /// `memory::tree::summarise::summarise`, which builds
+    /// `tinymemory_core::tree::summarise::summarise`, which builds
     /// its **own** provider from the same `Config`. The stored handle was a
     /// probe result wearing the shape of a dependency, so it is recorded as
     /// what it always was — a yes/no — and the probe now runs against the
@@ -63,7 +62,4 @@ pub struct ArchivistHook {
     /// The engine stays a dev-dependency for exactly this kind of fixture.
     #[cfg(test)]
     pub(super) chat_provider: Option<Arc<dyn ChatProvider>>,
-    /// Optional embedder for segment recap vectors. When `None`, embedding
-    /// is skipped (segment is still summarised).
-    pub(super) embedder: Option<Arc<dyn Embedder>>,
 }
