@@ -504,9 +504,8 @@ jobs:
       - name: Check core builds with the default domain gates disabled
         # Lib-scoped on purpose. `--all-targets` would additionally compile the
         # `tests/` integration crates, which today name gated symbols
-        # (voice::reply_speech::test_seam, mcp::registry::store, web3::x402::tools,
-        # and since openhuman#5560 memory::host_impls behind `memory-engine-seams`)
-        # without a #[cfg] and so do not compile with the gates off. That cleanup is tracked
+        # (voice::reply_speech::test_seam, mcp::registry::store, web3::x402::tools) without
+        # a #[cfg] and so do not compile with the gates off. That cleanup is tracked
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
         run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
@@ -588,30 +587,17 @@ jobs:
         # 2026-08-29: `tinytools` becomes the dependency behind the `Tool`
         # trait/types, which cannot be gated because `tools/` is kernel
         # surface — zero transitive additions, native build count unchanged
-        # at 2. 267 -> 270 on 2026-08-30: the `tinyflows` crate's catalog/
+        # at 2. 270 -> 273 on 2026-08-30: the `tinyflows` crate's catalog/
         # storage/copilot surface split into three sibling path-crates in the
         # SAME vendored workspace (`tinyflows-catalog`, `tinyflows-sqlite`,
         # `tinyflows-copilot`) — one name each, no new external crate, native
-        # build count unchanged at 2. See the kernel-floor history for why
+        # build count unchanged at 2. 273 -> 275 on 2026-08-31: the compatible
+        # dependency refresh recorded in `kernel-floor.limits` raised the
+        # resolved Linux name count while keeping the native build count at 2.
+        # See the kernel-floor history for why
         # these raises are temporary/justified. macOS resolves one higher per
         # the host skew recorded in the limits history — this expects the CI
         # host.
-        #
-        # That line read `270 -> 273` until 2026-08-31 and was wrong twice
-        # over: the split took NAMES from 267 to 270, not 270 to 273, and the
-        # argument below was never moved to 273 to match it. Corrected rather
-        # than acted on — 270 is and was the right number, and bumping the
-        # argument to follow the prose would have masked the drift described
-        # next.
-        #
-        # MOVED to 269 by openhuman#5560. That change sheds the memory engine
-        # crates and takes the measured name count from 276 down to 269 on CI
-        # Linux — the platform this guard is calibrated on; macOS resolves one
-        # target-specific name higher (270), which is how an earlier revision
-        # of this comment briefly claimed 270. It had been red on main: the
-        # profile measured 276 names against the argument while
-        # `kernel-floor.limits` separately measured 294 packages against its
-        # 286. Both were written back; see the 2026-08-31 entry there.
         #
         # This number MUST move in lockstep with scripts/kernel-floor.limits —
         # it is a second source of truth for the same Linux name count and is
@@ -815,10 +801,11 @@ jobs:
           module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
+          connectors_dir="$module_root/tinyconnectors"
           memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
           juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
-          rm -rf "$memory_dir" "$juice_dir"
-          mkdir -p "$memory_dir" "$juice_dir"
+          rm -rf "$memory_dir" "$juice_dir" "$connectors_dir"
+          mkdir -p "$memory_dir" "$juice_dir" "$connectors_dir"
           curl --fail --location --silent --show-error \
             "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
             --output "$memory_archive"
@@ -832,31 +819,14 @@ jobs:
           # Do not restore the release builder's uid into the trusted tree.
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
-          # tinyconnectors, same contract: version + digest are the
-          # ubuntu-22.04-x86_64 row of registry_part_02.rs, copied verbatim.
-          # Without this, every test binary that loads the connector module
-          # fetches GitHub release metadata at run time — refused under rate
-          # limiting, and a refusal is terminal for that whole test process.
-          connectors_version="0.7.0"
-          connectors_sha256="b73df16260dce3387f7de915dfa93f6c0f8c977cf21784b97b2a6b2dcdf961f7"
-          connectors_dir="$module_root/tinyconnectors"
-          connectors_archive="$connectors_dir/tinyconnectors-${connectors_version}-ubuntu-22.04-x86_64.tar.gz"
-          rm -rf "$connectors_dir"
-          mkdir -p "$connectors_dir"
-          curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinyconnectors/releases/download/v${connectors_version}/$(basename "$connectors_archive")" \
-            --output "$connectors_archive"
-          echo "${connectors_sha256}  $connectors_archive" \
-            | sha256sum --check
-          tar --no-same-owner -xzf "$connectors_archive" -C "$connectors_dir"
+          bash scripts/ci-cancel-aware.sh cargo build --release \
+            --manifest-path vendor/tinyconnectors/crates/tinyconnectors/Cargo.toml
+          cp vendor/tinyconnectors/target/release/libtinyconnectors.so \
+            "$connectors_dir/libtinyconnectors.so"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
             >> "$GITHUB_ENV"
           echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
             >> "$GITHUB_ENV"
-          # NOTE the artifact's library is `libtinyconnectors.so` — this release
-          # predates the `lib<id>_module.so` naming the other modules use; the
-          # name comes from the tarball's own modules.toml, not from
-          # platform_library_name().
           echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors.so" \
             >> "$GITHUB_ENV"
 

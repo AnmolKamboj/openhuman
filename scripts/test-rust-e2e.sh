@@ -46,7 +46,6 @@ ALL_E2E_SUITES=(
   live_routing_e2e
   mcp_registry_e2e
   mcp_setup_e2e
-  memory_artifacts_e2e
   # Golden-workspace schema gates. These are the guard against a memory-store
   # schema change stranding an existing user workspace, so they belong in every
   # run of this suite — they were previously listed nowhere in .github/ or

@@ -64,7 +64,7 @@ impl ChatModel<()> for MockModel {
         &self,
         _state: &(),
         _request: ModelRequest,
-    ) -> Result<ModelResponse, tinyinference::Error> {
+    ) -> tinyinference::Result<ModelResponse> {
         Ok(ModelResponse::assistant("ok"))
     }
 }

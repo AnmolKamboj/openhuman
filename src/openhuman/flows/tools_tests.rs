@@ -378,14 +378,12 @@ fn display_label_humanizes_the_tool_name() {
 // ── enforcing binding-resolvability gate ────────────────────────────────────
 
 #[tokio::test]
-async fn propose_workflow_rejects_unschemad_agent_binding() {
-    // The proven live-failure graph: `summarize` declares an
-    // `output_parser.schema` that does not include `channel`, so `notify`'s
-    // `args.channel` binding is guaranteed to resolve null at runtime. Unlike
-    // the advisory dry-run check, propose_workflow must REJECT this outright
-    // rather than warn. (An agent with NO schema at all is unverifiable, not
-    // invalid, and passes this gate as of tinyflows v0.8.2 — see
-    // `ops_tests_part_06`'s companion test for that half of the contract.)
+async fn propose_workflow_rejects_agent_binding_missing_declared_field() {
+    // A declared schema that omits `channel` proves `notify`'s binding resolves
+    // null at runtime. Unlike a schema-less agent (whose host-defined output is
+    // merely unverifiable), propose_workflow must
+    // REJECT this outright rather than warn (warning_count would have been 0
+    // here — nothing stopped this from reaching save_workflow before).
     let tmp = TempDir::new().unwrap();
     let tool = ProposeWorkflowTool::new(test_config(&tmp));
 
@@ -394,10 +392,11 @@ async fn propose_workflow_rejects_unschemad_agent_binding() {
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "summarize", "kind": "agent", "name": "Summarize",
               "config": { "agent_ref": "researcher", "prompt": "summarize",
-                "output_parser": { "schema": { "properties": { "summary": {} } } } } },
+                "output_parser": { "schema": { "type": "object",
+                  "properties": { "summary": { "type": "string" } } } } } },
             { "id": "notify", "kind": "tool_call", "name": "Notify",
               "config": { "slug": "SLACK_SEND_MESSAGE",
-                "args": { "channel": "=nodes.summarize.item.json.channel" } } }
+                "args": { "channel": "=nodes.summarize.item.json.channel", "text": "A notification" } } }
         ],
         "edges": [
             { "from_node": "t", "to_node": "summarize" },

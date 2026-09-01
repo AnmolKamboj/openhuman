@@ -60,6 +60,19 @@ fn normalize_error(member: &str, error: String) -> String {
         if module_error.starts_with(CLASSIFIED) {
             return module_error.to_string();
         }
+        // Recent TinyBus versions wrap member failures in their wire error
+        // name before preserving the module's message:
+        // `Execute: ai.tinyhumans.tinybus.Error.Failed: [composio:error:…]`.
+        // That wrapper is transport context, not provider text, so retain the
+        // frontend's byte-zero classification contract exactly as for the
+        // older unwrapped shape. Do not promote an arbitrary embedded marker:
+        // it must follow this known TinyBus failure prefix.
+        const TINYBUS_FAILED: &str = "ai.tinyhumans.tinybus.Error.Failed: ";
+        if let Some(classified) = module_error.strip_prefix(TINYBUS_FAILED) {
+            if classified.starts_with(CLASSIFIED) {
+                return classified.to_string();
+            }
+        }
     }
     error
 }

@@ -99,6 +99,7 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 fn config_in(tmp: &TempDir) -> Config {
     let mut cfg = Config::default();
     cfg.workspace_dir = tmp.path().to_path_buf();
+    cfg.config_path = tmp.path().join("config.toml");
     cfg.memory_tree.embedding_endpoint = None;
     cfg.memory_tree.embedding_model = None;
     cfg.memory_tree.embedding_strict = false;
@@ -304,6 +305,9 @@ async fn tree_runtime_engine_rpc_and_walk_cover_success_and_edge_paths() {
 async fn bucket_seal_deferred_and_fallback_paths_preserve_buffers_and_labels() {
     let tmp = TempDir::new().expect("tempdir");
     let cfg = config_in(&tmp);
+    openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+        std::sync::Arc::new(cfg.clone()),
+    );
     let tree = get_or_create_tree(&cfg, TreeKind::Source, "slack:#round14").expect("tree");
 
     let ts = Utc.timestamp_millis_opt(1_700_000_000_000).unwrap();

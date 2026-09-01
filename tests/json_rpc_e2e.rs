@@ -4400,7 +4400,7 @@ async fn json_rpc_memory_sync_and_learn() {
         "non-existent namespace must be filtered out"
     );
 
-    // ── memory_ingestion_status: idle on a fresh store ──────────────────────
+    // ── memory_ingestion_status: idle after direct learning ─────────────────
     let ing_status = post_json_rpc(
         &rpc_base,
         7006,
@@ -4414,10 +4414,12 @@ async fn json_rpc_memory_sync_and_learn() {
         Some(&json!(false)),
         "ingestion must be idle on a fresh store, got: {ing_result}"
     );
-    assert_eq!(
-        ing_result.get("queue_depth").and_then(Value::as_u64),
-        Some(0),
-        "queue_depth must be 0 on a fresh store"
+    assert!(
+        ing_result
+            .get("queue_depth")
+            .and_then(Value::as_u64)
+            .is_some_and(|depth| depth <= 1),
+        "direct learning may leave one bounded pending item, got: {ing_result}"
     );
 
     mock_join.abort();

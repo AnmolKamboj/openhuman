@@ -356,11 +356,9 @@ fn local_override(config: &Config, id: &str) -> Option<PathBuf> {
                 .map(PathBuf::from)
         })
         .or_else(|| {
-            // Same shape for the connector module: CI pre-provisions the pinned
-            // artifact and points this at it, so a test binary never fetches
-            // GitHub release metadata at run time — that fetch is refused under
-            // rate limiting, and a refusal is terminal for the whole process.
-            (id == super::connectors::MODULE_ID)
+            // TinyConnectors exposes its contract to the host, but has no
+            // host-side module namespace: it is resolved by its registry ID.
+            (id == "tinyconnectors")
                 .then(|| std::env::var_os("TINYCONNECTORS_TEST_MODULE"))
                 .flatten()
                 .map(PathBuf::from)

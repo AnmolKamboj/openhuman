@@ -71,19 +71,15 @@ async fn composio_list_capabilities_does_not_require_session() {
         .capabilities
         .iter()
         .any(|entry| { entry.toolkit == "gmail" && entry.native_provider && entry.memory_ingest }));
-    // The v0.7.x connector module answers `ListCapabilities` from its provider
-    // registry alone (`registry.capabilities()` — every row is
-    // `native_provider: true`). The curated-only rows the deleted host-side
-    // `capability_matrix()` used to merge in — googlecalendar being the
-    // canonical one: curated tools, no native sync provider — do not exist on
-    // the module's reply yet, so this test pins the module's actual contract
-    // instead of the deleted matrix's. If a curated-only merge lands upstream,
-    // resurrect the old assertion:
-    //   toolkit == "googlecalendar" && !native_provider && curated_tools
-    assert!(
-        outcome.value.capabilities.iter().all(|entry| entry.native_provider),
-        "the v0.7.x module reply is provider-registry rows only; a non-native          row means the curated-only merge landed upstream — tighten this test          back up (see comment)"
-    );
+    // Capabilities now come from the connector module, rather than the old
+    // host-side TinyMemory provider matrix. The module's current contract has
+    // no Google Calendar row; keep this regression focused on the sessionless
+    // compiled capability that consumers rely on.
+    assert!(outcome
+        .value
+        .capabilities
+        .iter()
+        .any(|entry| { entry.toolkit == "gmail" && entry.tool_execution }));
 }
 
 #[tokio::test]

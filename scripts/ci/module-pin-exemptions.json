@@ -13,58 +13,16 @@
   ],
   "exemptions": [
     {
-      "id": "tinymcp",
-      "submodule": "vendor/tinymcp",
-      "expect": "v0.3.2",
-      "reason": "openhuman takes tinymcp with default-features = false (Cargo.toml), which switches the module adapter off, so the 0.3.1 artifact this record would download is never loaded; the submodule is the compile-time contract only. #5858 moved it to the v0.3.2 release tag. Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinywallet",
-      "submodule": "vendor/tinywallet",
-      "expect": "v0.5.1",
-      "reason": "#5858 moved the submodule to the v0.5.1 release tag (superseding the v0.5.0-8-g8c728de drift this entry used to accept); the registry still pins v0.5.0 pending an artifact re-pin with v0.5.1 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinydocs",
-      "submodule": "vendor/tinydocs",
-      "expect": "v0.1.15",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.1.15 release tag while the registry record still pins 0.1.14 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.1.15 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinyjuice",
-      "submodule": "vendor/tinyjuice",
-      "expect": "v0.2.5",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.2.5 release tag while the registry record still pins 0.2.4 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.2.5 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinyvoice",
-      "submodule": "vendor/tinyvoice",
-      "expect": "v0.1.6",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.1.6 release tag while the registry record still pins 0.1.5 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.1.6 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinyruntime",
-      "submodule": "vendor/tinyruntime",
-      "expect": "v0.2.4",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.2.4 release tag while the registry record still pins 0.2.2 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.2.4 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
       "id": "tinyruntime-nodejs",
       "submodule": "vendor/tinyruntime",
       "expect": "v0.2.4",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.2.4 release tag while the registry record still pins 0.2.2 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.2.4 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
+      "reason": "The provider is published independently at v0.2.2 while tinyruntime shared source contract is v0.2.4; registry retains its matching published provider artifact."
     },
     {
       "id": "tinyruntime-python",
       "submodule": "vendor/tinyruntime",
       "expect": "v0.2.4",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.2.4 release tag while the registry record still pins 0.2.2 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.2.4 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
-    },
-    {
-      "id": "tinyconnectors",
-      "submodule": "vendor/tinyconnectors",
-      "expect": "v0.7.1",
-      "reason": "The module-pointer refresh #5858 (merged 2026-08-31) moved the submodule to the v0.7.1 release tag while the registry record still pins 0.7.0 \u2014 the compile-time contract is one release ahead of the loaded artifact. Reconciling needs a registry re-pin with v0.7.1 checksums, out of scope for the memory shed (#5875). Tracked by openhuman#5727."
+      "reason": "The provider is published independently at v0.2.2 while tinyruntime shared source contract is v0.2.4; registry retains its matching published provider artifact."
     }
   ]
 }
