@@ -26,10 +26,14 @@ import EmbeddingsSetupModal, { type EmbeddingsSetupModalProps } from '../Embeddi
  */
 vi.mock('../../../../lib/i18n/I18nContext', () => ({
   useT: () => ({
-    t: (key: string) => {
+    // Mirror the real signature: `t: (key, fallback?) => string`
+    // (`lib/i18n/I18nContext.tsx:25`). Dropping the fallback made this mock
+    // return the raw key for any `t(key, fallback)` call, which is not what the
+    // component renders — the tooltip here is supplied as a fallback.
+    t: (key: string, fallback?: string) => {
       if (key === 'settings.embeddings.testSuccess') return 'Connected: {dims} dimensions';
       if (key === 'settings.embeddings.testFailed') return 'Failed: {error}';
-      return key;
+      return fallback ?? key;
     },
   }),
 }));
@@ -149,16 +153,45 @@ describe('EmbeddingsSetupModal — custom-endpoint branch', () => {
     expect(saveButton()).toBeEnabled();
   });
 
-  // The Test button is rendered enabled for a custom provider (the disabled
-  // predicate short-circuits on `!isCustom`), but its handler is wrapped in
-  // `if (!isCustom)`. So it looks actionable and does nothing. Pinned as the
-  // current behaviour — see the bug list; it is a UX defect, not a crash.
-  it('renders Test as enabled for a custom provider but does not call onTest', () => {
+  // Was: "renders Test as enabled for a custom provider but does not call
+  // onTest" — the button looked actionable and its handler opened with
+  // `if (!isCustom)`, so a click produced no request, no result and no error
+  // (#5909). It is now disabled instead, because `embeddings_test_connection`
+  // takes only `{ provider, model, dimensions }` and cannot express a custom
+  // endpoint, so there is genuinely nothing to test against.
+  it('disables Test for a custom provider rather than rendering a dead control', () => {
     const { onTest } = renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
 
-    expect(testButton()).toBeEnabled();
+    expect(testButton()).toBeDisabled();
     fireEvent.click(testButton());
     expect(onTest).not.toHaveBeenCalled();
+  });
+
+  it('shows the reason as visible text, not as a title on the disabled button', () => {
+    // `Button` applies `disabled:pointer-events-none` (ui/Button.tsx:40), so a
+    // disabled control cannot be hovered, and a disabled button is out of the
+    // tab order — a `title` there is unreachable by mouse AND by keyboard.
+    // The reason is therefore rendered beside the button as ordinary text.
+    renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
+
+    const reason = screen.getByTestId('embeddings-test-unavailable-reason');
+    expect(reason).toBeVisible();
+    expect(reason.textContent ?? '').toContain('custom endpoint');
+    expect(testButton()).not.toHaveAttribute('title');
+  });
+
+  it('shows no such reason for a built-in provider', () => {
+    renderModal({ setupKey: 'sk-test' });
+
+    expect(screen.queryByTestId('embeddings-test-unavailable-reason')).not.toBeInTheDocument();
+  });
+
+  it('leaves Save reachable for a custom endpoint', () => {
+    // Disabling Test must not disable the path that still works: a custom
+    // endpoint is saved and then checked from the Embeddings panel.
+    renderModal({ setupProvider: custom, customEndpoint: 'https://host/v1' });
+
+    expect(saveButton()).toBeEnabled();
   });
 });
 
