@@ -110,8 +110,19 @@ export default function Brain() {
     // manual Refresh (a `refreshKey` change re-runs this effect) start the
     // ladder over rather than inheriting a spent one.
     let attempt = 0;
+    // Monotonic request generation. Two `load()` calls can be in flight at once
+    // (the initial one and a `memory-tree-completed` event, or an automatic
+    // retry overtaken by an event), and they share `graph`, `error` and the
+    // retry ladder. Without this, a SUPERSEDED call's late result still writes:
+    // an obsolete rejection sets an error and schedules another retry even
+    // though a newer call has already succeeded, and an obsolete success can
+    // overwrite a newer graph. `cancelled` does not cover this — it only
+    // distinguishes this effect run from the next one, never two loads within
+    // the same run.
+    let generation = 0;
 
     const load = async () => {
+      const myGeneration = ++generation;
       // Any load supersedes a retry still waiting, so a manual Refresh or a
       // `memory-tree-completed` event cannot race a timer into a double fetch.
       if (retryTimer !== undefined) {
@@ -122,7 +133,7 @@ export default function Brain() {
       setError(null);
       try {
         const resp = await memoryTreeGraphExport(mode);
-        if (cancelled) return;
+        if (cancelled || myGeneration !== generation) return;
         console.debug(
           '[brain] graph fetch: exit n=%d edges=%d',
           resp.nodes.length,
@@ -142,7 +153,13 @@ export default function Brain() {
         // set of retries rather than resuming where an old failure left off.
         attempt = 0;
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || myGeneration !== generation) {
+          // A newer load has taken over. Dropping this rejection is what stops
+          // an obsolete failure from scheduling a retry against a graph that
+          // has already refreshed successfully.
+          console.debug('[brain] graph fetch: dropping superseded failure');
+          return;
+        }
         console.error('[brain] graph fetch failed', err);
         setError(err instanceof Error ? err.message : String(err));
 

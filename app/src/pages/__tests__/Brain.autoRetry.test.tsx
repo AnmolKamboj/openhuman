@@ -215,4 +215,61 @@ describe('Brain graph — automatic retry', () => {
     });
     expect(graphExportMock).toHaveBeenCalledTimes(1);
   });
+
+  it('ignores a superseded FAILURE instead of retrying from it', async () => {
+    // Two loads overlap: the initial one is still in flight when a
+    // `memory-tree-completed` event starts a newer one that SUCCEEDS. When the
+    // older call then rejects, that obsolete failure must not set an error or
+    // schedule a retry against a graph that has already refreshed.
+    let rejectFirst!: (reason: unknown) => void;
+    const firstCall = new Promise((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    graphExportMock
+      .mockImplementationOnce(() => firstCall)
+      .mockImplementationOnce(() => Promise.resolve(makeGraph(7)));
+
+    await renderBrain();
+    await act(async () => {
+      window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:7');
+    expect(graphExportMock).toHaveBeenCalledTimes(2);
+
+    // The superseded call finally fails.
+    await act(async () => {
+      rejectFirst(new Error('older load failed'));
+    });
+
+    // No retry may come from it, however long we wait.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TOTAL_LADDER_MS * 2);
+    });
+    expect(graphExportMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:7');
+  });
+
+  it('ignores a superseded SUCCESS instead of overwriting a newer graph', async () => {
+    // The other direction of the same race: a slow older call resolving after a
+    // newer one must not roll the graph back to its stale payload.
+    let resolveFirst!: (value: unknown) => void;
+    const firstCall = new Promise(resolve => {
+      resolveFirst = resolve;
+    });
+    graphExportMock
+      .mockImplementationOnce(() => firstCall)
+      .mockImplementationOnce(() => Promise.resolve(makeGraph(9)));
+
+    await renderBrain();
+    await act(async () => {
+      window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
+    });
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:9');
+
+    await act(async () => {
+      resolveFirst(makeGraph(1));
+    });
+
+    expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:9');
+  });
 });
