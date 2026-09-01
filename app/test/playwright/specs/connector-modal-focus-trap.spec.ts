@@ -41,9 +41,7 @@ async function openSecretDialog(
     document.body.prepend(anchor);
     anchor.focus();
   });
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.id))
-    .toBe('pw-focus-anchor');
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe('pw-focus-anchor');
 
   await page.evaluate(
     ({ keyName }) => {
@@ -116,7 +114,6 @@ test.describe('Connector modal — focus containment', () => {
       ).toBe(true);
     }
   });
-
 });
 
 test.describe('Connector modal — Escape', () => {

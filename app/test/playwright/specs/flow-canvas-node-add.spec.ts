@@ -111,8 +111,7 @@ async function openCanvas(page: import('@playwright/test').Page, userId: string)
  * here, because `FlowNodeComponent` emits three such testids per card
  * (`flow-node-step`, `-summary`, `-validate`).
  */
-const nodeCards = (page: import('@playwright/test').Page) =>
-  page.locator('.react-flow__node');
+const nodeCards = (page: import('@playwright/test').Page) => page.locator('.react-flow__node');
 
 const palette = (page: import('@playwright/test').Page) => page.getByTestId('flow-node-palette');
 
@@ -163,9 +162,9 @@ test.describe('Flow canvas — the insert palette', () => {
 
     // The palette tile carries the kind it will insert; the canvas must gain a
     // card of that same kind.
-    await expect(
-      page.locator('[data-node-kind="http_request"]').first()
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-node-kind="http_request"]').first()).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });
 
@@ -218,9 +217,7 @@ test.describe('Flow canvas — the unsaved-changes guard', () => {
     // And the discard was real: the stored graph still has its single node.
     const payload = await callCoreRpc<unknown>('openhuman.flows_get', { id: flowId });
     const rec = payload as Record<string, unknown>;
-    const flow = (rec && 'result' in rec ? rec.result : rec) as {
-      graph?: { nodes?: unknown[] };
-    };
+    const flow = (rec && 'result' in rec ? rec.result : rec) as { graph?: { nodes?: unknown[] } };
     expect(flow?.graph?.nodes ?? []).toHaveLength(1);
   });
 

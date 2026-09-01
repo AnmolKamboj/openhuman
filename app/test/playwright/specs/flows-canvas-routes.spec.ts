@@ -64,10 +64,7 @@ const newWorkflowButton = (page: import('@playwright/test').Page) =>
  * `missing field 'kind'`.
  */
 function simpleGraph(name: string) {
-  return {
-    nodes: [{ id: 'trigger', kind: 'trigger', name, config: {} }],
-    edges: [],
-  };
+  return { nodes: [{ id: 'trigger', kind: 'trigger', name, config: {} }], edges: [] };
 }
 
 async function goto(page: import('@playwright/test').Page, route: string) {

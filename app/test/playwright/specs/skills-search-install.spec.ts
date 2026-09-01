@@ -99,7 +99,6 @@ test.describe('Skills explorer — the search box debounces', () => {
     await expect.poll(() => queries.length, { timeout: 10_000 }).toBe(2);
     expect(queries[1]).toBe('github');
   });
-
 });
 
 test.describe('Skills explorer — typing narrows what is on screen', () => {
