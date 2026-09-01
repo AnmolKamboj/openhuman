@@ -1,4 +1,4 @@
-import { type Location, Navigate, Route, Routes } from 'react-router-dom';
+import { type Location, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import AppRoutesIOS from './AppRoutesIOS';
 import DefaultRedirect from './components/DefaultRedirect';
@@ -24,6 +24,11 @@ import Skills from './pages/Skills';
 import WebCallbackPage from './pages/WebCallbackPage';
 import Welcome from './pages/Welcome';
 import WorkflowsRun from './pages/WorkflowsRun';
+
+function ForwardSearch({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={`${to}${search}${hash}`} replace />;
+}
 
 interface AppRoutesProps {
   /**
@@ -143,9 +148,9 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
 
       {/* Connections page lives at /connections (Phase 2 rename from /skills).
           The old /skills path is kept as a back-compat redirect so bookmarks
-          and deep links continue to work.  `?tab=` query params are preserved
-          by Navigate (replace) so existing deep links still land on the right
-          sub-tab. */}
+          and deep links continue to work.  ForwardSearch copies the current
+          ?tab= (and any other query params) to the destination so existing
+          deep links still land on the right sub-tab. */}
       {/* `/workflows/run` is the single-purpose Skill runner page — the live
           destination of the Run button in the Automations tab (WorkflowsTab). */}
       <Route
@@ -167,7 +172,7 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
       />
 
       {/* Back-compat: /skills → /connections (preserves ?tab= deep links). */}
-      <Route path="/skills" element={<Navigate to="/connections" replace />} />
+      <Route path="/skills" element={<ForwardSearch to="/connections" />} />
 
       {/* Unified chat = agent + connected web apps. Replaces the old
           /conversations and /accounts routes. */}
