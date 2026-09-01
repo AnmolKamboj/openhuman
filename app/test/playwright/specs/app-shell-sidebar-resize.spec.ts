@@ -51,13 +51,18 @@ const widthOf = (page: Page) =>
  * So: point at the hit area, read colour off the seam, and assert the rail's
  * presence by count rather than by visibility.
  *
- * And point at its LEFT half specifically. Measured with `elementFromPoint`
- * (sidebar right edge at x=224, hit area x=220..228):
+ * The LEFT-half-only caveat this comment used to carry is FIXED (#5906). It
+ * read: measured with `elementFromPoint` at a 224px sidebar edge, x=221 and
+ * x=222 reached the rail while x=224 and x=227 reached the content viewport —
+ * so half the widened hit area was dead and aiming at the element's centre
+ * (what `hover()` and `boundingBox()` centre do) landed on the dead side.
  *
- *     x=221  -> SPAN.absolute inset-y-0 -left-1 -right-1   (the rail)
- *     x=222  -> SPAN                                        (the rail)
- *     x=224  -> DIV.relative flex flex-1 ...                (content viewport)
- *     x=227  -> DIV                                         (content viewport)
+ * Cause: `SidebarInset` carries `relative z-10` and is rendered AFTER the rail,
+ * and the hit area carried `z-10` too, so equal z-index let DOM order decide.
+ * `SidebarRail` now carries `z-20`, which lifts the hit area and the seam
+ * together. `railPoint` below still aims at the sidebar edge — that is where a
+ * user's cursor is when the resize cursor appears — and the new test at the end
+ * of this file asserts the formerly dead half now receives events.
  *
  * The content surface is painted over the `-right-1` half despite the hit
  * area's `z-10`, so only x 220..223 actually reaches the rail. Aiming at the
@@ -138,6 +143,44 @@ test.describe('App shell — sidebar resize (#5676 AC-4)', () => {
     // And specifically NOT back at the default — the assertion above would also
     // hold if `resized` happened to equal the default width.
     expect(resized).not.toBe(before);
+  });
+
+  test('the full width of the hit area receives pointer events (#5906)', async ({ page }) => {
+    // The regression guard for the stacking fix. Before it, the content card
+    // (`SidebarInset`, `relative z-10`, rendered after the rail) painted over
+    // the half of the hit area that overhangs it, so `elementFromPoint` there
+    // returned the content viewport and a drag started on nothing.
+    //
+    // Walks the hit area's real box and asserts every sampled x resolves to a
+    // node inside the rail. Sampling rather than one point: the failure was
+    // exactly that one half worked and the other did not, so a single probe at
+    // the wrong offset reports the wrong answer either way.
+    const box = await hitArea(page).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThan(0);
+
+    const y = box!.y + box!.height / 2;
+    const offsets = [1, box!.width / 4, box!.width / 2, (box!.width * 3) / 4, box!.width - 1];
+
+    const owners = await page.evaluate(
+      ({ xs, yy }) =>
+        xs.map(x => {
+          const el = document.elementFromPoint(x, yy);
+          const railEl = document.querySelector('[data-testid="root-shell-divider"]');
+          return {
+            x: Math.round(x),
+            insideRail: Boolean(railEl && el && (el === railEl || railEl.contains(el))),
+            tag: el ? el.tagName : 'null',
+          };
+        }),
+      { xs: offsets.map(o => box!.x + o), yy: y }
+    );
+
+    const dead = owners.filter(o => !o.insideRail);
+    expect(
+      dead,
+      `these x positions do not reach the rail: ${dead.map(d => `${d.x} -> ${d.tag}`).join(', ')}`
+    ).toEqual([]);
   });
 
   test('the rail is absent while collapsed — the icon column is fixed, not draggable', async ({

@@ -327,7 +327,17 @@ export const SidebarRail = forwardRef<HTMLDivElement, SidebarRailProps>(
           // wider than its other three by exactly that much. The seam is drawn
           // by the absolutely-positioned indicator below instead, which costs
           // no width — and it only paints on hover/focus anyway.
-          'group relative w-0 flex-none cursor-col-resize select-none self-stretch',
+          //
+          // `z-20` is load-bearing, not decoration. `SidebarInset` — the content
+          // card, rendered AFTER this element by `RootShellLayout` — carries
+          // `relative z-10`, and the hit area below carried `z-10` too. Equal
+          // z-index means DOM order decides, so the card painted over the half
+          // of the hit area that overhangs it and pointer events never reached
+          // the rail there: `elementFromPoint` at the rail's own centre returned
+          // the content viewport, not this element (#5906). Raising the rail
+          // itself rather than the child lifts BOTH the hit area and the 1px
+          // seam, which share the cause.
+          'group relative z-20 w-0 flex-none cursor-col-resize select-none self-stretch',
           'bg-transparent focus:outline-hidden',
           className
         )}
