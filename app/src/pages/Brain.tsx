@@ -40,6 +40,16 @@ const navIcon = (d: string) => (
 const BRAIN_TABS: readonly BrainTab[] = ['welcome', 'graph', 'goals', 'sources', 'sync'];
 
 /**
+ * Backoff ladder for automatically retrying a failed graph load.
+ *
+ * Written out rather than computed from an exponent because the two things a
+ * reader needs — how long the wait is, and that there are exactly three of
+ * them — are then both visible. The last element is the bound: once the ladder
+ * is spent the error stays on screen and manual Refresh is the way back.
+ */
+const RETRY_DELAYS_MS: readonly number[] = [2_000, 4_000, 8_000];
+
+/**
  * Canonical text header (title + one-line description) per functional tab.
  */
 const BRAIN_HEADERS: Record<Exclude<BrainTab, 'welcome'>, { titleKey: string; descKey: string }> = {
@@ -93,8 +103,22 @@ export default function Brain() {
 
   useEffect(() => {
     let cancelled = false;
+    // The pending automatic retry, if one is scheduled. Effect-scoped, so a
+    // dependency change or an unmount cancels it in the cleanup below.
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    // Index into RETRY_DELAYS_MS. Effect-scoped too, which is what makes a
+    // manual Refresh (a `refreshKey` change re-runs this effect) start the
+    // ladder over rather than inheriting a spent one.
+    let attempt = 0;
+
     const load = async () => {
-      console.debug('[brain] graph fetch: entry mode=%s', mode);
+      // Any load supersedes a retry still waiting, so a manual Refresh or a
+      // `memory-tree-completed` event cannot race a timer into a double fetch.
+      if (retryTimer !== undefined) {
+        clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+      console.debug('[brain] graph fetch: entry mode=%s attempt=%d', mode, attempt);
       setError(null);
       try {
         const resp = await memoryTreeGraphExport(mode);
@@ -114,10 +138,28 @@ export default function Brain() {
         // this PR was invisible, and with the warning below would be a FALSE
         // "your data is stale" on data that is not.
         setError(null);
+        // Success resets the ladder: the NEXT transient failure gets the full
+        // set of retries rather than resuming where an old failure left off.
+        attempt = 0;
       } catch (err) {
         if (cancelled) return;
         console.error('[brain] graph fetch failed', err);
         setError(err instanceof Error ? err.message : String(err));
+
+        const delay = RETRY_DELAYS_MS[attempt];
+        if (delay === undefined) {
+          // Bounded on purpose. Past this point the failure is very unlikely to
+          // be transient, and retrying forever would hammer the core and hide a
+          // real outage behind a spinner. The error stays on screen and the
+          // manual Refresh in `MemoryControls` remains the way back.
+          console.warn('[brain] graph fetch: retries exhausted after %d attempts', attempt);
+          return;
+        }
+        console.debug('[brain] graph fetch: scheduling retry %d in %dms', attempt + 1, delay);
+        attempt += 1;
+        retryTimer = setTimeout(() => {
+          void load();
+        }, delay);
       }
     };
     void load();
@@ -128,6 +170,7 @@ export default function Brain() {
     window.addEventListener('openhuman:memory-tree-completed', onTreeDone);
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
       window.removeEventListener('openhuman:memory-tree-completed', onTreeDone);
     };
     // `authUserId` is a dependency so a logout→login (identity becomes
