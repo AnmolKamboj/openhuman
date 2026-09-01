@@ -1,28 +1,29 @@
 /**
- * ⚠️ SKIPPED — DOES NOT PASS YET. Do not un-skip without re-running it.
+ * ⚠️ STILL SKIPPED — the seeding was restructured but has NOT been executed.
  *
- * Committed for the diagnosis, not as coverage. Three runs against the live
- * lane (ports 18406/17706/4406, clean core) all fail at the same point.
+ * Local test execution is currently forbidden by a standing fleet rule, so the
+ * fix below is reasoned from source and verified by reading only. It is left
+ * skipped rather than un-skipped-and-hoped: shipping an unrun spec as active is
+ * how a red lane gets blamed on the wrong change. Un-skip on the first run that
+ * can actually execute it.
  *
- * What was established and is worth keeping:
- *  - The persist blob format here is CORRECT: redux-persist stores each
+ * What is established, from three earlier runs against a live lane:
+ *  - The persist blob format here is CORRECT. redux-persist stores each
  *    whitelisted field as its own JSON string inside the outer object, and a
- *    probe confirmed the app's own blob has exactly this shape.
- *  - The namespace is NOT the bypass id passed to `bootAuthenticatedPage`.
- *    The app resolves its active user from the mock backend and writes
- *    `user-123:persist:notifications`; a probe of `localStorage` showed both
- *    `pw-notif-feed:persist:notifications` (my seed, never read) and
- *    `user-123:persist:notifications` (`items: "[]"`, what the app reads).
- *    `seedFeed` below therefore discovers the id at runtime rather than
- *    assuming it.
+ *    `localStorage` probe confirmed the app's own blob has exactly this shape.
+ *  - The namespace is NOT the bypass id passed to `bootAuthenticatedPage`. The
+ *    app resolves its active user from the mock backend and reads
+ *    `user-123:persist:notifications`. The probe showed both keys present: the
+ *    seed under the bypass id, never read, and the app's own under `user-123`,
+ *    holding `items: "[]"`.
+ *  - Seeding AFTER the app has mounted does nothing. redux-persist rehydrates
+ *    once per page context, so a post-boot write is never read — which is why
+ *    every assertion timed out against an empty feed.
  *
- * Where it still stops: after seeding and re-navigating to /#/notifications,
- * `system-events-section` does not become visible within 20s. Not yet diagnosed
- * — the remaining candidates are that redux-persist rehydrates once per page
- * context and ignores a post-boot localStorage write, or that the section only
- * mounts when the feed is non-empty at first paint. If the former, seeding has
- * to happen in `addInitScript` under the real user id, which means learning the
- * id in a throwaway page context first.
+ * The fix, per that last point: learn the namespace on a first boot, register
+ * the seed as an `addInitScript` so it runs before any application code, then
+ * navigate to a fresh document that mounts with the blob already present. See
+ * `openFeedWith`.
  *
  * The other half of this surface — integration notifications, which ARE
  * RPC-driven — is already covered by `notifications.spec.ts`; this file
@@ -76,45 +77,72 @@ function item(id: string, category: string, title: string, read = false): SeedIt
 }
 
 /**
- * Seed the persisted notification slice for whichever user the app is actually
- * scoped to, then reload so the real reducer rehydrates it.
+ * Learn the namespace the app actually persists under.
  *
- * The namespace is discovered at runtime rather than assumed. `activeUserId`
- * comes from the signed-in identity the app resolves — in this lane the mock
- * backend answers `user-123`, NOT the bypass id passed to
- * `bootAuthenticatedPage`. Seeding under the bypass id writes a key nothing ever
- * reads, and every assertion then times out against an empty feed. That is
- * exactly what the first run of this spec did.
+ * `activeUserId` is the signed-in identity the app resolves, NOT the bypass id
+ * handed to `bootAuthenticatedPage` — in this lane the mock backend answers
+ * `user-123`. Seeding under the bypass id writes a key nothing ever reads and
+ * every assertion then times out against an empty feed, which is exactly what
+ * the first run of this spec did.
+ *
+ * Polled rather than read once: the app writes the key during boot, so a single
+ * `page.evaluate` immediately after navigation can race that write and return
+ * `null` — or, worse, a stale value that sends the seed to a key nobody reads.
+ */
+async function resolveActiveUserId(page: Page): Promise<string> {
+  await expect
+    .poll(async () => page.evaluate(() => localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID')), {
+      timeout: 20_000,
+      message: 'the app never wrote OPENHUMAN_ACTIVE_USER_ID',
+    })
+    .not.toBeNull();
+
+  const user = await page.evaluate(() => localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID'));
+  if (!user) throw new Error('no active user id after polling');
+  return user;
+}
+
+/**
+ * Open the feed with `items` already persisted BEFORE the app mounts.
+ *
+ * This is deliberately a two-navigation sequence, and the reason is the whole
+ * design of this file:
+ *
+ *   1. Boot once, only to learn the namespace (see `resolveActiveUserId`). The
+ *      feed is empty on this pass and nothing is asserted against it.
+ *   2. Register the seed as an `addInitScript`, which runs on every subsequent
+ *      document BEFORE any application code, then navigate again. The second
+ *      document therefore mounts with the blob already in `localStorage`.
+ *
+ * Writing the blob after the app has mounted does not work: redux-persist
+ * rehydrates once per page context, so a post-boot write is simply never read.
+ * `addInitScript` is what makes the seed visible to rehydration — a plain
+ * `page.evaluate` + `goto` is not equivalent, because the app has already
+ * mounted and read its initial state by then.
  *
  * The blob shape is redux-persist's: each whitelisted field is its own JSON
  * string inside the outer object (`store/index.ts:144-149`).
  */
-async function seedFeed(page: Page, items: SeedItem[]): Promise<void> {
-  const user = await page.evaluate(() => localStorage.getItem('OPENHUMAN_ACTIVE_USER_ID'));
-  if (!user) throw new Error('no active user id — the app has not resolved a session yet');
+async function openFeedWith(page: Page, items: SeedItem[]): Promise<void> {
+  await bootAuthenticatedPage(page, USER, '/notifications');
+  await waitForAppReady(page);
+  const user = await resolveActiveUserId(page);
 
-  await page.evaluate(
+  await page.addInitScript(
     ({ key, payload }) => {
       const raw = window.localStorage.getItem(key);
-      const blob: Record<string, string> = raw ? JSON.parse(raw) : {};
+      const blob: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {};
       blob.items = JSON.stringify(payload);
       window.localStorage.setItem(key, JSON.stringify(blob));
     },
     { key: `${user}:persist:notifications`, payload: items }
   );
 
-  // Navigate rather than reload: a bare reload can land on the default route,
-  // and the seeded feed is only observable on /notifications.
+  // A fresh document: the init script above runs first, so the store rehydrates
+  // with the seed instead of the empty blob the previous boot left behind.
   await page.goto('/#/notifications');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-}
-
-async function openFeedWith(page: Page, items: SeedItem[]): Promise<void> {
-  await bootAuthenticatedPage(page, USER, '/notifications');
-  await waitForAppReady(page);
-  await dismissWalkthroughIfPresent(page);
-  await seedFeed(page, items);
   await expect(page.getByTestId('system-events-section')).toBeVisible({ timeout: 20_000 });
 }
 

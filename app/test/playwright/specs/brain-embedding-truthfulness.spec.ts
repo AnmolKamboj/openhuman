@@ -272,6 +272,19 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       timeout: 30_000,
     });
 
-    await expect(page.getByTestId(`memory-source-view-health-${id}`)).toBeVisible();
+    // Visibility alone would pass for a disabled control or a dead handler, and
+    // an unreachable escape hatch is the same as no escape hatch — the user is
+    // told semantic search is broken and given a button that does nothing.
+    // `onViewHealth` navigates to `/brain?tab=sync`
+    // (`MemorySourcesRegistry.tsx:552-555`), so assert the destination.
+    const viewHealth = page.getByTestId(`memory-source-view-health-${id}`);
+    await expect(viewHealth).toBeVisible();
+    await expect(viewHealth).toBeEnabled();
+
+    await viewHealth.click();
+
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 20_000 })
+      .toMatch(/^#\/brain\?tab=sync/);
   });
 });
