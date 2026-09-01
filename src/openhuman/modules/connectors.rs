@@ -99,12 +99,30 @@ pub fn module_config(config: &Config) -> Result<serde_json::Value, String> {
                         .to_string()
                 })?;
 
-            Ok(serde_json::json!({
+            // The module accepts an optional base override and defaults to the
+            // real Composio API without one. Before the extraction the host's
+            // direct scan honoured OPENHUMAN_COMPOSIO_DIRECT_BASE_V3 (and V2)
+            // — test rigs and proxies point Composio at a loopback mock with
+            // it — and omitting the field here silently killed that contract:
+            // the module dialled backend.composio.dev regardless. Forward it.
+            // The module's transport still refuses any non-HTTPS, non-loopback
+            // base, so this cannot redirect a real credential to plain HTTP.
+            let direct_base = std::env::var("OPENHUMAN_COMPOSIO_DIRECT_BASE_V3")
+                .or_else(|_| std::env::var("OPENHUMAN_COMPOSIO_DIRECT_BASE_V2"))
+                .ok()
+                .map(|base| base.trim().to_string())
+                .filter(|base| !base.is_empty());
+
+            let mut payload = serde_json::json!({
                 "route": "direct",
                 "api_key": api_key,
                 "entity_id": config.composio.entity_id,
                 "state_dir": state_dir,
-            }))
+            });
+            if let Some(base) = direct_base {
+                payload["base_url"] = serde_json::Value::String(base);
+            }
+            Ok(payload)
         }
         unknown => Err(format!(
             "unknown composio mode: \"{unknown}\". Supported: \"{COMPOSIO_MODE_BACKEND}\", \

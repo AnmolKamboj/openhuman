@@ -12897,29 +12897,23 @@ async fn json_rpc_memory_sources_reconcile_reports_pending_raw_files() {
 
 // ── Memory sources: active-connection filtering over JSON-RPC ────────────────
 
-/// Mock the backend's `/agent-integrations/composio/connections` route with a
-/// fixed active set.
-///
-/// The active scan used to hit Composio's v3 `/connected_accounts` directly
-/// (`OPENHUMAN_COMPOSIO_DIRECT_BASE_*`), which is what these tests originally
-/// mocked. The connector extraction (#5854) moved `composio_list_connections`
-/// into the tinyconnectors module, which fetches the BACKEND route instead —
-/// so the seam a test must seed is `BACKEND_URL`, and a connection is active
-/// per `ComposioConnection::is_active` (`status` of `ACTIVE`/`CONNECTED`).
-/// A connection_id absent from this list is, by omission, inactive.
-fn mock_backend_composio_connections_router(
-    active: &'static [(&'static str, &'static str)],
-) -> Router {
-    Router::new().route(
-        "/agent-integrations/composio/connections",
-        get(move || async move {
-            let connections: Vec<Value> = active
-                .iter()
-                .map(|(id, toolkit)| json!({"id": id, "toolkit": toolkit, "status": "ACTIVE"}))
-                .collect();
-            Json(json!({"success": true, "data": {"connections": connections}}))
-        }),
-    )
+/// Mock Composio v3 `/connected_accounts`. Returns a single ACTIVE Gmail
+/// connection (`conn_active_gmail`); any other connection_id is, by omission,
+/// treated as inactive by the scan.
+fn mock_composio_connected_accounts_router() -> Router {
+    async fn connected_accounts() -> Json<Value> {
+        Json(json!({
+            "items": [
+                {
+                    "id": "conn_active_gmail",
+                    "status": "ACTIVE",
+                    "toolkit": "gmail",
+                    "created_at": "2026-01-01T00:00:00Z"
+                }
+            ]
+        }))
+    }
+    Router::new().route("/connected_accounts", get(connected_accounts))
 }
 
 /// Write a minimal config that selects Composio **direct** mode with an inline
@@ -13012,25 +13006,17 @@ async fn json_rpc_memory_sources_list_filters_to_active_connections() {
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
-    // Mock the backend connections route — only conn_active_gmail is ACTIVE.
-    // Post-#5854 the active scan crosses the connector module to BACKEND_URL,
-    // so that is the env this test must point at its mock (the old
-    // OPENHUMAN_COMPOSIO_DIRECT_BASE_* knobs are dead on this path).
-    let (composio_addr, composio_join) = serve_on_ephemeral(
-        mock_backend_composio_connections_router(&[("conn_active_gmail", "gmail")]),
-    )
-    .await;
+    // Mock Composio direct endpoint — only conn_active_gmail is ACTIVE.
+    let (composio_addr, composio_join) =
+        serve_on_ephemeral(mock_composio_connected_accounts_router()).await;
     let composio_base = format!("http://{composio_addr}");
-    let _backend_url_guard = EnvVarGuard::set("BACKEND_URL", &composio_base);
+    let _v2_guard = EnvVarGuard::set("OPENHUMAN_COMPOSIO_DIRECT_BASE_V2", &composio_base);
+    let _v3_guard = EnvVarGuard::set("OPENHUMAN_COMPOSIO_DIRECT_BASE_V3", &composio_base);
 
-    // The api_url in the written config must ALSO point at the mock: the
-    // connector module is (re-)routed per call from the loaded config's
-    // backend base (`ensure_routed`), not from the BACKEND_URL env — a dead
-    // api_url here routes the module at a black hole and the scan fails into
-    // its fail-open arm, unfiltered.
-    write_composio_direct_config(&openhuman_home, &composio_base);
+    write_composio_direct_config(&openhuman_home, "http://127.0.0.1:1");
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
@@ -13163,6 +13149,20 @@ async fn json_rpc_memory_sources_list_shows_all_when_scan_unavailable() {
     rpc_join.abort();
 }
 
+/// Mock Composio v3 `/connected_accounts` returning **two** distinct ACTIVE
+/// Gmail connections — exercises multiple-account-per-toolkit support (#3443).
+fn mock_composio_two_gmail_accounts_router() -> Router {
+    async fn connected_accounts() -> Json<Value> {
+        Json(json!({
+            "items": [
+                { "id": "conn_gmail_one", "status": "ACTIVE", "toolkit": "gmail", "created_at": "2026-01-01T00:00:00Z" },
+                { "id": "conn_gmail_two", "status": "ACTIVE", "toolkit": "gmail", "created_at": "2026-01-02T00:00:00Z" }
+            ]
+        }))
+    }
+    Router::new().route("/connected_accounts", get(connected_accounts))
+}
+
 /// Regression for #3443 (multiple account connections per toolkit): two
 /// *distinct* active connections of the same toolkit (two Gmail accounts) must
 /// **both** be listed. Our filter keys on `connection_id`, never on toolkit, so
@@ -13177,25 +13177,17 @@ async fn json_rpc_memory_sources_list_keeps_multiple_active_connections_per_tool
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
-    // Scan reports two active Gmail accounts (distinct connection_ids), via
-    // the backend route the connector module fetches (see the helper's doc).
+    // Scan reports two active Gmail accounts (distinct connection_ids).
     let (composio_addr, composio_join) =
-        serve_on_ephemeral(mock_backend_composio_connections_router(&[
-            ("conn_gmail_one", "gmail"),
-            ("conn_gmail_two", "gmail"),
-        ]))
-        .await;
+        serve_on_ephemeral(mock_composio_two_gmail_accounts_router()).await;
     let composio_base = format!("http://{composio_addr}");
-    let _backend_url_guard = EnvVarGuard::set("BACKEND_URL", &composio_base);
+    let _v2_guard = EnvVarGuard::set("OPENHUMAN_COMPOSIO_DIRECT_BASE_V2", &composio_base);
+    let _v3_guard = EnvVarGuard::set("OPENHUMAN_COMPOSIO_DIRECT_BASE_V3", &composio_base);
 
-    // The api_url in the written config must ALSO point at the mock: the
-    // connector module is (re-)routed per call from the loaded config's
-    // backend base (`ensure_routed`), not from the BACKEND_URL env — a dead
-    // api_url here routes the module at a black hole and the scan fails into
-    // its fail-open arm, unfiltered.
-    write_composio_direct_config(&openhuman_home, &composio_base);
+    write_composio_direct_config(&openhuman_home, "http://127.0.0.1:1");
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
