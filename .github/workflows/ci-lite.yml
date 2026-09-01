@@ -832,9 +832,28 @@ jobs:
           # Do not restore the release builder's uid into the trusted tree.
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
+          # tinyconnectors, same contract: version + digest are the
+          # ubuntu-22.04-x86_64 row of registry_part_02.rs, copied verbatim.
+          # Without this, every test binary that loads the connector module
+          # fetches GitHub release metadata at run time — refused under rate
+          # limiting, and a refusal is terminal for that whole test process.
+          connectors_version="0.7.0"
+          connectors_sha256="b73df16260dce3387f7de915dfa93f6c0f8c977cf21784b97b2a6b2dcdf961f7"
+          connectors_dir="$module_root/tinyconnectors"
+          connectors_archive="$connectors_dir/tinyconnectors-${connectors_version}-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$connectors_dir"
+          mkdir -p "$connectors_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinyconnectors/releases/download/v${connectors_version}/$(basename "$connectors_archive")" \
+            --output "$connectors_archive"
+          echo "${connectors_sha256}  $connectors_archive" \
+            | sha256sum --check
+          tar --no-same-owner -xzf "$connectors_archive" -C "$connectors_dir"
           echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
             >> "$GITHUB_ENV"
           echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
+            >> "$GITHUB_ENV"
+          echo "TINYCONNECTORS_TEST_MODULE=$connectors_dir/libtinyconnectors_module.so" \
             >> "$GITHUB_ENV"
 
       - name: Run TinyJuice host-module regression

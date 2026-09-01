@@ -348,12 +348,23 @@ fn local_override(config: &Config, id: &str) -> Option<PathBuf> {
         .iter()
         .find_map(|entry| (entry.id == id).then(|| PathBuf::from(entry.path.clone())));
 
-    configured.or_else(|| {
-        (id == super::memory::MODULE_ID)
-            .then(|| std::env::var_os("TINYMEMORY_TEST_MODULE"))
-            .flatten()
-            .map(PathBuf::from)
-    })
+    configured
+        .or_else(|| {
+            (id == super::memory::MODULE_ID)
+                .then(|| std::env::var_os("TINYMEMORY_TEST_MODULE"))
+                .flatten()
+                .map(PathBuf::from)
+        })
+        .or_else(|| {
+            // Same shape for the connector module: CI pre-provisions the pinned
+            // artifact and points this at it, so a test binary never fetches
+            // GitHub release metadata at run time — that fetch is refused under
+            // rate limiting, and a refusal is terminal for the whole process.
+            (id == super::connectors::MODULE_ID)
+                .then(|| std::env::var_os("TINYCONNECTORS_TEST_MODULE"))
+                .flatten()
+                .map(PathBuf::from)
+        })
 }
 
 /// The artifact an earlier run extracted, if it is still there.
