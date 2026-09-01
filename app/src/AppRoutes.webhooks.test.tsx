@@ -63,11 +63,18 @@ const AppRoutes = (await import('./AppRoutes')).default;
  * `/webhooks?tab=inbound#delivery-3` arrived at a bare `/connections`.
  *
  * Fixing only the first hop would not have been enough: the fragment would have
- * reached `/settings/integrations` and been dropped by the second. These tests
- * assert the end of the chain, so they fail if EITHER hop regresses.
+ * reached `/settings/integrations` and been dropped by the second.
+ *
+ * These tests assert HOP ONE end-to-end, and hop two at the source level.
+ * They cannot render hop two: it lives in `settingsRouteElements.tsx`, which
+ * eagerly imports all 34 settings panels, so pulling it into a route test drags
+ * the whole settings tree in. `./pages/Settings` is mocked here precisely to
+ * avoid that — which means the rendered chain stops at `/settings/integrations`.
+ * The second hop is therefore pinned by reading the route table, the same
+ * technique `AppRoutes.redirects.test.tsx` uses.
  */
 describe('/webhooks two-hop back-compat redirect', () => {
-  it('lands on /connections', () => {
+  it('lands on /settings/integrations (hop one)', () => {
     const loc = { pathname: '', search: '', hash: '' };
     render(
       <MemoryRouter initialEntries={['/webhooks']}>
@@ -75,7 +82,7 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
   });
 
   it('carries a query string across both hops', () => {
@@ -86,7 +93,7 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
     expect(loc.search).toBe('?tab=inbound');
   });
 
@@ -99,7 +106,7 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
     expect(loc.hash).toBe('#delivery-3');
   });
 
@@ -111,7 +118,7 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
     expect(loc.search).toBe('?tab=inbound');
     expect(loc.hash).toBe('#delivery-3');
   });
@@ -125,7 +132,7 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
     expect(loc.search).toBe('');
     expect(loc.hash).toBe('');
   });
@@ -140,8 +147,24 @@ describe('/webhooks two-hop back-compat redirect', () => {
         <LocationSpy onCapture={l => Object.assign(loc, l)} />
       </MemoryRouter>
     );
-    expect(loc.pathname).toBe('/connections');
+    expect(loc.pathname).toBe('/settings/integrations');
     expect(loc.search).toBe('?tab=inbound');
     expect(loc.hash).toBe('#delivery-3');
+  });
+
+  // Hop two, asserted at the source level because it cannot be rendered here.
+  // If someone reverts `settingsRouteElements.tsx` to a bare `<Navigate>`, the
+  // deep link is dropped on the second hop and no rendered test above would see
+  // it — this is what catches that.
+  it('hop two forwards the deep link rather than dropping it', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const path = require('node:path') as typeof import('node:path');
+    const source = fs.readFileSync(
+      path.resolve('src/components/settings/settingsRouteElements.tsx'),
+      'utf8'
+    );
+    const route = source.match(/<Route\s+path="integrations"[^>]*>/);
+    expect(route, 'the settings `integrations` route should exist').not.toBeNull();
+    expect(route?.[0]).toContain('ForwardSearch');
   });
 });
