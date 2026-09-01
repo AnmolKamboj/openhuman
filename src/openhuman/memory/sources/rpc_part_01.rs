@@ -513,12 +513,6 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
     // be a second read of the same file that can disagree with the one the
     // pipeline actually applies.
     let binding = crate::openhuman::memory::binding::for_config(&config)?;
-    let sync = binding.provider().as_source_sync().ok_or_else(|| {
-        format!(
-            "the bound memory driver '{}' does not serve source sync",
-            binding.driver_id()
-        )
-    })?;
     // The enabled gate is not the driver's. `run_source_sync` runs whatever id
     // it is handed; it is `sources::sync::sync_source` and the periodic loop
     // that refuse a disabled entry, and this RPC is the third caller, the one
@@ -558,6 +552,16 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
             ));
         }
     }
+    // Resolved after the composio branch on purpose: the connector-backed
+    // dispatch above needs `as_sources`, not `as_source_sync`, and a driver
+    // serving the former without the latter must not fail a composio sync on
+    // a capability it never uses (review finding on #5932).
+    let sync = binding.provider().as_source_sync().ok_or_else(|| {
+        format!(
+            "the bound memory driver '{}' does not serve source sync",
+            binding.driver_id()
+        )
+    })?;
     sync.run_source_sync(&req.source_id)
         .await
         .map_err(|error| error.to_string())?;
