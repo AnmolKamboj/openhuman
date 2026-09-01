@@ -248,37 +248,65 @@ pub async fn composio_sync_for_source(
     let connection_for_log = connection_id.to_string();
     let config_for_run = config.clone();
 
+    // A connector page is one `run_sync_pass`; `more_pending` means the run
+    // stopped mid-account and "the next run resumes". The button's terminal
+    // stage must describe the whole user intent, not one page — emitting
+    // `completed` with pages unfetched cleared the row while records remained
+    // (review finding on this PR) — so loop passes until the connector reports
+    // the end, bounded so an upstream that never completes cannot pin this
+    // task forever. The bound is generous: 50 pages ≈ 5,000 records per click.
+    const MAX_PASSES: usize = 50;
+
     tokio::spawn(async move {
         publish_stage("running", None);
-        let outcome = run_sync_pass(
-            &config_for_run,
-            &toolkit_for_log,
-            &connection_for_log,
-            &reason_for_task,
-        )
-        .await;
+        let mut total_written: u64 = 0;
+        let mut passes = 0usize;
+        let outcome = loop {
+            passes += 1;
+            match run_sync_pass(
+                &config_for_run,
+                &toolkit_for_log,
+                &connection_for_log,
+                &reason_for_task,
+            )
+            .await
+            {
+                Ok(pass) => {
+                    total_written = total_written.saturating_add(u64::from(pass.written));
+                    tracing::info!(
+                        toolkit = %toolkit_for_log,
+                        connection_id = %connection_for_log,
+                        pass = passes,
+                        items_ingested = pass.records_read,
+                        written = pass.written,
+                        already_ingested = pass.already_ingested,
+                        more_pending = pass.more_pending,
+                        "[composio] background sync pass ok"
+                    );
+                    if !pass.more_pending {
+                        break Ok(());
+                    }
+                    if passes >= MAX_PASSES {
+                        // Not a failure of anything fetched — those pages are
+                        // ingested and the next click resumes — but claiming
+                        // `completed` would be the same lie one page earlier.
+                        break Err(format!(
+                            "paused after {passes} pages; ingested {total_written} item(s) so far \
+                             — click Sync again to continue"
+                        ));
+                    }
+                }
+                Err(error) => break Err(error),
+            }
+        };
         match outcome {
-            Ok(pass) => {
-                tracing::info!(
-                    toolkit = %toolkit_for_log,
-                    connection_id = %connection_for_log,
-                    items_ingested = pass.records_read,
-                    written = pass.written,
-                    already_ingested = pass.already_ingested,
-                    more_pending = pass.more_pending,
-                    "[composio] background sync ok"
-                );
+            Ok(()) => {
+                // The detail is a parse contract, not prose: the Sources UI
+                // extracts the count with `/ingested\s+(\d+)\s+item/i` and
+                // falls back to a generic "up to date" when it cannot (#3295).
                 publish_stage(
                     "completed",
-                    Some(format!(
-                        "{} items{}",
-                        pass.written,
-                        if pass.more_pending {
-                            ", more pending"
-                        } else {
-                            ""
-                        }
-                    )),
+                    Some(format!("ingested {total_written} item(s)")),
                 );
             }
             Err(error) => {
