@@ -2,7 +2,15 @@ use super::*;
 
 #[test]
 fn sync_schema_exposes_all_functions() {
-    assert_eq!(FUNCTIONS, &["sync_channel", "sync_all", "ingestion_status"]);
+    assert_eq!(
+        FUNCTIONS,
+        &[
+            "sync_channel",
+            "sync_all",
+            "ingestion_status",
+            "scheduler_override"
+        ]
+    );
     assert_eq!(controllers().len(), FUNCTIONS.len());
 }
 
