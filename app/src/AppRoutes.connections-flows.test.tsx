@@ -57,7 +57,10 @@ vi.mock('./pages/WorkflowsRun', () => ({
   default: () => <div data-testid="page">workflows-run</div>,
 }));
 vi.mock('./pages/FlowCanvasPage', () => ({
-  default: () => {
+  // Named + capitalised so eslint's rules-of-hooks recognises it as a component;
+  // an anonymous arrow assigned to `default` is not, and `useParams` then trips
+  // "called in function 'default' that is neither a component nor a custom Hook".
+  default: function FlowCanvasPageMock() {
     const { id } = useParams();
     return <div data-testid="page">{`flow-canvas:${id ?? ''}`}</div>;
   },
