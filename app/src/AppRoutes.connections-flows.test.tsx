@@ -112,6 +112,37 @@ describe('connections / channels back-compat redirects (real route table)', () =
     expect(at.page()).toBe('connections');
   });
 
+  it('/skills forwards its ?tab= query through to /connections', () => {
+    // This used to pin the opposite: `<Navigate to="/connections" />` was given
+    // an absolute path *string* with no search component, so the incoming query
+    // was discarded — while `AppRoutes.tsx` claimed twice that the redirect
+    // "preserves ?tab= deep links".
+    //
+    // openhuman#5924 replaced it with `<ForwardSearch to="/connections" />`,
+    // which reads `useLocation()` and copies both `search` and `hash` onto the
+    // destination. The two source comments are now true, so they were left
+    // alone exactly as the previous revision of this test asked.
+    //
+    // The knock-on matters more than the redirect: `pages/Skills.tsx`'s legacy
+    // alias table (`apps`→`composio`, `messaging`→`channels`, `tools`→`mcp`,
+    // `explorer`→`skills`) exists "so that e.g. `/skills?tab=composio` still
+    // works after the redirect". While the query was dropped it was unreachable
+    // dead code; this assertion is what proves the route can reach it at all.
+    const at = renderAt('/skills?tab=messaging');
+    expect(at.href()).toBe('/connections?tab=messaging');
+  });
+
+  it('/channels lands on /connections?tab=messaging, preserving the tab selector', () => {
+    // The whole point of this redirect: `/channels` was an orphaned standalone
+    // page, and the messaging tab of Connections replaced it. Landing on bare
+    // `/connections` would drop the user on the Welcome tab instead — which is
+    // exactly what `Connections.redirects.test.tsx` cannot distinguish, because
+    // it only asserts that the page rendered.
+    const at = renderAt('/channels');
+    expect(at.href()).toBe('/connections?tab=messaging');
+    expect(at.page()).toBe('connections');
+  });
+
   it('PINS A KNOWN BUG: /skills drops its ?tab= query on the way to /connections', () => {
     // `AppRoutes.tsx` claims twice — at the block comment above the
     // `/connections` route and again on the `/skills` line itself — that this
