@@ -88,6 +88,37 @@ function tileCanvas(theme: Theme): string {
   return theme.gradient?.canvas ?? channelsToCss(swatchChannels(theme, 'surface-canvas'));
 }
 
+/**
+ * Does this value carry at least one colour token?
+ *
+ * The old check was `typeof parsed.colors !== 'object'`, which passes for
+ * `null` and for an array — `typeof null` and `typeof []` are both `'object'`.
+ * Execution then reached `colors: { ...(parsed.colors) }`, and spreading either
+ * yields `{}`, so a theme with ZERO colour tokens was written to the store and
+ * could be activated from the gallery (#5901).
+ *
+ * An empty object is refused for the same reason, not merely for tidiness: its
+ * user-visible outcome is identical to `null`. `applyTheme` writes one custom
+ * property per token and `withDerivedChrome` derives only FROM existing tokens
+ * (`lib/theme/chrome.ts:67-79`), so a zero-token theme applies nothing at all —
+ * a named entry in the gallery that silently does nothing when clicked.
+ * Accepting `{}` while rejecting `null` would fix the shape and leave the
+ * defect.
+ *
+ * The cost, stated plainly: a fonts-or-backdrop-only theme can no longer be
+ * imported without at least one colour. That was never really supported —
+ * `colors` has always been a required field here — and it is the narrower
+ * trade against shipping a theme that does nothing.
+ */
+function hasColorTokens(colors: unknown): colors is Record<string, string> {
+  return (
+    typeof colors === 'object' &&
+    colors !== null &&
+    !Array.isArray(colors) &&
+    Object.keys(colors).length > 0
+  );
+}
+
 function importedGradient(parsed: Partial<Theme>): Theme['gradient'] {
   if (!parsed.gradient || typeof parsed.gradient !== 'object') return undefined;
   return typeof parsed.gradient.canvas === 'string' ? { canvas: parsed.gradient.canvas } : {};
@@ -148,7 +179,7 @@ const ThemeStudioPanel = ({ embedded = false }: ThemeStudioPanelProps = {}) => {
     setImportError('');
     try {
       const parsed = JSON.parse(importText) as Partial<Theme>;
-      if (!parsed || typeof parsed !== 'object' || typeof parsed.colors !== 'object') {
+      if (!parsed || typeof parsed !== 'object' || !hasColorTokens(parsed.colors)) {
         throw new Error('shape');
       }
       const theme: Theme = {
