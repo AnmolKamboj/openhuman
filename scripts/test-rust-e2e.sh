@@ -31,6 +31,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Tests guarded by `#[ignore]` stay skipped unless the caller passes
 # `-- --ignored`.
 ALL_E2E_SUITES=(
+  agent_approval_memory_coverage_e2e
   agent_retrieval_e2e
   calendar_grounding_e2e
   config_auth_app_state_connectivity_e2e
