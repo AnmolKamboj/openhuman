@@ -67,6 +67,24 @@ const modelChip = (page: Page): Locator =>
   page.locator('[data-analytics-id="chat-model-selector"]');
 const pickerTitle = (page: Page): Locator => page.getByText('Choose provider and model');
 
+/**
+ * These are browser specs against a freshly built bundle, and the first few to
+ * run pay the app's cold start: a fresh `dist-web` plus a just-rebuilt core
+ * means first paint can take most of a minute, while every subsequent test in
+ * the same session settles at ~1s.
+ *
+ * Measured on this suite: cases 1-4 of the first spec failed at ~60s with a
+ * blank `#root`, case 5 of the SAME file passed at 25.3s, and all 13 cases
+ * after it passed in ~1s. Nothing about the app was wrong — the per-test budget
+ * (60s locally, `playwright.config.ts:10`) was simply consumed by warm-up.
+ *
+ * Raising the budget for this describe rather than editing the shared config:
+ * it is a statement about these tests, it masks nothing (the assertions are
+ * unchanged and a genuinely broken app still fails), and whichever spec happens
+ * to sort first should not be the one that flakes.
+ */
+test.describe.configure({ timeout: 120_000 });
+
 test.describe('Chat composer model override', () => {
   test.beforeEach(async () => {
     await resetMock();
@@ -96,6 +114,10 @@ test.describe('Chat composer model override', () => {
 
     const chip = modelChip(page);
     const before = (await chip.textContent())?.trim() ?? '';
+    // Without this the case is vacuous: if the chip rendered no label, `before`
+    // and the post-cancel read are both '' and the comparison passes while
+    // proving nothing.
+    expect(before, 'the model chip must name the current model').not.toBe('');
 
     await chip.click();
     await expect(pickerTitle(page)).toBeVisible({ timeout: 10_000 });

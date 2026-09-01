@@ -109,6 +109,20 @@ async function scrollState(page: Page): Promise<ScrollState> {
  * bottom, and failed its own setup step. `behavior: 'instant'` overrides the CSS
  * for this one call; the poll is belt-and-braces for the layout settling.
  */
+/**
+ * Viewport-relative Y of a stable piece of already-rendered content.
+ *
+ * `distanceFromBottom` alone only rejects a scroll that lands NEAR the bottom;
+ * a partial auto-scroll could drag the reader some distance and still leave
+ * more than the 80px threshold below. Watching a fixed element's position is
+ * what actually says "the view did not move under me" — raised in review.
+ */
+async function anchorY(page: Page, text: string): Promise<number> {
+  const box = await page.getByText(text, { exact: false }).last().boundingBox();
+  if (!box) throw new Error(`anchor "${text}" has no bounding box`);
+  return box.y;
+}
+
 async function scrollTo(page: Page, top: number): Promise<void> {
   await page.evaluate(`(() => {
     const el = ${FIND_VIEWPORT};
@@ -146,6 +160,24 @@ async function completeTurn(page: Page, prompt: string, marker: string): Promise
   await expect(page.getByTestId('composer-human-mode')).toBeVisible({ timeout: 40_000 });
 }
 
+/**
+ * These are browser specs against a freshly built bundle, and the first few to
+ * run pay the app's cold start: a fresh `dist-web` plus a just-rebuilt core
+ * means first paint can take most of a minute, while every subsequent test in
+ * the same session settles at ~1s.
+ *
+ * Measured on this suite: cases 1-4 of the first spec failed at ~60s with a
+ * blank `#root`, case 5 of the SAME file passed at 25.3s, and all 13 cases
+ * after it passed in ~1s. Nothing about the app was wrong — the per-test budget
+ * (60s locally, `playwright.config.ts:10`) was simply consumed by warm-up.
+ *
+ * Raising the budget for this describe rather than editing the shared config:
+ * it is a statement about these tests, it masks nothing (the assertions are
+ * unchanged and a genuinely broken app still fails), and whichever spec happens
+ * to sort first should not be the one that flakes.
+ */
+test.describe.configure({ timeout: 120_000 });
+
 test.describe('Chat transcript stick-to-bottom', () => {
   test.beforeEach(async () => {
     await resetMock();
@@ -179,10 +211,13 @@ test.describe('Chat transcript stick-to-bottom', () => {
       'the fixture must actually park the reader past the 80px stick threshold'
     ).toBeGreaterThan(80);
 
+    const beforeAnchor = await anchorY(page, 'FIRST-REPLY-END');
+
     // Now a second turn arrives and grows the transcript underneath them.
     await completeTurn(page, 'Second long answer please', 'SECOND-REPLY-END');
 
     const after = await scrollState(page);
+    const afterAnchor = await anchorY(page, 'FIRST-REPLY-END');
 
     // The assertion that matters: the viewport did not jump to the bottom.
     expect(
@@ -190,11 +225,18 @@ test.describe('Chat transcript stick-to-bottom', () => {
       'a message arriving while the reader is scrolled up must not snap the transcript to the bottom'
     ).toBeGreaterThan(80);
 
-    // Deliberately NOT asserting `scrollTop` stayed put. New content changes the
-    // container's height, so `scrollTop` legitimately shifts without the view
-    // moving relative to what the reader is looking at. `distanceFromBottom`
-    // above is the actual definition of "was I yanked to the bottom", and it is
-    // the falsifiable one: forcing a scroll-to-bottom drives it to ~0.
+    // And the stronger half, from review: `distanceFromBottom` rejects a jump to
+    // the bottom, but a PARTIAL auto-scroll could move the reader and still sit
+    // more than 80px above it. Watching a fixed piece of the first reply says
+    // the view did not shift under them at all.
+    //
+    // Still deliberately NOT asserting `scrollTop` stayed put: appending a turn
+    // changes the container's height, so `scrollTop` legitimately moves while
+    // the rendered content does not. The anchor measures what the reader sees.
+    expect(
+      Math.abs(afterAnchor - beforeAnchor),
+      'content the reader was looking at must not shift when a new turn arrives'
+    ).toBeLessThan(40);
   });
 
   test('a new turn is anchored into view for a reader parked at the bottom', async ({ page }) => {

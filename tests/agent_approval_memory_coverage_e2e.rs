@@ -705,10 +705,11 @@ async fn agent_graph_topologies_exports_structure_without_run_state() {
     .await;
     let body = payload(&response, "agent_graph_topologies");
 
-    assert!(
-        body.get("graphs").is_some(),
-        "graph_topologies must return a `graphs` object: {body}"
-    );
+    // `is_some()` would accept `null` or a scalar, so a schema regression that
+    // dropped the object could still pass. Require the object itself.
+    body.get("graphs")
+        .and_then(Value::as_object)
+        .unwrap_or_else(|| panic!("graph_topologies must return a `graphs` object: {body}"));
 
     let serialized = body.to_string();
     for leaked in ["system_prompt", "prompt_text", "api_key", "tool_arguments"] {
@@ -747,7 +748,14 @@ async fn agent_registry_snapshot_counts_agree_with_the_component_inventory() {
     // Check the two claims separately — that is stronger than one sum anyway,
     // because it catches `total` and the per-kind breakdown disagreeing with
     // each other as well as with `components`.
-    if let Some(counts) = body.get("counts").and_then(Value::as_object) {
+    // NOT `if let`: a missing or non-object `counts` would silently skip every
+    // assertion below and the case would still pass on `components` alone,
+    // which is precisely the agreement this test exists to pin.
+    {
+        let counts = body
+            .get("counts")
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| panic!("registry_snapshot must return a `counts` object: {body}"));
         let per_kind: u64 = counts
             .iter()
             .filter(|(key, _)| key.as_str() != "total")

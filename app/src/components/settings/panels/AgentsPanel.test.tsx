@@ -195,10 +195,21 @@ describe('AgentsPanel', () => {
     expect(mockList).toHaveBeenCalledTimes(1);
   });
 
-  it('never calls setEnabled for the orchestrator', async () => {
-    // `handleToggle` early-returns on ORCHESTRATOR_ID (line 56) *and* the row
-    // renders its switch disabled. Asserting only `toBeDisabled()` would pass
-    // if the guard were deleted, so drive the handler directly too.
+  it('renders the orchestrator switch disabled so it cannot be toggled', async () => {
+    // Scope correction, from review: an earlier version of this case claimed to
+    // cover `handleToggle`'s ORCHESTRATOR_ID early-return (AgentsPanel.tsx:56)
+    // by clicking the switch as well as asserting it disabled. It does not —
+    // `AgentRow` renders the orchestrator's SettingsSwitch `disabled`, so the
+    // click never reaches the handler and removing the guard alone would not
+    // fail this test.
+    //
+    // My revert-proof did not catch that because the mutation removed the guard
+    // AND the `disabled` prop together, so the case went red for the second
+    // reason. A fault that changes two things proves neither individually.
+    //
+    // What this case honestly covers is the disabled control, which is the
+    // user-facing protection; the handler guard behind it is defence in depth
+    // and would need an enabled seam to exercise. Renamed to say so.
     renderPanel();
     await waitFor(() => expect(screen.getByText('Orchestrator')).toBeInTheDocument());
 

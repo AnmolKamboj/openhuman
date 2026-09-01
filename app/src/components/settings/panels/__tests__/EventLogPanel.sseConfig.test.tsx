@@ -50,11 +50,15 @@ function mockFetchRaw(body: string) {
   global.fetch = vi.fn().mockResolvedValue({ ok: true, body: stream });
 }
 
+// SSE frames are terminated by a BLANK line, not a single newline. The panel's
+// parser splits on '\n' and tolerates the shorter form, but a fixture that is
+// not wire-shaped would keep passing if that parser were tightened — so emit
+// real frames.
 const evt = (event: string, domain = 'tool') =>
-  `data:${JSON.stringify({ domain, event, timestamp: '12:00:00' })}\n`;
+  `data:${JSON.stringify({ domain, event, timestamp: '12:00:00' })}\n\n`;
 
 const config = (payload: Record<string, unknown>) =>
-  `event: config\ndata:${JSON.stringify(payload)}\n`;
+  `event: config\ndata:${JSON.stringify(payload)}\n\n`;
 
 /** Every rendered event label, in DOM order — nothing filtered out. */
 function allRenderedRows(): string[] {

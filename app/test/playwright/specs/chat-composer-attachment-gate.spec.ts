@@ -35,7 +35,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 
 import { bootAuthenticatedPage, dismissWalkthroughIfPresent } from '../helpers/core-rpc';
 
-const MOCK_ADMIN_BASE = `http://127.0.0.1:${process.env.E2E_MOCK_PORT || '18402'}`;
+const MOCK_ADMIN_BASE = `http://127.0.0.1:${process.env.E2E_MOCK_PORT || '18473'}`;
 const USER_ID = 'pw-chat-attach-gate';
 
 const SLOW_STREAM = [
@@ -105,10 +105,17 @@ async function attach(page: Page, name: string, body = 'attached by the picker')
         await fileInput(page)
           .first()
           .setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(body) });
-        return page
-          .getByText(name)
-          .isVisible({ timeout: 2_000 })
-          .catch(() => false);
+        // `Locator.isVisible()` returns IMMEDIATELY — it does not honour a
+        // timeout — so the previous form could fire a second `setInputFiles`
+        // while the first ingest was still in flight. `handleAttachFiles`
+        // appends without deduplication, so that would have produced two chips
+        // for one file. `expect(...).toBeVisible()` actually waits.
+        return expect(page.getByText(name))
+          .toBeVisible({ timeout: 2_000 })
+          .then(
+            () => true,
+            () => false
+          );
       },
       { timeout: 15_000, message: `attachment chip for ${name} never appeared` }
     )
@@ -122,6 +129,24 @@ async function beginStreamingTurn(page: Page, prompt: string): Promise<void> {
   await sendButton(page).click();
   await expect(stopButton(page)).toBeVisible({ timeout: 20_000 });
 }
+
+/**
+ * These are browser specs against a freshly built bundle, and the first few to
+ * run pay the app's cold start: a fresh `dist-web` plus a just-rebuilt core
+ * means first paint can take most of a minute, while every subsequent test in
+ * the same session settles at ~1s.
+ *
+ * Measured on this suite: cases 1-4 of the first spec failed at ~60s with a
+ * blank `#root`, case 5 of the SAME file passed at 25.3s, and all 13 cases
+ * after it passed in ~1s. Nothing about the app was wrong — the per-test budget
+ * (60s locally, `playwright.config.ts:10`) was simply consumed by warm-up.
+ *
+ * Raising the budget for this describe rather than editing the shared config:
+ * it is a statement about these tests, it masks nothing (the assertions are
+ * unchanged and a genuinely broken app still fails), and whichever spec happens
+ * to sort first should not be the one that flakes.
+ */
+test.describe.configure({ timeout: 120_000 });
 
 test.describe('Chat composer attachment gate', () => {
   test.beforeEach(async () => {
