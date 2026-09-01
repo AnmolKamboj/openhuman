@@ -364,6 +364,8 @@ const messages: TranslationMap = {
   'brain.tabs.sync': 'Synchronisierung',
   'brain.empty': 'Dein Gehirn ist noch leer – verbinde eine Quelle, um Speicher aufzubauen.',
   'brain.error': 'Dein Gehirn konnte nicht geladen werden. Bitte versuche es erneut.',
+  'brain.refreshError':
+    'Dein Gehirn konnte nicht aktualisiert werden. Angezeigt werden die zuletzt geladenen Daten.',
   'common.cancel': 'Abbrechen',
   'common.save': 'Speichern',
   'common.confirm': 'Bestätigen',

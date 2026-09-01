@@ -352,6 +352,7 @@ const messages: TranslationMap = {
   'brain.tabs.sync': 'Sinkronisasi',
   'brain.empty': 'Otak Anda masih kosong: hubungkan sumber untuk mulai membangun memori.',
   'brain.error': 'Tidak dapat memuat otak Anda. Silakan coba lagi.',
+  'brain.refreshError': 'Tidak dapat menyegarkan otak Anda. Menampilkan data terakhir yang dimuat.',
   'common.cancel': 'Batal',
   'common.save': 'Simpan',
   'common.confirm': 'Konfirmasi',

@@ -1,8 +1,8 @@
 /**
- * Brain graph — transient-failure recovery, and the failure that is swallowed.
+ * Brain graph — transient-failure recovery, and what a failed refresh shows.
  *
  * `Brain.test.tsx` already covers "an alert appears when the fetch fails".
- * Neither of the two behaviours here is covered anywhere:
+ * None of the behaviours here is covered anywhere:
  *
  *   1. A transient failure must CLEAR on the next successful load. This is the
  *      accurate half of the "Couldn't load your brain" report — the panel is
@@ -11,11 +11,15 @@
  *      stays reachable), but nothing pinned that, so deleting that one line
  *      would have turned a recoverable error into a permanent one silently.
  *
- *   2. A refresh that fails AFTER a successful load shows the user nothing.
- *      `Brain.tsx:244-255` only reaches the alert when `graph` is null, and the
- *      catch at `:108-112` never clears `graph`, so a failed refresh leaves the
- *      stale graph on screen with no indication. That is BUG-W4-3, and the
- *      second test characterises it rather than asserting it is correct.
+ *   2. A refresh that fails AFTER a successful load keeps the stale graph and
+ *      warns. This was BUG-W4-3 (#5895): the alert branch was reachable only
+ *      while `graph` was null, and the catch in `load()` never clears `graph`,
+ *      so a failed refresh left stale data on screen with no indication. The
+ *      second test used to CHARACTERISE that swallow; it now asserts the
+ *      warning, which is the same test inverted by the fix.
+ *
+ *   3. A FIRST load that fails still shows the destructive "couldn't load"
+ *      alert and no graph — the branch that must not be swallowed by (2).
  *
  * Both drive the retry through the `openhuman:memory-tree-completed` window
  * event, which is the in-product refetch trigger (`Brain.tsx:113-117`) and
@@ -127,16 +131,18 @@ describe('Brain graph — transient failure recovery', () => {
       window.dispatchEvent(new Event('openhuman:memory-tree-completed'));
     });
 
-    // What is actually provable here, stated honestly: the panel RECOVERS —
-    // the retry runs and its data renders.
+    // The panel RECOVERS: the retry runs and its data renders.
     //
-    // What this cannot prove is that `error` state itself was cleared. The
-    // render is `graph ? <graph> : error ? <alert> : null`, so once `graph` is
-    // truthy a still-set `error` is simply not in the DOM. I verified that by
-    // deleting `setError(null)` from `Brain.tsx:97` and re-running: both tests
-    // in this file still passed. The alert assertion below therefore documents
-    // the recovered UI, not the state reset — and the reason the state reset is
-    // unobservable is itself BUG-W4-3, which the next test characterises.
+    // This comment used to say the test could not prove `error` itself was
+    // cleared — once `graph` was truthy, a still-set `error` was simply not in
+    // the DOM, so deleting `setError(null)` from `Brain.tsx` left both tests in
+    // this file passing. That was true, and it was a consequence of BUG-W4-3.
+    //
+    // Fixing #5895 makes the state reset OBSERVABLE, which is a second benefit
+    // of the fix worth naming: a stale `error` alongside a loaded graph now
+    // renders the warning variant. So the absence of that warning after a
+    // successful reload is real evidence that `setError(null)` ran, and the
+    // assertion below can fail if it is removed.
     //
     // Revert-checked by disabling the `openhuman:memory-tree-completed`
     // listener (`Brain.tsx:113-117`): both tests then fail on the call-count
@@ -145,9 +151,12 @@ describe('Brain graph — transient failure recovery', () => {
       expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:2');
     });
     expect(graphExportMock).toHaveBeenCalledTimes(2);
+    // The error state was genuinely cleared, not merely hidden: a surviving
+    // `error` beside a loaded graph would render the stale-data warning.
+    expect(document.querySelector('[data-variant="warning"]')).toBeNull();
   });
 
-  it('CHARACTERISES BUG-W4-3: a refresh that fails after a good load is silently swallowed', async () => {
+  it('warns and keeps the stale graph when a refresh fails after a good load', async () => {
     // Succeed first, then fail — the opposite order to the test above.
     graphExportMock
       .mockResolvedValueOnce(makeGraph(3))
@@ -167,32 +176,47 @@ describe('Brain graph — transient failure recovery', () => {
       expect(graphExportMock).toHaveBeenCalledTimes(2);
     });
 
-    // What the user sees: the OLD graph, and no warning that the refresh died.
+    // This test previously asserted the OPPOSITE — `queryByRole('alert')` was
+    // expected to be absent — as a deliberate characterisation of BUG-W4-3,
+    // with a note saying it must be rewritten "to assert whichever was chosen"
+    // once the bug was fixed. #5895 chose: warn and keep the stale graph. So
+    // this is that rewrite, and the test that used to prove the swallow now
+    // proves the notification.
     //
-    // This asserts today's behaviour deliberately. When BUG-W4-3 is fixed —
-    // by surfacing the error alongside stale data, or by clearing `graph` on
-    // error — this test goes red and must be rewritten to assert whichever
-    // was chosen. That is the intent: right now the swallow is invisible.
-    //
-    // The alert assertion below looks like the one deleted from the recovery
-    // test above, and the difference is FALSIFIABILITY, not intent.
-    //
-    // Up there, the alert was absent after a SUCCESSFUL recovery — and it would
-    // have been absent whether or not `setError(null)` ran, in both the broken
-    // and the fixed product. No change to `Brain.tsx` could have made it fail,
-    // which is what made it worthless.
-    //
-    // Here the alert is absent after a FAILED refresh, and it is absent
-    // *because of BUG-W4-3*: `graph ? <graph> : error ? <alert> : null` cannot
-    // reach the alert branch while `graph` stays truthy, and the catch at
-    // `Brain.tsx:108-112` never clears `graph`. Fix that — surface the error
-    // beside the stale data, or clear `graph` on error — and an alert appears
-    // and this line fails. It is the notification, which is exactly the job.
-    //
-    // Thanks to @YellowSnnowmann for forcing the distinction; I had only
-    // asserted "the unreachability is the defect", which is not the same
-    // argument.
+    // Both halves matter and neither alone is the fix:
+    //   - the warning appears, so the failure is no longer silent;
+    //   - the graph is still there, so a transient blip does not wipe data the
+    //     user can still read. Clearing `graph` on error would also have made
+    //     the alert appear, and would have been the worse product choice.
+    // Asserted on `data-variant` (emitted by `Alert` at `Alert.tsx:85`) rather
+    // than on `role="alert"`: BOTH the warning and the destructive variant are
+    // in `ASSERTIVE_VARIANTS` (`Alert.tsx:62`) and so both carry that role, and
+    // an assertion that cannot tell the two apart would pass on either branch.
+    const alert = document.querySelector('[data-slot="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert).toHaveAttribute('data-variant', 'warning');
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:3');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows the load error, and no graph, when the FIRST load fails', async () => {
+    // The other side of the branch: with no previously loaded graph there is
+    // nothing stale to keep, so the destructive "couldn't load" alert is
+    // correct and the warning must not be what renders. This guards against a
+    // fix that routes every failure through the stale-data warning.
+    graphExportMock.mockRejectedValue(new Error('cold load blew up'));
+
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=graph'] });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="alert"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-slot="alert"]')).toHaveAttribute(
+      'data-variant',
+      'destructive'
+    );
+    expect(document.querySelector('[data-variant="warning"]')).toBeNull();
+    expect(screen.queryByTestId('memory-graph')).not.toBeInTheDocument();
   });
 });

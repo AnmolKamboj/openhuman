@@ -241,6 +241,29 @@ export default function Brain() {
                         contentRootAbs={graph?.content_root_abs}
                       />
 
+                      {/*
+                        A failed refresh AFTER a good load keeps the graph on
+                        screen and warns, rather than replacing it with an
+                        error. The graph is expensive to rebuild and stays
+                        useful when a refresh blips, so destroying it would
+                        turn a transient failure into total data loss on
+                        screen. What is not acceptable is the third option —
+                        showing stale data with no indication at all, which is
+                        what this did before: the error branch below is
+                        reachable only while `graph` is null, and the catch in
+                        `load()` never clears `graph`, so a later failure was
+                        invisible.
+
+                        The two states are deliberately different components:
+                        this one means "what you see is old", the one below
+                        means "there is nothing to see".
+                      */}
+                      {error && graph ? (
+                        <Alert variant="warning">
+                          <AlertDescription>{t('brain.refreshError')}</AlertDescription>
+                        </Alert>
+                      ) : null}
+
                       {graph ? (
                         <MemoryGraph
                           nodes={graph.nodes}
