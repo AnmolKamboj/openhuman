@@ -44,7 +44,7 @@ pub use execute::composio_execute;
 pub(crate) use providers_ops::completed_sync_detail;
 pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,
-    composio_sync_for_source, RefreshIdentitiesReport,
+    composio_sync_budgeted, composio_sync_for_source, RefreshIdentitiesReport, SYNC_PASS_MAX_ITEMS,
 };
 // The tinyconnectors-mediated sync pass, shared with
 // `memory::sync::composio::providers::slack::rpc` — see its doc comment.

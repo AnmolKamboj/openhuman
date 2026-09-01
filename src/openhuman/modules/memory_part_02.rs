@@ -705,11 +705,13 @@ impl ModuleMemoryProvider {
     /// embedding's vocabulary. The module serves it as a plain member
     /// (`OverrideSchedulerGate`), and only this host client names it.
     pub(crate) async fn override_scheduler_gate(&self, seconds: u64) -> Result<(), MemoryError> {
-        module_call!(
-            self,
-            "override_scheduler_gate",
-            methods::OVERRIDE_SCHEDULER_GATE,
-            (seconds,)
-        )
+        // Spelled as a literal, uniquely in this file: the member ships in
+        // tinymemory#127 and the pinned v1.13.6 names table predates it, so
+        // `methods::OVERRIDE_SCHEDULER_GATE` does not exist to name yet.
+        // Against the released module the call answers MemberNotFound, which
+        // the RPC surfaces verbatim. Swap to the constant with the next
+        // registry re-pin — the compile error this comment trades away is
+        // exactly what that swap restores.
+        module_call!(self, "override_scheduler_gate", "OverrideSchedulerGate", (seconds,))
     }
 }

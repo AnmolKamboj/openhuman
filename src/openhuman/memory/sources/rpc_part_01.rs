@@ -536,11 +536,12 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
                     entry.id
                 )
             })?;
-            crate::openhuman::integrations::composio::ops::composio_sync_for_source(
+            crate::openhuman::integrations::composio::ops::composio_sync_budgeted(
                 &config,
                 connection_id,
                 Some("manual".to_string()),
                 Some(entry.id.clone()),
+                entry.max_items,
             )
             .await?;
             return Ok(RpcOutcome::new(

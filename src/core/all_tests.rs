@@ -1673,6 +1673,11 @@ const MEMORY_FUNCTION_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("sync_channel", Some(Capability::Sources)),
     ("sync_all", Some(Capability::Sources)),
     ("ingestion_status", Some(Capability::Sources)),
+    // Sources, with the rest of its schema family (one push_cap site): the
+    // override exists so user-requested source maintenance runs while the
+    // gate is paused, and a driver serving no Sources family has nothing the
+    // window would unblock.
+    ("scheduler_override", Some(Capability::Sources)),
     // the tree summarizer, NOT ingestion
     ("learn_all", Some(Capability::Tree)),
     // never gated: this is the RPC that reports the capability set

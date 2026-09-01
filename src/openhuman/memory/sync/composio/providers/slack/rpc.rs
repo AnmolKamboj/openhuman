@@ -118,9 +118,15 @@ pub async fn sync_trigger_rpc(
         // Reads through the `tinyconnectors` module and ingests through the
         // bound driver's `MemorySourceSink` — see the module doc comment for
         // why this no longer goes through `MemorySourceSync::run_connection_sync`.
-        match run_sync_pass(config, "slack", &conn.id, "manual")
-            .await
-            .map_err(|error| error.to_string())
+        match run_sync_pass(
+            config,
+            "slack",
+            &conn.id,
+            "manual",
+            crate::openhuman::integrations::composio::ops::SYNC_PASS_MAX_ITEMS,
+        )
+        .await
+        .map_err(|error| error.to_string())
         {
             Ok(pass) => outcomes.push(SyncOutcome {
                 toolkit: "slack".to_string(),

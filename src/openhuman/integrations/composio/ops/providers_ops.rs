@@ -40,7 +40,7 @@ const SOURCE_KIND: &str = "composio";
 /// `composio_sync_for_source` multiplies this by its `MAX_PASSES` bound into a
 /// worst case of 25k items per click, instead of "whatever the module decides
 /// a call means".
-const SYNC_PASS_MAX_ITEMS: usize = 500;
+pub const SYNC_PASS_MAX_ITEMS: usize = 500;
 
 /// The `completed` stage's detail string.
 ///
@@ -219,6 +219,19 @@ pub async fn composio_sync_for_source(
     reason: Option<String>,
     source_id: Option<String>,
 ) -> OpResult<RpcOutcome<SyncOutcome>> {
+    composio_sync_budgeted(config, connection_id, reason, source_id, None).await
+}
+
+/// [`composio_sync_for_source`] with the source's configured per-run ingest
+/// cap. `None` preserves unlimited: the loop still slices the account into
+/// 500-item passes, but stops only when the connector reports the end.
+pub async fn composio_sync_budgeted(
+    config: &Config,
+    connection_id: &str,
+    reason: Option<String>,
+    source_id: Option<String>,
+    source_max_items: Option<u32>,
+) -> OpResult<RpcOutcome<SyncOutcome>> {
     let reason = parse_sync_reason(reason.as_deref())?;
     tracing::debug!(
         connection_id = %connection_id,
@@ -275,17 +288,34 @@ pub async fn composio_sync_for_source(
     // task forever. The bound is generous: 50 pages ≈ 5,000 records per click.
     const MAX_PASSES: usize = 50;
 
+    // Published before the spawn: the row's "running" exists before the RPC
+    // returns, and the bus preserves publisher order, so completed can never
+    // overtake it (review question on ordering).
+    publish_stage("running", None);
+
     tokio::spawn(async move {
-        publish_stage("running", None);
         let mut total_written: u64 = 0;
         let mut passes = 0usize;
         let outcome = loop {
             passes += 1;
+            // The source's configured per-run cap wins over the pass ceiling:
+            // a budget of 200 means one 200-item pass, not 50 passes of 500
+            // (review finding). `None` = unlimited, the loop's own bounds
+            // still apply.
+            let remaining_budget =
+                source_max_items.map(|cap| u64::from(cap).saturating_sub(total_written));
+            if remaining_budget == Some(0) {
+                break Ok(());
+            }
+            let pass_budget = remaining_budget.map_or(SYNC_PASS_MAX_ITEMS, |remaining| {
+                (remaining as usize).min(SYNC_PASS_MAX_ITEMS)
+            });
             match run_sync_pass(
                 &config_for_run,
                 &toolkit_for_log,
                 &connection_for_log,
                 &reason_for_task,
+                pass_budget,
             )
             .await
             {
@@ -389,6 +419,7 @@ pub(crate) async fn run_sync_pass(
     toolkit: &str,
     connection_id: &str,
     reason: &str,
+    pass_budget: usize,
 ) -> Result<SyncPassOutcome, String> {
     // Sync pages the whole account inside the call; the default 30s bus
     // deadline reported failure on runs the module then finished successfully.
@@ -403,7 +434,7 @@ pub(crate) async fn run_sync_pass(
             // a budget the module pages until its own limits and the caller's
             // pass loop bounds nothing (review finding). complete=false at the
             // budget → more_pending → the loop (or the next click) resumes.
-            max_items: Some(SYNC_PASS_MAX_ITEMS),
+            max_items: Some(pass_budget),
             ..ConnectorSyncRequest::default()
         },
     )

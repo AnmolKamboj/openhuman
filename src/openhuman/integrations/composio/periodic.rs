@@ -117,7 +117,11 @@ async fn run_one_tick() -> Result<(), String> {
         }
 
         match crate::openhuman::integrations::composio::ops::run_sync_pass(
-            &config, &toolkit, &conn.id, "periodic",
+            &config,
+            &toolkit,
+            &conn.id,
+            "periodic",
+            crate::openhuman::integrations::composio::ops::SYNC_PASS_MAX_ITEMS,
         )
         .await
         {

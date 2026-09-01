@@ -227,6 +227,7 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                 &target.toolkit,
                 &target.connection_id,
                 "manual",
+                crate::openhuman::integrations::composio::ops::SYNC_PASS_MAX_ITEMS,
             )
             .await;
             match outcome {
