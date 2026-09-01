@@ -18,9 +18,9 @@
  *
  *   edit composer  -> the plain `ComposerPrimitive.Input`
  *                     (`app/src/components/assistant-ui/thread.tsx:859`) —
- *                     unreachable, and for a reason that is itself a bug: the
- *                     Edit button renders but the adapter cannot honour it.
- *                     See the first test.
+ *                     unreachable. The Edit button that used to lead nowhere is
+ *                     gone as of #5897; see
+ *                     `chat-user-message-edit-affordance.spec.ts`.
  *
  * That corrects my own earlier attribution: I had written that the culprit was
  * `ComposerPrimitive.Input`'s re-render. It is not — the main composer does not
@@ -135,61 +135,26 @@ test.describe('Composer — clipboard, history, and the edit composer', () => {
   });
 
   /**
-   * A DEAD AFFORDANCE, found while trying to reach the edit composer.
+   * The dead-affordance characterisation that used to live here is GONE,
+   * because the defect it recorded is fixed in this same PR (#5897).
    *
-   * The plan was to compare the main composer (Lexical) against the edit
-   * composer (`ComposerPrimitive.Input`, `thread.tsx:859`). It cannot be done,
-   * and the reason is a bug rather than a design choice.
+   * It asserted `.aui-user-action-edit` had count 1 and that clicking it opened
+   * nothing — the pre-fix behaviour. `UserActionBar` now gates
+   * `ActionBarPrimitive.Edit` on `useAuiEditCapabilities().canEdit`, so the
+   * button is not rendered at all while the adapter implements neither `onEdit`
+   * nor `setMessages`. Leaving the old assertion would have turned this file red
+   * the moment the fix landed, which is exactly what it was written to signal.
    *
-   * The runtime adapter implements neither `onEdit` nor `setMessages`, so
-   * assistant-ui reports `edit: false`
-   * (`features/conversations/components/aui/auiThreadState.ts:56-67`). The
-   * jsdom test at `auiThreadState.test.tsx:42` asserts that flag and its
-   * header states the consequence: "The transcript renders no edit composer …
-   * this test is what would fail the day someone wires an affordance to a
-   * capability the adapter cannot honour."
+   * The post-fix contract is covered by its own spec rather than inverted in
+   * place, so the two concerns stay separate:
+   * `chat-user-message-edit-affordance.spec.ts` — no Edit button, no branch
+   * picker, and a control proving the action bar itself still renders.
    *
-   * That day has arrived and no test caught it, because the flag was asserted
-   * and the DOM never was. **The Edit button IS rendered** (measured: count 1
-   * on hover) and clicking it opens nothing — `.aui-edit-composer-input` stays
-   * absent. The user gets a button that silently does nothing.
-   *
-   * Asserted as the current behaviour so the defect is recorded. When it is
-   * fixed — by hiding the button, or by implementing `onEdit` — this test goes
-   * red and must be rewritten to whichever was chosen.
+   * What that investigation established and this file keeps: the edit composer
+   * (`ComposerPrimitive.Input`, `thread.tsx:859`) is unreachable, so the main
+   * composer's Lexical behaviour cannot be compared against it. The isolation
+   * below is done by BEHAVIOUR instead.
    */
-  test('CHARACTERISES: the Edit button renders but does nothing (adapter has edit: false)', async ({
-    page,
-  }) => {
-    await setMockBehavior('llmForcedResponses', JSON.stringify([{ content: REPLY }]));
-    const input = await openChat(page);
-    await waitForSocketConnected(page);
-
-    await clearAndType(page, input, 'hello world');
-    await page.getByTestId('send-message-button').click();
-    await expect(page.getByText(REPLY).last()).toBeVisible({ timeout: 45_000 });
-
-    const userMessage = page.locator('[data-slot="aui_user-message-root"]').last();
-    await expect(userMessage).toBeVisible();
-    await userMessage.hover();
-    await page.waitForTimeout(300);
-
-    // The affordance is offered to the user...
-    const editButton = page.locator('.aui-user-action-edit');
-    await expect(editButton).toHaveCount(1);
-    await expect(editButton.last()).toBeVisible();
-
-    // ...and does nothing when taken.
-    await editButton.last().click();
-    await page.waitForTimeout(1000);
-    await expect(
-      page.locator('.aui-edit-composer-input'),
-      'if an edit composer opens, edit now works and this test must be rewritten'
-    ).toHaveCount(0);
-
-    // The message is unchanged and the main composer still has focus available.
-    await expect(userMessage).toContainText('hello world');
-  });
 
   /**
    * CONTRAST: paste is an insertion and it does NOT lose the caret.
