@@ -280,7 +280,7 @@ export const SidebarRail = forwardRef<HTMLDivElement, SidebarRailProps>(
           window.removeEventListener('pointermove', handleMove);
           window.removeEventListener('pointerup', detach);
           window.removeEventListener('pointercancel', detach);
-          window.removeEventListener('blur-sm', detach);
+          window.removeEventListener('blur', detach);
           detachRef.current = null;
         };
 
