@@ -74,6 +74,16 @@ describe('Sidebar viewport clamp', () => {
     expect(screen.getByTestId('rail')).toHaveAttribute('aria-valuenow', '207');
   });
 
+  it('announces the reachable ceiling, not the configured one', () => {
+    // The same class of defect as the `aria-valuenow` one, one level up: the
+    // context published the raw 420 as the maximum, so the separator advertised
+    // a ceiling the column cannot reach at this viewport (#5941, CodeRabbit).
+    setViewport(414);
+    renderSidebar(420);
+
+    expect(screen.getByTestId('rail')).toHaveAttribute('aria-valuemax', '207');
+  });
+
   it('never goes below the minimum, however narrow the window', () => {
     // Below 2 * minWidth a fraction stops being meaningful; the floor wins so
     // the two clamps cannot disagree.

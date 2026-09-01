@@ -202,11 +202,15 @@ export const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
 
     const setWidth = useCallback(
       (next: number) => {
-        const clamped = clampWidth(Math.round(next), minWidth, maxWidth);
+        // `effectiveMax`, not `maxWidth`: a drag in a narrow window must not be
+        // able to STORE a width the column can never render. Clamping here
+        // against the raw maximum would put the stored value and the rendered
+        // one back into disagreement — the same defect one layer up.
+        const clamped = clampWidth(Math.round(next), minWidth, effectiveMax);
         if (widthProp === undefined) setUncontrolledWidth(clamped);
         onWidthChange?.(clamped);
       },
-      [widthProp, onWidthChange, minWidth, maxWidth]
+      [widthProp, onWidthChange, minWidth, effectiveMax]
     );
 
     useEffect(() => {
@@ -230,9 +234,13 @@ export const SidebarProvider = forwardRef<HTMLDivElement, SidebarProviderProps>(
         width,
         setWidth,
         minWidth,
-        maxWidth,
+        // The ACTIVE maximum, so every consumer agrees on the ceiling as well
+        // as on the current value. `SidebarRail` publishes this as
+        // `aria-valuemax`; exposing the raw 420 here announced a ceiling the
+        // column could not reach in a narrow window.
+        maxWidth: effectiveMax,
       }),
-      [open, setOpen, toggleSidebar, width, setWidth, minWidth, maxWidth]
+      [open, setOpen, toggleSidebar, width, setWidth, minWidth, effectiveMax]
     );
 
     return (
