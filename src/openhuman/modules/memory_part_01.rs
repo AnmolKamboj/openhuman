@@ -336,9 +336,22 @@ impl ModuleMemoryProvider {
         // is admitted. Host callbacks must therefore exist before loading,
         // including in tests and explicit-path overrides where no boot policy
         // was available when the shared module runtime first started.
-        ops::ensure_loaded(config, MODULE_ID)
-            .await
-            .map_err(|message| MemoryError::Other(anyhow::anyhow!(message)))?;
+        // A load failure is terminal for the process (the loader caches it),
+        // so every memory member would otherwise return the loader's raw
+        // message — release URLs, digest text, "restart the app" repeated per
+        // call. Map it once into the subsystem's honest degraded state: a
+        // user_error broadcast (once per process, metadata only) plus a
+        // stable, actionable error for the caller. The raw reason goes to the
+        // log, where an operator can act on it.
+        ops::ensure_loaded(config, MODULE_ID).await.map_err(|message| {
+            crate::openhuman::memory::tree::health::user_error::notice_memory_module_unavailable_once(
+                &message,
+            );
+            MemoryError::Backend(
+                "memory is unavailable: the memory module failed to load. Restart the app to                  retry; the reason is in the log."
+                    .to_string(),
+            )
+        })?;
 
         let record = registry::find(MODULE_ID)
             .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;

@@ -5,8 +5,8 @@
 
 | | |
 | --- | --- |
-| Captured at commit | `c6e95c061b00234377eca647823ff7c2b3955e14` |
-| Captured on | 2026-08-31T07:09:48Z |
+| Captured at commit | `6996fa6bae2b35d81f2d3203a2a9f875dce34eda` |
+| Captured on | 2026-09-01T07:35:46Z |
 | Generator | `regenerate_golden_fixture` in `tests/memory_golden_fixture_e2e.rs` |
 | Seeder | `openhuman_core::openhuman::memory::store::golden::seed` |
 
