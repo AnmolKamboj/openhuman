@@ -355,6 +355,7 @@ const messages: TranslationMap = {
   'brain.empty':
     'Tu cerebro está vacío por ahora: conecta una fuente para empezar a construir tu memoria.',
   'brain.error': 'No se pudo cargar tu cerebro. Inténtalo de nuevo.',
+  'brain.refreshError': 'No se pudo actualizar tu cerebro. Se muestran los últimos datos cargados.',
   'common.cancel': 'Cancelar',
   'common.save': 'Guardar',
   'common.confirm': 'Confirmar',
