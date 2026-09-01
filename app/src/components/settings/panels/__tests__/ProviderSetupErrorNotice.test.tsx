@@ -122,13 +122,16 @@ describe('presentProviderSetupError', () => {
   // test-only one. Recorded in ~/tinyhuman/bugs/W1-ui-bugs.md. When redaction
   // lands, invert these assertions.
   it('echoes an arbitrary provider credential verbatim (known gap)', () => {
-    const secret = 'zz-corp-9f8e7d6c5b4a3210';
+    // A deliberately synthetic, self-describing stand-in — NOT a credential.
+    // Its shape is the point: it matches none of the token prefixes the backend
+    // redacts, which is exactly the case that slips through.
+    const fakeCredential = 'FIXTURE-not-a-real-key-000000';
     const { summary, details } = present(
-      `Could not reach CustomLLM: {"error":{"message":"Invalid token: ${secret}"}}`
+      `Could not reach CustomLLM: {"error":{"message":"Invalid token: ${fakeCredential}"}}`
     );
 
-    expect(summary).toContain(secret);
-    expect(details).toContain(secret);
+    expect(summary).toContain(fakeCredential);
+    expect(details).toContain(fakeCredential);
   });
 
   it('preserves the raw error as details, untouched', () => {
