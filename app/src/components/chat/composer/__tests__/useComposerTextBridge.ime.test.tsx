@@ -34,7 +34,7 @@ import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Provider } from 'react-redux';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { AssistantUiRuntimeProvider } from '../../../../providers/AssistantUiRuntimeProvider';
 import chatRuntimeReducer from '../../../../store/chatRuntimeSlice';
