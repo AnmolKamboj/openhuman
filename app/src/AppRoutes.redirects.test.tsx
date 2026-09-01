@@ -114,9 +114,23 @@ describe('AppRoutes back-compat redirects', () => {
     const [fs, path] = await Promise.all([import('node:fs'), import('node:path')]);
     // vitest runs with `app/` as cwd (test/vitest.config.ts sets the root).
     const source = fs.readFileSync(path.resolve('src/AppRoutes.tsx'), 'utf8');
-    const routed = [...source.matchAll(/<Route path="([^"]+)" element={<Navigate /g)].map(
-      match => match[1]
-    );
+
+    // Each route's body is the slice up to the next `<Route path=`, and the body
+    // is searched for `<Navigate`. Deliberately NOT a single-line regex like
+    // `/<Route path="…" element={<Navigate /`: Prettier wraps a `<Route>` across
+    // lines as soon as its props exceed the print width, and a one-line pattern
+    // then silently skips that redirect — the list stays unchanged and this test
+    // still claims full coverage. A guard that stops guarding is worse than none.
+    const starts = [...source.matchAll(/<Route\s+path="([^"]+)"/g)];
+    const routed = starts
+      .filter((match, index) => {
+        const from = match.index ?? 0;
+        const to =
+          index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
+        return /<Navigate\b/.test(source.slice(from, to));
+      })
+      .map(match => match[1]);
+
     expect(routed.sort()).toEqual(REDIRECTS.map(r => r.from).sort());
   });
 });

@@ -21,13 +21,24 @@
  * `pages/ios/PairScreen.test.tsx`. Not repeated here.
  */
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useParams } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./features/human/HumanPage', () => ({
   default: () => <div data-testid="page-human">human</div>,
 }));
-vi.mock('./pages/Accounts', () => ({ default: () => <div data-testid="page-chat">chat</div> }));
+// Renders the route param back out. A stub that discards params makes
+// `/chat/thread-abc`, `/chat/anything` and a route that dropped the
+// `:threadId` segment entirely produce identical DOM — so the deep-link test
+// below would pass without observing the thread id at all. Mirrors the
+// technique already used in `AppRoutes.connections-flows.test.tsx`.
+vi.mock('./pages/Accounts', () => {
+  const ChatProbe = () => {
+    const { threadId } = useParams();
+    return <div data-testid="page-chat">{`chat:${threadId ?? ''}`}</div>;
+  };
+  return { default: ChatProbe };
+});
 vi.mock('./pages/Settings', () => ({
   default: () => <div data-testid="page-settings">settings</div>,
 }));
@@ -103,7 +114,9 @@ describe('AppRoutesIOS — deep links a paired phone must honour', () => {
 
     renderAt('/chat/thread-abc');
 
-    expect(screen.getByTestId('page-chat')).toBeInTheDocument();
+    // The segment must survive to the page, not merely match the route: this is
+    // the half a notification deep link depends on.
+    expect(screen.getByTestId('page-chat')).toHaveTextContent('chat:thread-abc');
     expect(screen.getByTestId('mobile-tab-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('page-human')).not.toBeInTheDocument();
   });

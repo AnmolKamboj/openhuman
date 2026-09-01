@@ -129,7 +129,7 @@ describe('MemorySourceRow — the row tells the truth about embedding state', ()
   });
 });
 
-describe('MemorySourceRow — the warning is suppressed only while a sync is in flight', () => {
+describe('MemorySourceRow — what suppresses the warning', () => {
   // `settled = !progress && !result` in MemorySourceRow.tsx. This suppression is
   // correct (mid-sync `chunks_pending` is legitimately transient) and is also the
   // most plausible way for the indicator to never appear: a source wedged in a
@@ -140,6 +140,29 @@ describe('MemorySourceRow — the warning is suppressed only while a sync is in 
       progress: { processed: 10, total: 2581 } as unknown as React.ComponentProps<
         typeof MemorySourceRow
       >['progress'],
+    });
+
+    expect(warning()).not.toBeInTheDocument();
+  });
+
+  it('ALSO stays hidden after a sync has finished, for as long as the result chip lives', () => {
+    // Pinned because it is surprising and load-bearing, not because it is right.
+    //
+    // `settled = !progress && !result` (MemorySourceRow.tsx:100). `result` is the
+    // terminal success/failure chip, and MemorySourcesRegistry only clears it
+    // when the NEXT sync starts (`:213`, `:358`) — nothing else drops it. So
+    // after any completed sync the "stored without vectors" warning is hidden
+    // indefinitely, which is exactly the shape of the incident this file exists
+    // for: chunks synced, none embedded, and no indicator anywhere.
+    //
+    // Recorded as a bug in ~/tinyhuman/bugs/W6-ui-bugs.md rather than asserted
+    // as correct. If someone narrows the suppression to `progress` alone, this
+    // test fails and should be updated to expect the warning — that failure is
+    // the fix landing, not a regression.
+    renderRow({
+      status: storedWithoutVectors(),
+      progress: null,
+      result: { ok: true } as unknown as React.ComponentProps<typeof MemorySourceRow>['result'],
     });
 
     expect(warning()).not.toBeInTheDocument();
