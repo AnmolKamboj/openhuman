@@ -13065,6 +13065,23 @@ async fn json_rpc_memory_sources_list_filters_to_active_connections() {
     .await;
     add_folder_memory_source(&rpc_base, 8804, "My notes", "/tmp/notes").await;
 
+    // Probe the exact chain the filter depends on FIRST, so a broken scan
+    // fails here with its real error instead of downstream as a silently
+    // fail-open (unfiltered) listing.
+    let probe = post_json_rpc(
+        &rpc_base,
+        8899,
+        "openhuman.composio_list_connections",
+        json!({}),
+    )
+    .await;
+    let probe_result = assert_no_jsonrpc_error(&probe, "composio_list_connections probe").clone();
+    let probe_text = probe_result.to_string();
+    assert!(
+        probe_text.contains("conn_active_gmail"),
+        "the connections probe must see the mock's active set; got {probe_text}"
+    );
+
     let list = post_json_rpc(&rpc_base, 8805, "openhuman.memory_sources_list", json!({})).await;
     let result = assert_no_jsonrpc_error(&list, "memory_sources_list").clone();
     let sources = memory_sources_from_list(&result);
@@ -13194,6 +13211,23 @@ async fn json_rpc_memory_sources_list_keeps_multiple_active_connections_per_tool
         "conn_gmail_stale",
     )
     .await;
+
+    // Probe the exact chain the filter depends on FIRST, so a broken scan
+    // fails here with its real error instead of downstream as a silently
+    // fail-open (unfiltered) listing.
+    let probe = post_json_rpc(
+        &rpc_base,
+        8999,
+        "openhuman.composio_list_connections",
+        json!({}),
+    )
+    .await;
+    let probe_result = assert_no_jsonrpc_error(&probe, "composio_list_connections probe").clone();
+    let probe_text = probe_result.to_string();
+    assert!(
+        probe_text.contains("conn_gmail_one"),
+        "the connections probe must see the mock's active set; got {probe_text}"
+    );
 
     let list = post_json_rpc(&rpc_base, 8954, "openhuman.memory_sources_list", json!({})).await;
     let result = assert_no_jsonrpc_error(&list, "memory_sources_list").clone();
