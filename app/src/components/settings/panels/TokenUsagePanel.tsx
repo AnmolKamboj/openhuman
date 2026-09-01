@@ -214,6 +214,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-router-enabled"
                 checked={settings?.router_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ router_enabled: v })}
                 aria-label={t('settings.tokenUsage.routerEnabled')}
               />
@@ -226,6 +227,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-search-enabled"
                 checked={settings?.search_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ search_enabled: v })}
                 aria-label={t('settings.tokenUsage.search')}
               />
@@ -238,6 +240,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-code-enabled"
                 checked={settings?.code_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ code_enabled: v })}
                 aria-label={t('settings.tokenUsage.code')}
               />
@@ -250,6 +253,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-html-enabled"
                 checked={settings?.html_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ html_enabled: v })}
                 aria-label={t('settings.tokenUsage.html')}
               />
@@ -262,6 +266,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-ml-enabled"
                 checked={settings?.ml_compression_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ ml_compression_enabled: v })}
                 aria-label={t('settings.tokenUsage.ml')}
               />
@@ -282,6 +287,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-ccr-enabled"
                 checked={settings?.ccr_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ ccr_enabled: v })}
                 aria-label={t('settings.tokenUsage.ccrEnabled')}
               />
@@ -300,6 +306,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
                 min={0}
                 max={1000000}
                 unit={t('settings.tokenUsage.tokensUnit')}
+                disabled={settings === null}
                 aria-label={t('settings.tokenUsage.ccrMinTokens')}
               />
             }
@@ -311,6 +318,7 @@ const TokenUsagePanel = ({ embedded = false }: TokenUsagePanelProps = {}) => {
               <SettingsSwitch
                 id="tj-ccr-disk"
                 checked={settings?.ccr_disk_enabled ?? false}
+                disabled={settings === null}
                 onCheckedChange={v => void patch({ ccr_disk_enabled: v })}
                 aria-label={t('settings.tokenUsage.ccrDisk')}
               />
