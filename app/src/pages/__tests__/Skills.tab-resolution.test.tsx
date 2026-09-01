@@ -29,14 +29,24 @@ import type { ChannelDefinition } from '../../types/channels';
 import Skills from '../Skills';
 
 // A non-empty definition list is what makes the channels group render at all.
-const webDef: ChannelDefinition = {
-  id: 'web',
-  display_name: 'Web',
-  description: 'Chat via the built-in web UI.',
-  icon: 'web',
-  auth_modes: [],
-  capabilities: [],
-};
+//
+// Declared through `vi.hoisted` rather than as a plain top-level `const`:
+// `vi.mock` is hoisted above every declaration in the file, so a factory that
+// closes over an ordinary const reads it before initialisation if the mocked
+// module is pulled in during the import phase. It happens to work here — the
+// hook is only called during render, inside the test body — but it is the
+// documented hazard and `vi.hoisted` is the supported way to share a value
+// with a factory (#5883, CodeRabbit).
+const { webDef } = vi.hoisted(() => ({
+  webDef: {
+    id: 'web',
+    display_name: 'Web',
+    description: 'Chat via the built-in web UI.',
+    icon: 'web',
+    auth_modes: [],
+    capabilities: [],
+  } as ChannelDefinition,
+}));
 
 vi.mock('../../hooks/useChannelDefinitions', () => ({
   useChannelDefinitions: () => ({ definitions: [webDef], loading: false, error: null }),

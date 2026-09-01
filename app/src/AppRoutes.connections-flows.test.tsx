@@ -72,7 +72,13 @@ const AppRoutes = (await import('./AppRoutes')).default;
 /** Reports the live location so assertions can name the URL we landed on. */
 function LocationProbe() {
   const loc = useLocation();
-  return <span data-testid="href">{loc.pathname + loc.search}</span>;
+  // `hash` included deliberately. Without it the probe reports only
+  // `pathname + search`, so a route whose destination carries a fragment —
+  // AGENTS.md:175 specifies `/webhooks` -> `/settings/integrations#webhooks` —
+  // could lose that fragment and every assertion here would stay green
+  // (#5883, Codex). This is a HashRouter, so `loc.hash` is the fragment WITHIN
+  // the routed path, not the leading `#/` of the URL.
+  return <span data-testid="href">{loc.pathname + loc.search + loc.hash}</span>;
 }
 
 function renderAt(entry: string) {
@@ -124,14 +130,25 @@ describe('connections / channels back-compat redirects (real route table)', () =
     // '/connections', search: location.search }} />` or equivalent — this test
     // MUST be flipped to expect '/connections?tab=messaging' and the two source
     // comments left alone, because they will finally be true.
+    //
+    // One assertion, not two. A second `.not.toBe('/connections?tab=messaging')`
+    // was strictly implied by the line below it and could never fire
+    // independently — and it encoded "the fixed value must not appear" as a
+    // separate contract, so whoever fixes the redirect would hit two failures
+    // and have to work out whether the negative one was deliberate
+    // (#5883, YellowSnnowmann).
     const at = renderAt('/skills?tab=messaging');
     expect(at.href()).toBe('/connections');
-    expect(at.href()).not.toBe('/connections?tab=messaging');
   });
 });
 
 describe('automation route slugs', () => {
   it('/routines redirects to /flows', () => {
+    // `AGENTS.md:175` documents `/routines` -> `/settings/automations`. The two
+    // agree on where the user ends up: `/settings/automations` is itself
+    // `<Navigate to="/flows">` (settingsRouteElements.tsx:164), so the code
+    // short-circuits one hop of the documented chain and lands in the same
+    // place. `/workflows` is the real divergence — see the test below.
     const at = renderAt('/routines');
     expect(at.href()).toBe('/flows');
     expect(at.page()).toBe('flows');
@@ -140,11 +157,23 @@ describe('automation route slugs', () => {
   it('/webhooks redirects to the Integrations settings page', () => {
     // Webhooks were retired from the UI; the route survives only to keep old
     // deep links from 404-ing.
+    //
+    // ⚠️ CONTRACT DIVERGENCE. `AGENTS.md:175` is the authoritative route table
+    // and specifies `/webhooks` -> `/settings/integrations#webhooks`. The code
+    // (`AppRoutes.tsx`) emits no fragment, so the Webhooks section is not
+    // selected on arrival. This asserts what the app DOES; changing it to the
+    // documented destination would be a knowingly-failing test. The fix is a
+    // source change and someone has to decide which side moves — see W5 BUG-13.
     const at = renderAt('/webhooks');
     expect(at.href()).toBe('/settings/integrations');
   });
 
   it('/workflows is NOT a redirect — it renders the legacy SKILL.md hub', () => {
+    // ⚠️ CONTRACT DIVERGENCE, and a three-way one. `AGENTS.md:175` says
+    // `/workflows` -> `/settings/automations`; `AppRoutes.tsx`'s own `/flows`
+    // block comment says it redirects to `/flows`; the code renders <Activity/>
+    // and stays put. Three statements, three destinations. This pins the code.
+    // See W5 BUG-13 (#5883, Codex).
     // Guards against the stale claim in `AppRoutes.tsx`'s own `/flows` block
     // comment, which says "the bare `/workflows` and `/routines` slugs now
     // redirect here (to `/flows`)". Only `/routines` does. `/workflows` renders
