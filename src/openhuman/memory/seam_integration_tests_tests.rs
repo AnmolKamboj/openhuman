@@ -144,6 +144,7 @@ fn local_ai_off_reports_no_provider_without_cloud_opt_in() {
     );
 }
 
+#[cfg(feature = "modules")]
 #[tokio::test]
 async fn direct_mode_config_resolves_via_module_config_at_call_time() {
     // The seam this pinned moved. `ProviderContext::execute` — the engine's

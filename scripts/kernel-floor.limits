@@ -13,6 +13,14 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   293/275/2  2026-08-31  Cargo.lock was refreshed to the latest compatible
+#                      dependency releases. The `flows` profile now resolves
+#                      seven additional package versions and five additional
+#                      crate names; native builds remain the same two
+#                      (`libsqlite3-sys`, `ring`). This is a lockfile-wide
+#                      compatibility refresh, not a new always-on OpenHuman
+#                      dependency. Measured with `scripts/kernel-floor.sh
+#                      flows` on the CI Linux profile.
 #   286/270/2  2026-08-30  moving flows::store.rs / flows::draft_store.rs and
 #                      the copilot's authoring prompts upstream split the
 #                      `tinyflows` crate's catalog/storage/copilot surface into
@@ -525,4 +533,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:286:270:2
+flows:293:275:2

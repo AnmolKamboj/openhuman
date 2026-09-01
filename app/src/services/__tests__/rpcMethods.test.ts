@@ -129,11 +129,33 @@ describe('rpcMethods catalog', () => {
         'utf8'
       ),
       fs.readFileSync(
+        path.resolve(
+          __dirname,
+          '../../../../src/openhuman/config/schemas/schemas_schema_part_01.rs'
+        ),
+        'utf8'
+      ),
+      fs.readFileSync(
+        path.resolve(
+          __dirname,
+          '../../../../src/openhuman/config/schemas/schemas_schema_part_02.rs'
+        ),
+        'utf8'
+      ),
+      fs.readFileSync(
         path.resolve(__dirname, '../../../../src/openhuman/inference/provider/schemas.rs'),
         'utf8'
       ),
       fs.readFileSync(
         path.resolve(__dirname, '../../../../src/openhuman/inference/schemas.rs'),
+        'utf8'
+      ),
+      fs.readFileSync(
+        path.resolve(__dirname, '../../../../src/openhuman/inference/schemas_part_01.rs'),
+        'utf8'
+      ),
+      fs.readFileSync(
+        path.resolve(__dirname, '../../../../src/openhuman/inference/schemas_part_02.rs'),
         'utf8'
       ),
       fs.readFileSync(
@@ -146,6 +168,10 @@ describe('rpcMethods catalog', () => {
       ),
       fs.readFileSync(
         path.resolve(__dirname, '../../../../src/openhuman/mcp/registry/schemas.rs'),
+        'utf8'
+      ),
+      fs.readFileSync(
+        path.resolve(__dirname, '../../../../src/openhuman/mcp/registry/schemas_part_01.rs'),
         'utf8'
       ),
       fs.readFileSync(

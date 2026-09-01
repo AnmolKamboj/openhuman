@@ -103,6 +103,7 @@ pub fn module_config(config: &Config) -> Result<serde_json::Value, String> {
                 "route": "direct",
                 "api_key": api_key,
                 "entity_id": config.composio.entity_id,
+                "base_url": std::env::var("OPENHUMAN_COMPOSIO_DIRECT_BASE_V3").ok(),
                 "state_dir": state_dir,
             }))
         }
