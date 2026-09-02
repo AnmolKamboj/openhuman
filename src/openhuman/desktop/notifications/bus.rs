@@ -10,6 +10,7 @@
 //! as `core_notification` / `core:notification` Socket.IO messages.
 
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
@@ -69,34 +70,42 @@ impl NotificationBridgeSubscriber {
         }
     }
 
-    /// Whether a workspace-bound event belongs to the workspace this bridge
-    /// was registered for.
+    /// The workspace store a notification belongs in.
     ///
-    /// The bridge is registered once, with the workspace that booted, but the
-    /// MCP reconnect supervisor ticks *every* workspace the process has opened
-    /// and a workspace switch leaves the old one open and still supervised.
-    /// Without this check, switching accounts would announce — and persist
-    /// into the current workspace's store — an outage belonging to the account
-    /// the user has left (#5931).
+    /// Normally this bridge's own: it is registered once, with the workspace
+    /// that booted, and every event it handled before #5931 is process-wide.
     ///
-    /// An event that names no workspace is not workspace-bound and passes, as
-    /// every event this bridge handled before #5931 does. So does everything
-    /// when `config` is `None`, which is unit tests only — see the field.
-    fn is_for_this_workspace(&self, event: &DomainEvent) -> bool {
-        let (Some(event_workspace), Some(config)) = (workspace_of(event), self.config.as_ref())
-        else {
-            return true;
-        };
-        if event_workspace == config.workspace_dir.as_path() {
-            return true;
+    /// The MCP supervisor variants are the exception. One process supervises
+    /// every workspace it has opened (`mcp::host::all_hosts`), and a workspace
+    /// switch leaves the old one open and still supervised, so a supervisor
+    /// event can belong to a workspace that is not this bridge's — including
+    /// the *active* one, once the boot binding is the stale half of the pair.
+    /// Neither answer to that is right on its own: filing it under this
+    /// bridge's workspace puts one account's outage in another's inbox, and
+    /// dropping it silences the workspace the user is actually in. So the
+    /// event says where it belongs and nothing is dropped — the binding's
+    /// freshness stops mattering.
+    ///
+    /// Only `workspace_dir` is redirected because it is the only field the
+    /// notification store reads: `store::with_connection` opens
+    /// `<workspace_dir>/notifications/notifications.db` and looks at nothing
+    /// else. Broadcast is unaffected — `NOTIFICATION_BUS` is process-wide and
+    /// always has been.
+    fn store_target<'a>(&self, config: &'a Config, event: &DomainEvent) -> Cow<'a, Config> {
+        match workspace_of(event) {
+            Some(event_workspace) if event_workspace != config.workspace_dir.as_path() => {
+                log::debug!(
+                    "{LOG_PREFIX} filing {} under its own workspace event_ws={} self_ws={}",
+                    event.variant_name(),
+                    event_workspace.display(),
+                    config.workspace_dir.display()
+                );
+                let mut redirected = config.clone();
+                redirected.workspace_dir = event_workspace.to_path_buf();
+                Cow::Owned(redirected)
+            }
+            _ => Cow::Borrowed(config),
         }
-        log::debug!(
-            "{LOG_PREFIX} dropping stale-workspace {} event_ws={} self_ws={}",
-            event.variant_name(),
-            event_workspace.display(),
-            config.workspace_dir.display()
-        );
-        false
     }
 }
 
@@ -332,11 +341,6 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
     // correctness boundary.
 
     async fn handle(&self, event: &DomainEvent) {
-        // A workspace-bound event from a workspace that is not this bridge's
-        // is not this bridge's to announce or store (#5931).
-        if !self.is_for_this_workspace(event) {
-            return;
-        }
         if let Some(notification) = event_to_notification(event) {
             // #3805: persist BEFORE broadcasting so the event is durable even
             // when no client is currently subscribed (app closed / minimised /
@@ -344,7 +348,10 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
             // receivers and the notification is lost forever. Best-effort: a
             // store failure must not suppress the live broadcast.
             if let Some(config) = &self.config {
-                match super::store::insert_core_notification(config, &notification) {
+                // A workspace-bound event is stored in ITS OWN workspace, not
+                // whichever one this bridge was registered with (#5931).
+                let config = self.store_target(config, event);
+                match super::store::insert_core_notification(&config, &notification) {
                     Ok(true) => log::debug!(
                         "{LOG_PREFIX} persisted core notification id={}",
                         notification.id

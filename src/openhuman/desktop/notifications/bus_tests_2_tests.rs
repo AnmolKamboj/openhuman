@@ -293,17 +293,23 @@ fn mcp_probe_timeouts_and_transport_drops_are_event_log_only() {
     assert!(event_to_notification(&dropped).is_none());
 }
 
-// ── Workspace scoping (#5931) ───────────────────────────────────────────────
+// ── Workspace routing (#5931) ───────────────────────────────────────────────
 //
 // One process supervises every workspace it has opened, and this bridge is
-// registered once with the workspace that booted. A supervisor event from a
-// workspace the user has switched away from must not be announced from — or
-// persisted into — the current one.
+// registered once with the workspace that booted. A supervisor event is
+// therefore stored under the workspace it names — not this bridge's, which
+// would file one account's outage in another's inbox, and not nowhere, which
+// would silence the workspace the user is actually in once the boot binding
+// is the stale one.
 
 fn bridge_for(workspace: &std::path::Path) -> NotificationBridgeSubscriber {
+    NotificationBridgeSubscriber::new(config_for(workspace))
+}
+
+fn config_for(workspace: &std::path::Path) -> crate::openhuman::config::Config {
     let mut config = crate::openhuman::config::Config::default();
     config.workspace_dir = workspace.to_path_buf();
-    NotificationBridgeSubscriber::new(config)
+    config
 }
 
 fn parked_in(workspace: &std::path::Path) -> DomainEvent {
@@ -316,24 +322,30 @@ fn parked_in(workspace: &std::path::Path) -> DomainEvent {
 }
 
 #[test]
-fn a_supervisor_event_from_this_workspace_is_this_bridge_s() {
+fn an_event_from_this_workspace_uses_this_bridge_s_own_store() {
     let workspace = std::path::Path::new("/tmp/openhuman-ws-a");
-    assert!(bridge_for(workspace).is_for_this_workspace(&parked_in(workspace)));
+    let config = config_for(workspace);
+    let target = bridge_for(workspace).store_target(&config, &parked_in(workspace));
+    assert_eq!(target.workspace_dir, workspace);
 }
 
 #[test]
-fn a_supervisor_event_from_a_switched_away_workspace_is_dropped() {
-    let bridge = bridge_for(std::path::Path::new("/tmp/openhuman-ws-a"));
+fn an_event_from_another_workspace_is_filed_under_that_workspace() {
+    let own = std::path::Path::new("/tmp/openhuman-ws-a");
     let other = std::path::Path::new("/tmp/openhuman-ws-b");
-    assert!(!bridge.is_for_this_workspace(&parked_in(other)));
-    // The pure translator would still have produced one — the drop is the
-    // bridge's decision, not the translator's.
-    assert!(event_to_notification(&parked_in(other)).is_some());
+    let config = config_for(own);
+    let target = bridge_for(own).store_target(&config, &parked_in(other));
+    assert_eq!(
+        target.workspace_dir, other,
+        "the event's workspace decides the store, not the bridge's binding"
+    );
 }
 
 #[test]
-fn every_supervisor_variant_is_scoped_not_only_the_notifying_ones() {
-    let bridge = bridge_for(std::path::Path::new("/tmp/openhuman-ws-a"));
+fn every_supervisor_variant_is_routed_not_only_the_notifying_ones() {
+    let own = std::path::Path::new("/tmp/openhuman-ws-a");
+    let config = config_for(own);
+    let bridge = bridge_for(own);
     let other = mcp_workspace();
     let foreign = [
         DomainEvent::McpServerProbeTimedOut {
@@ -371,65 +383,68 @@ fn every_supervisor_variant_is_scoped_not_only_the_notifying_ones() {
         parked_in(&other),
     ];
     for event in &foreign {
-        assert!(
-            !bridge.is_for_this_workspace(event),
-            "{} should be scoped out",
+        assert_eq!(
+            bridge.store_target(&config, event).workspace_dir,
+            other,
+            "{} should be routed to its own workspace",
             event.variant_name()
         );
     }
 }
 
 #[test]
-fn an_event_that_names_no_workspace_is_never_scoped_out() {
+fn an_event_that_names_no_workspace_uses_this_bridge_s_store() {
     // Every variant this bridge handled before #5931 — a cron job, a webhook,
-    // a rejected API key — is process-wide and must keep reaching it.
-    let bridge = bridge_for(std::path::Path::new("/tmp/openhuman-ws-a"));
-    assert!(
-        bridge.is_for_this_workspace(&DomainEvent::CronJobCompleted {
+    // a rejected API key — is process-wide and keeps this bridge's store.
+    let own = std::path::Path::new("/tmp/openhuman-ws-a");
+    let config = config_for(own);
+    let target = bridge_for(own).store_target(
+        &config,
+        &DomainEvent::CronJobCompleted {
             job_id: "job-1".into(),
             success: true,
             output: "done".into(),
-        })
+        },
     );
+    assert_eq!(target.workspace_dir, own);
 }
 
-#[test]
-fn a_bridge_with_no_config_scopes_nothing_out() {
-    // `config: None` is the unit-test-only shape; with no workspace binding
-    // there is nothing to compare against, so nothing is dropped.
-    let bridge = NotificationBridgeSubscriber::default();
-    assert!(bridge.is_for_this_workspace(&parked_in(&mcp_workspace())));
-}
-
-/// End to end through `handle`: a foreign workspace's outage is neither
-/// persisted into this workspace's store nor broadcast, while this
-/// workspace's own is.
-///
-/// Asserted on the store rather than on `NOTIFICATION_BUS`: that broadcast
-/// channel is a process-wide static every test in this binary publishes to,
-/// so a receiver here would also see other tests' notifications.
+/// End to end through `handle`, across a workspace switch: the bridge is bound
+/// to A, the user has moved to B, and B's supervisor is what reports. B's
+/// outage must reach B's store — not A's, and not nowhere.
 #[tokio::test]
-async fn a_switched_away_workspace_s_outage_is_neither_stored_nor_announced() {
+async fn an_outage_is_filed_under_its_own_workspace_not_the_bridge_s() {
     use crate::openhuman::desktop::notifications::store;
     use tempfile::TempDir;
 
-    let dir = TempDir::new().unwrap();
-    let mut config = crate::openhuman::config::Config::default();
-    config.workspace_dir = dir.path().to_path_buf();
-    let bridge = NotificationBridgeSubscriber::new(config.clone());
+    let booted = TempDir::new().unwrap();
+    let switched_to = TempDir::new().unwrap();
+    let booted_config = config_for(booted.path());
+    let switched_config = config_for(switched_to.path());
+    let bridge = NotificationBridgeSubscriber::new(booted_config.clone());
 
-    bridge
-        .handle(&parked_in(std::path::Path::new("/tmp/openhuman-ws-b")))
-        .await;
+    bridge.handle(&parked_in(switched_to.path())).await;
+
+    let landed = store::list_core_notifications(&switched_config, true, 50).unwrap();
+    assert_eq!(
+        landed.len(),
+        1,
+        "the active workspace's outage must not be dropped"
+    );
+    assert!(landed[0].id.starts_with("mcp-parked:srv-1:"));
     assert!(
-        store::list_core_notifications(&config, true, 50)
+        store::list_core_notifications(&booted_config, true, 50)
             .unwrap()
             .is_empty(),
-        "a foreign workspace's parked server must not land in this store"
+        "and must not land in the workspace the bridge happens to be bound to"
     );
 
-    bridge.handle(&parked_in(dir.path())).await;
-    let items = store::list_core_notifications(&config, true, 50).unwrap();
-    assert_eq!(items.len(), 1, "this workspace's own outage still notifies");
-    assert!(items[0].id.starts_with("mcp-parked:srv-1:"));
+    // The bridge's own workspace still works the way it always did.
+    bridge.handle(&parked_in(booted.path())).await;
+    assert_eq!(
+        store::list_core_notifications(&booted_config, true, 50)
+            .unwrap()
+            .len(),
+        1
+    );
 }

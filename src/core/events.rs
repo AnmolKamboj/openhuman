@@ -1126,11 +1126,11 @@ pub enum DomainEvent {
         ///
         /// One process supervises every workspace it has opened over its life
         /// (`mcp::host::all_hosts`), and a workspace switch leaves the old
-        /// host open and still supervised. A subscriber that persists or
-        /// shows one of these must therefore reject an event whose
-        /// `workspace_dir` is not its own binding — otherwise a switched-away
-        /// account's outage is stored in, and announced from, the current
-        /// workspace.
+        /// host open and still supervised. A subscriber that persists one of
+        /// these must therefore address the store by *this* field rather than
+        /// by its own workspace binding: the two disagree after a switch, in
+        /// whichever direction, and using the binding files one account's
+        /// outage under another's.
         workspace_dir: std::path::PathBuf,
     },
     /// The supervisor ended an MCP server's session because its liveness

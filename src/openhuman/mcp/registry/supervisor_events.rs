@@ -12,9 +12,10 @@
 //! Every event is stamped with the workspace whose host was ticked. One
 //! process supervises every workspace it has opened over its life, and a
 //! workspace switch leaves the old one open and still supervised, so a
-//! subscriber that persists or announces one of these — the notification
-//! bridge — needs the stamp to tell a live outage from a switched-away
-//! account's.
+//! subscriber that persists one of these — the notification bridge — needs
+//! the stamp to file it under the right workspace. It cannot infer that from
+//! its own binding: the bridge is registered once, with whichever workspace
+//! booted, which may no longer be the one the user is in.
 //!
 //! An answered probe is the nominal case and is deliberately *not* an event:
 //! one row per server per minute would bury everything else in the log.
