@@ -60,13 +60,14 @@ fn awaiting_user_outcome_maps_to_resume_envelope_not_bare_success() {
         status: SubagentRunStatus::AwaitingUser {
             question: question.clone(),
             options: None,
+            checkpoint: Some(std::path::PathBuf::from("/tmp/sub-xyz789.json")),
         },
         final_history: Vec::new(),
         usage: SubagentUsage::default(),
         artifact_paths: Vec::new(),
     };
 
-    let res = awaiting_outcome_to_tool_result(&outcome, &question);
+    let res = awaiting_outcome_to_tool_result(&outcome, &question, true);
     assert!(!res.is_error, "awaiting-user is not a failure");
     let out = res.output();
     assert!(out.contains("[SUBAGENT_AWAITING_USER]"), "envelope: {out}");

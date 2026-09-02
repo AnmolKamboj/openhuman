@@ -1644,58 +1644,25 @@ async fn run_typed_mode(
             .checkpoint_dir
             .clone()
             .unwrap_or_else(|| parent.workspace_dir.join(".openhuman/subagent_checkpoints"));
-        if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
-            tracing::warn!(
-                task_id = %task_id,
-                error = %e,
-                "[subagent_runner] failed to create checkpoint directory"
-            );
-        } else {
-            let checkpoint_data =
-                crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData {
-                    task_id: task_id.to_string(),
-                    agent_id: definition.id.clone(),
-                    worker_thread_id: options.worker_thread_id.clone(),
-                    history: history.clone(),
-                    question: question.clone(),
-                    options: options_vec.clone(),
-                    toolkit_override: options.toolkit_override.clone(),
-                    skill_filter_override: options.skill_filter_override.clone(),
-                    model_override: options.model_override.clone(),
-                    created_at: chrono::Utc::now().to_rfc3339(),
-                };
-            let checkpoint_path = checkpoint_dir.join(format!("{task_id}.json"));
-            match serde_json::to_string_pretty(&checkpoint_data) {
-                Ok(json) => {
-                    if let Err(e) = std::fs::write(&checkpoint_path, json) {
-                        tracing::warn!(
-                            task_id = %task_id,
-                            path = %checkpoint_path.display(),
-                            error = %e,
-                            "[subagent_runner] failed to write checkpoint"
-                        );
-                    } else {
-                        tracing::info!(
-                            task_id = %task_id,
-                            path = %checkpoint_path.display(),
-                            history_len = history.len(),
-                            "[subagent_runner] checkpoint written for awaiting_user"
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = %task_id,
-                        error = %e,
-                        "[subagent_runner] failed to serialize checkpoint"
-                    );
-                }
-            }
-        }
+        let checkpoint_data =
+            crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData {
+                task_id: task_id.to_string(),
+                agent_id: definition.id.clone(),
+                worker_thread_id: options.worker_thread_id.clone(),
+                history: history.clone(),
+                question: question.clone(),
+                options: options_vec.clone(),
+                toolkit_override: options.toolkit_override.clone(),
+                skill_filter_override: options.skill_filter_override.clone(),
+                model_override: options.model_override.clone(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+            };
+        let checkpoint = write_pause_checkpoint(&checkpoint_dir, task_id, &checkpoint_data);
 
         crate::openhuman::agent::harness::subagent_runner::types::SubagentRunStatus::AwaitingUser {
             question,
             options: options_vec,
+            checkpoint,
         }
     } else if let Some(reason) = breaker_halt {
         // The repeated-failure / repeat-progress circuit breaker halted the run
@@ -1760,6 +1727,75 @@ async fn run_typed_mode(
         artifact_paths: Vec::new(),
     })
 }
+
+/// Persist a paused sub-agent's conversation so `continue_subagent` can resume
+/// it, returning the path actually written or `None` when it could not be.
+///
+/// Every failure here is logged at `error`, not `warn`. A checkpoint that was
+/// not written is not a degraded nicety: the run is about to be reported as
+/// `AwaitingUser`, the orchestrator will relay a `task_id` and ask the user to
+/// answer, and the loss only becomes visible after they have — at which point
+/// the answer has nowhere to go. That late, invisible failure is what #5928's
+/// first acceptance criterion is about, and the `Option` this returns is what
+/// lets the caller stop promising a resumable pause it did not achieve.
+///
+/// Split out as a free function so each failure branch is reachable from a
+/// test: point `checkpoint_dir` at a path that cannot be created, or at one
+/// whose target file cannot be written.
+fn write_pause_checkpoint(
+    checkpoint_dir: &std::path::Path,
+    task_id: &str,
+    data: &crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData,
+) -> Option<std::path::PathBuf> {
+    if let Err(e) = std::fs::create_dir_all(checkpoint_dir) {
+        tracing::error!(
+            task_id = %task_id,
+            dir = %checkpoint_dir.display(),
+            error = %e,
+            "[subagent_runner] could not create the checkpoint directory; this pause will not be \
+             resumable from disk"
+        );
+        return None;
+    }
+
+    let json = match serde_json::to_string_pretty(data) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!(
+                task_id = %task_id,
+                error = %e,
+                "[subagent_runner] could not serialize the checkpoint; this pause will not be \
+                 resumable from disk"
+            );
+            return None;
+        }
+    };
+
+    let checkpoint_path = checkpoint_dir.join(format!("{task_id}.json"));
+    if let Err(e) = std::fs::write(&checkpoint_path, json) {
+        tracing::error!(
+            task_id = %task_id,
+            path = %checkpoint_path.display(),
+            error = %e,
+            "[subagent_runner] could not write the checkpoint; this pause will not be resumable \
+             from disk"
+        );
+        return None;
+    }
+
+    tracing::info!(
+        task_id = %task_id,
+        path = %checkpoint_path.display(),
+        history_len = data.history.len(),
+        "[subagent_runner] checkpoint written for awaiting_user"
+    );
+    Some(checkpoint_path)
+}
+
 #[cfg(test)]
 #[path = "runner_fast_path_tests_tests.rs"]
 mod fast_path_tests;
+
+#[cfg(test)]
+#[path = "runner_checkpoint_tests.rs"]
+mod checkpoint_tests;

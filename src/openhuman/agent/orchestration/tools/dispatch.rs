@@ -254,7 +254,11 @@ pub(crate) async fn dispatch_subagent(
             // loop: a paused mcp_setup was reported as a plain success, the
             // orchestrator's only continuation was to re-delegate, and the new
             // run paused again. Mirrors the `spawn_subagent` AwaitingUser path.
-            SubagentRunStatus::AwaitingUser { question, .. } => {
+            SubagentRunStatus::AwaitingUser {
+                question,
+                checkpoint,
+                ..
+            } => {
                 crate::openhuman::agent::orchestration::subagent_events::publish_subagent_awaiting_user(
                     parent_session,
                     outcome.task_id.clone(),
@@ -270,6 +274,9 @@ pub(crate) async fn dispatch_subagent(
                             // Synchronous delegate dispatch has no worker
                             // sub-thread (that is a `spawn_subagent` concept).
                             worker_thread_id: None,
+                            checkpoint_path: checkpoint
+                                .as_ref()
+                                .map(|p| p.to_string_lossy().to_string()),
                         })
                         .await;
                 }
@@ -281,7 +288,11 @@ pub(crate) async fn dispatch_subagent(
                     tool_name,
                     outcome.task_id,
                 );
-                Ok(awaiting_outcome_to_tool_result(&outcome, question))
+                Ok(awaiting_outcome_to_tool_result(
+                    &outcome,
+                    question,
+                    checkpoint.is_some(),
+                ))
             }
             SubagentRunStatus::Completed => {
                 crate::openhuman::agent::orchestration::subagent_events::publish_subagent_completed(
@@ -404,12 +415,14 @@ pub(crate) async fn dispatch_subagent(
 fn awaiting_outcome_to_tool_result(
     outcome: &crate::openhuman::agent::harness::subagent_runner::SubagentRunOutcome,
     question: &str,
+    checkpointed: bool,
 ) -> ToolResult {
     ToolResult::success(super::awaiting_user::awaiting_user_envelope(
         &outcome.task_id,
         &outcome.agent_id,
         None,
         question,
+        checkpointed,
     ))
 }
 
