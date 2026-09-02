@@ -1,5 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use openhuman_core::openhuman::agent::context::prompt::{
+    render_ambient_environment, render_subagent_system_prompt, render_tools, render_user_files,
+    ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData, NamespaceSummary,
+    PersonalityRosterEntry, PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder,
+    ToolCallFormat, UserIdentity,
+};
 use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
 use openhuman_core::openhuman::agent::harness::definition::AgentTier;
 use openhuman_core::openhuman::agent::harness::session::Agent;
@@ -8,16 +14,10 @@ use openhuman_core::openhuman::agent::harness::{
     ParentExecutionContext, PromptSource, SandboxMode, SubagentRunOptions, ToolScope,
 };
 use openhuman_core::openhuman::config::AgentConfig;
-use openhuman_core::openhuman::agent::context::prompt::{
-    render_ambient_environment, render_subagent_system_prompt, render_tools, render_user_files,
-    ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData, NamespaceSummary,
-    PersonalityRosterEntry, PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder,
-    ToolCallFormat, UserIdentity,
-};
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary as MemoryNamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolContent, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -248,7 +248,7 @@ fn tool_response(id: &str, name: &str, arguments: serde_json::Value) -> ModelRes
         raw: None,
         resolved_model: None,
         continue_turn: None,
-            served_from_cache: false,
+        served_from_cache: false,
     }
 }
 
@@ -363,9 +363,8 @@ fn parent_context(workspace: PathBuf, provider: Arc<ScriptedModel>) -> ParentExe
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
-            provider,
-        ),
+        turn_model_source:
+            openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(provider),
         all_tools: Arc::new(tools),
         all_tool_specs: Arc::new(specs),
         visible_tool_names: std::collections::HashSet::new(),
