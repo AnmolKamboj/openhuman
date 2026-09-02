@@ -125,33 +125,60 @@ impl NotificationBridgeSubscriber {
     /// marker read, paid only for the handful of events a supervisor tick
     /// produces: everything else returns on the first line.
     ///
-    /// **Fails open.** If the workspace cannot be resolved the notification is
-    /// announced anyway. A banner from the wrong workspace is a visible
-    /// annoyance the user can dismiss; a silently swallowed "your MCP tools
-    /// are down" is the exact failure #5931 exists to end.
+    /// **Fails closed.** If the workspace cannot be resolved, nothing is
+    /// announced. That costs a *banner*, not the alert: the notification is
+    /// already persisted under its own workspace by the time this runs, so it
+    /// still reaches the notification centre — which is exactly the durability
+    /// split #3805 built, with the store as the reliable channel and the
+    /// broadcast as best effort. Announcing on an unknown workspace would
+    /// instead put another account's server name and transport error in front
+    /// of whoever is connected, and there is no undoing that.
     async fn should_announce(&self, event: &DomainEvent) -> bool {
         let Some(event_workspace) = workspace_of(event) else {
             return true;
         };
-        match crate::openhuman::config::active_workspace_dir().await {
-            Ok(active) if active == event_workspace => true,
-            Ok(active) => {
-                log::debug!(
-                    "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
-                    event.variant_name(),
-                    event_workspace.display(),
-                    active.display()
-                );
-                false
-            }
+        let active = match crate::openhuman::config::active_workspace_dir().await {
+            Ok(active) => Some(active),
             Err(error) => {
                 log::warn!(
-                    "{LOG_PREFIX} could not resolve the active workspace ({error}); announcing {} anyway",
+                    "{LOG_PREFIX} could not resolve the active workspace ({error}); not announcing {} — it is persisted and will show in the notification centre",
                     event.variant_name()
                 );
-                true
+                None
             }
+        };
+        let announces = announces_to(Some(event_workspace), active.as_deref());
+        if !announces && active.is_some() {
+            log::debug!(
+                "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
+                event.variant_name(),
+                event_workspace.display(),
+                active.as_deref().unwrap_or(std::path::Path::new("?")).display()
+            );
         }
+        announces
+    }
+}
+
+/// The announcement rule, as a function of its two inputs.
+///
+/// Separated from the I/O so the decision can be asserted directly — in
+/// particular the fail-closed arm, which is otherwise reachable only by making
+/// the on-disk config unreadable.
+///
+/// - `event_workspace` `None`: the event is not workspace-bound, so it is not
+///   this rule's business and is announced.
+/// - `active` `None`: the active workspace could not be resolved. **Fail
+///   closed** — see [`NotificationBridgeSubscriber::should_announce`].
+/// - Otherwise the event is announced only in the workspace it belongs to.
+fn announces_to(
+    event_workspace: Option<&std::path::Path>,
+    active: Option<&std::path::Path>,
+) -> bool {
+    match (event_workspace, active) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(event), Some(active)) => event == active,
     }
 }
 

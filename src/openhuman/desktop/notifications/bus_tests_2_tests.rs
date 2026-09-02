@@ -485,7 +485,11 @@ impl Drop for ActiveWorkspaceEnvGuard {
 
 #[tokio::test]
 async fn the_active_workspace_s_outage_is_announced() {
-    let lock = crate::openhuman::config::TEST_ENV_LOCK
+    // Held for the whole test. NOT dropped explicitly: `_guard` is declared
+    // after it, so scope exit destroys the guard first and the env var is
+    // cleared while this lock is still held. Releasing the lock early would
+    // let the next test set its own override and have this guard erase it.
+    let _lock = crate::openhuman::config::TEST_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let active = tempfile::TempDir::new().unwrap();
@@ -502,12 +506,15 @@ async fn the_active_workspace_s_outage_is_announced() {
         bridge.should_announce(&parked_in(&resolved)).await,
         "the workspace the user is in must still hear about its own outage"
     );
-    drop(lock);
 }
 
 #[tokio::test]
 async fn a_switched_away_workspace_s_outage_is_not_announced() {
-    let lock = crate::openhuman::config::TEST_ENV_LOCK
+    // Held for the whole test. NOT dropped explicitly: `_guard` is declared
+    // after it, so scope exit destroys the guard first and the env var is
+    // cleared while this lock is still held. Releasing the lock early would
+    // let the next test set its own override and have this guard erase it.
+    let _lock = crate::openhuman::config::TEST_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let active = tempfile::TempDir::new().unwrap();
@@ -529,7 +536,6 @@ async fn a_switched_away_workspace_s_outage_is_not_announced() {
             .await,
         "another workspace's server name and error must not reach this one"
     );
-    drop(lock);
 }
 
 #[tokio::test]
@@ -547,4 +553,26 @@ async fn a_process_wide_event_is_announced_without_consulting_the_workspace() {
             })
             .await
     );
+}
+
+/// The announcement rule, including the arm that is otherwise reachable only
+/// by making the on-disk config unreadable.
+#[test]
+fn the_announcement_rule_fails_closed_on_an_unknown_workspace() {
+    let a = std::path::Path::new("/tmp/openhuman-ws-a");
+    let b = std::path::Path::new("/tmp/openhuman-ws-b");
+
+    // Not workspace-bound: never this rule's business.
+    assert!(announces_to(None, Some(a)));
+    assert!(announces_to(None, None));
+
+    // Bound and live: announced only where it belongs.
+    assert!(announces_to(Some(a), Some(a)));
+    assert!(!announces_to(Some(a), Some(b)));
+
+    // Bound, but the active workspace is unknown. Fail closed: the
+    // notification is already persisted, so suppressing costs a banner, while
+    // announcing could put another account's server name and error in front of
+    // whoever is connected.
+    assert!(!announces_to(Some(a), None));
 }
