@@ -1,6 +1,5 @@
-import { DISCORD_INVITE_URL } from './links';
-
 import packageJson from '../../package.json';
+import { DISCORD_INVITE_URL } from './links';
 
 const APP_ENV = (import.meta.env.VITE_OPENHUMAN_APP_ENV as string | undefined)
   ?.trim()

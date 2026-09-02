@@ -91,9 +91,7 @@ describe('ErrorFallbackScreen', () => {
     render(<ErrorFallbackScreen {...baseProps} eventId="id/with space" />);
     fireEvent.click(screen.getByText('app.errorFallback.contactSupport'));
     expect(hoisted.openUrl).toHaveBeenCalledWith('https://support.example/help');
-    expect(hoisted.openUrl).not.toHaveBeenCalledWith(
-      expect.stringContaining('ref=')
-    );
+    expect(hoisted.openUrl).not.toHaveBeenCalledWith(expect.stringContaining('ref='));
   });
 
   test('reveals the logs folder via the tauri command', () => {
