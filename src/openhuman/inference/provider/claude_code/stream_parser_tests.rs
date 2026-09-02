@@ -189,6 +189,18 @@ fn feed_bytes_preserves_a_character_split_across_chunks() {
     events.extend(p.feed_bytes(&bytes[split..]));
 
     assert_eq!(events.len(), 1);
+
+    // `ParseError` carries the original line, so its Debug rendering contains
+    // the emoji too — matching the variant is what separates "decoded across
+    // the boundary" from "failed to parse and echoed the bytes back".
+    let ClaudeCodeEvent::Assistant { message } = &events[0] else {
+        panic!("expected an Assistant event, got {:?}", events[0]);
+    };
+    assert_eq!(
+        message["text"], "héllo 世界 🌍 tail",
+        "the character split across the two chunks must survive intact"
+    );
+
     let rendered = format!("{:?}", events[0]);
     assert!(
         rendered.contains("héllo 世界 🌍 tail"),
@@ -213,5 +225,17 @@ fn feed_bytes_still_replaces_genuinely_invalid_bytes() {
         events.len(),
         1,
         "the line must still be emitted, not withheld"
+    );
+
+    // Not just "an event arrived": the invalid byte has to have been REPLACED.
+    // Dropping it would also emit one event and would also parse, so the count
+    // alone cannot tell the two apart.
+    let ClaudeCodeEvent::System { session_id, .. } = &events[0] else {
+        panic!("expected a System event, got {:?}", events[0]);
+    };
+    assert_eq!(
+        session_id.as_deref(),
+        Some("\u{FFFD}"),
+        "0xFF must decode to the replacement character, not vanish"
     );
 }
