@@ -1644,58 +1644,25 @@ async fn run_typed_mode(
             .checkpoint_dir
             .clone()
             .unwrap_or_else(|| parent.workspace_dir.join(".openhuman/subagent_checkpoints"));
-        if let Err(e) = std::fs::create_dir_all(&checkpoint_dir) {
-            tracing::warn!(
-                task_id = %task_id,
-                error = %e,
-                "[subagent_runner] failed to create checkpoint directory"
-            );
-        } else {
-            let checkpoint_data =
-                crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData {
-                    task_id: task_id.to_string(),
-                    agent_id: definition.id.clone(),
-                    worker_thread_id: options.worker_thread_id.clone(),
-                    history: history.clone(),
-                    question: question.clone(),
-                    options: options_vec.clone(),
-                    toolkit_override: options.toolkit_override.clone(),
-                    skill_filter_override: options.skill_filter_override.clone(),
-                    model_override: options.model_override.clone(),
-                    created_at: chrono::Utc::now().to_rfc3339(),
-                };
-            let checkpoint_path = checkpoint_dir.join(format!("{task_id}.json"));
-            match serde_json::to_string_pretty(&checkpoint_data) {
-                Ok(json) => {
-                    if let Err(e) = std::fs::write(&checkpoint_path, json) {
-                        tracing::warn!(
-                            task_id = %task_id,
-                            path = %checkpoint_path.display(),
-                            error = %e,
-                            "[subagent_runner] failed to write checkpoint"
-                        );
-                    } else {
-                        tracing::info!(
-                            task_id = %task_id,
-                            path = %checkpoint_path.display(),
-                            history_len = history.len(),
-                            "[subagent_runner] checkpoint written for awaiting_user"
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = %task_id,
-                        error = %e,
-                        "[subagent_runner] failed to serialize checkpoint"
-                    );
-                }
-            }
-        }
+        let checkpoint_data =
+            crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData {
+                task_id: task_id.to_string(),
+                agent_id: definition.id.clone(),
+                worker_thread_id: options.worker_thread_id.clone(),
+                history: history.clone(),
+                question: question.clone(),
+                options: options_vec.clone(),
+                toolkit_override: options.toolkit_override.clone(),
+                skill_filter_override: options.skill_filter_override.clone(),
+                model_override: options.model_override.clone(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+            };
+        let checkpoint = super::pause_checkpoint::write(&checkpoint_dir, task_id, &checkpoint_data);
 
         crate::openhuman::agent::harness::subagent_runner::types::SubagentRunStatus::AwaitingUser {
             question,
             options: options_vec,
+            checkpoint,
         }
     } else if let Some(reason) = breaker_halt {
         // The repeated-failure / repeat-progress circuit breaker halted the run
@@ -1760,6 +1727,7 @@ async fn run_typed_mode(
         artifact_paths: Vec::new(),
     })
 }
+
 #[cfg(test)]
 #[path = "runner_fast_path_tests_tests.rs"]
 mod fast_path_tests;
