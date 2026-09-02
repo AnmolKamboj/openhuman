@@ -6,7 +6,6 @@
 //! the orchestrator relayed a `task_id` and asked the user to answer a question
 //! whose answer had nowhere to go.
 
-use super::write_pause_checkpoint;
 use crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData;
 
 fn checkpoint_data(task_id: &str) -> SubagentCheckpointData {
@@ -29,7 +28,7 @@ fn a_written_checkpoint_returns_the_path_it_wrote() {
     let dir = tempfile::tempdir().expect("tempdir");
     let checkpoint_dir = dir.path().join("subagent_checkpoints");
 
-    let written = write_pause_checkpoint(&checkpoint_dir, "task-1", &checkpoint_data("task-1"))
+    let written = super::write(&checkpoint_dir, "task-1", &checkpoint_data("task-1"))
         .expect("a writable directory must produce a checkpoint");
 
     assert_eq!(
@@ -56,7 +55,7 @@ fn the_directory_is_created_on_demand() {
     let nested = dir.path().join("a/b/c/subagent_checkpoints");
     assert!(!nested.exists(), "precondition: nothing has created it");
 
-    let written = write_pause_checkpoint(&nested, "task-2", &checkpoint_data("task-2"))
+    let written = super::write(&nested, "task-2", &checkpoint_data("task-2"))
         .expect("a missing directory must be created, not treated as a failure");
 
     assert!(written.is_file());
@@ -71,7 +70,7 @@ fn an_uncreatable_directory_reports_no_checkpoint() {
     std::fs::write(&blocked, b"i am a file").expect("seed the blocker");
 
     assert!(
-        write_pause_checkpoint(&blocked, "task-3", &checkpoint_data("task-3")).is_none(),
+        super::write(&blocked, "task-3", &checkpoint_data("task-3")).is_none(),
         "a checkpoint directory that cannot exist must report no checkpoint, \
          not a silently dropped warning"
     );
@@ -86,7 +85,7 @@ fn an_unwritable_target_reports_no_checkpoint() {
     std::fs::create_dir_all(checkpoint_dir.join("task-4.json")).expect("occupy the target path");
 
     assert!(
-        write_pause_checkpoint(&checkpoint_dir, "task-4", &checkpoint_data("task-4")).is_none(),
+        super::write(&checkpoint_dir, "task-4", &checkpoint_data("task-4")).is_none(),
         "a checkpoint whose write fails must report no checkpoint"
     );
 }

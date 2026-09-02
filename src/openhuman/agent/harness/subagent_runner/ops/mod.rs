@@ -15,10 +15,12 @@
 //! | `prompt.rs`         | Role-contract suffix, `append_subagent_role_contract`, `dedup_tool_specs_by_name` |
 //! | `runner.rs`         | `run_subagent`, `run_typed_mode`                               |
 //! | `graph.rs`          | `run_subagent_via_graph` — the sub-agent turn graph + tools    |
-//! | `checkpoint.rs`     | `SubagentCheckpoint`                                           |
+//! | `checkpoint.rs`     | `SubagentCheckpoint` — cap-hit summary                         |
+//! | `pause_checkpoint.rs` | `write` — the on-disk pause snapshot for `continue_subagent`  |
 
 mod checkpoint;
 mod graph;
+mod pause_checkpoint;
 pub(crate) use graph::run_agent_turn_request_via_default_graph;
 mod prompt;
 mod provider;

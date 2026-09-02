@@ -1001,12 +1001,6 @@ pub(crate) fn spawn_progress_bridge(
                         thread_id,
                         request_id,
                     );
-                    // Use the path the runner actually wrote, not one rebuilt
-                    // from the workspace dir. The rebuilt path was recorded
-                    // unconditionally, so the ledger asserted a checkpoint
-                    // existed even when the write had failed, and it ignored
-                    // any `checkpoint_dir` override (#5928).
-                    let checkpoint_present = checkpoint_path.is_some();
                     ledger_upsert_agent_run(
                         &config,
                         AgentRunUpsert {
@@ -1024,6 +1018,9 @@ pub(crate) fn spawn_progress_bridge(
                             worker_thread_id: worker_thread_id.clone(),
                             task_board_id: Some(thread_id.clone()),
                             task_card_id: None,
+                            // What the runner actually wrote; the old rebuild
+                            // from `workspace_dir` asserted a checkpoint that
+                            // may never have been written (#5928).
                             checkpoint_path: checkpoint_path.clone(),
                             checkpoint: Some(json!({
                                 "resumeTool": "continue_subagent",
@@ -1031,7 +1028,7 @@ pub(crate) fn spawn_progress_bridge(
                                 "agentId": agent_id,
                                 "question": question,
                                 "workerThreadId": worker_thread_id,
-                                "checkpointPersisted": checkpoint_present
+                                "checkpointPersisted": checkpoint_path.is_some()
                             })),
                             summary: Some(question.clone()),
                             error: None,
