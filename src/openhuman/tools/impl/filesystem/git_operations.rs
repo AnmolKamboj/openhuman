@@ -174,7 +174,10 @@ impl GitOperationsTool {
         // Validate files argument against injection patterns
         self.sanitize_git_args(files)?;
 
-        let mut git_args = vec!["diff", "--unified=3"];
+        // `--no-ext-diff` is where external-diff suppression has to live: it is
+        // a diff-command flag, and the `-c diff.external=` that used to stand in
+        // for it made git exec the empty string instead of disabling anything.
+        let mut git_args = vec!["diff", "--no-ext-diff", "--unified=3"];
         if cached {
             git_args.push("--cached");
         }
