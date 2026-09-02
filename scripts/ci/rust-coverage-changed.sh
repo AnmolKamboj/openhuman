@@ -111,12 +111,24 @@ integration_test_targets() {
 #   between a memory-store schema change and a corrupted user workspace, and
 #   they are `tests/` targets, so `--lib` scoping alone skips them entirely.
 #
+#   src/openhuman/agent/harness/session/** and src/openhuman/threads/goals/**
+#   → `agent_turn_overrides_e2e`. Per-turn `TurnOverrides` (`session/types.rs`)
+#   are consumed in `session/turn/core_turn.rs`, and the terminal thread-goal
+#   APIs live in `threads/goals/runtime.rs`; the whole contract is an
+#   integration target, so without this a regression in either could merge
+#   through CI Lite having executed none of those assertions. Scoped to the two
+#   directories the suite actually guards rather than all of `agent/**`, which
+#   would drag this target onto most PRs in the tree for no added signal.
+#
 # Echoes zero or more target names, one per line; the caller tolerates an
 # empty result.
 domain_integration_targets() {
   case "$1" in
     src/openhuman/memory/*)
       printf '%s\n' memory_golden_fixture_e2e memory_golden_parity_e2e
+      ;;
+    src/openhuman/agent/harness/session/* | src/openhuman/threads/goals/*)
+      printf '%s\n' agent_turn_overrides_e2e
       ;;
   esac
 }
