@@ -236,7 +236,18 @@ async fn fetch_current_user_cached(
         }
     };
     clear_current_user_failure();
-    note_current_user_success(&api_base, token);
+    // Only a *refreshed user* makes the displayed data fresh. The backend can
+    // answer 200 with no user at all, and the snapshot caller then falls back
+    // to `stored_user` — so stamping success here would report an age of ~0s
+    // for data that was never replaced. `clear_current_user_failure` still runs
+    // either way: an empty answer is the backend being healthy, just not
+    // useful, and it should not keep the backoff window open.
+    //
+    // Read before the cache lock rather than inside the `Some` arm below, so
+    // this never nests `LAST_CURRENT_USER_SUCCESS` inside `CURRENT_USER_CACHE`.
+    if fetched.is_some() {
+        note_current_user_success(&api_base, token);
+    }
 
     let mut cache = CURRENT_USER_CACHE.lock();
     match fetched.clone() {

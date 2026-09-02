@@ -8,7 +8,12 @@
 //
 // `include!`d into `ops.rs`, so everything here shares that module's scope.
 
-/// When the backend last answered `auth_get_me` successfully in this process.
+/// When the backend last returned an actual user for `auth_get_me` in this
+// process — i.e. when the data the snapshot displays was last replaced.
+//
+// Deliberately not "when the backend was last healthy": a 200 carrying no user
+// leaves the caller on `stored_user`, so counting it as a success would report
+// a ~0s age for data that never changed.
 ///
 /// Neither existing cache can answer "how old is the user data we are showing":
 /// [`CURRENT_USER_FAILURE`] only knows about failures, and
@@ -34,8 +39,9 @@ struct CurrentUserSuccess {
     at: Instant,
 }
 
-/// Stamp a successful backend answer, so the snapshot can report how old the
-/// data it is serving has become.
+/// Stamp a refreshed user, so the snapshot can report how old the data it is
+/// serving has become. Callers must not invoke this for an answer that carried
+/// no user — see [`LAST_CURRENT_USER_SUCCESS`].
 fn note_current_user_success(api_base: &str, token: &str) {
     *LAST_CURRENT_USER_SUCCESS.lock() = Some(CurrentUserSuccess {
         api_base: api_base.to_string(),
