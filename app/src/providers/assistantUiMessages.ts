@@ -263,11 +263,25 @@ function mergeAssistantRun(messages: readonly ThreadMessage[]): ThreadMessage {
 }
 
 /**
+ * A row the core persisted as a complete, self-contained delivery — an
+ * autonomous task result, a worker-thread hand-off, a workflow proposal. Core
+ * writers stamp `extraMetadata.scope` on every such row; the legacy segmented
+ * path never did. That positive marker is what tells an async delivery apart
+ * from a paragraph of the answer next to it, since neither carries a request
+ * id on the wire.
+ */
+function isStandaloneDelivery(message: ThreadMessage): boolean {
+  return typeof message.extraMetadata?.scope === 'string';
+}
+
+/**
  * Collapse legacy paragraph/tool-envelope rows into one assistant turn.
  *
  * The old interactive-web delivery path persisted each segment as a separate
  * agent message. Consecutive assistant rows cannot cross a user turn; when
- * both rows carry request ids, a differing id is the explicit boundary.
+ * both rows carry request ids, a differing id is the explicit boundary, and a
+ * scoped standalone delivery ({@link isStandaloneDelivery}) is always its own
+ * turn — it neither joins the run before it nor seeds the run after it.
  */
 function coalesceAssistantSegments(messages: readonly ThreadMessage[]): ThreadMessage[] {
   const out: ThreadMessage[] = [];
@@ -284,6 +298,12 @@ function coalesceAssistantSegments(messages: readonly ThreadMessage[]): ThreadMe
     if (message.sender !== 'agent' || message.extraMetadata?.hidden) {
       flush();
       out.push(message);
+      continue;
+    }
+    if (isStandaloneDelivery(message)) {
+      flush();
+      run.push(message);
+      flush();
       continue;
     }
     const requestId = requestIdOf(message);
@@ -437,6 +457,21 @@ export function buildRuntimeMessages(
       ...Object.keys(projection.turnTranscripts ?? {}),
     ]),
   ].filter(requestId => !claimedRequestIds.has(requestId));
+  // Async acknowledgements/background deliveries can be persisted without
+  // message-level request metadata. The transcript maps are chronological and
+  // request-keyed, so unclaimed trails can be paired with unanchored agent
+  // messages in order — but only when the two sets are the same size. With a
+  // surplus of unanchored messages, positional pairing hands a later turn's
+  // tools to an earlier trail-less answer and leaves the real answer bare;
+  // rendering those trails nowhere is the lesser wrong.
+  const unanchoredAgentCount = coalescedMessages.filter(
+    message =>
+      message.sender === 'agent' &&
+      !message.extraMetadata?.hidden &&
+      typeof message.extraMetadata?.requestId !== 'string'
+  ).length;
+  const pairOrphanTrails =
+    projectedRequestIds.length > 0 && projectedRequestIds.length === unanchoredAgentCount;
   let orphanRequestCursor = 0;
   const lastVisibleAgentId = [...coalescedMessages]
     .reverse()
@@ -447,13 +482,11 @@ export function buildRuntimeMessages(
       msg.sender === 'agent' && typeof msg.extraMetadata?.requestId === 'string'
         ? msg.extraMetadata.requestId
         : undefined;
-    // Async acknowledgements/background deliveries can be persisted without
-    // message-level request metadata. The transcript maps are chronological
-    // and request-keyed, so pair only unclaimed trails with unanchored agent
-    // messages in the same order instead of dropping them from assistant-ui.
     const effectiveRequestId =
       requestId ??
-      (msg.sender === 'agent' ? projectedRequestIds[orphanRequestCursor++] : undefined);
+      (msg.sender === 'agent' && pairOrphanTrails
+        ? projectedRequestIds[orphanRequestCursor++]
+        : undefined);
     const persistedTimeline = effectiveRequestId
       ? projection.turnTimelines?.[effectiveRequestId]
       : undefined;

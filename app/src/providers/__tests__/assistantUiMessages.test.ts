@@ -279,6 +279,84 @@ describe('buildRuntimeMessages', () => {
     expect(projected.map(message => message.id)).toEqual(['first', 'second']);
   });
 
+  it('keeps a scoped standalone delivery out of the adjacent legacy runs', () => {
+    // Legacy segments carry no request id; a background delivery persisted by
+    // the core carries no request id either but is stamped with a `scope`.
+    // Without the marker the three rows read as one segmented answer and the
+    // delivery's text and metadata would be folded into its neighbours.
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'seg-a', sender: 'agent', content: 'first paragraph' }),
+        msg({
+          id: 'delivery',
+          sender: 'agent',
+          content: 'Background result: inbox digest',
+          extraMetadata: { scope: 'autonomous_task_result', success: true },
+        }),
+        msg({ id: 'seg-b', sender: 'agent', content: 'a later paragraph' }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['seg-a', 'delivery', 'seg-b']);
+    expect(projected[1]?.content).toEqual([
+      { type: 'text', text: 'Background result: inbox digest' },
+    ]);
+  });
+
+  it('does not let a scoped delivery absorb the identified segment before it', () => {
+    const projected = buildRuntimeMessages(
+      [
+        msg({
+          id: 'answer',
+          sender: 'agent',
+          content: 'answer',
+          extraMetadata: { requestId: 'r1' },
+        }),
+        msg({
+          id: 'delivery',
+          sender: 'agent',
+          content: 'worker output',
+          extraMetadata: { scope: 'worker_thread', requestId: 'r-worker' },
+        }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['answer', 'delivery']);
+  });
+
+  it('does not hand a later turn trail to an earlier trail-less answer', () => {
+    // Two unanchored answers, one unclaimed trail. Positional pairing would
+    // give the trail to `earlier` (which produced nothing) and leave `later`
+    // (which actually used the tool) bare — a wrong attribution, not a loss.
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'ask-1', content: 'first question' }),
+        msg({ id: 'earlier', sender: 'agent', content: 'plain answer', extraMetadata: {} }),
+        msg({ id: 'ask-2', content: 'second question' }),
+        msg({ id: 'later', sender: 'agent', content: 'tool answer', extraMetadata: {} }),
+      ],
+      null,
+      {
+        isRunning: false,
+        turnTimelines: { 'request-later': [tool({ id: 'later-tool', status: 'success' })] },
+        turnTranscripts: {
+          'request-later': [{ kind: 'toolCall', round: 1, seq: 0, callId: 'later-tool' }],
+        },
+      }
+    );
+
+    const toolBearing = projected
+      .filter(
+        message =>
+          Array.isArray(message.content) && message.content.some(part => part.type === 'tool-call')
+      )
+      .map(message => message.id);
+    expect(toolBearing).not.toContain('earlier');
+    expect(projected[1]?.content).toEqual([{ type: 'text', text: 'plain answer' }]);
+  });
+
   /**
    * The crash this guards: assistant-ui keys tool parts as `toolCallId-${id}`
    * and throws "Duplicate key … in useResources" on a repeat, taking the whole
