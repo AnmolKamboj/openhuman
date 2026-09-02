@@ -567,7 +567,10 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
           },
         })
       );
-      await Promise.resolve();
+      // Drain past the microtask queue: the handler may `await` before it can
+      // reach `logout`, and a single `Promise.resolve()` tick would let this
+      // assertion pass without that path having had a chance to run.
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
 
     expect(vi.mocked(tauriCommands.logout)).not.toHaveBeenCalled();

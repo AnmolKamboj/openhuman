@@ -88,7 +88,10 @@ test.describe('Chat scroll paint stability', () => {
         };
       }, fraction);
       expect(metrics).toEqual(initial);
-      await expect(page.getByText('Loading conversation…')).toHaveCount(0);
+      // The surface renders `Loading conversation` with no ellipsis; the old
+      // locator matched nothing, so `toHaveCount(0)` passed without ever
+      // checking the loading element.
+      await expect(page.getByText('Loading conversation')).toHaveCount(0);
     }
     expect(transcriptRpcCount).toBe(rpcCountBeforeScroll);
   });

@@ -344,7 +344,7 @@ export const ChatThreadView = forwardRef<ChatThreadViewHandle, ChatThreadViewPro
     // own collapsed process trail above it. The latest turn is excluded upstream
     // (it renders as the live "agent insights" anchor), so there is no double
     // render. Empty for legacy messages without a `requestId`.
-    const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content.length ?? 0}`;
+    const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content?.length ?? 0}`;
     const coreTranscript = useCoreTranscriptProjection(
       threadId,
       settledRevision,

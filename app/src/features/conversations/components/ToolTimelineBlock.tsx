@@ -15,7 +15,7 @@ import type {
 import { formatTimelineEntry, stripToolCallEnvelopes } from '../../../utils/toolTimelineFormatting';
 import { parseWorkerThreadRef } from '../utils/workerThreadRef';
 import { agentNameTone, AgentTimelineRail } from './AgentTimelineRail';
-import { AssistantUiSubagentCall } from './AssistantUiSubagentCall';
+import { AssistantUiSubagentCall, isActiveSubagentStatus } from './AssistantUiSubagentCall';
 import { ProcessingTranscriptView } from './ProcessingTranscriptView';
 import {
   coalesceTimelineEntries,
@@ -421,7 +421,7 @@ export function ToolTimelineBlock({
             renderSubagent={subagent => (
               <AssistantUiSubagentCall
                 activity={subagent}
-                running={subagent.status !== 'completed'}
+                running={isActiveSubagentStatus(subagent.status)}
                 onView={onViewSubagent ? () => onViewSubagent(subagent) : undefined}
               />
             )}

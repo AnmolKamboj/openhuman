@@ -78,6 +78,30 @@ function toolArgs(entry: ToolTimelineEntry): Record<string, never> {
   }
 }
 
+/**
+ * The `result` payload for a settled non-sub-agent tool part.
+ *
+ * assistant-ui's tool-call part has no status field, so a terminal status has
+ * to travel inside `result` or not at all. It did not travel: the adapter fell
+ * back to `result !== undefined`, which reads as success, and a failed or
+ * cancelled tool rendered with a "done" label and a check.
+ *
+ * A tool that produced no output already reported `{ status, failure }` here,
+ * so only the failed-*with*-output case needed a shape — `value` carries the
+ * real output beside the status, and {@link isToolStatusEnvelope} unwraps it.
+ * The success path is byte-identical to before, deliberately: every reader of
+ * a successful result keeps seeing exactly what it saw.
+ */
+function toolResultPayload(entry: ToolTimelineEntry): unknown {
+  const terminalFailure = entry.status === 'error' || entry.status === 'cancelled';
+  if (!terminalFailure) return entry.result ?? { status: entry.status, failure: entry.failure };
+  return {
+    status: entry.status,
+    failure: entry.failure,
+    ...(entry.result !== undefined ? { value: entry.result } : {}),
+  };
+}
+
 function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
   const running = entry.status === 'running' || entry.status === 'awaiting_user';
   const isSubagent = entry.name.startsWith('subagent:') || entry.subagent !== undefined;
@@ -99,7 +123,7 @@ function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
       ? {
           result: isSubagent
             ? (entry.subagent ?? { status: entry.status })
-            : (entry.result ?? { status: entry.status, failure: entry.failure }),
+            : toolResultPayload(entry),
         }
       : {}),
   };
@@ -145,12 +169,15 @@ function assistantParts(
     if (
       item.kind === 'narration' &&
       item.text.trim().length > 0 &&
-      item.text.trim() !== text.trim()
+      !text.trim().includes(item.text.trim())
     ) {
       // Narration emitted before a tool call is assistant content in its own
       // right. Keep it inline in assistant-ui's ordered part stream; the final
       // answer is appended separately below. A final-round narration is the
-      // same streamed bytes as that answer and must not render twice.
+      // same streamed bytes as that answer and must not render twice —
+      // `includes`, not equality, because `mergedAssistantText` prefers the
+      // longest text when it *contains* every segment, so the duplicate is a
+      // substring rather than an exact match.
       parts.push({ type: 'text', text: item.text });
     }
   }
@@ -186,11 +213,18 @@ function recoverTimelineToolNames(
   if (recoveredNames.length === 0 || !timeline.some(entry => isGenericToolName(entry.name))) {
     return timeline;
   }
+  // Advance only when a name is actually consumed. `recoveredNames` comes from
+  // tool-call envelopes, so it is not positionally aligned with the whole
+  // timeline: incrementing on every entry made `[read_file, tool, tool]` +
+  // `[web_search, web_fetch]` mis-assign `web_fetch` to the first generic row
+  // and leave the second one named `tool`.
   let recoveredIndex = 0;
   return timeline.map(entry => {
+    if (!isGenericToolName(entry.name)) return entry;
     const recovered = recoveredNames[recoveredIndex];
+    if (!recovered) return entry;
     recoveredIndex += 1;
-    return recovered && isGenericToolName(entry.name) ? { ...entry, name: recovered } : entry;
+    return { ...entry, name: recovered };
   });
 }
 

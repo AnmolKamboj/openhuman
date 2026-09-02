@@ -205,11 +205,41 @@ export function AssistantUiToolCallCard({
   );
 }
 
-export const OpenHumanToolCall: ToolCallMessagePartComponent = props => (
-  <AssistantUiToolCallCard
-    toolName={props.toolName}
-    args={props.args}
-    argsText={props.argsText}
-    result={props.result}
-  />
-);
+/**
+ * Terminal status carried inside a settled tool part's `result`.
+ *
+ * assistant-ui's tool-call part has no status field, so `toolPart` puts the
+ * status there for a tool that failed or was cancelled (`value` holds the real
+ * output when there was one). Without unwrapping it here the card fell back to
+ * `result !== undefined`, which reads as success — a failed tool rendered
+ * "done" with a check.
+ */
+function toolStatusEnvelope(
+  result: unknown
+):
+  | { status: ToolTimelineEntryStatus; failure?: ToolFailureExplanation; value?: unknown }
+  | undefined {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+  const candidate = result as { status?: unknown; failure?: unknown; value?: unknown };
+  return candidate.status === 'error' || candidate.status === 'cancelled'
+    ? {
+        status: candidate.status as ToolTimelineEntryStatus,
+        failure: candidate.failure as ToolFailureExplanation | undefined,
+        ...('value' in candidate ? { value: candidate.value } : {}),
+      }
+    : undefined;
+}
+
+export const OpenHumanToolCall: ToolCallMessagePartComponent = props => {
+  const envelope = toolStatusEnvelope(props.result);
+  return (
+    <AssistantUiToolCallCard
+      toolName={props.toolName}
+      args={props.args}
+      argsText={props.argsText}
+      result={envelope ? envelope.value : props.result}
+      status={envelope?.status}
+      failure={envelope?.failure}
+    />
+  );
+};

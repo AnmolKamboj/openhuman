@@ -191,7 +191,7 @@ test.describe('Chat Tool Call Flow', () => {
     await expect(toolCard).toBeVisible();
     await expect(toolCard).toContainText('Fetched from the web');
     await expect(toolCard).not.toContainText('running');
-    const toolTrigger = toolCard.getByRole('button');
+    const toolTrigger = toolCard.getByRole('button').first();
     if ((await toolTrigger.getAttribute('aria-expanded')) !== 'true') await toolTrigger.click();
     await expect(toolCard.getByText('Output', { exact: true })).toBeVisible();
     await expect(toolCard.getByRole('link', { name: 'https://example.com/' })).toBeVisible();

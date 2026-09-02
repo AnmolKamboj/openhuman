@@ -353,3 +353,71 @@ describe('buildRuntimeMessages', () => {
     parse.mockRestore();
   });
 });
+
+describe('recovered tool names', () => {
+  it('does not consume a recovered name on an entry it does not rename', () => {
+    // `recoveredNames` comes from tool-call envelopes, so it only ever holds
+    // names for the *generic* rows. Advancing the cursor on every entry made a
+    // named row eat the first recovered name: the first generic row then took
+    // the second name and the last one kept the placeholder.
+    const converted = toThreadMessageLike(
+      msg({
+        id: 'a',
+        sender: 'agent',
+        content: 'done',
+        extraMetadata: { assistantUiToolNames: ['web_search', 'web_fetch'] },
+      }),
+      [
+        tool({ id: 'c1', name: 'read_file', seq: 0, status: 'ok' }),
+        tool({ id: 'c2', name: 'tool', seq: 1, status: 'ok' }),
+        tool({ id: 'c3', name: 'tool', seq: 2, status: 'ok' }),
+      ]
+    );
+    const names = (converted.content as { type: string; toolName?: string }[])
+      .filter(part => part.type === 'tool-call')
+      .map(part => part.toolName);
+    expect(names).toEqual(['read_file', 'web_search', 'web_fetch']);
+  });
+});
+
+describe('terminal tool status', () => {
+  it('carries a failed tool status through to the rendered part', () => {
+    // assistant-ui's tool-call part has no status field, so a failed tool that
+    // produced output used to arrive as a bare result and read as success.
+    const converted = toThreadMessageLike(msg({ id: 'a', sender: 'agent', content: 'done' }), [
+      tool({ id: 'c1', name: 'web_search', seq: 0, status: 'error', result: 'boom' }),
+    ]);
+    const part = (converted.content as { type: string; result?: unknown }[]).find(
+      candidate => candidate.type === 'tool-call'
+    );
+    expect(part?.result).toMatchObject({ status: 'error', value: 'boom' });
+  });
+
+  it('leaves a successful tool result untouched', () => {
+    const converted = toThreadMessageLike(msg({ id: 'a', sender: 'agent', content: 'done' }), [
+      tool({ id: 'c1', name: 'web_search', seq: 0, status: 'ok', result: 'the answer' }),
+    ]);
+    const part = (converted.content as { type: string; result?: unknown }[]).find(
+      candidate => candidate.type === 'tool-call'
+    );
+    expect(part?.result).toBe('the answer');
+  });
+});
+
+describe('narration merged into the final answer', () => {
+  it('does not render narration that the final text already contains', () => {
+    // `mergedAssistantText` prefers the longest text when it *contains* every
+    // segment, so the duplicate is a substring rather than an exact match and
+    // the old equality guard let it through twice.
+    const finalText = 'I will check the sources. Here is what I found.';
+    const converted = toThreadMessageLike(
+      msg({ id: 'a', sender: 'agent', content: finalText }),
+      [],
+      [{ kind: 'narration', round: 1, seq: 0, text: 'I will check the sources.' }]
+    );
+    const texts = (converted.content as { type: string; text?: string }[])
+      .filter(part => part.type === 'text')
+      .map(part => part.text);
+    expect(texts).toEqual([finalText]);
+  });
+});

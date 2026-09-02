@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronDownIcon, Loader2Icon, WorkflowIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, CircleXIcon, Loader2Icon, WorkflowIcon } from 'lucide-react';
 
 import { cn } from '../../../components/assistant-ui/lib/utils';
 import {
@@ -150,9 +150,27 @@ function SubagentDetails({
   );
 }
 
+/**
+ * Statuses that mean the delegation is still in flight.
+ *
+ * `SubagentActivity.status` carries `running` | `awaiting_user` | `completed` |
+ * `failed`, and collapsing that to a boolean is what produced two opposite
+ * rendering bugs: a caller that omitted `running` showed a *failed* delegation
+ * with a success check, while `status !== 'completed'` gave the same row an
+ * endless spinner. Both call sites now ask this one question.
+ */
+export function isActiveSubagentStatus(status: string | undefined): boolean {
+  return status === 'running' || status === 'awaiting_user';
+}
+
+/** Statuses that mean the delegation stopped without succeeding. */
+function isFailedSubagentStatus(status: string | undefined): boolean {
+  return status === 'failed' || status === 'cancelled';
+}
+
 export function AssistantUiSubagentCall({
   activity,
-  running = false,
+  running,
   description,
   onView,
   defaultOpen = false,
@@ -164,27 +182,35 @@ export function AssistantUiSubagentCall({
   defaultOpen?: boolean;
 }) {
   const name = activity.displayName ?? activity.agentId ?? 'subagent';
+  // Default to the activity's own lifecycle rather than `false`: most call
+  // sites pass no `running` prop at all, and treating every non-running
+  // activity as finished-successfully is what rendered a failed delegation
+  // with a success check.
+  const active = running ?? isActiveSubagentStatus(activity.status);
+  const failed = !active && isFailedSubagentStatus(activity.status);
   return (
     <Collapsible
       defaultOpen={defaultOpen}
       data-slot="aui_subagent-call"
       data-testid="assistant-ui-subagent-call"
+      data-status={activity.status ?? (active ? 'running' : 'completed')}
       className={cn(
         'aui-subagent-call border-border/60 dark:border-muted-foreground/15 rounded-xl border',
-        running && 'border-dashed'
+        active && 'border-dashed'
       )}>
       <CollapsibleTrigger className="group/subagent text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors">
         <WorkflowIcon className="size-4 shrink-0" />
         <span className="text-start leading-none">
           Delegated to <b className="text-foreground">{name}</b>
         </span>
-        {running ? (
+        {active ? (
           <span className="bg-muted text-muted-foreground flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] leading-none">
             <Loader2Icon className="size-3 animate-spin [animation-duration:0.6s]" /> running
           </span>
         ) : (
           <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-[11px] leading-none">
-            <CheckIcon className="size-3.5" />
+            {failed ? <CircleXIcon className="size-3.5" /> : <CheckIcon className="size-3.5" />}
+            {failed ? <span>{activity.status}</span> : null}
             {activity.elapsedMs != null ? (
               <span className="tabular-nums">{(activity.elapsedMs / 1000).toFixed(1)}s</span>
             ) : null}

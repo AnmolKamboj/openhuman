@@ -27,6 +27,34 @@ function renderInStore(ui: React.ReactNode) {
 }
 
 describe('SubagentActivityBlock', () => {
+  it('derives its lifecycle from the activity when no running prop is passed', () => {
+    // Most call sites (AgentProcessSourcePanel, PastTurnInsights, this block)
+    // pass no `running` prop at all. The old `running = false` default reported
+    // an in-flight delegation as finished, with a success check.
+    renderInStore(
+      <SubagentActivityBlock
+        subagent={{ taskId: 't', agentId: 'researcher', status: 'running', toolCalls: [] }}
+      />
+    );
+
+    expect(screen.getByText('running')).toBeInTheDocument();
+  });
+
+  it('marks a failed delegation as failed rather than complete', () => {
+    renderInStore(
+      <SubagentActivityBlock
+        subagent={{ taskId: 't', agentId: 'researcher', status: 'failed', toolCalls: [] }}
+      />
+    );
+
+    expect(screen.getByTestId('assistant-ui-subagent-call')).toHaveAttribute(
+      'data-status',
+      'failed'
+    );
+    expect(screen.getByText('failed')).toBeInTheDocument();
+    expect(screen.queryByText('running')).not.toBeInTheDocument();
+  });
+
   it('renders mode + dedicated-thread + child-turn pills', () => {
     renderInStore(
       <SubagentActivityBlock

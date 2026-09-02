@@ -41,6 +41,78 @@ describe('ChatToolParts', () => {
     expect(screen.getByText('Checking primary sources.')).toBeInTheDocument();
   });
 
+  it('renders a failed delegation as failed, not as a completed one', () => {
+    // `SubagentActivity.status` carries `failed`, but a settled part was read
+    // as `running: false` and rendered with a success check — the transcript
+    // reported a failure as a success.
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="task"
+        toolCallId="sub-1"
+        args={{} as never}
+        argsText="{}"
+        result={{ ...activity, status: 'failed' } as never}
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('assistant-ui-subagent-call')).toHaveAttribute(
+      'data-status',
+      'failed'
+    );
+    expect(screen.getByText('failed')).toBeInTheDocument();
+    expect(screen.queryByText('running')).not.toBeInTheDocument();
+  });
+
+  it('keeps a completed delegation reading as completed', () => {
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="task"
+        toolCallId="sub-1"
+        args={{} as never}
+        argsText="{}"
+        result={{ ...activity, status: 'completed' } as never}
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByTestId('assistant-ui-subagent-call')).toHaveAttribute(
+      'data-status',
+      'completed'
+    );
+    expect(screen.queryByText('failed')).not.toBeInTheDocument();
+  });
+
+  it('keeps a still-running delegation running when the part has already settled', () => {
+    // The tool-call status and the delegation status are separate fields, so a
+    // settled part can still carry an in-flight activity. Hard-coding
+    // `running: false` for any settled part froze that row into a success.
+    render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="task"
+        toolCallId="sub-1"
+        args={{} as never}
+        argsText="{}"
+        result={{ ...activity, status: 'running' } as never}
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByText('running')).toBeInTheDocument();
+  });
+
   it('opens a group containing in-flight work on mount', () => {
     render(
       <ChatToolGroup group={{ type: 'group-tool-call', status: { type: 'running' }, indices: [0] }}>

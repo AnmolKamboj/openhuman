@@ -8,7 +8,7 @@ import {
   ToolGroupTrigger,
 } from '../../../components/assistant-ui/tool-group';
 import type { SubagentActivity } from '../../../store/chatRuntimeSlice';
-import { AssistantUiSubagentCall } from './AssistantUiSubagentCall';
+import { AssistantUiSubagentCall, isActiveSubagentStatus } from './AssistantUiSubagentCall';
 import { OpenHumanToolCall } from './AssistantUiToolCall';
 
 function asSubagentActivity(value: unknown): SubagentActivity | undefined {
@@ -29,7 +29,10 @@ function readSubagentState(
   result: unknown
 ): { activity: SubagentActivity | undefined; running: boolean } {
   const completed = asSubagentActivity(result);
-  if (completed) return { activity: completed, running: false };
+  // A settled part carries the activity, but "settled" is not "succeeded":
+  // ask the activity's own status so a `failed` delegation is not rendered as
+  // a completed one.
+  if (completed) return { activity: completed, running: isActiveSubagentStatus(completed.status) };
   const progress =
     args && typeof args === 'object'
       ? asSubagentActivity((args as { progress?: unknown }).progress)
