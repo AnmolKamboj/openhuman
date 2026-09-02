@@ -347,15 +347,23 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             qualified_name,
             error,
             failures,
-            retry_in_secs,
             ..
         } if *failures == 1 => Some(CoreNotificationEvent {
             id: format!("mcp-unavailable:{}:{}", server_id, ts),
             category: CoreNotificationCategory::System,
             title: "MCP server unavailable".into(),
+            // Deliberately no "retrying in Ns": `retry_in_secs` is tinymcp's
+            // backoff (5s for the first failure) and is faithful on the event,
+            // but this host drives `Supervisor::tick` from its own 60s
+            // interval, so the backoff only decides *eligibility* on the next
+            // tick. Every sub-tick step (5/10/20/40s) would be under-reported
+            // to the user, who then watches a "5s" banner sit there for a
+            // minute. The exact backoff is still in the Event Log row via
+            // `DomainEvent::log_detail`, where a developer can read it against
+            // the tick interval; a banner cannot carry that caveat.
             body: format!(
                 "{qualified_name} stopped answering, so its tools are unavailable until it \
-                 reconnects (retrying in {retry_in_secs}s). {}",
+                 reconnects. It retries automatically. {}",
                 error.chars().take(120).collect::<String>()
             ),
             deep_link: Some("/connections?tab=mcp".into()),

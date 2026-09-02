@@ -195,7 +195,13 @@ fn mcp_first_failed_reconnect_tells_the_user_tools_are_unavailable() {
     assert_eq!(n.category, CoreNotificationCategory::System);
     assert_eq!(n.title, "MCP server unavailable");
     assert!(n.body.contains("ac.inference.sh/mcp"), "{}", n.body);
-    assert!(n.body.contains("retrying in 5s"), "{}", n.body);
+    // Deliberately NOT "retrying in 5s". `retry_in_secs` is tinymcp's backoff
+    // and is faithful on the event, but this host drives `Supervisor::tick`
+    // from its own 60s interval, so the backoff only decides eligibility on the
+    // next tick — a "5s" banner sits there for a minute. Pinned as an absence
+    // as well as a presence, so the false precision cannot come back.
+    assert!(!n.body.contains("retrying in"), "{}", n.body);
+    assert!(n.body.contains("retries automatically"), "{}", n.body);
     assert!(n.body.contains("connection reset"), "{}", n.body);
     assert_eq!(n.deep_link.as_deref(), Some("/connections?tab=mcp"));
     assert!(n.id.starts_with("mcp-unavailable:srv-1:"));

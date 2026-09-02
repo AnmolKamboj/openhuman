@@ -313,6 +313,18 @@ pub(crate) async fn resolve_runtime_config_dirs(
 /// asks only for the handful of workspace-bound events a supervisor tick
 /// produces, and returns before calling it for everything else.
 pub async fn active_workspace_dir() -> Result<PathBuf> {
+    // An embedding host that supplied its own `Config` is authoritative, and
+    // `config::ops::load_config_with_timeout` already short-circuits on it for
+    // exactly this reason. Resolving from disk/env here instead would answer
+    // with the process-global workspace, which for an embedder is a directory
+    // it never chose — and the one caller of this function compares the answer
+    // against an event's `workspace_dir` to decide whether to announce. A
+    // mismatch there is not a wrong banner, it is *no* banner, permanently,
+    // with only a `debug!` line to say so. See AGENTS.md, "CoreBuilder::config
+    // alone configures boot and nothing else".
+    if let Some(config) = crate::core::runtime::context::CoreContext::current_embedder_config() {
+        return Ok(config.workspace_dir);
+    }
     let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
     let (_, workspace_dir, source) =
         resolve_runtime_config_dirs(&default_openhuman_dir, &default_workspace_dir).await?;

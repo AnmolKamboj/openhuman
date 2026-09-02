@@ -327,7 +327,12 @@ const EventLogPanel = () => {
                     {entry.agent}
                   </span>
                 )}
-                <span className="text-xs text-content truncate">{entry.event}</span>
+                {/* `min-w-0` is load-bearing: a flex item with `truncate` cannot
+                    shrink below min-content without it, so this span would hold its
+                    full width and the detail span beside it (which does set
+                    `min-w-0`) would absorb every pixel of overflow and render as a
+                    few characters — defeating the column it was added for. */}
+                <span className="text-xs text-content truncate min-w-0">{entry.event}</span>
                 {entry.detail && (
                   <span
                     className="text-[10px] text-content-muted truncate min-w-0 pt-0.5"
