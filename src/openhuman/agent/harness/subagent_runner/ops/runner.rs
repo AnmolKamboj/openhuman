@@ -1657,8 +1657,7 @@ async fn run_typed_mode(
                 model_override: options.model_override.clone(),
                 created_at: chrono::Utc::now().to_rfc3339(),
             };
-        let checkpoint =
-            super::pause_checkpoint::write(&checkpoint_dir, task_id, &checkpoint_data);
+        let checkpoint = super::pause_checkpoint::write(&checkpoint_dir, task_id, &checkpoint_data);
 
         crate::openhuman::agent::harness::subagent_runner::types::SubagentRunStatus::AwaitingUser {
             question,
@@ -1732,4 +1731,3 @@ async fn run_typed_mode(
 #[cfg(test)]
 #[path = "runner_fast_path_tests_tests.rs"]
 mod fast_path_tests;
-

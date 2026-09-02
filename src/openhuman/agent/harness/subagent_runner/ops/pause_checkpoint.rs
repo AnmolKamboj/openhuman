@@ -68,7 +68,6 @@ pub(super) fn write(
     Some(checkpoint_path)
 }
 
-
 #[cfg(test)]
 #[path = "runner_checkpoint_tests.rs"]
 mod tests;
