@@ -29,6 +29,7 @@ import {
 import { daemonHealthService } from '../services/daemonHealthService';
 import { socketService } from '../services/socketService';
 import { store } from '../store';
+import { loadAgentProfiles } from '../store/agentProfileSlice';
 import { resetUserScopedState } from '../store/resetActions';
 import { loadThreads, resetThreadCachesPreservingSelection } from '../store/threadSlice';
 import { getActiveUserId, setActiveUserId } from '../store/userScopedStorage';
@@ -416,6 +417,19 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
             return;
           }
           log('post-identity thread reload failed: %O', sanitizeError(err));
+        });
+      // Seed the active agent profile from the backend at the earliest safe
+      // moment — before any chat request can fire with a stale 'default' id.
+      // Without this, activeProfileId resets to 'default' on every reboot
+      // because the agentProfile slice is not persisted (#5872).
+      void store
+        .dispatch(loadAgentProfiles())
+        .unwrap()
+        .catch(err => {
+          if (threadReloadRequestId !== snapshotRequestIdRef.current) {
+            return;
+          }
+          log('post-identity agent profiles load failed: %O', sanitizeError(err));
         });
     }
 

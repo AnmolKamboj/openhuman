@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as agentProfilesModule from '../../services/api/agentProfilesApi';
 import * as coreStateApi from '../../services/coreStateApi';
 import * as tauriCommands from '../../utils/tauriCommands';
 import { __resetForTests as resetConfigRecoveryNotice } from '../../lib/configRecoveryNotice';
@@ -17,6 +18,9 @@ import CoreStateProvider, {
 
 vi.mock('../../services/coreStateApi');
 vi.mock('../../services/analytics', () => ({ syncAnalyticsConsent: vi.fn() }));
+vi.mock('../../services/api/agentProfilesApi', () => ({
+  agentProfilesApi: { list: vi.fn(), select: vi.fn(), upsert: vi.fn(), delete: vi.fn() },
+}));
 
 type Snapshot = Awaited<ReturnType<typeof coreStateApi.fetchCoreAppSnapshot>>;
 
@@ -120,11 +124,15 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
   const getTeamMembers = vi.mocked(coreStateApi.getTeamMembers);
   const getTeamInvites = vi.mocked(coreStateApi.getTeamInvites);
 
+  const listProfiles = vi.mocked(agentProfilesModule.agentProfilesApi.list);
+
   beforeEach(() => {
     fetchSnapshot.mockReset();
     listTeams.mockReset();
     getTeamMembers.mockReset();
     getTeamInvites.mockReset();
+    listProfiles.mockReset();
+    listProfiles.mockResolvedValue({ profiles: [], activeProfileId: 'default' } as never);
     resetCoreStateStore();
     setActiveUserId(null);
   });
@@ -941,6 +949,30 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
     });
 
     expect(vi.mocked(tauriCommands.storeSession)).toHaveBeenCalled();
+  });
+
+  // Regression for #5872: the active agent profile must be fetched from the
+  // backend immediately when identity is established so the first chat request
+  // carries the correct profileId rather than the 'default' initialState value.
+  it('dispatches loadAgentProfiles when identity is established (#5872)', async () => {
+    // Returning user: seed matches snapshot userId so isFlip = false.
+    // First snapshot transitions previousIdentity (null) → nextIdentity ('u1'),
+    // which sets shouldClearScopedCaches = true and fires the !isFlip block.
+    setActiveUserId('u1');
+    fetchSnapshot.mockResolvedValue(makeSnapshot({ userId: 'u1', sessionToken: 'tok1' }));
+    listTeams.mockResolvedValue([]);
+
+    render(
+      <CoreStateProvider>
+        <Consumer />
+      </CoreStateProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+    // Flush micro-tasks so the void-dispatched promise chain completes.
+    await act(async () => {});
+
+    expect(listProfiles).toHaveBeenCalled();
   });
 });
 
