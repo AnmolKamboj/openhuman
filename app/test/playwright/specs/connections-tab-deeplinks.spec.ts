@@ -196,6 +196,28 @@ test.describe('Connections — the /skills back-compat redirect', () => {
     await expectSelectedTab(page, 'mcp');
   });
 
+  test('/skills?tab=mcp#fragment forwards the fragment as well as the query', async ({
+    page,
+  }) => {
+    // `ForwardSearch` appends `hash` as well as `search`, and nothing here
+    // exercised that half. `AppRoutes.skills.test.tsx` does assert
+    // `loc.hash === '#section-mcp'`, but under `MemoryRouter`, which never
+    // parses `window.location.hash` at all — so it cannot show that a real
+    // HashRouter round-trips a fragment nested inside the routing hash
+    // (`#/connections?tab=mcp#section-mcp`). That is the part only a browser
+    // can answer, and it is the mechanism `/webhooks` relies on for
+    // `#delivery-3`-style deep links.
+    await openRoute(
+      page,
+      'pw-skills-hash-forward',
+      '/skills?tab=mcp#section-mcp',
+      '/connections'
+    );
+    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('tab=mcp');
+    expect(await currentHash(page)).toContain('#section-mcp');
+    await expectSelectedTab(page, 'mcp');
+  });
+
   test('/skills with no query still lands on the overview', async ({ page }) => {
     // The forward must not invent a query where the user supplied none.
     await openRoute(page, 'pw-skills-no-query', '/skills', '/connections');

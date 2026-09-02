@@ -48,6 +48,7 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
     // token pass, which is the very regression #5876 guards against.
     const ROTATED = 'openhuman-playwright-token-rotated';
     const seenAuth: string[] = [];
+    const excessAttempts: string[] = [];
     await page.route('**/rpc', async (route, request) => {
       let body: { method?: string } = {};
       try {
@@ -57,6 +58,14 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
       }
       if (body.method === TRIGGER_METHOD) {
         seenAuth.push(request.headers()['authorization'] ?? '');
+        if (seenAuth.length > 2) {
+          // Recorded HERE, not asserted after the poll: `seenAuth.length` grows
+          // when the handler STARTS, and `route.fallback()` settles
+          // asynchronously, so a third request can arrive after a mid-flight
+          // `<= 2` check and escape it entirely. The handler is the only place
+          // that observes every attempt.
+          excessAttempts.push(request.headers()['authorization'] ?? '');
+        }
         if (seenAuth.length === 1) {
           // Rotate the stored bearer before rejecting, so a refreshed read
           // picks up the new value and a cached read does not.
@@ -90,9 +99,6 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
     expect(seenAuth[1]).toContain(ROTATED);
     expect(seenAuth[1]).not.toEqual(seenAuth[0]);
 
-    // Bounded to a single extra attempt — a retry loop against a core that is
-    // genuinely rejecting us would be worse than the bug.
-    expect(seenAuth.length).toBeLessThanOrEqual(2);
 
     // (3) The session survives. Without #5876 `clearSession()` wipes the auth
     // profile and the app falls back to the signed-out surface. Assert the
@@ -103,5 +109,13 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
       'page',
       { timeout: 20_000 }
     );
+
+    // (4) Bounded to ONE extra attempt. Asserted only now, after the flow has
+    // settled into its terminal rendered state, and from the handler-side
+    // record so a late third request cannot slip past a mid-flight check. A
+    // retry loop against a core that is genuinely rejecting us would be worse
+    // than the bug #5876 fixed.
+    expect(excessAttempts).toEqual([]);
+    expect(seenAuth.length).toBe(2);
   });
 });
