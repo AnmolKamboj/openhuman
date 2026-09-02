@@ -89,3 +89,65 @@ fn an_unwritable_target_reports_no_checkpoint() {
         "a checkpoint whose write fails must report no checkpoint"
     );
 }
+
+// ── task_id is untrusted on its way into a path (tinysweeper, #5951) ────────
+//
+// `continue_subagent` takes `task_id` from its tool arguments — model-authored
+// — and feeds it back through `SubagentRunOptions::task_id`, so a re-paused
+// child writes a checkpoint under a name the model chose. Joined unchecked,
+// `../` walks the write out of the checkpoint directory entirely.
+
+#[test]
+fn a_traversing_task_id_is_refused_rather_than_written() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let checkpoint_dir = dir.path().join("subagent_checkpoints");
+    let outside = dir.path().join("outside.json");
+
+    assert!(
+        super::write(
+            &checkpoint_dir,
+            "../outside",
+            &checkpoint_data("../outside")
+        )
+        .is_none(),
+        "a traversing task id must not produce a checkpoint"
+    );
+    assert!(
+        !outside.exists(),
+        "the write must not land outside the checkpoint directory"
+    );
+
+    for bad in [
+        "../../etc/cron.d/pwn",
+        "a/b",
+        "a\\b",
+        "..",
+        ".",
+        "",
+        "with space",
+        "sub-\u{00e9}",
+    ] {
+        assert!(
+            !super::is_safe_task_id(bad),
+            "{bad:?} must be rejected as a checkpoint filename"
+        );
+    }
+}
+
+#[test]
+fn the_ids_this_system_actually_mints_are_accepted() {
+    // The guard is an allow-list, so it has to admit every shape in real use —
+    // otherwise it would break resumption instead of hardening it.
+    for good in [
+        "sub-2b9d1f4e-0c3a-4f10-9c2e-6a7b8c9d0e1f",
+        "subsess-2b9d1f4e-0c3a-4f10-9c2e-6a7b8c9d0e1f",
+        "task-fleet-b",
+        "t1",
+        "t_steer",
+    ] {
+        assert!(
+            super::is_safe_task_id(good),
+            "{good:?} is a real id shape and must be accepted"
+        );
+    }
+}

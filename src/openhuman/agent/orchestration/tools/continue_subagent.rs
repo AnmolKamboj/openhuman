@@ -193,6 +193,18 @@ impl Tool for ContinueSubagentTool {
                 "continue_subagent: `task_id` is required",
             ));
         }
+        // `task_id` is model-authored and is about to be joined into a
+        // filesystem path twice: once to read the pause checkpoint below, and
+        // again — via `SubagentRunOptions::task_id` — to write one if the
+        // resumed child pauses a second time. `../../../../tmp/pwn` would walk
+        // both clean out of the checkpoint directory, so it is rejected at the
+        // boundary rather than only at the sink.
+        if !crate::openhuman::agent::harness::subagent_runner::is_safe_task_id(&task_id) {
+            return Ok(ToolResult::error(format!(
+                "continue_subagent: `task_id` must be a plain identifier \
+                 (letters, digits, `-`, `_`); got '{task_id}'"
+            )));
+        }
         if agent_id.is_empty() {
             return Ok(ToolResult::error(
                 "continue_subagent: `agent_id` is required",

@@ -21,7 +21,11 @@
 mod checkpoint;
 mod graph;
 mod pause_checkpoint;
+// The checkpoint filename validator, shared with `continue_subagent`: the
+// model-authored `task_id` must be rejected at the tool boundary as well as at
+// the write, so the read path cannot traverse either.
 pub(crate) use graph::run_agent_turn_request_via_default_graph;
+pub(crate) use pause_checkpoint::is_safe_task_id;
 mod prompt;
 mod provider;
 mod runner;

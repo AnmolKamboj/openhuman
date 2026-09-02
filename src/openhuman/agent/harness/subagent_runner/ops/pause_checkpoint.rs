@@ -18,11 +18,42 @@
 /// Its own module so each failure branch is reachable from a test, and so
 /// `runner.rs` stays under the layout gate's line pin: point `checkpoint_dir` at a path that cannot be created, or at one
 /// whose target file cannot be written.
+/// Whether `task_id` is usable as a single filename component.
+///
+/// This is untrusted input on its way into a path join. `continue_subagent`
+/// takes `task_id` straight from its tool arguments — which the model authors —
+/// and passes it back through `SubagentRunOptions::task_id`, so a re-paused
+/// child writes its checkpoint under a name the model chose. Without this,
+/// `../../../../tmp/pwn` walks the write clean out of the checkpoint directory.
+///
+/// Deliberately an allow-list rather than a `..`-blocklist: every id this
+/// system mints is `sub-{uuid}`, `subsess-{uuid}` or a short test label, so
+/// nothing legitimate needs a separator, a dot, or a non-ASCII character, and
+/// an allow-list cannot be walked around by an encoding this check did not
+/// anticipate.
+pub(crate) fn is_safe_task_id(task_id: &str) -> bool {
+    !task_id.is_empty()
+        && task_id.len() <= 128
+        && task_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+}
+
 pub(super) fn write(
     checkpoint_dir: &std::path::Path,
     task_id: &str,
     data: &crate::openhuman::agent::harness::subagent_runner::types::SubagentCheckpointData,
 ) -> Option<std::path::PathBuf> {
+    if !is_safe_task_id(task_id) {
+        tracing::error!(
+            task_id = %task_id,
+            dir = %checkpoint_dir.display(),
+            "[subagent_runner] refusing to write a checkpoint under an unsafe task id; \
+             this pause will not be resumable from disk"
+        );
+        return None;
+    }
+
     if let Err(e) = std::fs::create_dir_all(checkpoint_dir) {
         tracing::error!(
             task_id = %task_id,
