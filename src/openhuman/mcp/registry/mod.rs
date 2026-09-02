@@ -89,6 +89,26 @@ pub mod connections {
         }
     }
 
+    /// Every connected server's identity and advertised tools in `config`'s
+    /// workspace.
+    ///
+    /// The counterpart to [`connected_overview`] for a caller that holds a
+    /// `Config`, for the same reason [`all_connected_tools_for_config`] and
+    /// [`disconnect_for_config`] exist: the ambient form resolves through the
+    /// process default, which stops answering once a second workspace is open.
+    pub async fn connected_overview_for_config(config: &Config) -> Vec<ConnectedServerOverview> {
+        match host::for_config(config) {
+            Ok(service) => service.dynamic().connected_overview().await,
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    "[mcp] no host for workspace; reporting no connections"
+                );
+                Vec::new()
+            }
+        }
+    }
+
     /// Every tool on every connected server in `config`'s workspace.
     ///
     /// The counterpart to [`all_connected_tools`] for a caller that holds a
@@ -136,6 +156,29 @@ pub mod connections {
             .await
     }
 
+    /// The tools one connected server advertises in `config`'s workspace.
+    ///
+    /// Named `server_tools_*` rather than `tools_for_config` so it cannot be
+    /// misread as [`all_connected_tools_for_config`], which is the every-server
+    /// form sitting a few lines above.
+    ///
+    /// `None` means "not connected". A workspace with no host at all logs and
+    /// also yields `None`, because a server cannot be connected in a workspace
+    /// that has no host — but the log is there so the two are distinguishable
+    /// when this is the answer a caller did not expect.
+    pub async fn server_tools_for_config(
+        config: &Config,
+        server_id: &str,
+    ) -> Option<Vec<tinymcp_bus::McpTool>> {
+        match host::for_config(config) {
+            Ok(service) => service.dynamic().connections().tools_for(server_id).await,
+            Err(error) => {
+                tracing::debug!(?error, server_id, "[mcp] no host for workspace; no tools");
+                None
+            }
+        }
+    }
+
     /// Whether a server has a live entry.
     pub async fn is_connected(server_id: &str) -> bool {
         match host::try_service() {
@@ -150,6 +193,27 @@ pub mod connections {
         }
     }
 
+    /// Whether a server has a live entry in `config`'s workspace.
+    pub async fn is_connected_for_config(config: &Config, server_id: &str) -> bool {
+        match host::for_config(config) {
+            Ok(service) => {
+                service
+                    .dynamic()
+                    .connections()
+                    .is_connected(server_id)
+                    .await
+            }
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    server_id,
+                    "[mcp] no host for workspace; reporting not connected"
+                );
+                false
+            }
+        }
+    }
+
     /// Why a server's most recent attempt hit a 401, as a stable code.
     pub async fn auth_hint_for(server_id: &str) -> Option<&'static str> {
         Some(
@@ -160,6 +224,28 @@ pub mod connections {
                 .await?
                 .as_code(),
         )
+    }
+
+    /// Why a server's most recent attempt in `config`'s workspace hit a 401.
+    pub async fn auth_hint_for_config(config: &Config, server_id: &str) -> Option<&'static str> {
+        match host::for_config(config) {
+            Ok(service) => Some(
+                service
+                    .dynamic()
+                    .connections()
+                    .auth_hint(server_id)
+                    .await?
+                    .as_code(),
+            ),
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    server_id,
+                    "[mcp] no host for workspace; no auth hint"
+                );
+                None
+            }
+        }
     }
 
     /// Connects one server and returns the tools it advertised.
@@ -226,6 +312,21 @@ pub mod connections {
             .connections()
             .last_error(server_id)
             .await
+    }
+
+    /// The most recent failure message for a server in `config`'s workspace.
+    pub async fn last_error_for_config(config: &Config, server_id: &str) -> Option<String> {
+        match host::for_config(config) {
+            Ok(service) => service.dynamic().connections().last_error(server_id).await,
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    server_id,
+                    "[mcp] no host for workspace; no last error"
+                );
+                None
+            }
+        }
     }
 }
 

@@ -682,3 +682,76 @@ async fn supervisor_skips_a_disabled_server() {
         "supervisor does not connect disabled servers"
     );
 }
+
+/// The per-config connection lookups must answer about the workspace they were
+/// handed (#5701).
+///
+/// `connections::connect` has always resolved per-config via `host::for_config`,
+/// while the by-server-id lookups read the process-global `host::try_service`.
+/// A host that connects through the facade could therefore never see the
+/// connection it had just made.
+///
+/// The precondition below is what makes this test discriminate: with two
+/// workspaces open and no default, `try_service` refuses to guess and answers
+/// `None`, so anything routed through it degrades to "nothing is connected".
+/// An embedder holding its own per-config service is in that state permanently.
+#[tokio::test]
+async fn per_config_lookups_see_a_per_config_connection() {
+    use openhuman_core::openhuman::mcp::host;
+    use openhuman_core::openhuman::mcp::registry::connections;
+
+    let (_tmp_a, cfg_a) = fresh_workspace_config();
+    let (_tmp_b, cfg_b) = fresh_workspace_config();
+    let _host_b = host(&cfg_b);
+
+    let h = host(&cfg_a);
+    let server = make_installed_server();
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
+
+    let tools = connections::connect(&cfg_a, &server)
+        .await
+        .expect("connect succeeds");
+    assert_eq!(tools.len(), 1, "stub advertises one tool");
+
+    assert!(
+        host::try_service().is_none(),
+        "two workspaces open and no default: the ambient service must refuse to \
+         guess, which is what makes the per-config forms the only correct ones here"
+    );
+
+    assert!(
+        connections::is_connected_for_config(&cfg_a, &server.server_id).await,
+        "the workspace that connected must see its own connection"
+    );
+
+    let listed = connections::server_tools_for_config(&cfg_a, &server.server_id)
+        .await
+        .expect("the connected server advertises its tools");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "echo");
+
+    let overview = connections::connected_overview_for_config(&cfg_a).await;
+    assert!(
+        overview.iter().any(|s| s.server_id == server.server_id),
+        "the overview for this workspace must list the server it connected"
+    );
+
+    assert!(
+        connections::last_error_for_config(&cfg_a, &server.server_id)
+            .await
+            .is_none(),
+        "a successful connect leaves no error behind"
+    );
+
+    // A different workspace is a different connection map, not a shared one.
+    assert!(
+        !connections::is_connected_for_config(&cfg_b, &server.server_id).await,
+        "a connection must not leak across workspaces"
+    );
+
+    assert!(connections::disconnect_for_config(&cfg_a, &server.server_id).await);
+    assert!(!connections::is_connected_for_config(&cfg_a, &server.server_id).await);
+}
