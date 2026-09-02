@@ -773,15 +773,24 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   // bootstrapping, runReauth() sets pendingConfirmedReauthRef instead of
   // dropping it. Once isBootstrapping flips to false (first successful
   // snapshot) this effect replays it so the router reaches the login screen.
+  //
+  // We re-dispatch through openhuman:session-expired (rather than calling
+  // clearSession() directly) so the guarded runReauth() path applies: the
+  // isLocalSession check and suppressReauthUntilRef window are both
+  // re-evaluated against the now-current session state. Without this a
+  // session installed by an OAuth callback *during* bootstrap would be
+  // destructively logged out by the stale queued event.
   useEffect(() => {
     if (!state.isBootstrapping && pendingConfirmedReauthRef.current) {
       pendingConfirmedReauthRef.current = false;
       log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
-      void clearSession().catch(err => {
-        log('clearSession failed after post-bootstrap replay: %O', sanitizeError(err));
-      });
+      window.dispatchEvent(
+        new CustomEvent('openhuman:session-expired', {
+          detail: { source: 'bootstrap-replay' },
+        })
+      );
     }
-  }, [state.isBootstrapping, clearSession]);
+  }, [state.isBootstrapping]);
 
   // Listen for two flavours of session expiry, both routed through the
   // same debounced `clearSession`:

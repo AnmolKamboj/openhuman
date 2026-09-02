@@ -985,6 +985,7 @@ describe('session expiry fixes (#5868)', () => {
       </CoreStateProvider>
     );
     await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+    vi.mocked(coreStateApi.fetchCoreAppSnapshot).mockClear();
 
     // Trigger a confirmed session-expiry via the socket path.
     await act(async () => {
@@ -993,8 +994,11 @@ describe('session expiry fixes (#5868)', () => {
       );
     });
 
-    // Even though logout threw, refresh must still have fired and the snapshot
-    // should now show signed-out state.
+    // Even though logout threw, refresh must still have fired (one new snapshot
+    // fetch) and the snapshot should now show signed-out state.
+    await waitFor(() =>
+      expect(vi.mocked(coreStateApi.fetchCoreAppSnapshot)).toHaveBeenCalledTimes(1)
+    );
     await waitFor(() => expect(screen.getByTestId('token').textContent).toBe('none'));
   });
 
