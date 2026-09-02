@@ -47,6 +47,12 @@ pub struct TunnelRegisterResponse {
     pub pairing_expires_at: String,
 }
 
+/// Floor for a plausible epoch-milliseconds `pairingExpiresAt`: 2020-01-01Z.
+///
+/// Anything below it is far likelier to be seconds than a real expiry, and
+/// seconds decode silently into 1970 rather than failing.
+const MIN_PLAUSIBLE_EPOCH_MILLIS: i64 = 1_577_836_800_000;
+
 /// Accept `pairingExpiresAt` as either an ISO 8601 string or epoch
 /// milliseconds, always yielding the ISO 8601 string the rest of the domain
 /// expects.
@@ -73,9 +79,26 @@ where
 
     match Raw::deserialize(deserializer)? {
         Raw::Text(text) => Ok(text),
-        Raw::EpochMillis(millis) => chrono::DateTime::from_timestamp_millis(millis)
-            .map(|dt| dt.to_rfc3339())
-            .ok_or_else(|| D::Error::custom(format!("pairingExpiresAt out of range: {millis}"))),
+        Raw::EpochMillis(millis) => {
+            // Reject a value that is not plausibly milliseconds. `getTime()`
+            // returns millis, but a backend that ever switched to seconds would
+            // hand over ~1.79e9, and `from_timestamp_millis` accepts that
+            // happily as 1970-01-21 — a pairing that is already expired before
+            // the QR is drawn, reported to the user as "expired" with nothing
+            // in the log to say why. Failing loudly here keeps the silent
+            // version of this PR's own bug from being reintroduced by a unit
+            // change upstream.
+            if millis < MIN_PLAUSIBLE_EPOCH_MILLIS {
+                return Err(D::Error::custom(format!(
+                    "pairingExpiresAt={millis} is too small to be epoch milliseconds \
+                     (expected > {MIN_PLAUSIBLE_EPOCH_MILLIS}); a seconds-valued expiry \
+                     would silently decode as 1970"
+                )));
+            }
+            chrono::DateTime::from_timestamp_millis(millis)
+                .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                .ok_or_else(|| D::Error::custom(format!("pairingExpiresAt out of range: {millis}")))
+        }
     }
 }
 

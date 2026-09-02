@@ -65,9 +65,36 @@ fn tunnel_register_response_accepts_numeric_pairing_expires_at() {
 
     assert_eq!(response.channel_id, "ch_789");
     assert_eq!(
-        response.pairing_expires_at, "2026-09-21T14:13:20+00:00",
+        response.pairing_expires_at, "2026-09-21T14:13:20Z",
         "epoch milliseconds must be rendered as the ISO 8601 string the rest \
          of the domain documents and forwards to the paired device"
+    );
+}
+
+/// A seconds-valued expiry must fail loudly rather than decode to 1970.
+///
+/// `from_timestamp_millis` accepts ~1.79e9 without complaint and yields
+/// 1970-01-21, so a backend that switched `getTime()` for a seconds-based
+/// clock would produce a pairing already expired before the QR is drawn — the
+/// user sees "expired" and the log says nothing. Raised by the review harness
+/// against the first version of this fix.
+#[test]
+fn a_seconds_valued_pairing_expiry_is_refused_instead_of_decoding_to_1970() {
+    let err = serde_json::from_value::<TunnelRegisterResponse>(json!({
+        "channelId": "ch_s",
+        "pairingToken": "pt_s",
+        "pairingExpiresAt": 1_790_000_000i64
+    }))
+    .expect_err("a seconds-valued expiry must not be accepted");
+
+    let text = err.to_string();
+    assert!(
+        text.contains("epoch milliseconds"),
+        "the error must name the unit mismatch, got: {text}"
+    );
+    assert!(
+        text.contains("1790000000"),
+        "the error must quote the offending value so the log identifies it, got: {text}"
     );
 }
 
