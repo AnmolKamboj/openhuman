@@ -490,15 +490,111 @@ async fn test_keeps_cached_client_when_its_token_is_still_current() {
     config.api_url = Some(base_url.clone());
     config.secrets.encrypt = false;
 
-    let cached = Arc::new(IntegrationClient::new(base_url, "same-token".to_string()));
+    // The cached client points at a SEPARATE backend from the one `config`
+    // would rebuild against. Both would carry `Bearer same-token`, so asserting
+    // on the header alone cannot tell which client was selected — the test
+    // would pass even if `resolve_client` rebuilt on every request. Routing
+    // them to different mock backends makes the choice observable: only the
+    // cached backend may see traffic.
+    let cached_seen = SeenAuth::default();
+    let cached_app = Router::new()
+        .route(
+            "/agent-integrations/parallel/search",
+            post(
+                |State(seen): State<SeenAuth>, headers: HeaderMap, Json(_): Json<Value>| async move {
+                    *seen.0.lock().expect("cached auth mutex") = headers
+                        .get("authorization")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    Json(json!({
+                        "success": true,
+                        "data": { "searchId": "s-cached", "results": [], "costUsd": 0.0 }
+                    }))
+                },
+            ),
+        )
+        .with_state(cached_seen.clone());
+    let cached_url = start_mock_backend(cached_app).await;
+
+    let cached = Arc::new(IntegrationClient::new(cached_url, "same-token".to_string()));
 
     let _ = WebSearchTool::new(Some(cached), Some(Arc::new(config)), 5, 15)
         .execute(json!({"query": "unchanged"}))
         .await;
 
     assert_eq!(
-        seen.0.lock().expect("auth header mutex").as_deref(),
+        cached_seen.0.lock().expect("cached auth mutex").as_deref(),
         Some("Bearer same-token"),
-        "an unchanged token must not trigger a client swap"
+        "a matching token must keep the CACHED client — its backend must serve the request"
+    );
+    assert!(
+        seen.0.lock().expect("auth header mutex").is_none(),
+        "the rebuilt client's backend must never be reached when the tokens match"
+    );
+}
+
+/// A tool that outlives a local sign-out must NOT keep posting the bearer token
+/// it was built with.
+///
+/// `build_client` answers `None` only when the store holds no usable
+/// app-session JWT — it logs that case as "user is not signed in". Before the
+/// `root_config.is_some()` guard in `resolve_client`, the `(None, Some(cached))`
+/// arm fell back to the cached client, so a `WebSearchTool` constructed while
+/// signed in would go on making authenticated backend requests with a
+/// credential the user had since revoked locally.
+///
+/// The mock backend here fails the test if it is reached at all: after
+/// sign-out the correct behaviour is to refuse locally, not to send a request
+/// that happens to be rejected remotely.
+#[tokio::test]
+async fn test_signed_out_store_does_not_reuse_the_cached_bearer_token() {
+    use crate::openhuman::config::Config;
+    use std::sync::Mutex;
+
+    #[derive(Clone, Default)]
+    struct Reached(Arc<Mutex<bool>>);
+
+    let reached = Reached::default();
+    let app = Router::new()
+        .route(
+            "/agent-integrations/parallel/search",
+            post(
+                |State(reached): State<Reached>, _headers: HeaderMap, Json(_): Json<Value>| async move {
+                    *reached.0.lock().expect("reached mutex") = true;
+                    Json(json!({
+                        "success": true,
+                        "data": { "searchId": "s-leak", "results": [], "costUsd": 0.0 }
+                    }))
+                },
+            ),
+        )
+        .with_state(reached.clone());
+    let base_url = start_mock_backend(app).await;
+
+    // A real config pointing at an EMPTY profile store: no app-session profile
+    // is seeded, which is exactly the post-sign-out shape.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::default();
+    config.config_path = tmp.path().join("config.toml");
+    config.api_url = Some(base_url.clone());
+    config.secrets.encrypt = false;
+
+    // The tool still holds the client it was built with while signed in.
+    let cached = Arc::new(IntegrationClient::new(
+        base_url,
+        "revoked-token".to_string(),
+    ));
+
+    let result = WebSearchTool::new(Some(cached), Some(Arc::new(config)), 5, 15)
+        .execute(json!({"query": "after sign out"}))
+        .await;
+
+    assert!(
+        !*reached.0.lock().expect("reached mutex"),
+        "no request may be sent after sign-out — the cached bearer token must not be reused"
+    );
+    assert!(
+        result.is_err(),
+        "a signed-out tool must fail locally rather than appear to work: {result:?}"
     );
 }

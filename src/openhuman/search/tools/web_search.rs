@@ -79,7 +79,28 @@ impl WebSearchTool {
                 }
             }
             (Some(fresh), None) => Some(fresh),
-            (None, Some(cached)) => Some(Arc::clone(cached)),
+            // `root_config` WAS supplied and `build_client` still answered
+            // `None`. That is not a transient failure to look up a token — it
+            // is the store telling us there is no usable app-session JWT, and
+            // `build_client` logs it as exactly that ("no auth token available
+            // — user is not signed in"). Falling back to the cached client here
+            // would post the pre-sign-out bearer token, so a tool that outlived
+            // a local sign-out could keep making authenticated backend requests
+            // with a credential the user has already revoked locally.
+            //
+            // The cached fallback is kept ONLY for the tool that was handed no
+            // root config: there is nothing to re-resolve against, so the
+            // client it was built with is the only truth available.
+            (None, Some(cached)) => {
+                if self.root_config.is_some() {
+                    tracing::debug!(
+                        "[web_search] no session token in the store — dropping the cached client"
+                    );
+                    None
+                } else {
+                    Some(Arc::clone(cached))
+                }
+            }
             (None, None) => None,
         }
     }
