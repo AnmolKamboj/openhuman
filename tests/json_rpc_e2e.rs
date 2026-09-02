@@ -14099,3 +14099,68 @@ async fn memory_flavour_agent_tool_e2e_5172() {
         .expect_err("an unrecognized flavour slug must be rejected");
     assert!(unknown.to_string().contains("Unknown flavour"));
 }
+
+/// The `memory_diff` RPC surface is gone, and the `memory` domain is not (#5839).
+///
+/// #5839 deleted the `memory-git` feature, `src/openhuman/memory/diff/`, the
+/// `memory_diff` tool and `tests/memory_artifacts_e2e.rs`. What it left behind
+/// is a unit test over `all_controller_schemas()`
+/// (`src/core/all_tests.rs::memory_diff_controllers_are_gone_and_memory_survives`),
+/// which reads the registry as a data structure. Nothing dispatched a removed
+/// method through the live router, so nothing proved the wire surface actually
+/// went with it — a re-registration behind a different namespace, or a stale
+/// alias, would satisfy that unit test and still answer on `/rpc`.
+///
+/// This asks the real HTTP router. Both halves matter and are deliberately in
+/// one test: removing the git ledger must not take the memory domain with it,
+/// so a change that deleted too much fails here rather than passing quietly.
+#[tokio::test]
+async fn json_rpc_memory_diff_surface_is_gone_and_memory_still_answers() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{rpc_addr}");
+
+    // Every function the deleted `memory_diff` namespace used to register.
+    for (id, method) in [
+        "openhuman.memory_diff_take_snapshot",
+        "openhuman.memory_diff_create_checkpoint",
+        "openhuman.memory_diff_diff_since_checkpoint",
+        "openhuman.memory_diff_diff_since_last",
+        "openhuman.memory_diff_diff_since_read",
+        "openhuman.memory_diff_mark_read",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let response = post_json_rpc(&rpc_base, 5_839_000 + id as i64, method, json!({})).await;
+        assert_unknown_method(&response, method);
+    }
+
+    // The other half: the memory domain survived the removal. `memory_init` is
+    // dispatched here purely to prove the namespace still answers — any
+    // response but unknown-method is a pass, because what is under test is
+    // registration, not this call's own outcome.
+    let survivor = post_json_rpc(&rpc_base, 5_839_100, "openhuman.memory_init", json!({})).await;
+    let unknown = survivor
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(Value::as_str)
+        .is_some_and(|message| message.contains("unknown method"));
+    assert!(
+        !unknown,
+        "removing the git ledger must not deregister the memory domain: {survivor}"
+    );
+
+    rpc_join.abort();
+}
