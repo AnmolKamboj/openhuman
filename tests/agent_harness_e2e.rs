@@ -3116,6 +3116,16 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
     // fires is unambiguous. Both are read per turn by `run_policy_for`.
     let _per_call = EnvVarGuard::set("OPENHUMAN_MODEL_CALL_TIMEOUT_SECS", "2");
     let _turn = EnvVarGuard::set("OPENHUMAN_AGENT_TURN_TIMEOUT_SECS", "600");
+    // There is a THIRD wall clock, and pinning only the two above leaves this
+    // test's conclusion resting on the ambient environment. `web_turn_deadline()`
+    // (`web_chat/ops_part_01.rs:79`) applies its own backstop from
+    // `OPENHUMAN_WEB_TURN_TIMEOUT_SECS`, and the web layer maps every harness
+    // `Timeout` onto the same generic `turn_timeout` copy — so an inherited
+    // value below the 8s bound asserted here would fire first, produce an
+    // identical terminal, and let the whole test pass with the per-call ceiling
+    // unwired. Cleared, not set, so it falls back to its 900s default and can
+    // play no part in the outcome.
+    let _web_backstop = EnvVarGuard::unset("OPENHUMAN_WEB_TURN_TIMEOUT_SECS");
 
     // Every upstream reply is held for 25s — comfortably past the 2s per-call
     // ceiling and comfortably short of the 600s turn deadline. Armed globally
