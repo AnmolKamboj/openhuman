@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
 import { threadApi } from '../services/api/threadApi';
 import { useAppSelector } from '../store/hooks';
+import type { DerivedDisplayItem } from '../types/derivedTranscript';
 import type { ThreadMessage } from '../types/thread';
 import { buildRuntimeMessages } from './assistantUiMessages';
 import { getChatSurface } from './chatSurfaceHandlers';
@@ -12,6 +13,15 @@ const EMPTY_MESSAGES: ThreadMessage[] = [];
 const EMPTY_TIMELINE: never[] = [];
 const EMPTY_TRANSCRIPT: never[] = [];
 const EMPTY_TURN_MAP = {};
+/** Items per derived-transcript RPC page; the core caps a page at this size. */
+const DERIVED_TRANSCRIPT_PAGE_LIMIT = 500;
+/**
+ * Upper bound on pages walked for one thread (10k items). A thread longer than
+ * this is truncated at its oldest end rather than fetched without limit; the
+ * turn-bounded RPC contract that removes the ceiling altogether is tracked with
+ * the transcript RPC, not here.
+ */
+const DERIVED_TRANSCRIPT_MAX_PAGES = 20;
 
 type CoreTranscriptProjection = {
   threadId: string | null;
@@ -49,25 +59,51 @@ export function useCoreTranscriptProjection(
       return;
     }
     let cancelled = false;
-    void threadApi
-      .getDerivedTranscript(threadId, { limit: 500 })
-      .then(page => {
+    const skipRequestIds = liveRequestId ? new Set([liveRequestId]) : undefined;
+    const project = (items: DerivedDisplayItem[]) => {
+      const mapped = mapDisplayItems(items, { skipRequestIds });
+      setProjection({ threadId, timelines: mapped.timelines, transcripts: mapped.transcripts });
+    };
+    void (async () => {
+      try {
+        const first = await threadApi.getDerivedTranscript(threadId, {
+          limit: DERIVED_TRANSCRIPT_PAGE_LIMIT,
+        });
         if (cancelled) return;
-        if (!page.hasTranscript) {
+        if (!first.hasTranscript) {
           setProjection({ threadId, timelines: EMPTY_TURN_MAP, transcripts: EMPTY_TURN_MAP });
           return;
         }
-        const skipRequestIds = liveRequestId ? new Set([liveRequestId]) : undefined;
-        const mapped = mapDisplayItems(page.items, { skipRequestIds });
-        setProjection({ threadId, timelines: mapped.timelines, transcripts: mapped.transcripts });
-      })
-      .catch(() => {
+        // Paint the newest page immediately, then walk the older pages and
+        // re-project once with the whole history. A single page silently
+        // dropped everything older than 500 items on a long thread, and a
+        // page that begins mid-turn hides that turn's leading tool calls until
+        // its boundary is in view — both only resolve with the full list.
+        let items = first.items;
+        project(items);
+        let cursor = first.hasMore ? first.nextCursor : undefined;
+        let pages = 1;
+        while (cursor && pages < DERIVED_TRANSCRIPT_MAX_PAGES) {
+          const page = await threadApi.getDerivedTranscript(threadId, {
+            limit: DERIVED_TRANSCRIPT_PAGE_LIMIT,
+            cursor,
+          });
+          if (cancelled) return;
+          // Pages are newest-first and each next page is older, so appending
+          // keeps the newest-first order `mapDisplayItems` expects.
+          items = [...items, ...page.items];
+          pages += 1;
+          cursor = page.hasMore ? page.nextCursor : undefined;
+        }
+        if (pages > 1) project(items);
+      } catch {
         // A missing/older core has no settled process trail; message text and
         // the live socket projection remain usable. Navigation must not fail.
         if (!cancelled) {
           setProjection({ threadId, timelines: EMPTY_TURN_MAP, transcripts: EMPTY_TURN_MAP });
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
