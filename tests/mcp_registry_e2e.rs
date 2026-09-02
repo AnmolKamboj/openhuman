@@ -758,14 +758,16 @@ async fn per_config_lookups_see_a_per_config_connection() {
 
 // ── Probe outcomes (#5772) ────────────────────────────────────────────────────
 
-/// `probe_alive` returns a four-variant `ProbeOutcome`, and the distinction the
-/// enum exists to carry is `TimedOut` vs `Broken`: a slow server is not a failed
-/// one, and collapsing the two is what made the supervisor tear down working
-/// sessions and then report a drop that never happened (#5636).
+/// `probe_alive` returns a four-variant `ProbeOutcome` instead of a bool, and
+/// `probe_alive_reflects_transport_liveness` above only ever asks
+/// `.is_alive()` — which is `false` for `Missing`, `Broken` and `TimedOut`
+/// alike, so nothing pinned which one comes back.
 ///
-/// `probe_alive_reflects_transport_liveness` above only ever asks `.is_alive()`,
-/// which is `false` for all three non-alive variants alike, so nothing pinned
-/// which one comes back. This does.
+/// This pins the two that are reachable in a hermetic test: an entry that was
+/// never connected, and one that has been disconnected, must both report
+/// `Missing` — "there was nothing to probe" — rather than a transport failure
+/// nobody observed. That distinction is what the old bool could not express and
+/// is the half of #5636 this harness can actually demonstrate.
 #[tokio::test]
 async fn probe_alive_distinguishes_a_missing_entry_from_a_timed_out_one() {
     let (_tmp, cfg) = fresh_workspace_config();
@@ -804,43 +806,15 @@ async fn probe_alive_distinguishes_a_missing_entry_from_a_timed_out_one() {
         other => panic!("a live stub must probe Alive, got {other:?}"),
     }
 
-    // The same live, healthy connection probed with a window it cannot meet.
-    // `Duration::ZERO` is deterministic rather than racy: an async stdio round
-    // trip cannot complete on the first poll, and tokio's zero-length sleep is
-    // already elapsed, so the timeout arm is taken every time.
-    //
-    // This is the assertion that matters: the server is demonstrably fine — it
-    // answered a moment ago and answers again below — so anything other than
-    // `TimedOut` would be the supervisor asserting a drop it did not observe.
-    match h
-        .dynamic()
-        .connections()
-        .probe_alive(&server.server_id, std::time::Duration::ZERO)
-        .await
-    {
-        tinymcp::ProbeOutcome::TimedOut { after } => {
-            assert_eq!(
-                after,
-                std::time::Duration::ZERO,
-                "the window is reported back"
-            );
-        }
-        other => panic!(
-            "a healthy server probed with an unmeetable window must report TimedOut, not a \
-             failure it did not observe; got {other:?}"
-        ),
-    }
-
-    // Still alive: the impossible window did not disturb the session, which is
-    // the whole point of not treating a timeout as a break.
-    assert!(
-        h.dynamic()
-            .connections()
-            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
-            .await
-            .is_alive(),
-        "a timed-out probe must leave the connection usable"
-    );
+    // NOT asserted here: `TimedOut`. It is the variant this enum most exists
+    // for, and it is unreachable against this stub — a probe with a
+    // `Duration::ZERO` window still came back `Alive { elapsed: 42.708µs }`,
+    // because `tokio::time::timeout` polls the inner future before it checks
+    // the deadline and `list_tools` on an established connection answers inside
+    // that first poll. Producing a real timeout needs a server that stalls on
+    // `tools/list`, which `test-mcp-stub` cannot be asked to do. Asserting it
+    // by contriving the window would have pinned nothing; see
+    // ~/tinyhuman/bugs/W6-test-findings.md.
 
     // Disconnecting removes the entry, so the outcome goes back to Missing
     // rather than to a transport error.

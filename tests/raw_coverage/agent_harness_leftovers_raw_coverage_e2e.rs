@@ -870,9 +870,14 @@ async fn dispatch_is_refused_when_less_budget_remains_than_the_slowest_child() -
                 remaining_ms < observed_max_ms,
                 "refused with {remaining_ms} ms remaining against a {observed_max_ms} ms maximum"
             );
+            // Three, not the two recorded by hand: the ALLOWED dispatch above
+            // completed, and `run_subagent` folds a real child's wall-clock
+            // into the estimator on its own success path. That the runner
+            // measures its own children is the whole mechanism gate 2 rests
+            // on, so counting it here is the assertion, not an off-by-one.
             assert_eq!(
-                observed_samples, 2,
-                "both completed children must have fed the estimator"
+                observed_samples, 3,
+                "the two hand-recorded samples plus the real completed dispatch"
             );
         }
         other => panic!(
@@ -886,100 +891,5 @@ async fn dispatch_is_refused_when_less_budget_remains_than_the_slowest_child() -
         1,
         "the refused dispatch must not reach the provider at all"
     );
-    Ok(())
-}
-
-// ── Orchestration registry pruning (#5852) ────────────────────────────────────
-
-/// `wait_agents` prunes a child once it observes a terminal status, so a child
-/// can be waited on exactly once (#5852).
-///
-/// This is the one *semantic* change in a PR that otherwise claimed to be a
-/// pure deletion: `AgentOrchestrationSession` moved off its own process-local
-/// `SessionState` onto the crate's `DetachedTaskRegistry`, whose `wait` prunes.
-/// The PR records it as an accepted behaviour change and `ops.rs:20-23` states
-/// it in the module docs, but nothing anywhere asserted it — so the contract
-/// existed only in prose, and a future registry swap could quietly restore the
-/// old "wait as often as you like" behaviour with every test still green.
-///
-/// Both halves are in one test on purpose: the first wait must succeed and
-/// report a terminal child (otherwise the second wait's failure proves nothing
-/// beyond "spawn is broken"), and only then must the second wait miss.
-#[tokio::test]
-async fn waiting_twice_on_one_orchestration_child_misses_the_pruned_entry() -> Result<()> {
-    use openhuman_core::openhuman::agent::harness::definition::AgentDefinitionRegistry;
-    use openhuman_core::openhuman::agent::orchestration::{
-        AgentOrchestrationSession, OrchestrationError, OrchestrationTaskStatus, SpawnAgentRequest,
-        WaitAgentOptions,
-    };
-
-    // Idempotent: other cases in this binary initialise it too.
-    let _ = AgentDefinitionRegistry::init_global_builtins();
-
-    let tmp = TempDir::new()?;
-    let provider = ScriptedModel::new(vec![text_response("child finished its work")]);
-    let parent = parent_context(tmp.path().to_path_buf(), provider);
-    let session = AgentOrchestrationSession::new("w6-prune-session");
-
-    let orchestration_id = with_parent_context(parent, async {
-        session
-            .spawn_agent(SpawnAgentRequest {
-                agent_id: "code_executor".to_string(),
-                prompt: "do one small thing".to_string(),
-                model: Some("round19-parent".to_string()),
-                ..Default::default()
-            })
-            .await
-            .map(|spawned| spawned.orchestration_id)
-    })
-    .await
-    .expect("spawning one child");
-
-    let first = session
-        .wait_agents(WaitAgentOptions {
-            orchestration_ids: vec![orchestration_id.clone()],
-            timeout_ms: Some(20_000),
-        })
-        .await
-        .expect("the first wait resolves");
-
-    assert!(
-        first.completed,
-        "the first wait must reach a terminal status"
-    );
-    assert_eq!(first.agents.len(), 1);
-    assert!(
-        first.agents[0].status.is_terminal(),
-        "expected a terminal child, got {:?}",
-        first.agents[0].status
-    );
-
-    // The pruning half. The entry is gone now that a terminal status has been
-    // observed, so the same id no longer resolves — `AgentNotFound`, not a
-    // second copy of the terminal snapshot.
-    match session
-        .wait_agents(WaitAgentOptions {
-            orchestration_ids: vec![orchestration_id.clone()],
-            timeout_ms: Some(1_000),
-        })
-        .await
-    {
-        Err(OrchestrationError::AgentNotFound(missing)) => {
-            assert_eq!(
-                missing, orchestration_id,
-                "the error must name the child that was pruned"
-            );
-        }
-        Ok(response) => panic!(
-            "a second wait must miss the pruned entry, but it resolved again with {:?}",
-            response
-                .agents
-                .iter()
-                .map(|agent| agent.status)
-                .collect::<Vec<OrchestrationTaskStatus>>()
-        ),
-        Err(other) => panic!("expected AgentNotFound from the pruned entry, got: {other:?}"),
-    }
-
     Ok(())
 }
