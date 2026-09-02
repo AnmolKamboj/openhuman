@@ -108,6 +108,27 @@ pub(crate) fn notice_memory_module_unavailable_once(reason: &str) {
     });
 }
 
+/// Once-per-process notice for an archivist embedding failure that indicates the
+/// local model runtime is unavailable (openhuman#5867).
+///
+/// The archivist runs one embedding call per conversation segment; a broken
+/// local runtime produces one failure per segment. Bounding the notification to
+/// once-per-process matches the rationale of [`notice_corrupt_store_once`]:
+/// per-segment notices would be a banner storm. `origin` names the producing
+/// path — logged, never sent to the frontend.
+pub(crate) fn notice_local_model_unavailable_once(origin: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static EMBED_UNAVAILABLE_NOTICED: AtomicBool = AtomicBool::new(false);
+    if EMBED_UNAVAILABLE_NOTICED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    log::warn!(
+        "[archivist] action=broadcast_user_error kind={LOCAL_MODEL_UNAVAILABLE_KIND} \
+         source={MEMORY_USER_ERROR_SOURCE} origin={origin}"
+    );
+    crate::openhuman::web_chat::publish_web_channel_event(local_model_unavailable_user_error());
+}
+
 /// host-side fallback for paths that only ever see text.
 pub(crate) fn is_corrupt_store_error(message: &str) -> bool {
     let msg = message.to_ascii_lowercase();

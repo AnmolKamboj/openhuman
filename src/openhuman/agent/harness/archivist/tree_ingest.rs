@@ -206,6 +206,13 @@ impl ArchivistHook {
                         "[archivist] tree ingest failed (non-fatal): source_id={source_id} \
                          session={session_id} segment={segment_id} error={rendered}"
                     );
+                    // Surface a once-per-process user notification so the
+                    // frontend can prompt the user to check their local model
+                    // configuration (openhuman#5867). Without this the failure
+                    // is silent beyond the log line above.
+                    crate::openhuman::memory::tree::health::user_error::notice_local_model_unavailable_once(
+                        "archivist tree ingest",
+                    );
                 }
             }
         }

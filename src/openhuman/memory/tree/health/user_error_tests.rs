@@ -99,6 +99,34 @@ fn wire_notice_is_latched_once_per_process() {
     notice_corrupt_store_once("test detector");
 }
 
+/// Once-latch for the archivist embedding failure path (openhuman#5867):
+/// one failed embedding per segment must not become one banner per segment.
+#[test]
+fn local_model_unavailable_notice_is_latched_once_per_process() {
+    // Same contract as the corrupt-store latch: calling twice is safe and
+    // the second invocation returns immediately on the latch path.
+    notice_local_model_unavailable_once("test archivist");
+    notice_local_model_unavailable_once("test archivist duplicate");
+}
+
+/// The local-model-unavailable payload carries the same no-leak contract as
+/// its siblings: stable kind + source, never raw provider text or model ids.
+#[test]
+fn local_model_unavailable_payload_is_metadata_only() {
+    let event = local_model_unavailable_user_error();
+    assert_eq!(event.event, "user_error");
+    assert_eq!(event.client_id, "system");
+    assert_eq!(
+        event.error_type.as_deref(),
+        Some(LOCAL_MODEL_UNAVAILABLE_KIND)
+    );
+    assert_eq!(
+        event.error_source.as_deref(),
+        Some(MEMORY_USER_ERROR_SOURCE)
+    );
+    assert!(event.message.is_none(), "must not carry raw error prose");
+}
+
 // ── memory module unavailable ────────────────────────────────────────────────
 
 /// Same no-leak contract as the corrupt-store payload: stable kind + source,
