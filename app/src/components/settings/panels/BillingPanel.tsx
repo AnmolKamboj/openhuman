@@ -22,12 +22,16 @@ const BillingPanel = () => {
   const [purchasingTier, setPurchasingTier] = useState<PlanTier | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
+  const [planKnown, setPlanKnown] = useState(false);
   const paymentConfirmed = false;
 
   useEffect(() => {
     billingApi
       .getCurrentPlan()
-      .then(data => setCurrentTier(data.plan))
+      .then(data => {
+        setCurrentTier(data.plan);
+        setPlanKnown(true);
+      })
       .catch(err => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setPlanLoading(false));
   }, []);
@@ -49,6 +53,8 @@ const BillingPanel = () => {
         const session = await billingApi.purchasePlan(buildPlanId(tier, billingInterval));
         if (session.checkoutUrl) {
           await openUrl(session.checkoutUrl);
+        } else {
+          throw new Error('Checkout session did not return a redirect URL');
         }
       }
     } catch (err) {
@@ -71,7 +77,7 @@ const BillingPanel = () => {
         isPurchasing={isPurchasing}
         purchasingTier={purchasingTier}
         paymentConfirmed={paymentConfirmed}
-        upgradesDisabled={planLoading}
+        upgradesDisabled={planLoading || !planKnown}
         onUpgrade={handleUpgrade}
       />
 

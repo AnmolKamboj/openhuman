@@ -93,6 +93,7 @@ describe('<BillingPanel />', () => {
     fireEvent.click(upgradeButtons[0]);
 
     await waitFor(() => expect(purchasePlanMock).toHaveBeenCalledTimes(1));
+    expect(purchasePlanMock).toHaveBeenCalledWith('BASIC_MONTHLY');
     await waitFor(() =>
       expect(openUrlMock).toHaveBeenCalledWith('https://checkout.stripe.com/test')
     );
@@ -134,5 +135,20 @@ describe('<BillingPanel />', () => {
     fireEvent.click(upgradeButtons[0]);
 
     await waitFor(() => expect(screen.getByText('Payment failed')).toBeInTheDocument());
+  });
+
+  it('shows an error when purchasePlan returns no checkout URL', async () => {
+    purchasePlanMock.mockResolvedValue({ checkoutUrl: null, sessionId: 'test-session' });
+
+    render(<BillingPanel />);
+    await waitFor(() => expect(getCurrentPlanMock).toHaveBeenCalledTimes(1));
+
+    const upgradeButtons = screen.getAllByRole('button', { name: 'Upgrade' });
+    fireEvent.click(upgradeButtons[0]);
+
+    await waitFor(() =>
+      expect(screen.getByText('Checkout session did not return a redirect URL')).toBeInTheDocument()
+    );
+    expect(openUrlMock).not.toHaveBeenCalled();
   });
 });
