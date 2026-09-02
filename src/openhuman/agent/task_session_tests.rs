@@ -128,3 +128,44 @@ fn empty_title_falls_back_to_generic_label() {
     assert_eq!(session_title(&card("   ")), "Autonomous task");
     assert_eq!(session_title(&card("Real title")), "Real title");
 }
+
+/// The closing row that lands first is the one that survives, and the loser's
+/// content is discarded — so the *order* in `run_autonomous` decides which
+/// writer's text a reader sees.
+///
+/// `append_message` is idempotent by id and returns the **stored** row, so the
+/// second write of `agent:<run_id>` is dropped whole, not merged. That is
+/// correct and is what collapses the duplicate in #5933, but it means the
+/// persist-before-announce ordering is load-bearing beyond tidiness: if the
+/// terminal event were announced first, a viewing client would persist
+/// `chat_done`'s text and the core's later `append_final` of a *failure* would
+/// be silently discarded, leaving a thread that claims the run succeeded.
+///
+/// Pinned here rather than by driving `run_autonomous`, which needs a live
+/// agent. This is the property that would break if the two statements were
+/// swapped; the existing `append_final_is_idempotent_per_run` writes the same
+/// content twice and so cannot see it.
+#[test]
+fn the_first_closing_row_wins_and_a_later_same_id_append_is_discarded() {
+    let ws = temp_ws();
+    let id = create_session_thread(ws.clone(), &card("X"), "run-6", "prompt").expect("thread");
+
+    // The core persists the real outcome first — here, a failure.
+    append_final(ws.clone(), &id, "run-6", &Err("boom".to_string()));
+    // A viewing client then persists what `chat_done` carried, same id.
+    append_final(ws.clone(), &id, "run-6", &Ok("All done.".to_string()));
+
+    let agent_rows: Vec<_> = conversations::get_messages(ws, &id)
+        .expect("messages")
+        .into_iter()
+        .filter(|m| m.sender == "agent")
+        .collect();
+
+    assert_eq!(agent_rows.len(), 1, "still exactly one closing row");
+    assert_eq!(
+        agent_rows[0].content, "Run failed: boom",
+        "the row that landed first must survive; a later same-id append must \
+         not overwrite a recorded failure with a success"
+    );
+    assert_eq!(agent_rows[0].extra_metadata["success"], false);
+}
