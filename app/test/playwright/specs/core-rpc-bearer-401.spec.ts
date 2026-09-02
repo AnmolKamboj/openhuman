@@ -40,10 +40,14 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
 
-    // Fault injection: reject the bearer for the FIRST occurrence of the
-    // trigger method only, exactly as a core that restarted mid-session would,
-    // then serve normally so the refreshed-bearer retry can succeed.
-    let seen = 0;
+    // Fault injection modelled on a real core restart: the FIRST call to the
+    // trigger method is rejected AND the stored bearer is rotated, exactly as a
+    // core that restarted and minted a fresh per-launch token would leave
+    // things. The retry must therefore present a DIFFERENT bearer to succeed —
+    // counting requests alone would let a retry that reused the stale cached
+    // token pass, which is the very regression #5876 guards against.
+    const ROTATED = 'openhuman-playwright-token-rotated';
+    const seenAuth: string[] = [];
     await page.route('**/rpc', async (route, request) => {
       let body: { method?: string } = {};
       try {
@@ -52,8 +56,14 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
         /* not JSON — pass through */
       }
       if (body.method === TRIGGER_METHOD) {
-        seen += 1;
-        if (seen === 1) {
+        seenAuth.push(request.headers()['authorization'] ?? '');
+        if (seenAuth.length === 1) {
+          // Rotate the stored bearer before rejecting, so a refreshed read
+          // picks up the new value and a cached read does not.
+          await page.evaluate(
+            token => window.localStorage.setItem('openhuman_core_rpc_token', token),
+            ROTATED
+          );
           return route.fulfill({
             status: 401,
             contentType: 'text/plain',
@@ -69,27 +79,29 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
       window.location.hash = '/connections?tab=embeddings';
     });
 
-    // (1) The retry. `core_auth` drops the token cache and reissues the SAME
-    // call once. Without #5876 the 401 classifies as `auth_expired`, nothing
-    // retries, and this stays at 1.
-    await expect.poll(() => seen, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+    // (1) The retry happened at all. Without #5876 the 401 classifies as
+    // `auth_expired`, nothing retries, and this stays at 1.
+    await expect.poll(() => seenAuth.length, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+
+    // (2) And it used a FRESH bearer — the assertion that distinguishes a real
+    // recovery from a blind re-send. `clearCoreRpcTokenCache()` is what makes
+    // the second read see the rotated value.
+    expect(seenAuth[0]).toContain('openhuman-playwright-token');
+    expect(seenAuth[1]).toContain(ROTATED);
+    expect(seenAuth[1]).not.toEqual(seenAuth[0]);
 
     // Bounded to a single extra attempt — a retry loop against a core that is
     // genuinely rejecting us would be worse than the bug.
-    expect(seen).toBeLessThanOrEqual(2);
+    expect(seenAuth.length).toBeLessThanOrEqual(2);
 
-    // (2) The session survives. Without #5876 `clearSession()` wipes the auth
-    // profile and the app falls back to the signed-out surface.
-    await expect
-      .poll(async () => page.evaluate(() => window.location.hash), { timeout: 15_000 })
-      .toContain('/connections');
-    await expect
-      .poll(async () => page.evaluate(() => window.location.hash))
-      .not.toContain('/welcome');
-    await expect
-      .poll(async () =>
-        page.evaluate(() => window.localStorage.getItem('openhuman_core_rpc_token'))
-      )
-      .not.toBeNull();
+    // (3) The session survives. Without #5876 `clearSession()` wipes the auth
+    // profile and the app falls back to the signed-out surface. Assert the
+    // embeddings panel actually rendered rather than merely that the hash is
+    // unchanged — the page was already on /connections before the fault.
+    await expect(page.getByTestId('two-pane-nav-embeddings')).toHaveAttribute(
+      'aria-current',
+      'page',
+      { timeout: 20_000 }
+    );
   });
 });

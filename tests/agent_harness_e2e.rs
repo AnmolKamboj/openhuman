@@ -184,12 +184,25 @@ fn error_completion(status: u16, message: &str) -> Value {
 /// instantly by the default completion, hiding the timeout.
 static SCRIPTED_STALL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn arm_scripted_stall(ms: u64) {
-    SCRIPTED_STALL_MS.store(ms, std::sync::atomic::Ordering::SeqCst);
+/// Arms the stall and disarms it on drop.
+///
+/// The guard exists because the atomic is process-global and the env lock is
+/// deliberately recovered from poisoning: if a test panicked between arming and
+/// a bare `disarm`, every later test sharing this scripted handler would inherit
+/// a 25s delay on every completion, turning one failure into a cascade of
+/// unrelated timeouts.
+struct ScriptedStallGuard;
+
+impl Drop for ScriptedStallGuard {
+    fn drop(&mut self) {
+        SCRIPTED_STALL_MS.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
-fn disarm_scripted_stall() {
-    SCRIPTED_STALL_MS.store(0, std::sync::atomic::Ordering::SeqCst);
+#[must_use = "the stall is disarmed when the guard drops; binding it to `_` disarms it immediately"]
+fn arm_scripted_stall(ms: u64) -> ScriptedStallGuard {
+    SCRIPTED_STALL_MS.store(ms, std::sync::atomic::Ordering::SeqCst);
+    ScriptedStallGuard
 }
 
 static CANARY_BARRIER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
@@ -3107,7 +3120,7 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
     // Every upstream reply is held for 25s — comfortably past the 2s per-call
     // ceiling and comfortably short of the 600s turn deadline. Armed globally
     // so retry attempts stall too.
-    arm_scripted_stall(25_000);
+    let _stall = arm_scripted_stall(25_000);
     reset_script(vec![text_completion(
         "this reply is never delivered in time",
     )]);
@@ -3135,7 +3148,6 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
     // per-call ceiling were not in force.
     let terminal = wait_for_terminal(&mut events, Duration::from_secs(120)).await;
     let elapsed = started.elapsed();
-    disarm_scripted_stall();
 
     // The turn is stopped rather than completing.
     assert_eq!(
@@ -3154,8 +3166,12 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
     // — the pre-#5767 behaviour — that stall completes well inside the 600s
     // budget and the turn SUCCEEDS. Only a per-call ceiling can stop it at ~2s.
     // Measured: 2.4s with the ceiling wired, 25.5s with it reverted.
+    // 8s, not a looser bound: the ceiling under test is 2s, so anything up to
+    // ~4x it still fails while leaving room for boot and SSE delivery. A 15s
+    // bound would also admit an implementation that ignored
+    // `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS` and used a fixed 10s ceiling.
     assert!(
-        elapsed < Duration::from_secs(15),
+        elapsed < Duration::from_secs(8),
         "the turn must be cut off by the 2s per-call ceiling, not by the 25s \
          upstream stall completing under the 600s turn deadline; took {elapsed:?}"
     );

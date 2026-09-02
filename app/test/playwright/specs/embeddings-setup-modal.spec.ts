@@ -87,7 +87,11 @@ test.describe('Embeddings setup — Test connection for a custom endpoint', () =
     // Empty key → disabled by the `!setupKey.trim()` arm, not by `isCustom`.
     await expect(testButton).toBeDisabled();
 
-    const keyField = page.getByRole('textbox').first();
+    // Located by placeholder, not by the `textbox` role: `setupShowKey` starts
+    // false so the field renders as `<input type="password">`, which has no
+    // implicit textbox role and would never match.
+    const keyField = page.getByPlaceholder('Paste your API key…');
+    await expect(keyField).toBeVisible();
     await keyField.fill('sk-not-a-real-key-0000000000');
     await expect(testButton).toBeEnabled();
   });

@@ -1037,9 +1037,19 @@ async fn memory_sources_missing_relative_folder_reports_the_resolved_path() {
         serialized.contains("no-such-folder"),
         "the error must still name the configured path; got {items_resp}"
     );
+    // The concrete resolved root, not just the phrase "resolved to". A reader
+    // that still joined on the process CWD, or that emitted something generic
+    // like "resolved to an unavailable location", would satisfy a phrase-only
+    // check while keeping the exact diagnostic gap this test exists to close.
+    let expected_resolved = workspace.join("no-such-folder");
+    let expected_resolved = expected_resolved.to_string_lossy();
     assert!(
         serialized.contains("resolved to"),
         "a relative path's error must name where the reader looked; got {items_resp}"
+    );
+    assert!(
+        serialized.contains(expected_resolved.as_ref()),
+        "the resolved root must be the workspace one ({expected_resolved}); got {items_resp}"
     );
 
     rpc_join.abort();
