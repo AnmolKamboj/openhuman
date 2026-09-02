@@ -1099,6 +1099,93 @@ pub enum DomainEvent {
         reason: String,
     },
 
+    // ── MCP reconnect supervisor (#5931) ───────────────────────────────
+    //
+    // Published by `mcp::registry::supervisor_events` from the report
+    // `tinymcp::Supervisor::tick` hands back each minute. They are what puts
+    // a probe outcome on the developer Event Log, and what the notification
+    // bridge reads to tell the user about a server that stays down. An
+    // answered probe is deliberately not an event: one row per server per
+    // minute would bury everything else in the log.
+    /// A connected MCP server did not answer its liveness probe inside the
+    /// window, but the session was kept: a single slow answer is not
+    /// evidence of a drop. Only `teardown_after` consecutive timeouts end
+    /// the session, and that tick publishes
+    /// [`Self::McpServerTransportDropped`] instead of this.
+    McpServerProbeTimedOut {
+        server_id: String,
+        /// The registry's qualified name, e.g. `"ac.inference.sh/mcp"`.
+        qualified_name: String,
+        /// The probe window that elapsed, in seconds.
+        probe_timeout_secs: u64,
+        /// How many probes in a row have now timed out, this one included.
+        consecutive_timeouts: u32,
+        /// The streak length at which the session is torn down.
+        teardown_after: u32,
+    },
+    /// The supervisor ended an MCP server's session because its liveness
+    /// probe found the transport unusable. A reconnect follows in the same
+    /// tick and reports as [`Self::McpServerReconnected`],
+    /// [`Self::McpServerReconnectFailed`] or [`Self::McpServerParked`].
+    McpServerTransportDropped {
+        server_id: String,
+        qualified_name: String,
+        /// What the probe observed: `"broken"` (the transport answered with
+        /// an error), `"timed_out"` (the timeout streak reached its limit)
+        /// or `"missing"` (the entry went away between the membership check
+        /// and the probe).
+        outcome: String,
+        /// The transport error, already rendered and endpoint-redacted by
+        /// `tinymcp`. `None` unless `outcome` is `"broken"`.
+        detail: Option<String>,
+        /// How long the failing probe took, or the window that elapsed for a
+        /// timeout, in milliseconds. `None` for `"missing"`.
+        elapsed_ms: Option<u64>,
+        /// The timeout streak that ended the session; zero unless `outcome`
+        /// is `"timed_out"`.
+        consecutive_timeouts: u32,
+    },
+    /// The supervisor connected an MCP server, either rebuilding a session
+    /// it had just ended or bringing back one that had stayed down.
+    McpServerReconnected {
+        server_id: String,
+        qualified_name: String,
+        tool_count: u32,
+        /// How many consecutive attempts had failed before this one. Zero
+        /// means the session was rebuilt within the tick that ended it and
+        /// nobody noticed; anything else means the server's tools had been
+        /// unavailable across at least one whole tick, which is what the
+        /// notification bridge keys off to announce a recovery.
+        after_failures: u32,
+    },
+    /// The supervisor failed to connect an MCP server and will retry after
+    /// a backoff. Until a retry succeeds the server's tools are unavailable
+    /// to the agent.
+    ///
+    /// Published once per attempt; the notification bridge notifies on the
+    /// first failure of an episode (`failures == 1`) only.
+    McpServerReconnectFailed {
+        server_id: String,
+        qualified_name: String,
+        /// The connection error, already rendered and endpoint-redacted.
+        error: String,
+        /// How many consecutive attempts have now failed, this one included.
+        failures: u32,
+        /// Seconds until the next attempt.
+        retry_in_secs: u64,
+    },
+    /// The supervisor gave up on an MCP server because the failure is one
+    /// retrying cannot fix — today, the launcher runtime (`npx` / `uvx`) is
+    /// not installed. The server stays parked until it is disabled and
+    /// re-enabled.
+    McpServerParked {
+        server_id: String,
+        qualified_name: String,
+        /// The failure, already rendered, including the install guidance
+        /// `tinymcp` attaches to a missing runtime.
+        error: String,
+    },
+
     /// An `OPENHUMAN_APPROVAL_GATE=0` env override was observed but
     /// IGNORED because the host is the Tauri desktop shell. The gate is
     /// always installed under the desktop host; this event lets the UI
@@ -1395,7 +1482,12 @@ impl DomainEvent {
             | Self::McpServerDisconnected { .. }
             | Self::McpClientToolExecuted { .. }
             | Self::McpSetupSecretRequested { .. }
-            | Self::McpToolRejected { .. } => "mcp_client",
+            | Self::McpToolRejected { .. }
+            | Self::McpServerProbeTimedOut { .. }
+            | Self::McpServerTransportDropped { .. }
+            | Self::McpServerReconnected { .. }
+            | Self::McpServerReconnectFailed { .. }
+            | Self::McpServerParked { .. } => "mcp_client",
         }
     }
 
@@ -1515,6 +1607,11 @@ impl DomainEvent {
             Self::McpClientToolExecuted { .. } => "McpClientToolExecuted",
             Self::McpSetupSecretRequested { .. } => "McpSetupSecretRequested",
             Self::McpToolRejected { .. } => "McpToolRejected",
+            Self::McpServerProbeTimedOut { .. } => "McpServerProbeTimedOut",
+            Self::McpServerTransportDropped { .. } => "McpServerTransportDropped",
+            Self::McpServerReconnected { .. } => "McpServerReconnected",
+            Self::McpServerReconnectFailed { .. } => "McpServerReconnectFailed",
+            Self::McpServerParked { .. } => "McpServerParked",
             Self::EmbeddingModelUnhealthy { .. } => "EmbeddingModelUnhealthy",
             Self::ProviderApiKeyRejected { .. } => "ProviderApiKeyRejected",
             Self::TaskSourceFetched { .. } => "TaskSourceFetched",
@@ -1557,6 +1654,19 @@ impl DomainEvent {
             Self::MonitorStatusChanged { thread_id, .. } | Self::MonitorLine { thread_id, .. } => {
                 thread_id.as_deref()
             }
+            // The Event Log's "agent" column is the only per-row context the
+            // stream carries, so an MCP row names its server there: the
+            // install id for the RPC-driven lifecycle, the registry name
+            // (`ac.inference.sh/mcp`) for the supervisor's verdicts, which is
+            // how a user knows the server and how the log lines name it.
+            Self::McpServerInstalled { server_id, .. }
+            | Self::McpServerConnected { server_id, .. }
+            | Self::McpServerDisconnected { server_id, .. } => Some(server_id.as_str()),
+            Self::McpServerProbeTimedOut { qualified_name, .. }
+            | Self::McpServerTransportDropped { qualified_name, .. }
+            | Self::McpServerReconnected { qualified_name, .. }
+            | Self::McpServerReconnectFailed { qualified_name, .. }
+            | Self::McpServerParked { qualified_name, .. } => Some(qualified_name.as_str()),
             _ => None,
         }
     }

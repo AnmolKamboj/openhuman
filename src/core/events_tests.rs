@@ -503,6 +503,55 @@ fn all_variants_have_correct_domain() {
             },
             "auth",
         ),
+        // MCP reconnect supervisor (#5931)
+        (
+            DomainEvent::McpServerProbeTimedOut {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                probe_timeout_secs: 8,
+                consecutive_timeouts: 1,
+                teardown_after: 3,
+            },
+            "mcp_client",
+        ),
+        (
+            DomainEvent::McpServerTransportDropped {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                outcome: "broken".into(),
+                detail: Some("connection reset".into()),
+                elapsed_ms: Some(1961),
+                consecutive_timeouts: 0,
+            },
+            "mcp_client",
+        ),
+        (
+            DomainEvent::McpServerReconnected {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                tool_count: 25,
+                after_failures: 0,
+            },
+            "mcp_client",
+        ),
+        (
+            DomainEvent::McpServerReconnectFailed {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                error: "connection refused".into(),
+                failures: 1,
+                retry_in_secs: 5,
+            },
+            "mcp_client",
+        ),
+        (
+            DomainEvent::McpServerParked {
+                server_id: "srv-1".into(),
+                qualified_name: "@scope/server".into(),
+                error: "the `uvx` launcher is not installed".into(),
+            },
+            "mcp_client",
+        ),
     ];
 
     for (event, expected_domain) in cases {
@@ -559,4 +608,99 @@ fn memory_driver_bind_failed_domain_and_name() {
     };
     assert_eq!(event.domain(), "memory");
     assert_eq!(event.variant_name(), "MemoryDriverBindFailed");
+}
+
+/// The Event Log's "agent" column is the only per-row context the stream
+/// carries, so every MCP row must name its server there (#5931): the
+/// supervisor's verdicts by the registry name a user knows the server by, the
+/// RPC-driven lifecycle by the install id.
+#[test]
+fn mcp_supervisor_events_name_themselves_and_hint_the_server() {
+    let cases: Vec<(DomainEvent, &str)> = vec![
+        (
+            DomainEvent::McpServerProbeTimedOut {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                probe_timeout_secs: 8,
+                consecutive_timeouts: 1,
+                teardown_after: 3,
+            },
+            "McpServerProbeTimedOut",
+        ),
+        (
+            DomainEvent::McpServerTransportDropped {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                outcome: "timed_out".into(),
+                detail: None,
+                elapsed_ms: Some(8_000),
+                consecutive_timeouts: 3,
+            },
+            "McpServerTransportDropped",
+        ),
+        (
+            DomainEvent::McpServerReconnected {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                tool_count: 25,
+                after_failures: 1,
+            },
+            "McpServerReconnected",
+        ),
+        (
+            DomainEvent::McpServerReconnectFailed {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                error: "connection refused".into(),
+                failures: 1,
+                retry_in_secs: 5,
+            },
+            "McpServerReconnectFailed",
+        ),
+        (
+            DomainEvent::McpServerParked {
+                server_id: "srv-1".into(),
+                qualified_name: "ac.inference.sh/mcp".into(),
+                error: "the `uvx` launcher is not installed".into(),
+            },
+            "McpServerParked",
+        ),
+    ];
+
+    for (event, expected_name) in cases {
+        assert_eq!(event.variant_name(), expected_name);
+        assert_eq!(event.domain(), "mcp_client");
+        assert_eq!(
+            event.agent_hint(),
+            Some("ac.inference.sh/mcp"),
+            "{expected_name} should hint the registry name"
+        );
+    }
+}
+
+#[test]
+fn mcp_lifecycle_events_hint_the_install_id() {
+    let cases = vec![
+        DomainEvent::McpServerInstalled {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+        },
+        DomainEvent::McpServerConnected {
+            server_id: "srv-1".into(),
+            tool_count: 3,
+        },
+        DomainEvent::McpServerDisconnected {
+            server_id: "srv-1".into(),
+            reason: Some("disabled".into()),
+        },
+    ];
+
+    for event in cases {
+        assert_eq!(
+            event.agent_hint(),
+            Some("srv-1"),
+            "{} should hint the install id",
+            event.variant_name()
+        );
+    }
 }

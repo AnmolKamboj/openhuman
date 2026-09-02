@@ -205,6 +205,67 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             timestamp_ms: ts,
             actions: None,
         }),
+        // The MCP reconnect supervisor's verdicts (#5931), published by
+        // `mcp::registry::supervisor_events`. Only the cases a user can act on
+        // or would otherwise wonder about become notifications: a server that
+        // *stays* down after a tick, its recovery, and a server the supervisor
+        // has given up on. A session torn down and rebuilt within one tick, or
+        // a single slow probe, is Event Log material only — nothing was
+        // unavailable long enough for anyone to notice, and a banner per blip
+        // would be the fourteen-a-day noise this exists to replace.
+        DomainEvent::McpServerReconnectFailed {
+            server_id,
+            qualified_name,
+            error,
+            failures,
+            retry_in_secs,
+        } if *failures == 1 => Some(CoreNotificationEvent {
+            id: format!("mcp-unavailable:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server unavailable".into(),
+            body: format!(
+                "{qualified_name} stopped answering, so its tools are unavailable until it \
+                 reconnects (retrying in {retry_in_secs}s). {}",
+                error.chars().take(120).collect::<String>()
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
+        DomainEvent::McpServerReconnected {
+            server_id,
+            qualified_name,
+            tool_count,
+            after_failures,
+        } if *after_failures > 0 => Some(CoreNotificationEvent {
+            id: format!("mcp-restored:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server reconnected".into(),
+            body: format!(
+                "{qualified_name} is back with {tool_count} tools after {after_failures} failed \
+                 attempt(s)."
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
+        DomainEvent::McpServerParked {
+            server_id,
+            qualified_name,
+            error,
+        } => Some(CoreNotificationEvent {
+            id: format!("mcp-parked:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server can't start".into(),
+            body: format!(
+                "{qualified_name} will not be retried: {}. Install the missing runtime, then \
+                 disable and re-enable the server.",
+                error.chars().take(160).collect::<String>()
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
         _ => None,
     }
 }

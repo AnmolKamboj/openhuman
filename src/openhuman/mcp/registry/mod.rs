@@ -14,6 +14,9 @@
 //!   [`super::host`] holds and publishing this application's own events.
 //! - [`setup_ops`] — the `mcp_setup` handlers, likewise.
 //! - `schemas` — the controller schemas and dispatch.
+//! - [`supervisor_events`] — what the reconnect supervisor observed each
+//!   tick, as this domain's events; the Event Log and the notification bridge
+//!   read those (#5931).
 //! - [`tools`] — the agent-facing tools.
 //!
 //! # The naming note still applies
@@ -39,6 +42,8 @@ pub mod ops;
 mod schemas;
 #[cfg(feature = "mcp")]
 pub mod setup_ops;
+#[cfg(feature = "mcp")]
+pub mod supervisor_events;
 #[cfg(feature = "mcp")]
 pub mod tools;
 
@@ -417,6 +422,13 @@ pub mod supervisor {
 
         let start = tokio::time::Instant::now() + config.tick_interval;
         let mut interval = tokio::time::interval_at(start, config.tick_interval);
+        // A tick walks every open workspace's installs in sequence and each
+        // probe can take the whole probe window, so a tick can outlast its
+        // own interval. The default behaviour would then fire the missed
+        // ticks back to back, re-probing servers that were just probed. Pace
+        // from when the cycle finished instead — `tinymcp::Supervisor::run`
+        // does the same, and this loop is what stands in for it.
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         tracing::info!(
             tick_seconds = config.tick_interval.as_secs(),
@@ -436,7 +448,7 @@ pub mod supervisor {
                     .entry(workspace)
                     .or_insert_with(|| tinymcp::Supervisor::new(config.clone(), identity, proxy));
 
-                supervisor
+                let report = supervisor
                     .tick(
                         service.dynamic().store(),
                         service.dynamic().connections(),
@@ -444,6 +456,10 @@ pub mod supervisor {
                         now,
                     )
                     .await;
+                // What the tick observed becomes this domain's events, so a
+                // probe outcome reaches the Event Log and a server that stays
+                // down reaches the user (#5931).
+                super::supervisor_events::publish(&report);
             }
         }
     }

@@ -171,3 +171,110 @@ fn notification_triaged_unrouted_escalate_is_silent() {
     };
     assert!(event_to_notification(&ev).is_none());
 }
+
+// ── MCP reconnect supervisor (#5931) ────────────────────────────────────────
+
+#[test]
+fn mcp_first_failed_reconnect_tells_the_user_tools_are_unavailable() {
+    let ev = DomainEvent::McpServerReconnectFailed {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        error: "mcp transport failure for `https://api.inference.sh`: connection reset".into(),
+        failures: 1,
+        retry_in_secs: 5,
+    };
+    let n = event_to_notification(&ev).expect("the first failure of an episode notifies");
+    assert_eq!(n.category, CoreNotificationCategory::System);
+    assert_eq!(n.title, "MCP server unavailable");
+    assert!(n.body.contains("ac.inference.sh/mcp"), "{}", n.body);
+    assert!(n.body.contains("retrying in 5s"), "{}", n.body);
+    assert!(n.body.contains("connection reset"), "{}", n.body);
+    assert_eq!(n.deep_link.as_deref(), Some("/connections?tab=mcp"));
+    assert!(n.id.starts_with("mcp-unavailable:srv-1:"));
+}
+
+#[test]
+fn mcp_later_failed_reconnects_stay_quiet() {
+    // The backoff retries every few minutes for as long as the server is
+    // down; the user heard about it once, on the first failure.
+    let ev = DomainEvent::McpServerReconnectFailed {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        error: "connection refused".into(),
+        failures: 2,
+        retry_in_secs: 10,
+    };
+    assert!(event_to_notification(&ev).is_none());
+}
+
+#[test]
+fn mcp_recovery_after_failures_is_announced() {
+    let ev = DomainEvent::McpServerReconnected {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        tool_count: 25,
+        after_failures: 2,
+    };
+    let n = event_to_notification(&ev).expect("a server that had stayed down coming back notifies");
+    assert_eq!(n.category, CoreNotificationCategory::System);
+    assert_eq!(n.title, "MCP server reconnected");
+    assert!(n.body.contains("25 tools"), "{}", n.body);
+    assert!(n.body.contains("2 failed attempt"), "{}", n.body);
+    assert_eq!(n.deep_link.as_deref(), Some("/connections?tab=mcp"));
+    assert!(n.id.starts_with("mcp-restored:srv-1:"));
+}
+
+#[test]
+fn mcp_rebuild_within_the_same_tick_is_not_a_notification() {
+    // The common field case: one request failed, the session was rebuilt a
+    // second later, nobody noticed. Event Log only.
+    let ev = DomainEvent::McpServerReconnected {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        tool_count: 25,
+        after_failures: 0,
+    };
+    assert!(event_to_notification(&ev).is_none());
+}
+
+#[test]
+fn mcp_parked_server_tells_the_user_how_to_recover() {
+    let ev = DomainEvent::McpServerParked {
+        server_id: "srv-1".into(),
+        qualified_name: "@modelcontextprotocol/server-github".into(),
+        error: "the `uvx` launcher is not installed".into(),
+    };
+    let n = event_to_notification(&ev).expect("a parked server notifies");
+    assert_eq!(n.category, CoreNotificationCategory::System);
+    assert_eq!(n.title, "MCP server can't start");
+    assert!(
+        n.body.contains("@modelcontextprotocol/server-github"),
+        "{}",
+        n.body
+    );
+    assert!(n.body.contains("uvx"), "{}", n.body);
+    assert!(n.body.contains("disable and re-enable"), "{}", n.body);
+    assert_eq!(n.deep_link.as_deref(), Some("/connections?tab=mcp"));
+    assert!(n.id.starts_with("mcp-parked:srv-1:"));
+}
+
+#[test]
+fn mcp_probe_timeouts_and_transport_drops_are_event_log_only() {
+    let timed_out = DomainEvent::McpServerProbeTimedOut {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        probe_timeout_secs: 8,
+        consecutive_timeouts: 1,
+        teardown_after: 3,
+    };
+    let dropped = DomainEvent::McpServerTransportDropped {
+        server_id: "srv-1".into(),
+        qualified_name: "ac.inference.sh/mcp".into(),
+        outcome: "broken".into(),
+        detail: Some("connection reset".into()),
+        elapsed_ms: Some(1961),
+        consecutive_timeouts: 0,
+    };
+    assert!(event_to_notification(&timed_out).is_none());
+    assert!(event_to_notification(&dropped).is_none());
+}
