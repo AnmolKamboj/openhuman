@@ -105,3 +105,60 @@ fn subagent_failure_envelope_forbids_fabricated_success() {
         "preserves the root error: {msg}"
     );
 }
+
+/// An unpersisted pause on the **synchronous** delegation path is reported as a
+/// failure, not as an awaiting-user envelope (#5951 review, Codex P2).
+///
+/// The distinction is not cosmetic. `awaiting_user_envelope`'s "resuming may
+/// fail" caveat is calibrated for the async path, where a child that lost its
+/// checkpoint is still reachable through the durable `subagent_sessions` store.
+/// Synchronous dispatch returns before any durable session is registered and
+/// carries no worker thread, so `checkpoint: None` there means there is no
+/// resume route at all. A success envelope would have the orchestrator ask the
+/// user a question whose answer is discarded.
+#[test]
+fn an_unpersisted_synchronous_pause_is_a_failure_not_an_awaiting_user_envelope() {
+    use crate::openhuman::agent::harness::subagent_runner::{
+        SubagentMode, SubagentRunOutcome, SubagentRunStatus, SubagentUsage,
+    };
+    use std::time::Duration;
+
+    let question = "Which region should I deploy to?".to_string();
+    let outcome = SubagentRunOutcome {
+        task_id: "sub-lost1".to_string(),
+        agent_id: "mcp_setup".to_string(),
+        output: String::new(),
+        iterations: 1,
+        elapsed: Duration::from_secs(0),
+        mode: SubagentMode::Typed,
+        status: SubagentRunStatus::AwaitingUser {
+            question: question.clone(),
+            options: None,
+            checkpoint: None,
+        },
+        final_history: Vec::new(),
+        usage: SubagentUsage::default(),
+        artifact_paths: Vec::new(),
+    };
+
+    let res = awaiting_outcome_to_tool_result(&outcome, &question, false);
+    let out = res.output();
+
+    assert!(
+        res.is_error,
+        "an unresumable pause must not be reported as success: {out}"
+    );
+    assert!(
+        !out.contains("[SUBAGENT_AWAITING_USER]"),
+        "no awaiting-user envelope: the orchestrator must not be told to relay \
+         a question it cannot act on: {out}"
+    );
+    assert!(
+        out.contains(&question),
+        "the question is still surfaced so the user learns what was asked: {out}"
+    );
+    assert!(
+        out.contains("do NOT call continue_subagent"),
+        "the orchestrator must be told the resume handle is dead: {out}"
+    );
+}

@@ -412,11 +412,33 @@ pub(crate) async fn dispatch_subagent(
 /// side-effect-free fn so the paused-path mapping is unit-testable without a
 /// registry or a real model — the #4291 regression guard. Synchronous delegate
 /// dispatch has no worker sub-thread, so `worker_thread_id` is always `None`.
+///
+/// **An unpersisted pause is a failure on this path, not a caveat.** The
+/// envelope's "resuming may fail" wording is calibrated for the async path,
+/// where a child that lost its checkpoint is still reachable through the
+/// durable `subagent_sessions` store. This function serves the *synchronous*
+/// delegation, which returns above before any durable session is registered
+/// and has no worker thread by construction — so with no checkpoint there is
+/// no resume route at all, and `continue_subagent` will find neither. Handing
+/// back a success envelope would have the orchestrator put a question to the
+/// user whose answer has nowhere to go, and the loss would only surface after
+/// they answered. Report it as a failure instead, while the parent can still
+/// act on it.
 fn awaiting_outcome_to_tool_result(
     outcome: &crate::openhuman::agent::harness::subagent_runner::SubagentRunOutcome,
     question: &str,
     checkpointed: bool,
 ) -> ToolResult {
+    if !checkpointed {
+        return ToolResult::error(format!(
+            "The sub-agent `{}` paused to ask a question, but its state could not be saved \
+             and this delegation has no durable session to fall back on, so it cannot be \
+             resumed. Its progress is lost. Tell the user what it was asking — \"{}\" — and \
+             that the delegation has to be started again; do NOT call continue_subagent \
+             with task_id `{}`, there is nothing for it to resume.",
+            outcome.agent_id, question, outcome.task_id
+        ));
+    }
     ToolResult::success(super::awaiting_user::awaiting_user_envelope(
         &outcome.task_id,
         &outcome.agent_id,
