@@ -9,7 +9,7 @@
 //! still resolves `GitOperationsTool` the way it did before the split, and so
 //! the fixtures in the sibling test module stay reachable.
 
-use super::super::git_operations_config::{normalise_config_key, NEUTRALISED_CONFIG};
+use super::super::git_operations_config::normalise_config_key;
 // The fixtures stay in `git_operations_tests.rs` and are shared rather than
 // duplicated: both modules are children of `git_operations`, so `pub(super)`
 // there makes them reachable here.
@@ -464,148 +464,80 @@ fn a_subsection_is_elided_so_one_entry_covers_every_remote() {
     assert_eq!(normalise_config_key("bare"), "bare");
 }
 
-// ── `diff.external` (#5979) ─────────────────────────────────────────────────
+// ── External diff suppression ─────────────────────────────────────────────
 
-/// The regression that started it: a perfectly ordinary repository, with no
-/// config of its own, must be able to produce a diff.
+/// An ordinary repository's `diff` must produce its patch.
 ///
-/// `NEUTRALISED_CONFIG` used to carry `diff.external=`, and an empty value
-/// does not disable an external diff driver — git executes the empty string —
-/// so every `diff` this tool ran died with `cannot run : No such file or
-/// directory`. The hardening layer was an outage wearing hardening's clothes.
+/// That reads like it could not possibly regress, and it did. Suppression of
+/// an external diff was attempted with `-c diff.external=` in
+/// `NEUTRALISED_CONFIG`, and an empty value does not disable one — git tries
+/// to *execute* the empty string, so **every** diff died with
+/// `error: cannot run : No such file or directory` /
+/// `fatal: external diff died`, on every repository, hostile or not. The
+/// hardening removed the operation instead of hardening it. `--no-ext-diff`
+/// on the diff command is the real suppression.
+///
+/// This lives in the lib suite deliberately. The integration test that caught
+/// it sits in `raw_coverage_all`, and a change to `git_operations.rs` maps to
+/// the `openhuman::tools` libtest filter — which never selects that target. So
+/// the lane the change picks did not run the test covering the change, and the
+/// breakage sat until an unrelated PR happened to select the other filter.
+/// A test here runs whenever this file is touched.
+///
+/// A repository that *sets* `diff.external` is a separate matter and is
+/// already refused before reaching the invocation: the key is on neither
+/// allowlist, so `first_disallowed_repo_config_key` rejects the repository
+/// outright. `--no-ext-diff` is the second layer, covering the gap between
+/// that inspection and the command.
 #[tokio::test]
 async fn an_ordinary_repository_still_produces_a_diff() {
     let tmp = TempDir::new().unwrap();
     init_git_repo(tmp.path());
-    std::fs::write(tmp.path().join("tracked.txt"), "first\n").unwrap();
-    commit_all(tmp.path(), "init");
-    std::fs::write(tmp.path().join("tracked.txt"), "first\nsecond\n").unwrap();
+
+    // A committer identity has to be set in the repository itself. `hermetic`
+    // closes the global and system config, which is the point of it — so on a
+    // CI container with no identity of its own `git commit` fails with
+    // "Author identity unknown". Both keys are on `ALLOWED_REPO_CONFIG`, so
+    // setting them does not trip the repository-config refusal.
+    set_config(tmp.path(), "user.email", "test@example.invalid");
+    set_config(tmp.path(), "user.name", "Test");
+
+    let tracked = tmp.path().join("tracked.txt");
+    std::fs::write(&tracked, "first\n").unwrap();
+    // `hermetic` closes the ambient git config the way the fixtures do —
+    // without it a developer's global `commit.gpgsign` or hooks path can fail
+    // this commit for reasons unrelated to the test.
+    // Slices, not arrays: `["add", "tracked.txt"]` and `["commit", "-m", "one"]`
+    // are `[&str; 2]` and `[&str; 3]`, which are different types and cannot
+    // share an array literal.
+    for args in [&["add", "tracked.txt"][..], &["commit", "-m", "one"][..]] {
+        let ok = hermetic(
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(tmp.path()),
+        )
+        .status()
+        .unwrap()
+        .success();
+        assert!(ok, "failed to run `git {}` in the test workspace", args[0]);
+    }
+    std::fs::write(&tracked, "first\nsecond\n").unwrap();
 
     let tool = test_tool(tmp.path());
     let result = tool
         .execute(json!({"operation": "diff", "files": "tracked.txt"}))
         .await
-        .expect("diff should run");
+        .expect("a diff on a plain repository must not error out");
 
-    assert!(
-        !result.is_error,
-        "an ordinary repository's diff must succeed, got: {}",
-        result.output()
-    );
+    assert!(!result.is_error, "got: {}", result.output());
     assert!(
         result.output().contains("second"),
-        "the diff should carry the added line, got: {}",
+        "the added line must appear in the patch: {}",
         result.output()
     );
-}
-
-/// And the property the broken entry was reaching for still holds: a
-/// repository that names an external diff driver never gets it run.
-///
-/// The allowlist refuses the operation outright — `diff.external` is not on
-/// `ALLOWED_REPO_CONFIG` — which is the fail-closed guarantee. `--no-ext-diff`
-/// on the command is the second layer, for a key written into the repository
-/// in the gap between that inspection and the command itself.
-#[cfg(unix)]
-#[tokio::test]
-async fn a_repository_naming_an_external_diff_driver_never_gets_it_run() {
-    let tmp = TempDir::new().unwrap();
-    init_git_repo(tmp.path());
-    std::fs::write(tmp.path().join("tracked.txt"), "first\n").unwrap();
-    commit_all(tmp.path(), "init");
-    std::fs::write(tmp.path().join("tracked.txt"), "first\nsecond\n").unwrap();
-    let marker = plant_external_diff_driver(tmp.path());
-
-    let tool = test_tool(tmp.path());
-    let result = tool
-        .execute(json!({"operation": "diff", "files": "tracked.txt"}))
-        .await;
-    let msg = error_text(&result);
-
     assert!(
-        !marker.exists(),
-        "`git diff` executed the command named by the repository's own \
-         config — this tool is a code-execution primitive"
+        !result.output().contains("external diff died"),
+        "git must not be handed an empty `diff.external` to execute: {}",
+        result.output()
     );
-    assert!(
-        msg.contains("diff.external"),
-        "the refusal should name the key that caused it, got: {msg}"
-    );
-}
-
-/// `diff.external` must never be re-added to `NEUTRALISED_CONFIG`: there is no
-/// `-c` value for it that means "none", so any entry there breaks every diff.
-#[test]
-fn diff_external_is_not_neutralised_by_a_config_override() {
-    assert!(
-        !NEUTRALISED_CONFIG
-            .iter()
-            .any(|kv| kv.starts_with("diff.external")),
-        "`diff.external` cannot be neutralised with `-c`; use `--no-ext-diff` \
-         on the command instead (#5979)"
-    );
-}
-
-/// Plant an executable external diff driver in the repository's own config,
-/// after first proving the script runs at all — so a passing test means the
-/// tool refused it, not that the fixture was inert.
-#[cfg(unix)]
-fn plant_external_diff_driver(dir: &std::path::Path) -> std::path::PathBuf {
-    let driver = dir.join("extdiff.sh");
-    let marker = dir.join("EXTERNAL_DIFF_RAN");
-    std::fs::write(
-        &driver,
-        format!("#!/bin/sh\ntouch {:?}\nexit 0\n", marker.to_string_lossy()),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&driver, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-    std::process::Command::new(&driver).status().unwrap();
-    assert!(marker.exists(), "the planted driver does not run at all");
-    std::fs::remove_file(&marker).unwrap();
-
-    let ok = hermetic(
-        std::process::Command::new("git")
-            .args(["config", "diff.external"])
-            .arg(&driver)
-            .current_dir(dir),
-    )
-    .status()
-    .unwrap();
-    assert!(ok.success(), "could not set diff.external");
-
-    marker
-}
-
-/// Stage everything and commit, hermetically — the surrounding tests need a
-/// commit to diff against.
-fn commit_all(dir: &std::path::Path, message: &str) {
-    let ok = hermetic(
-        std::process::Command::new("git")
-            .args(["add", "-A"])
-            .current_dir(dir),
-    )
-    .status()
-    .unwrap();
-    assert!(ok.success(), "git add failed");
-
-    let ok = hermetic(
-        std::process::Command::new("git")
-            .args([
-                "-c",
-                "user.email=test@example.com",
-                "-c",
-                "user.name=test",
-                "-c",
-                "commit.gpgsign=false",
-                "commit",
-                "-m",
-                message,
-            ])
-            .current_dir(dir),
-    )
-    .status()
-    .unwrap();
-    assert!(ok.success(), "git commit failed");
 }

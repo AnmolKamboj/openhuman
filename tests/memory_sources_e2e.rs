@@ -861,3 +861,196 @@ async fn memory_sources_composio_registry_flow() {
 
     rpc_join.abort();
 }
+
+// ─── Relative folder-source paths (openhuman#5830, vendored via PR #5838) ────
+//
+// `FolderReader` was the only reader in `tinymemory-sources` that ignored the
+// workspace it is handed: `PathBuf::from(base_path)` used the configured string
+// verbatim, so a RELATIVE path resolved against the host process's current
+// working directory. For the desktop app that is the Tauri build directory, so
+// a source configured as `docs` looked in `…/app/src-tauri/docs`, found
+// nothing, and failed on every sync cycle forever.
+//
+// `resolve_base` now anchors a relative path on the workspace (absolute paths
+// are still taken verbatim, so every source configured before the fix resolves
+// exactly where it did). The reader is linked into the host as
+// `tinymemory_sources::readers::folder`, so this is reachable over the real
+// `memory_sources_*` RPC surface.
+//
+// The pre-existing `memory_sources_crud_and_folder_read_flow` above passes an
+// ABSOLUTE path, which is the branch the fix deliberately left alone — it
+// cannot catch this.
+
+/// A folder source configured with a RELATIVE path resolves against the
+/// workspace, not the process CWD.
+#[tokio::test]
+async fn memory_sources_folder_relative_path_resolves_against_the_workspace() {
+    let _guard = env_lock();
+    let home = test_home();
+    let openhuman_home = home.join(".openhuman");
+
+    // An explicit workspace makes "the workspace, not the CWD" a decidable
+    // claim: the files exist only under this directory, and the test process's
+    // CWD (the crate root) has no `relative-notes` at all.
+    let workspace = home.join("relative-workspace");
+    std::fs::create_dir_all(&workspace).expect("mkdir workspace");
+
+    let _home = EnvVarGuard::set_to_path("HOME", home);
+    let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    let _backend = EnvVarGuard::unset("BACKEND_URL");
+    let _vite = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    write_config(&openhuman_home);
+
+    let notes_dir = workspace.join("relative-notes");
+    std::fs::create_dir_all(&notes_dir).expect("mkdir relative notes");
+    std::fs::write(
+        notes_dir.join("brief.md"),
+        "# Relative Brief\n\nAnchored on the workspace, not the process CWD.",
+    )
+    .expect("write brief.md");
+
+    let (rpc_base, rpc_join) = serve().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Note the path: relative, exactly as openhuman#5830 was configured.
+    let add = rpc(
+        &rpc_base,
+        900,
+        "openhuman.memory_sources_add",
+        json!({
+            "kind": "folder",
+            "label": "Relative Notes",
+            "path": "relative-notes",
+            "glob": "**/*.md",
+        }),
+    )
+    .await;
+    let add_result = ok(&add, "add relative folder source");
+    let source_id = add_result
+        .get("source")
+        .and_then(|s| s.get("id"))
+        .and_then(Value::as_str)
+        .expect("source id")
+        .to_string();
+
+    // THE assertion. Before the fix the reader looked under the CWD, found no
+    // `relative-notes`, and this call returned a "folder does not exist" error
+    // rather than an items array.
+    let items_resp = rpc(
+        &rpc_base,
+        901,
+        "openhuman.memory_sources_list_items",
+        json!({ "source_id": source_id }),
+    )
+    .await;
+    let items_result = ok(&items_resp, "list_items for a relative folder source");
+    let items = items_result
+        .get("items")
+        .and_then(Value::as_array)
+        .expect("items array");
+    let item_ids: Vec<&str> = items
+        .iter()
+        .filter_map(|i| i.get("id").and_then(Value::as_str))
+        .collect();
+    assert!(
+        item_ids.contains(&"brief.md"),
+        "a relative folder path must resolve against the workspace; got {item_ids:?}"
+    );
+
+    // And the content actually reads back through the same resolution.
+    let read = rpc(
+        &rpc_base,
+        902,
+        "openhuman.memory_sources_read_item",
+        json!({ "source_id": source_id, "item_id": "brief.md" }),
+    )
+    .await;
+    let read_result = ok(&read, "read_item for a relative folder source");
+    let body = read_result
+        .get("content")
+        .and_then(|c| c.get("body"))
+        .and_then(Value::as_str)
+        .expect("body");
+    assert!(
+        body.contains("Anchored on the workspace"),
+        "the resolved file must be the workspace one; got {body:?}"
+    );
+
+    rpc_join.abort();
+}
+
+/// A missing relative folder names **where the reader looked**, not just what
+/// it was configured with — the second half of the fix. Reporting `docs` alone
+/// is what made openhuman#5830 cost an `lsof` of the running process to
+/// diagnose.
+#[tokio::test]
+async fn memory_sources_missing_relative_folder_reports_the_resolved_path() {
+    let _guard = env_lock();
+    let home = test_home();
+    let openhuman_home = home.join(".openhuman");
+
+    let workspace = home.join("missing-folder-workspace");
+    std::fs::create_dir_all(&workspace).expect("mkdir workspace");
+
+    let _home = EnvVarGuard::set_to_path("HOME", home);
+    let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    let _backend = EnvVarGuard::unset("BACKEND_URL");
+    let _vite = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    write_config(&openhuman_home);
+
+    let (rpc_base, rpc_join) = serve().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let add = rpc(
+        &rpc_base,
+        910,
+        "openhuman.memory_sources_add",
+        json!({
+            "kind": "folder",
+            "label": "Absent",
+            "path": "no-such-folder",
+            "glob": "**/*.md",
+        }),
+    )
+    .await;
+    let source_id = ok(&add, "add absent folder source")
+        .get("source")
+        .and_then(|s| s.get("id"))
+        .and_then(Value::as_str)
+        .expect("source id")
+        .to_string();
+
+    let items_resp = rpc(
+        &rpc_base,
+        911,
+        "openhuman.memory_sources_list_items",
+        json!({ "source_id": source_id }),
+    )
+    .await;
+
+    // The whole response is searched rather than a specific error field: the
+    // point is that the resolved root reaches the caller at all.
+    let serialized = items_resp.to_string();
+    assert!(
+        serialized.contains("no-such-folder"),
+        "the error must still name the configured path; got {items_resp}"
+    );
+    // The concrete resolved root, not just the phrase "resolved to". A reader
+    // that still joined on the process CWD, or that emitted something generic
+    // like "resolved to an unavailable location", would satisfy a phrase-only
+    // check while keeping the exact diagnostic gap this test exists to close.
+    let expected_resolved = workspace.join("no-such-folder");
+    let expected_resolved = expected_resolved.to_string_lossy();
+    assert!(
+        serialized.contains("resolved to"),
+        "a relative path's error must name where the reader looked; got {items_resp}"
+    );
+    assert!(
+        serialized.contains(expected_resolved.as_ref()),
+        "the resolved root must be the workspace one ({expected_resolved}); got {items_resp}"
+    );
+
+    rpc_join.abort();
+}

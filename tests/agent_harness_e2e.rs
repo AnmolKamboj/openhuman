@@ -176,6 +176,35 @@ fn error_completion(status: u16, message: &str) -> Value {
 // wait expires and never sets [`CANARY_OVERLAP`].
 
 /// Canary substrings whose worker requests must overlap. Empty = disarmed.
+/// Milliseconds every scripted upstream reply is held before it is served, or
+/// `0` for "answer immediately". Armed by the per-model-call ceiling test
+/// (#5766/#5767): the ceiling can only be observed against a call that is still
+/// in flight when the ceiling elapses, and it must apply to *every* attempt —
+/// a queue entry would stall only the first, and the retry would be answered
+/// instantly by the default completion, hiding the timeout.
+static SCRIPTED_STALL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Arms the stall and disarms it on drop.
+///
+/// The guard exists because the atomic is process-global and the env lock is
+/// deliberately recovered from poisoning: if a test panicked between arming and
+/// a bare `disarm`, every later test sharing this scripted handler would inherit
+/// a 25s delay on every completion, turning one failure into a cascade of
+/// unrelated timeouts.
+struct ScriptedStallGuard;
+
+impl Drop for ScriptedStallGuard {
+    fn drop(&mut self) {
+        SCRIPTED_STALL_MS.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[must_use = "the stall is disarmed when the guard drops; binding it to `_` disarms it immediately"]
+fn arm_scripted_stall(ms: u64) -> ScriptedStallGuard {
+    SCRIPTED_STALL_MS.store(ms, std::sync::atomic::Ordering::SeqCst);
+    ScriptedStallGuard
+}
+
 static CANARY_BARRIER: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 /// Worker requests currently parked at the barrier.
 static CANARY_IN_FLIGHT: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
@@ -274,6 +303,13 @@ async fn scripted_chat_completions(
             "body": body.clone(),
         }))
     });
+
+    // Hold every reply while the stall is armed, so a model call is still
+    // in flight when a per-call ceiling elapses (#5766/#5767).
+    let stall_ms = SCRIPTED_STALL_MS.load(std::sync::atomic::Ordering::SeqCst);
+    if stall_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(stall_ms)).await;
+    }
 
     // Park an armed fan-out worker before it is answered, so a peer has a
     // chance to arrive. Before the queue pop, not after: holding the popped
@@ -3040,4 +3076,114 @@ async fn provider_sse_tool_args_accumulation() {
     );
 
     server.abort();
+}
+
+// ─── Per-model-call wall-clock ceiling (#5766 / PR #5767) ────────────────────
+//
+// Before #5767 a model call was bounded only by the *turn's remaining* wall
+// clock, so hang detection rode the turn deadline: a turn that had legitimately
+// spent most of its budget across many successful calls handed the next call
+// whatever was left and died. #5767 demoted the turn deadline to a runaway
+// guard (600s → 3600s) and introduced a per-call ceiling
+// (`RunLimits::max_model_call_ms`, default 900s,
+// `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS`, `0` disables) that is recomputed afresh
+// for every call and every retry attempt.
+//
+// The harness names which bound fired in the timeout message
+// (`tinyagents-harness/src/agent_loop/model_call.rs:11,17` —
+// "per-model-call ceiling" vs "remaining wall-clock budget") precisely so field
+// triage can tell "this one call wedged" from "the run is out of time". That
+// label is what this test asserts on: it is the only externally visible signal
+// that distinguishes the two ceilings, so asserting merely "the turn failed"
+// would pass with the fix reverted.
+
+/// A wedged model call is cut off by the PER-CALL ceiling, not by the turn
+/// deadline: with a 2s per-call ceiling under a 600s turn deadline, an upstream
+/// that never answers in time must terminate the turn in seconds, and the
+/// terminal event must name the per-call bound.
+#[test]
+fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline() {
+    run_on_agent_stack(
+        "model_call_ceiling",
+        model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner,
+    );
+}
+
+async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner() {
+    let _lock = env_lock();
+
+    // Per-call ceiling far tighter than the turn deadline, so whichever bound
+    // fires is unambiguous. Both are read per turn by `run_policy_for`.
+    let _per_call = EnvVarGuard::set("OPENHUMAN_MODEL_CALL_TIMEOUT_SECS", "2");
+    let _turn = EnvVarGuard::set("OPENHUMAN_AGENT_TURN_TIMEOUT_SECS", "600");
+
+    // Every upstream reply is held for 25s — comfortably past the 2s per-call
+    // ceiling and comfortably short of the 600s turn deadline. Armed globally
+    // so retry attempts stall too.
+    let _stall = arm_scripted_stall(25_000);
+    reset_script(vec![text_completion(
+        "this reply is never delivered in time",
+    )]);
+    let stack = boot_stack().await;
+
+    let mut events = spawn_sse_collector(format!(
+        "{}/events?client_id=harness-call-ceiling",
+        stack.rpc_base
+    ));
+    let started = std::time::Instant::now();
+    send_web_chat(
+        &stack.rpc_base,
+        910,
+        "harness-call-ceiling",
+        "thread-call-ceiling",
+        "stall please",
+    )
+    .await;
+
+    // 120s is a generous outer bound: the point is that the turn ends long
+    // before its own 600s deadline, and this wait would itself expire if the
+    // per-call ceiling were not in force.
+    // 120s is a generous outer bound: the point is that the turn ends long
+    // before its own 600s deadline, and this wait would itself expire if the
+    // per-call ceiling were not in force.
+    let terminal = wait_for_terminal(&mut events, Duration::from_secs(120)).await;
+    let elapsed = started.elapsed();
+
+    // The turn is stopped rather than completing.
+    assert_eq!(
+        terminal.get("event").and_then(Value::as_str),
+        Some("chat_error"),
+        "a wedged model call must terminate the turn; got: {terminal}"
+    );
+    assert_eq!(
+        terminal.get("error_type").and_then(Value::as_str),
+        Some("turn_timeout"),
+        "the stop must be a timeout, not some other failure; got: {terminal}"
+    );
+
+    // THE assertion, and the one that distinguishes the two ceilings. The
+    // upstream holds every reply for 25s. Bounded only by the turn's remainder
+    // — the pre-#5767 behaviour — that stall completes well inside the 600s
+    // budget and the turn SUCCEEDS. Only a per-call ceiling can stop it at ~2s.
+    // Measured: 2.4s with the ceiling wired, 25.5s with it reverted.
+    // 8s, not a looser bound: the ceiling under test is 2s, so anything up to
+    // ~4x it still fails while leaving room for boot and SSE delivery. A 15s
+    // bound would also admit an implementation that ignored
+    // `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS` and used a fixed 10s ceiling.
+    assert!(
+        elapsed < Duration::from_secs(8),
+        "the turn must be cut off by the 2s per-call ceiling, not by the 25s \
+         upstream stall completing under the 600s turn deadline; took {elapsed:?}"
+    );
+
+    // Deliberately NOT asserted: that the event names *which* ceiling fired.
+    // The harness distinguishes them internally ("per-model-call ceiling" vs
+    // "remaining wall-clock budget", `model_call.rs:11,17`) precisely so field
+    // triage can tell "this one call wedged" from "the run is out of time", but
+    // the host collapses both into `turn_timeout` with a message that says the
+    // turn "ran past its time budget" and blames a stalled tool or sub-agent.
+    // Here the turn had 598 of its 600 seconds left and no tool ran at all.
+    // Pinning that text would pin a misattribution — see W5-test-findings.md.
+
+    stack.shutdown();
 }

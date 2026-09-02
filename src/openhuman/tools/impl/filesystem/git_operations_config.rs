@@ -120,31 +120,19 @@ pub(super) const ALLOWED_REPO_CONFIG: &[&str] = &[
 ///
 /// `core.hooksPath` and `commit.gpgSign` are handled separately, in
 /// [`hardened_git`] — see there for why.
-///
-/// `diff.external` is deliberately **absent** from this list, and must stay
-/// absent. It is command-valued like the rest, but unlike the rest there is no
-/// `-c` value that means "none": an empty value does not disable the driver,
-/// it makes git execute the empty string, so `-c diff.external=` turns every
-/// diff into
-///
-/// ```text
-/// error: cannot run : No such file or directory
-/// fatal: external diff died, stopping at <file>
-/// ```
-///
-/// — which is not hardening, it is an outage that merely looks like one
-/// (#5979). The supported way to refuse an external diff driver is the
-/// `--no-ext-diff` flag, which [`super::git_operations`] passes on the one
-/// operation that can run one; verified directly, against a repository whose
-/// `diff.external` names a script that touches a marker file: without the flag
-/// the marker appears, with it the diff is correct and the marker does not.
-/// The env half of the same hole is closed by
-/// [`suppress_ambient_git_config`]'s `GIT_EXTERNAL_DIFF` removal.
 pub(super) const NEUTRALISED_CONFIG: &[&str] = &[
     "core.fsmonitor=",
     "core.sshCommand=",
     "core.pager=cat",
     "core.editor=false",
+    // NOT `diff.external=`. An empty value does not disable an external diff —
+    // git tries to *execute* the empty string and the whole command dies with
+    // `error: cannot run : No such file or directory` / `fatal: external diff
+    // died`, so every `diff` operation failed rather than being hardened.
+    // Suppression belongs on the command instead: `git diff --no-ext-diff`,
+    // which ignores `diff.external` however the repository set it. Verified
+    // both ways against a repo with `diff.external=/bin/false`: plain `diff`
+    // dies, `--no-ext-diff` prints the patch.
     "sequence.editor=false",
     "uploadpack.packObjectsHook=",
 ];
