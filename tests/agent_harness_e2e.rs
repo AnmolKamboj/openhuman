@@ -3392,7 +3392,11 @@ mod tool_policy_boundary_placement {
     fn the_tool_policy_boundary_is_the_last_block_in_the_prompt() {
         let prompt = restricted_prompt();
         let trimmed = prompt.trim_end();
-        let tail: String = trimmed.chars().rev().take(220).collect::<Vec<_>>()
+        let tail: String = trimmed
+            .chars()
+            .rev()
+            .take(220)
+            .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
