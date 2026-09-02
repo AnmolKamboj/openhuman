@@ -705,3 +705,277 @@ fn subagent_prompt_renderer_handles_formats_caps_and_stale_tool_indices() -> Res
     assert!(native_prompt.contains("native tool-calling output"));
     Ok(())
 }
+
+// ── Turn dispatch guard (#5810) ────────────────────────────────────────────────
+//
+// `run_subagent` consults `turn_dispatch_guard::check()` as its first statement
+// and refuses two ways: a graceful pause already requested at the model-call
+// cap, and less wall-clock remaining than this turn's slowest completed child.
+//
+// Both cases below install a REAL guard around the call — the gate is a no-op
+// outside a turn scope, so a test that skips `with_dispatch_guard` exercises
+// nothing. Each asserts on the refusal AND on the provider request count: the
+// refusal is meant to cost nothing, so a gate that let the dispatch reach the
+// model before erroring would still be a defect. Each also drives an ALLOWED
+// dispatch through the same guard first, so a gate that refused unconditionally
+// could not pass either test.
+
+#[tokio::test]
+async fn dispatch_is_refused_once_the_turn_has_requested_a_cap_pause() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let provider = ScriptedModel::new(vec![text_response("first child answer")]);
+    let provider_handle = provider.clone();
+    let parent = parent_context(tmp.path().to_path_buf(), provider);
+
+    let outcome = with_parent_context(parent, async {
+        // No ceiling, so the budget gate can never fire here and the only thing
+        // under test is the pause.
+        openhuman_core::openhuman::agent::harness::turn_dispatch_guard::with_dispatch_guard(
+            None,
+            async {
+                // Control: inside the guard, with nothing recorded, a dispatch
+                // must still go through. Without this a gate that refused every
+                // call would satisfy the assertion below.
+                let allowed = run_subagent(
+                    &definition(None),
+                    "before the cap",
+                    SubagentRunOptions::default(),
+                )
+                .await;
+
+                let state =
+                    openhuman_core::openhuman::agent::harness::turn_dispatch_guard::current()
+                        .expect("the guard is installed for this turn");
+                state.record_pause_requested(15, 15);
+
+                let refused = run_subagent(
+                    &definition(None),
+                    "after the cap",
+                    SubagentRunOptions {
+                        task_id: Some("post-pause-dispatch".to_string()),
+                        ..SubagentRunOptions::default()
+                    },
+                )
+                .await;
+
+                (allowed, refused)
+            },
+        )
+        .await
+    })
+    .await;
+
+    let (allowed, refused) = outcome;
+    assert_eq!(
+        allowed.expect("a dispatch before the pause must be allowed").output,
+        "first child answer",
+        "the guard must not refuse before a pause is recorded"
+    );
+
+    match refused {
+        Err(openhuman_core::openhuman::agent::harness::SubagentRunError::PauseRequested {
+            completed_model_calls,
+            cap,
+        }) => {
+            assert_eq!(completed_model_calls, 15);
+            assert_eq!(cap, 15);
+        }
+        other => panic!(
+            "a dispatch after the cap pause must be refused with PauseRequested, got: {other:?}"
+        ),
+    }
+
+    // The refusal is pre-dispatch: only the first (allowed) child may have
+    // reached the provider. A second request means the gate ran too late to
+    // stop the work it exists to stop.
+    assert_eq!(
+        provider_handle.requests().len(),
+        1,
+        "the refused dispatch must not reach the provider at all"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn dispatch_is_refused_when_less_budget_remains_than_the_slowest_child() -> Result<()> {
+    let tmp = TempDir::new()?;
+    let provider = ScriptedModel::new(vec![text_response("fast child answer")]);
+    let provider_handle = provider.clone();
+    let parent = parent_context(tmp.path().to_path_buf(), provider);
+
+    let outcome = with_parent_context(parent, async {
+        // A generous ceiling, so `remaining` stays far above the sample the
+        // control records and only the deliberate one below can trip the gate.
+        openhuman_core::openhuman::agent::harness::turn_dispatch_guard::with_dispatch_guard(
+            Some(std::time::Duration::from_secs(3600)),
+            async {
+                // Control: a budget of an hour against a one-millisecond
+                // observed maximum must still allow a dispatch.
+                openhuman_core::openhuman::agent::harness::turn_dispatch_guard::record_subagent_elapsed(
+                    std::time::Duration::from_millis(1),
+                );
+                let allowed = run_subagent(
+                    &definition(None),
+                    "while budget remains",
+                    SubagentRunOptions::default(),
+                )
+                .await;
+
+                // Now fold in a child that took far longer than the whole
+                // ceiling. `remaining` is at most an hour; the observed maximum
+                // is a hundred, so the refusal is a fact rather than a race.
+                openhuman_core::openhuman::agent::harness::turn_dispatch_guard::record_subagent_elapsed(
+                    std::time::Duration::from_secs(360_000),
+                );
+                let refused = run_subagent(
+                    &definition(None),
+                    "after the budget is gone",
+                    SubagentRunOptions {
+                        task_id: Some("over-budget-dispatch".to_string()),
+                        ..SubagentRunOptions::default()
+                    },
+                )
+                .await;
+
+                (allowed, refused)
+            },
+        )
+        .await
+    })
+    .await;
+
+    let (allowed, refused) = outcome;
+    assert_eq!(
+        allowed
+            .expect("a dispatch with budget to spare must be allowed")
+            .output,
+        "fast child answer",
+        "the guard must not refuse while the remaining budget exceeds the observed maximum"
+    );
+
+    match refused {
+        Err(
+            openhuman_core::openhuman::agent::harness::SubagentRunError::DispatchBudgetExhausted {
+                remaining_ms,
+                observed_max_ms,
+                observed_samples,
+            },
+        ) => {
+            assert_eq!(
+                observed_max_ms, 360_000_000,
+                "the refusal must quote the turn's own measured maximum"
+            );
+            assert!(
+                remaining_ms < observed_max_ms,
+                "refused with {remaining_ms} ms remaining against a {observed_max_ms} ms maximum"
+            );
+            assert_eq!(
+                observed_samples, 2,
+                "both completed children must have fed the estimator"
+            );
+        }
+        other => panic!(
+            "a dispatch with less budget than the slowest child must be refused with \
+             DispatchBudgetExhausted, got: {other:?}"
+        ),
+    }
+
+    assert_eq!(
+        provider_handle.requests().len(),
+        1,
+        "the refused dispatch must not reach the provider at all"
+    );
+    Ok(())
+}
+
+// ── Orchestration registry pruning (#5852) ────────────────────────────────────
+
+/// `wait_agents` prunes a child once it observes a terminal status, so a child
+/// can be waited on exactly once (#5852).
+///
+/// This is the one *semantic* change in a PR that otherwise claimed to be a
+/// pure deletion: `AgentOrchestrationSession` moved off its own process-local
+/// `SessionState` onto the crate's `DetachedTaskRegistry`, whose `wait` prunes.
+/// The PR records it as an accepted behaviour change and `ops.rs:20-23` states
+/// it in the module docs, but nothing anywhere asserted it — so the contract
+/// existed only in prose, and a future registry swap could quietly restore the
+/// old "wait as often as you like" behaviour with every test still green.
+///
+/// Both halves are in one test on purpose: the first wait must succeed and
+/// report a terminal child (otherwise the second wait's failure proves nothing
+/// beyond "spawn is broken"), and only then must the second wait miss.
+#[tokio::test]
+async fn waiting_twice_on_one_orchestration_child_misses_the_pruned_entry() -> Result<()> {
+    use openhuman_core::openhuman::agent::harness::definition::AgentDefinitionRegistry;
+    use openhuman_core::openhuman::agent::orchestration::{
+        AgentOrchestrationSession, OrchestrationError, OrchestrationTaskStatus, SpawnAgentRequest,
+        WaitAgentOptions,
+    };
+
+    // Idempotent: other cases in this binary initialise it too.
+    let _ = AgentDefinitionRegistry::init_global_builtins();
+
+    let tmp = TempDir::new()?;
+    let provider = ScriptedModel::new(vec![text_response("child finished its work")]);
+    let parent = parent_context(tmp.path().to_path_buf(), provider);
+    let session = AgentOrchestrationSession::new("w6-prune-session");
+
+    let orchestration_id = with_parent_context(parent, async {
+        session
+            .spawn_agent(SpawnAgentRequest {
+                agent_id: "code_executor".to_string(),
+                prompt: "do one small thing".to_string(),
+                model: Some("round19-parent".to_string()),
+                ..Default::default()
+            })
+            .await
+            .map(|spawned| spawned.orchestration_id)
+    })
+    .await
+    .expect("spawning one child");
+
+    let first = session
+        .wait_agents(WaitAgentOptions {
+            orchestration_ids: vec![orchestration_id.clone()],
+            timeout_ms: Some(20_000),
+        })
+        .await
+        .expect("the first wait resolves");
+
+    assert!(first.completed, "the first wait must reach a terminal status");
+    assert_eq!(first.agents.len(), 1);
+    assert!(
+        first.agents[0].status.is_terminal(),
+        "expected a terminal child, got {:?}",
+        first.agents[0].status
+    );
+
+    // The pruning half. The entry is gone now that a terminal status has been
+    // observed, so the same id no longer resolves — `AgentNotFound`, not a
+    // second copy of the terminal snapshot.
+    match session
+        .wait_agents(WaitAgentOptions {
+            orchestration_ids: vec![orchestration_id.clone()],
+            timeout_ms: Some(1_000),
+        })
+        .await
+    {
+        Err(OrchestrationError::AgentNotFound(missing)) => {
+            assert_eq!(
+                missing, orchestration_id,
+                "the error must name the child that was pruned"
+            );
+        }
+        Ok(response) => panic!(
+            "a second wait must miss the pruned entry, but it resolved again with {:?}",
+            response
+                .agents
+                .iter()
+                .map(|agent| agent.status)
+                .collect::<Vec<OrchestrationTaskStatus>>()
+        ),
+        Err(other) => panic!("expected AgentNotFound from the pruned entry, got: {other:?}"),
+    }
+
+    Ok(())
+}

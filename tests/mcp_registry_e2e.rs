@@ -755,3 +755,120 @@ async fn per_config_lookups_see_a_per_config_connection() {
     assert!(connections::disconnect_for_config(&cfg_a, &server.server_id).await);
     assert!(!connections::is_connected_for_config(&cfg_a, &server.server_id).await);
 }
+
+// ── Probe outcomes (#5772) ────────────────────────────────────────────────────
+
+/// `probe_alive` returns a four-variant `ProbeOutcome`, and the distinction the
+/// enum exists to carry is `TimedOut` vs `Broken`: a slow server is not a failed
+/// one, and collapsing the two is what made the supervisor tear down working
+/// sessions and then report a drop that never happened (#5636).
+///
+/// `probe_alive_reflects_transport_liveness` above only ever asks `.is_alive()`,
+/// which is `false` for all three non-alive variants alike, so nothing pinned
+/// which one comes back. This does.
+#[tokio::test]
+async fn probe_alive_distinguishes_a_missing_entry_from_a_timed_out_one() {
+    let (_tmp, cfg) = fresh_workspace_config();
+    let h = host(&cfg);
+    let server = make_installed_server();
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
+
+    // Installed but never connected: there is no live entry, so there is
+    // nothing to probe.
+    assert_eq!(
+        h.dynamic()
+            .connections()
+            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+            .await,
+        tinymcp::ProbeOutcome::Missing,
+        "a server that was never connected has no entry to probe"
+    );
+
+    h.dynamic()
+        .connect(&server.server_id)
+        .await
+        .expect("connect")
+        .tools;
+
+    // Connected and answering: a real round trip inside a real window.
+    match h
+        .dynamic()
+        .connections()
+        .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+        .await
+    {
+        tinymcp::ProbeOutcome::Alive { .. } => {}
+        other => panic!("a live stub must probe Alive, got {other:?}"),
+    }
+
+    // The same live, healthy connection probed with a window it cannot meet.
+    // `Duration::ZERO` is deterministic rather than racy: an async stdio round
+    // trip cannot complete on the first poll, and tokio's zero-length sleep is
+    // already elapsed, so the timeout arm is taken every time.
+    //
+    // This is the assertion that matters: the server is demonstrably fine — it
+    // answered a moment ago and answers again below — so anything other than
+    // `TimedOut` would be the supervisor asserting a drop it did not observe.
+    match h
+        .dynamic()
+        .connections()
+        .probe_alive(&server.server_id, std::time::Duration::ZERO)
+        .await
+    {
+        tinymcp::ProbeOutcome::TimedOut { after } => {
+            assert_eq!(after, std::time::Duration::ZERO, "the window is reported back");
+        }
+        other => panic!(
+            "a healthy server probed with an unmeetable window must report TimedOut, not a \
+             failure it did not observe; got {other:?}"
+        ),
+    }
+
+    // Still alive: the impossible window did not disturb the session, which is
+    // the whole point of not treating a timeout as a break.
+    assert!(
+        h.dynamic()
+            .connections()
+            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+            .await
+            .is_alive(),
+        "a timed-out probe must leave the connection usable"
+    );
+
+    // Disconnecting removes the entry, so the outcome goes back to Missing
+    // rather than to a transport error.
+    h.dynamic()
+        .connections()
+        .disconnect(&server.server_id)
+        .await;
+    assert_eq!(
+        h.dynamic()
+            .connections()
+            .probe_alive(&server.server_id, std::time::Duration::from_secs(8))
+            .await,
+        tinymcp::ProbeOutcome::Missing,
+        "a disconnected server has no entry, so nothing was observed to fail"
+    );
+}
+
+/// The supervisor's default probe window is 8s.
+///
+/// tinymcp#5 widened it to 30s and paired that with `MissedTickBehavior::Delay`
+/// in `Supervisor::run` — which this host never calls: `mcp/registry/mod.rs`
+/// builds its own interval and calls `Supervisor::tick` directly, once per open
+/// workspace. openhuman would have inherited the wider window with none of the
+/// protection, so `b44b958d` put the default back. Nothing pinned it, and the
+/// value is only reachable through `SupervisorConfig::default()` — exactly what
+/// `supervise_once` above uses.
+#[test]
+fn supervisor_default_probe_window_stays_eight_seconds() {
+    assert_eq!(
+        tinymcp::SupervisorConfig::default().probe_timeout,
+        std::time::Duration::from_secs(8),
+        "widening this default without a missed-tick policy in the host's own loop is the \
+         regression b44b958d reverted"
+    );
+}
