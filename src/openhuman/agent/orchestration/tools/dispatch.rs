@@ -430,13 +430,21 @@ fn awaiting_outcome_to_tool_result(
     checkpointed: bool,
 ) -> ToolResult {
     if !checkpointed {
+        // `question` is sub-agent-authored free text and this string is read by
+        // the orchestrator, so it gets the same treatment as the envelope's:
+        // JSON-encoded, not wrapped in quotes. Bare quoting is not containment —
+        // the question can close the quote and continue with instructions of its
+        // own. This is the hole `awaiting_user_envelope` exists to close, and an
+        // error path is not exempt from it.
+        let question_json = serde_json::to_string(question)
+            .unwrap_or_else(|_| "\"<unserializable question>\"".into());
         return ToolResult::error(format!(
             "The sub-agent `{}` paused to ask a question, but its state could not be saved \
              and this delegation has no durable session to fall back on, so it cannot be \
-             resumed. Its progress is lost. Tell the user what it was asking — \"{}\" — and \
+             resumed. Its progress is lost. Tell the user what it was asking — {} — and \
              that the delegation has to be started again; do NOT call continue_subagent \
              with task_id `{}`, there is nothing for it to resume.",
-            outcome.agent_id, question, outcome.task_id
+            outcome.agent_id, question_json, outcome.task_id
         ));
     }
     ToolResult::success(super::awaiting_user::awaiting_user_envelope(
