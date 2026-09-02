@@ -21,14 +21,21 @@ const BillingPanel = () => {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchasingTier, setPurchasingTier] = useState<PlanTier | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [planLoading, setPlanLoading] = useState(true);
   const paymentConfirmed = false;
 
   useEffect(() => {
     billingApi
       .getCurrentPlan()
       .then(data => setCurrentTier(data.plan))
-      .catch(err => setError(err instanceof Error ? err.message : String(err)));
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setPlanLoading(false));
   }, []);
+
+  const handleSetPaymentMethod = (method: 'card' | 'crypto') => {
+    setPaymentMethod(method);
+    if (method === 'crypto') setBillingInterval('annual');
+  };
 
   const handleUpgrade = async (tier: PlanTier): Promise<void> => {
     setError(null);
@@ -60,10 +67,11 @@ const BillingPanel = () => {
         billingInterval={billingInterval}
         setBillingInterval={setBillingInterval}
         paymentMethod={paymentMethod}
-        setPaymentMethod={setPaymentMethod}
+        setPaymentMethod={handleSetPaymentMethod}
         isPurchasing={isPurchasing}
         purchasingTier={purchasingTier}
         paymentConfirmed={paymentConfirmed}
+        upgradesDisabled={planLoading}
         onUpgrade={handleUpgrade}
       />
 
