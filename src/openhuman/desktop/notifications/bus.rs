@@ -107,6 +107,52 @@ impl NotificationBridgeSubscriber {
             _ => Cow::Borrowed(config),
         }
     }
+
+    /// Whether a notification should reach connected clients.
+    ///
+    /// Storing an event under its own workspace is only half the answer. The
+    /// live path has no per-client routing at all — `core::socketio`'s bridge
+    /// emits `core_notification` to *every* connected client, and the banner
+    /// prints the server's qualified name and its error — so a supervisor
+    /// event from a workspace the user has switched away from would show one
+    /// account's server, and its failure text, inside the account they are
+    /// actually in (#5931).
+    ///
+    /// Only workspace-bound events are gated, and the active workspace is
+    /// resolved through `config::active_workspace_dir`, the same resolver the
+    /// config loader uses — deliberately not a value pinned at construction,
+    /// which is exactly what goes stale across a switch. It costs one small
+    /// marker read, paid only for the handful of events a supervisor tick
+    /// produces: everything else returns on the first line.
+    ///
+    /// **Fails open.** If the workspace cannot be resolved the notification is
+    /// announced anyway. A banner from the wrong workspace is a visible
+    /// annoyance the user can dismiss; a silently swallowed "your MCP tools
+    /// are down" is the exact failure #5931 exists to end.
+    async fn should_announce(&self, event: &DomainEvent) -> bool {
+        let Some(event_workspace) = workspace_of(event) else {
+            return true;
+        };
+        match crate::openhuman::config::active_workspace_dir().await {
+            Ok(active) if active == event_workspace => true,
+            Ok(active) => {
+                log::debug!(
+                    "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
+                    event.variant_name(),
+                    event_workspace.display(),
+                    active.display()
+                );
+                false
+            }
+            Err(error) => {
+                log::warn!(
+                    "{LOG_PREFIX} could not resolve the active workspace ({error}); announcing {} anyway",
+                    event.variant_name()
+                );
+                true
+            }
+        }
+    }
 }
 
 /// The workspace an event belongs to, for the variants that name one.
@@ -366,7 +412,11 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
                     ),
                 }
             }
-            publish_core_notification(notification);
+            // Persisted above under the workspace it belongs to; announced
+            // only if that workspace is the one the user is in (#5931).
+            if self.should_announce(event).await {
+                publish_core_notification(notification);
+            }
         }
     }
 }

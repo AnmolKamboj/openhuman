@@ -425,9 +425,16 @@ pub mod supervisor {
         // A tick walks every open workspace's installs in sequence and each
         // probe can take the whole probe window, so a tick can outlast its
         // own interval. The default behaviour would then fire the missed
-        // ticks back to back, re-probing servers that were just probed. Pace
-        // from when the cycle finished instead — `tinymcp::Supervisor::run`
-        // does the same, and this loop is what stands in for it.
+        // ticks back to back, re-probing servers that were just probed.
+        //
+        // `Delay` stops that burst but does not on its own leave a gap: it
+        // schedules the next deadline one interval after the overdue tick
+        // *returns*, which is when the cycle starts, not when it ends. A
+        // cycle that consistently outlasts its interval would therefore find
+        // the next tick already due and run back to back anyway. The
+        // `interval.reset()` at the end of the loop body is what actually
+        // paces from when the cycle finished — which is what
+        // `tinymcp::Supervisor::run` does, and this loop stands in for it.
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         tracing::info!(
@@ -464,6 +471,11 @@ pub mod supervisor {
                 // switched-away workspace's outage for its own.
                 super::supervisor_events::publish(&workspace, &report);
             }
+
+            // Pace from the end of the cycle, not its start: a cycle slower
+            // than the interval leaves the next tick already due, and without
+            // this the supervisor would probe continuously.
+            interval.reset();
         }
     }
 }

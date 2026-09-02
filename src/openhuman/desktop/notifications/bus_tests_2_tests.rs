@@ -448,3 +448,103 @@ async fn an_outage_is_filed_under_its_own_workspace_not_the_bridge_s() {
         1
     );
 }
+
+// ── Live announcement gating (#5931) ────────────────────────────────────────
+//
+// Routing the *store* by the event's workspace is only half the answer: the
+// live path has no per-client routing at all (`core::socketio` emits
+// `core_notification` to every connected client), so an outage from a
+// workspace the user has switched away from would raise a banner naming that
+// workspace's server and its error inside the account they are in.
+
+/// RAII guard for `OPENHUMAN_WORKSPACE`, which is the first thing
+/// `config::active_workspace_dir` consults — so it is how a test says which
+/// workspace is the active one. Mirrors the guard in
+/// `config::workspace::ops_tests`; must be held with `TEST_ENV_LOCK`.
+struct ActiveWorkspaceEnvGuard;
+
+impl ActiveWorkspaceEnvGuard {
+    fn set(path: &std::path::Path) -> Self {
+        // SAFETY: caller holds `TEST_ENV_LOCK`, so no other thread in this
+        // process is reading or mutating this env var.
+        unsafe {
+            std::env::set_var("OPENHUMAN_WORKSPACE", path);
+        }
+        Self
+    }
+}
+
+impl Drop for ActiveWorkspaceEnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: same contract as `set` — the lock is held for the whole test.
+        unsafe {
+            std::env::remove_var("OPENHUMAN_WORKSPACE");
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_active_workspace_s_outage_is_announced() {
+    let lock = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let active = tempfile::TempDir::new().unwrap();
+    let _guard = ActiveWorkspaceEnvGuard::set(active.path());
+
+    // Ask the resolver what it made of the override rather than assuming:
+    // `OPENHUMAN_WORKSPACE` names a *config* root, and which subdirectory of
+    // it is the workspace is the loader's rule, not this test's.
+    let resolved = crate::openhuman::config::active_workspace_dir()
+        .await
+        .expect("the override resolves");
+    let bridge = bridge_for(&resolved);
+    assert!(
+        bridge.should_announce(&parked_in(&resolved)).await,
+        "the workspace the user is in must still hear about its own outage"
+    );
+    drop(lock);
+}
+
+#[tokio::test]
+async fn a_switched_away_workspace_s_outage_is_not_announced() {
+    let lock = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let active = tempfile::TempDir::new().unwrap();
+    let switched_away = tempfile::TempDir::new().unwrap();
+    let _guard = ActiveWorkspaceEnvGuard::set(active.path());
+
+    let resolved = crate::openhuman::config::active_workspace_dir()
+        .await
+        .expect("the override resolves");
+    assert_ne!(resolved, switched_away.path(), "the fixture must differ");
+
+    // The bridge's own binding is deliberately the stale one here — the gate
+    // must key off the *live* workspace, not off what the bridge was built
+    // with, or it would reproduce the staleness it exists to avoid.
+    let bridge = bridge_for(switched_away.path());
+    assert!(
+        !bridge
+            .should_announce(&parked_in(switched_away.path()))
+            .await,
+        "another workspace's server name and error must not reach this one"
+    );
+    drop(lock);
+}
+
+#[tokio::test]
+async fn a_process_wide_event_is_announced_without_consulting_the_workspace() {
+    // No env guard and no lock: an event that names no workspace returns on
+    // the first line, before any resolution, so it cannot be affected by
+    // whichever workspace happens to be active.
+    let bridge = bridge_for(std::path::Path::new("/tmp/openhuman-ws-a"));
+    assert!(
+        bridge
+            .should_announce(&DomainEvent::CronJobCompleted {
+                job_id: "job-1".into(),
+                success: true,
+                output: "done".into(),
+            })
+            .await
+    );
+}
