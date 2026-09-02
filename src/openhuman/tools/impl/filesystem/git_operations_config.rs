@@ -253,6 +253,23 @@ pub(super) fn normalise_config_key(key: &str) -> String {
 /// `git config --list` failing means the config could not be read, not that
 /// there is none. Proceeding to run the real command against config this step
 /// never actually inspected would defeat the point of inspecting it first.
+/// The refusal text for a repository whose config carries `key`.
+///
+/// Lives here so the two paths that produce it — the guard inside
+/// `run_git_command_in` and the repository probe in `execute_in_context`,
+/// which reaches this conclusion without ever getting as far as the guard —
+/// cannot word the same refusal differently.
+pub(super) fn disallowed_config_refusal(dir: &Path, key: &str) -> String {
+    format!(
+        "refusing to run git in {}: its repository config sets `{key}`, which is \
+         not on the allowlist of configuration this tool will run under. \
+         Several git config keys name a command git then executes, and this \
+         directory is agent-writable, so unrecognised configuration is treated \
+         as untrusted rather than honoured.",
+        dir.display()
+    )
+}
+
 pub(super) async fn first_disallowed_repo_config_key(dir: &Path) -> anyhow::Result<Option<String>> {
     let mut cmd = tokio::process::Command::new("git");
     suppress_ambient_git_config(&mut cmd).current_dir(dir);

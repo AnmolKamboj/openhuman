@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tinytools::ToolRunContext;
 
-use super::git_operations_config::{first_disallowed_repo_config_key, hardened_git};
+use super::git_operations_config::{
+    disallowed_config_refusal, first_disallowed_repo_config_key, hardened_git,
+};
 use super::git_operations_render::{
     render_branch_markdown, render_log_markdown, render_status_markdown,
 };
@@ -100,14 +102,7 @@ impl GitOperationsTool {
                 "[git_operations] refusing to run git: dir={}, disallowed_config_key={key}",
                 cwd.display()
             );
-            anyhow::bail!(
-                "refusing to run git in {}: its repository config sets `{key}`, which is \
-                 not on the allowlist of configuration this tool will run under. \
-                 Several git config keys name a command git then executes, and this \
-                 directory is agent-writable, so unrecognised configuration is treated \
-                 as untrusted rather than honoured.",
-                cwd.display()
-            )
+            anyhow::bail!("{}", disallowed_config_refusal(cwd, &key))
         }
 
         let output = hardened_git(cwd).args(args).output().await?;
@@ -553,12 +548,44 @@ impl GitOperationsTool {
         // Validate the repository instead of trusting the presence of a `.git`
         // path. This handles linked-worktree gitfiles and rejects malformed
         // ancestor markers that Git itself cannot open.
-        let is_worktree = self
-            .run_git_command_in(&effective_dir, &["rev-parse", "--is-inside-work-tree"])
+        //
+        // Probed with `hardened_git` directly rather than through
+        // `run_git_command_in`. That helper refuses up front when the
+        // repository config carries a disallowed key, and routing the probe
+        // through it made the refusal indistinguishable from "there is no
+        // repository here": `is_ok_and` discarded the error, so a repo setting
+        // `core.fsmonitor` / `credential.helper` / `core.worktree` was reported
+        // as **not a git repository** and the message naming the key was lost
+        // (#5494). `first_disallowed_repo_config_key` even documents the
+        // ordering this restores — it expects the caller to have established
+        // that `dir` is a repository before it runs.
+        //
+        // Safe to probe unguarded: `hardened_git` already neutralises every
+        // config key that names a command, so this invocation cannot be turned
+        // into an execution primitive, and the real command below still goes
+        // through the full allow-list check in `run_git_command_in`.
+        let is_worktree = hardened_git(&effective_dir)
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .output()
             .await
-            .is_ok_and(|output| output.trim() == "true");
+            .is_ok_and(|output| {
+                output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+            });
         if !is_worktree {
-            return Ok(ToolResult::error("Not in a git repository"));
+            // The probe can fail *because* the repository is misconfigured: a
+            // `core.worktree` redirect git cannot follow, or a config file it
+            // cannot read. Ask the guard before concluding there is nothing
+            // here, so a refusal is reported as a refusal — "Not in a git
+            // repository" is both false and un-actionable for those (#5494).
+            return Ok(
+                match first_disallowed_repo_config_key(&effective_dir).await {
+                    Ok(Some(key)) => {
+                        ToolResult::error(disallowed_config_refusal(&effective_dir, &key))
+                    }
+                    Err(error) => ToolResult::error(error.to_string()),
+                    Ok(None) => ToolResult::error("Not in a git repository"),
+                },
+            );
         }
 
         // Check autonomy level for write operations
