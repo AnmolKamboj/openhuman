@@ -275,8 +275,25 @@ export const SUPPORT_URL = SUPPORT_URL_OVERRIDE || DISCORD_INVITE_URL;
  * The crash screen still surfaces the Error ID as copyable text
  * (`ErrorFallbackScreen`), so the user can carry it into the Discord thread by
  * hand; what this flag removes is the *false* promise, not the path.
+ *
+ * Defaults to "an override is configured", because `VITE_SUPPORT_URL` exists
+ * for deployment-specific *support endpoints* and one of those can consume a
+ * ref by definition. Set `VITE_SUPPORT_URL_ACCEPTS_REF=false` for the case
+ * that inference gets wrong — an override pointed at a chat invite, which
+ * ignores the query the same way the Discord default does. The escape hatch is
+ * an opt-OUT rather than an opt-in on purpose: defaulting to `false` would
+ * make the *useful* behaviour the one a deployer can forget to switch on, and
+ * forgetting it fails silently, which is the exact failure this whole flag
+ * exists to remove.
  */
-export const SUPPORT_URL_ACCEPTS_REF = Boolean(SUPPORT_URL_OVERRIDE);
+const SUPPORT_URL_ACCEPTS_REF_OVERRIDE = (
+  import.meta.env.VITE_SUPPORT_URL_ACCEPTS_REF as string | undefined
+)?.trim();
+
+export const SUPPORT_URL_ACCEPTS_REF =
+  SUPPORT_URL_ACCEPTS_REF_OVERRIDE !== undefined && SUPPORT_URL_ACCEPTS_REF_OVERRIDE !== ''
+    ? SUPPORT_URL_ACCEPTS_REF_OVERRIDE === 'true'
+    : Boolean(SUPPORT_URL_OVERRIDE);
 
 /**
  * Set `VITE_SENTRY_SMOKE_TEST=true` in one build (or in `.env.local`) to
