@@ -9,7 +9,7 @@
 //! still resolves `GitOperationsTool` the way it did before the split, and so
 //! the fixtures in the sibling test module stay reachable.
 
-use super::super::git_operations_config::normalise_config_key;
+use super::super::git_operations_config::{normalise_config_key, NEUTRALISED_CONFIG};
 // The fixtures stay in `git_operations_tests.rs` and are shared rather than
 // duplicated: both modules are children of `git_operations`, so `pub(super)`
 // there makes them reachable here.
@@ -462,4 +462,150 @@ fn a_subsection_is_elided_so_one_entry_covers_every_remote() {
     );
     // A key with no dot at all is returned unchanged rather than panicking.
     assert_eq!(normalise_config_key("bare"), "bare");
+}
+
+// ── `diff.external` (#5979) ─────────────────────────────────────────────────
+
+/// The regression that started it: a perfectly ordinary repository, with no
+/// config of its own, must be able to produce a diff.
+///
+/// `NEUTRALISED_CONFIG` used to carry `diff.external=`, and an empty value
+/// does not disable an external diff driver — git executes the empty string —
+/// so every `diff` this tool ran died with `cannot run : No such file or
+/// directory`. The hardening layer was an outage wearing hardening's clothes.
+#[tokio::test]
+async fn an_ordinary_repository_still_produces_a_diff() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    std::fs::write(tmp.path().join("tracked.txt"), "first\n").unwrap();
+    commit_all(tmp.path(), "init");
+    std::fs::write(tmp.path().join("tracked.txt"), "first\nsecond\n").unwrap();
+
+    let tool = test_tool(tmp.path());
+    let result = tool
+        .execute(json!({"operation": "diff", "files": "tracked.txt"}))
+        .await
+        .expect("diff should run");
+
+    assert!(
+        !result.is_error,
+        "an ordinary repository's diff must succeed, got: {}",
+        result.output()
+    );
+    assert!(
+        result.output().contains("second"),
+        "the diff should carry the added line, got: {}",
+        result.output()
+    );
+}
+
+/// And the property the broken entry was reaching for still holds: a
+/// repository that names an external diff driver never gets it run.
+///
+/// The allowlist refuses the operation outright — `diff.external` is not on
+/// `ALLOWED_REPO_CONFIG` — which is the fail-closed guarantee. `--no-ext-diff`
+/// on the command is the second layer, for a key written into the repository
+/// in the gap between that inspection and the command itself.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repository_naming_an_external_diff_driver_never_gets_it_run() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    std::fs::write(tmp.path().join("tracked.txt"), "first\n").unwrap();
+    commit_all(tmp.path(), "init");
+    std::fs::write(tmp.path().join("tracked.txt"), "first\nsecond\n").unwrap();
+    let marker = plant_external_diff_driver(tmp.path());
+
+    let tool = test_tool(tmp.path());
+    let result = tool
+        .execute(json!({"operation": "diff", "files": "tracked.txt"}))
+        .await;
+    let msg = error_text(&result);
+
+    assert!(
+        !marker.exists(),
+        "`git diff` executed the command named by the repository's own \
+         config — this tool is a code-execution primitive"
+    );
+    assert!(
+        msg.contains("diff.external"),
+        "the refusal should name the key that caused it, got: {msg}"
+    );
+}
+
+/// `diff.external` must never be re-added to `NEUTRALISED_CONFIG`: there is no
+/// `-c` value for it that means "none", so any entry there breaks every diff.
+#[test]
+fn diff_external_is_not_neutralised_by_a_config_override() {
+    assert!(
+        !NEUTRALISED_CONFIG
+            .iter()
+            .any(|kv| kv.starts_with("diff.external")),
+        "`diff.external` cannot be neutralised with `-c`; use `--no-ext-diff` \
+         on the command instead (#5979)"
+    );
+}
+
+/// Plant an executable external diff driver in the repository's own config,
+/// after first proving the script runs at all — so a passing test means the
+/// tool refused it, not that the fixture was inert.
+#[cfg(unix)]
+fn plant_external_diff_driver(dir: &std::path::Path) -> std::path::PathBuf {
+    let driver = dir.join("extdiff.sh");
+    let marker = dir.join("EXTERNAL_DIFF_RAN");
+    std::fs::write(
+        &driver,
+        format!("#!/bin/sh\ntouch {:?}\nexit 0\n", marker.to_string_lossy()),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&driver, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    std::process::Command::new(&driver).status().unwrap();
+    assert!(marker.exists(), "the planted driver does not run at all");
+    std::fs::remove_file(&marker).unwrap();
+
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args(["config", "diff.external"])
+            .arg(&driver)
+            .current_dir(dir),
+    )
+    .status()
+    .unwrap();
+    assert!(ok.success(), "could not set diff.external");
+
+    marker
+}
+
+/// Stage everything and commit, hermetically — the surrounding tests need a
+/// commit to diff against.
+fn commit_all(dir: &std::path::Path, message: &str) {
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(dir),
+    )
+    .status()
+    .unwrap();
+    assert!(ok.success(), "git add failed");
+
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ])
+            .current_dir(dir),
+    )
+    .status()
+    .unwrap();
+    assert!(ok.success(), "git commit failed");
 }

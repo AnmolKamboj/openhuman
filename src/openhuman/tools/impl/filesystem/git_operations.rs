@@ -174,7 +174,14 @@ impl GitOperationsTool {
         // Validate files argument against injection patterns
         self.sanitize_git_args(files)?;
 
-        let mut git_args = vec!["diff", "--unified=3"];
+        // `--no-ext-diff` is what actually refuses a repository-set
+        // `diff.external`. It cannot be done with a `-c` override the way the
+        // other command-valued keys are neutralised — an empty value makes git
+        // execute the empty string rather than disable the driver — so the
+        // flag lives here, on the one operation that can run one (#5979).
+        // `git_log` uses `--pretty=format:` and never produces a patch, so it
+        // has no external diff to refuse.
+        let mut git_args = vec!["diff", "--no-ext-diff", "--unified=3"];
         if cached {
             git_args.push("--cached");
         }
