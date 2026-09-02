@@ -934,6 +934,19 @@ async fn snapshot_clears_pending_session_when_backend_revalidation_is_rejected()
     assert!(snap.auth.user.is_none());
     assert!(snap.current_user.is_none());
     assert!(snap.session_token.is_none());
+    // A signed-out snapshot must not also describe a user it no longer
+    // reports. The staleness fields are read from the pre-rejection
+    // `session_token`, so without an explicit guard this arm published
+    // `currentUserStale` metadata for the identity it had just cleared
+    // (#5930).
+    assert!(
+        !snap.current_user_stale,
+        "a rejected session must not be reported as a stale user"
+    );
+    assert_eq!(
+        snap.current_user_stale_seconds, None,
+        "a rejected session must not carry a stale-user age"
+    );
     let profile = AuthService::from_config(&config)
         .get_profile(APP_SESSION_PROVIDER, None)
         .expect("read profile after rejection");

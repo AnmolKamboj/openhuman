@@ -160,8 +160,8 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
                 // same wording as a live failure is what made a working backoff
                 // look like a hammering loop in #5930's own log evidence.
                 debug!(
-                    "{LOG_PREFIX} current user refresh suppressed; backend unreachable {consecutive}x, \
-                     next live attempt in {}s, using stored snapshot fallback: {}",
+                    "{LOG_PREFIX} current user refresh suppressed; backend unavailable or unhealthy \
+                     {consecutive}x, next live attempt in {}s, using stored snapshot fallback: {}",
                     retry_in.as_secs(),
                     inner.message()
                 );
@@ -216,17 +216,27 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
     // Read before the `DeferredSessionRejected` arm below clears
     // `session_token`, and keyed off the same `config` the fetch used so the
     // answer describes this identity's backend, not a previous one's.
-    // Matched to the fetch above, which filters on the *trimmed* token being
-    // non-empty but keys the failure record on the raw one. Trimming here
-    // instead would look up a key that was never written, and staleness would
-    // read as `false` for every token with surrounding whitespace.
+    //
+    // A rejected session is excluded outright: that arm is about to clear
+    // `auth`, `session_token` and `current_user`, and a signed-out snapshot
+    // carrying `currentUserStale: true` would describe a user it no longer
+    // reports.
+    //
+    // The token is matched to the fetch above, which filters on the *trimmed*
+    // token being non-empty but keys the failure record on the raw one.
+    // Trimming here instead would look up a key that was never written, and
+    // staleness would read as `false` for every token with surrounding
+    // whitespace.
+    let session_rejected = matches!(current_user, SnapshotCurrentUser::DeferredSessionRejected);
     let (current_user_stale, current_user_stale_seconds) = match session_token
         .as_deref()
+        .filter(|_| !session_rejected)
         .filter(|&token| !token.trim().is_empty() && !is_local_session_token(token))
     {
         Some(token) => current_user_staleness(&current_user_api_base(&config), token),
-        // Signed out, or a local-only token that never talks to the backend:
-        // there is nothing for the stored snapshot to be stale relative to.
+        // Signed out, rejected, or a local-only token that never talks to the
+        // backend: there is nothing for the stored snapshot to be stale
+        // relative to.
         None => (false, None),
     };
     let mut snapshot_config = config.clone();

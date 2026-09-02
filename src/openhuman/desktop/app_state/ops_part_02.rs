@@ -236,7 +236,7 @@ async fn fetch_current_user_cached(
         }
     };
     clear_current_user_failure();
-    note_current_user_success();
+    note_current_user_success(&api_base, token);
 
     let mut cache = CURRENT_USER_CACHE.lock();
     match fetched.clone() {
