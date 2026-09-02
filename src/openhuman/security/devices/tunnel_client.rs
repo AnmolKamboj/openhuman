@@ -34,8 +34,49 @@ pub struct TunnelRegisterResponse {
     pub channel_id: String,
     #[serde(rename = "pairingToken", alias = "pairing_token")]
     pub pairing_token: String,
-    #[serde(rename = "pairingExpiresAt", alias = "pairing_expires_at")]
+    /// Deserialized through [`expires_at_from_string_or_epoch_millis`]: the
+    /// backend sends this as a JSON **number** (`pairingExpiresAt:
+    /// r.pairingExpiresAt.getTime()` in `socketHandlers/tunnel/handler.ts`),
+    /// while the field — and `PairingSession::expires_at` downstream — is
+    /// documented and consumed as an ISO 8601 string.
+    #[serde(
+        rename = "pairingExpiresAt",
+        alias = "pairing_expires_at",
+        deserialize_with = "expires_at_from_string_or_epoch_millis"
+    )]
     pub pairing_expires_at: String,
+}
+
+/// Accept `pairingExpiresAt` as either an ISO 8601 string or epoch
+/// milliseconds, always yielding the ISO 8601 string the rest of the domain
+/// expects.
+///
+/// The backend's `TunnelRegisterAck` types this field as `number` and fills it
+/// with `Date.getTime()`, so a plain `String` field cannot deserialize a
+/// successful ACK at all — it fails with `invalid type: integer, expected a
+/// string`. Widening to `i64` instead would push the epoch value into
+/// `PairingSession::expires_at` and `CreatePairingResponse::expires_at`, both
+/// documented as "ISO 8601 timestamp" and handed to the paired device, so the
+/// conversion happens here where the wire shape is known.
+fn expires_at_from_string_or_epoch_millis<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Text(String),
+        EpochMillis(i64),
+    }
+
+    match Raw::deserialize(deserializer)? {
+        Raw::Text(text) => Ok(text),
+        Raw::EpochMillis(millis) => chrono::DateTime::from_timestamp_millis(millis)
+            .map(|dt| dt.to_rfc3339())
+            .ok_or_else(|| D::Error::custom(format!("pairingExpiresAt out of range: {millis}"))),
+    }
 }
 
 /// Payload emitted as `tunnel:connect` to join a channel.
@@ -91,6 +132,28 @@ pub async fn emit_register() -> Result<TunnelRegisterResponse, String> {
         .await
         .map_err(|e| format!("[devices/tunnel] emit tunnel:register failed: {e}"))?;
 
+    parse_register_ack(ack)
+}
+
+/// Turn a `tunnel:register` ACK into a response or an error message.
+///
+/// Split out of [`emit_register`] so the whole decision — failure envelope
+/// first, success shape second — is reachable without a live `SocketManager`.
+/// Testing only the [`backend_ack_error`] predicate would not have caught the
+/// envelope check being dropped from the call path, which is the regression
+/// that matters.
+pub(crate) fn parse_register_ack(ack: serde_json::Value) -> Result<TunnelRegisterResponse, String> {
+    // A failed register is answered with `{ ok: false, error: "..." }`
+    // (`safeAck<TunnelRegisterAck>(ack, { ok: false, error: publicError(err) })`
+    // in the backend handler), which carries no `channelId`. Parsing that as
+    // the success shape reports `missing field 'channelId'` and throws away the
+    // reason the backend gave — which is exactly what #5871 was: a register
+    // that failed server-side, surfaced to the user as a client parse error.
+    if let Some(error) = backend_ack_error(&ack) {
+        log::error!("[devices/tunnel] tunnel:register refused by backend: {error}");
+        return Err(format!("[devices/tunnel] tunnel:register failed: {error}"));
+    }
+
     serde_json::from_value::<TunnelRegisterResponse>(ack.clone()).map_err(|e| {
         log::error!(
             "[devices/tunnel] parse tunnel:register ack failed: {e}; ack fields = {:?}",
@@ -98,6 +161,26 @@ pub async fn emit_register() -> Result<TunnelRegisterResponse, String> {
         );
         format!("[devices/tunnel] parse tunnel:register ack failed: {e}")
     })
+}
+
+/// The backend's error message when an ACK carries the `{ ok: false, error }`
+/// failure envelope, or `None` for anything else.
+///
+/// `ok` is only ever present on the failure path — a successful
+/// `TunnelRegisterAck` has no such field — so an ACK carrying `ok: false` is
+/// unambiguously a refusal and its `error` is the only useful thing in it.
+pub(crate) fn backend_ack_error(ack: &serde_json::Value) -> Option<String> {
+    let object = ack.as_object()?;
+    if object.get("ok")?.as_bool()? {
+        return None;
+    }
+    Some(
+        object
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unspecified error")
+            .to_string(),
+    )
 }
 
 /// Emit `tunnel:connect` to start listening on a channel as `role:"core"`.

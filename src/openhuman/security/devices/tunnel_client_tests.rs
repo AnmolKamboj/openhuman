@@ -41,3 +41,87 @@ fn build_core_connect_payload_omits_session_token_for_core_role() {
     assert!(payload.get("sessionToken").is_none());
     assert!(payload.get("pairingToken").is_none());
 }
+
+// ── The shape the backend actually sends (#5871) ──────────────────────────
+
+/// The live backend types `pairingExpiresAt` as a **number** and fills it with
+/// `Date.getTime()` (`TunnelRegisterAck` in `socketHandlers/tunnel/types.ts`,
+/// `handler.ts:102-107`). Before this was handled a *successful* register ACK
+/// could not deserialize at all — `invalid type: integer, expected a string` —
+/// so pairing could not have completed even once register started succeeding.
+///
+/// The epoch value is normalised to ISO 8601 rather than passed through as a
+/// decimal string, because `PairingSession::expires_at` and
+/// `CreatePairingResponse::expires_at` are both documented as ISO 8601 and go
+/// straight to the paired device.
+#[test]
+fn tunnel_register_response_accepts_numeric_pairing_expires_at() {
+    let response: TunnelRegisterResponse = serde_json::from_value(json!({
+        "channelId": "ch_789",
+        "pairingToken": "pt_789",
+        "pairingExpiresAt": 1_790_000_000_000i64
+    }))
+    .expect("the numeric pairingExpiresAt the backend sends should parse");
+
+    assert_eq!(response.channel_id, "ch_789");
+    assert_eq!(
+        response.pairing_expires_at, "2026-09-21T14:13:20+00:00",
+        "epoch milliseconds must be rendered as the ISO 8601 string the rest \
+         of the domain documents and forwards to the paired device"
+    );
+}
+
+/// A register the backend refuses is answered with `{ ok: false, error }` and
+/// no `channelId`. Parsing that as the success shape is what produced the
+/// `missing field 'channelId'` in #5871 — a server-side refusal reported to the
+/// user as a client parse error, with the backend's own explanation discarded.
+#[test]
+fn register_failure_envelope_surfaces_the_backend_error_not_a_parse_error() {
+    let ack = json!({ "ok": false, "error": "tunnel_channel_limit_reached" });
+
+    // Through the real decision path, not the predicate alone. Asserting only
+    // `backend_ack_error` would keep passing if the check were dropped from
+    // that path — which a revert-check caught it doing.
+    let error = parse_register_ack(ack.clone()).expect_err("a refused register must be an error");
+    assert!(
+        error.contains("tunnel_channel_limit_reached"),
+        "the backend's reason must reach the caller, got: {error}"
+    );
+    assert!(
+        !error.contains("channelId"),
+        "the refusal must not be reported as a missing-field parse error (#5871), got: {error}"
+    );
+
+    // What it used to do, and what the check above exists to prevent.
+    let parsed = serde_json::from_value::<TunnelRegisterResponse>(ack);
+    assert!(
+        parsed.unwrap_err().to_string().contains("channelId"),
+        "sanity: the success shape is what produced the misleading error"
+    );
+}
+
+/// A failure envelope with no `error` string still must not be read as success.
+#[test]
+fn register_failure_envelope_without_a_message_is_still_a_failure() {
+    let error = parse_register_ack(json!({ "ok": false }))
+        .expect_err("a refusal with no message is still a refusal");
+    assert!(error.contains("unspecified error"), "got: {error}");
+}
+
+/// A successful ACK carries no `ok` field, so it must not be mistaken for a
+/// refusal — otherwise every successful pairing would be rejected.
+#[test]
+fn a_successful_ack_is_not_treated_as_a_failure_envelope() {
+    let ack = json!({
+        "channelId": "ch_1",
+        "pairingToken": "pt_1",
+        "pairingExpiresAt": 1_790_000_000_000i64
+    });
+    assert!(backend_ack_error(&ack).is_none());
+    assert!(backend_ack_error(&json!({ "ok": true })).is_none());
+
+    // And end to end: a successful ACK must come back as a response, not be
+    // swallowed by the refusal branch.
+    let response = parse_register_ack(ack).expect("a successful ack must parse");
+    assert_eq!(response.channel_id, "ch_1");
+}
