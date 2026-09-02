@@ -427,11 +427,27 @@ async fn fetch_leaves_hydrates_source_ref_for_cited_chunks() {
     // List the ingested chunks through the host read RPC. Not the engine's
     // `store::chunks::store::list_chunks`: ingest went through the bound
     // driver, so this reads the same surface the product reads.
-    let chunks = read_rpc::list_chunks_rpc(&cfg, ChunkFilter::default())
-        .await
-        .expect("list_chunks must not error")
-        .value
-        .chunks;
+    let chunks = read_rpc::list_chunks_rpc(
+        &cfg,
+        ChunkFilter {
+            // Scoped to the thread this test ingested. An unfiltered listing
+            // returns whatever else the store holds, and taking its first two
+            // rows fetched chunks this test never wrote — which is how the
+            // provenance assertion below came to pass on somebody else's
+            // `agent://session/...` segments.
+            source_ids: Some(vec!["gmail:thread-provenance-1".to_string()]),
+            ..ChunkFilter::default()
+        },
+    )
+    .await
+    .expect("list_chunks must not error")
+    .value
+    .chunks;
+
+    assert!(
+        !chunks.is_empty(),
+        "the ingested thread must be listable under its own source id"
+    );
 
     assert!(!chunks.is_empty(), "ingest must produce at least one chunk");
 
@@ -467,17 +483,21 @@ async fn fetch_leaves_hydrates_source_ref_for_cited_chunks() {
         "fetch_leaves must hydrate at least one chunk"
     );
 
-    // Every leaf that has a source_ref at the ingest level must preserve it.
-    // The email thread had explicit source_refs on both messages — at least one
-    // leaf should carry provenance.
-    let with_source_ref = leaves
+    // The point of the test is that the ref set at INGEST reaches the citation,
+    // so assert the value, not merely that the field is inhabited. Asserting
+    // presence alone passed even with `email_items` dropping `source_ref`
+    // outright, because something further down still populates the field —
+    // which is exactly the shape of a provenance test that proves nothing.
+    let refs: Vec<&str> = leaves
         .iter()
-        .filter(|l| l.get("source_ref").and_then(|v| v.as_str()).is_some())
-        .count();
+        .filter_map(|l| l.get("source_ref").and_then(|v| v.as_str()))
+        .collect();
     assert!(
-        with_source_ref >= 1,
-        "fetch_leaves must return at least one leaf with source_ref populated \
-         (provenance chain for citation); got leaves: {fetched:#}"
+        refs.iter()
+            .any(|r| r.contains("q3-roadmap-1@example.com")
+                || r.contains("q3-roadmap-2@example.com")),
+        "fetch_leaves must carry the source_ref set at ingest so a citation \
+         points at the message it came from; got refs {refs:?} in leaves: {fetched:#}"
     );
 
     // Verify content round-trips.
