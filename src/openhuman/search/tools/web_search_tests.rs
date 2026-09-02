@@ -212,8 +212,10 @@ async fn test_execute_empty_query() {
 async fn test_execute_without_backend_client() {
     let result = tool().execute(json!({"query": "test"})).await;
     assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(err.contains("session token") || err.contains("Sign in"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("backend session token"));
 }
 
 #[tokio::test]
@@ -368,36 +370,135 @@ async fn test_execute_uses_direct_search_api_when_configured() {
     assert!(result.output().contains("https://example.com/direct"));
 }
 
-/// Regression for #5873: when `root_config` is absent, a SESSION_EXPIRED error
-/// from `client.post()` propagates unchanged (no panic, no infinite retry).
+/// Regression for #5873: a cached client whose JWT has been superseded must not
+/// be the one that talks to the backend — the token currently in the credential
+/// store is.
+///
+/// This is the assertion the fix lives or dies on. Point `resolve_client` back
+/// at `self.client` and the backend receives `stale-token`, so the recorded
+/// Authorization header below no longer matches.
+///
+/// Deliberately asserts on the header the *backend actually saw* rather than on
+/// a returned value: the whole failure mode is "the right result arrived over
+/// the wrong credential", which a result-shaped assertion cannot see.
 #[tokio::test]
-async fn test_session_expired_propagates_when_root_config_absent() {
-    use axum::{routing::post, Json};
-    use serde_json::Value;
+async fn test_refreshes_superseded_session_token_before_posting() {
+    use crate::openhuman::config::Config;
+    use crate::openhuman::security::credentials::profiles::{AuthProfile, AuthProfilesStore};
+    use crate::openhuman::security::credentials::APP_SESSION_PROVIDER;
+    use std::sync::Mutex;
 
-    // Mock backend returns an error body that IntegrationClient maps to a
-    // non-SESSION_EXPIRED error so we can test the propagation branch cheaply
-    // without going through the real 401 handler (which publishes domain events).
-    // The important guarantee: any error that is NOT SESSION_EXPIRED must be
-    // returned unchanged. We verify the error reaches the caller.
-    let app = Router::new().route(
-        "/agent-integrations/parallel/search",
-        post(|Json(_): Json<Value>| async move {
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "message": "upstream unavailable" })),
-            )
-        }),
-    );
+    #[derive(Clone, Default)]
+    struct SeenAuth(Arc<Mutex<Option<String>>>);
+
+    let seen = SeenAuth::default();
+    let app = Router::new()
+        .route(
+            "/agent-integrations/parallel/search",
+            post(
+                |State(seen): State<SeenAuth>, headers: HeaderMap, Json(_): Json<Value>| async move {
+                    *seen.0.lock().expect("auth header mutex") = headers
+                        .get("authorization")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    Json(json!({
+                        "success": true,
+                        "data": { "searchId": "s-1", "results": [], "costUsd": 0.0 }
+                    }))
+                },
+            ),
+        )
+        .with_state(seen.clone());
 
     let base_url = start_mock_backend(app).await;
-    let client = Arc::new(IntegrationClient::new(base_url, "tok".into()));
-    let result = WebSearchTool::new(Some(client), None, 5, 15)
-        .execute(json!({"query": "test"}))
+
+    // Credential store holds the CURRENT session token.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    AuthProfilesStore::new(tmp.path(), false)
+        .upsert_profile(
+            AuthProfile::new_token(APP_SESSION_PROVIDER, "default", "fresh-token".to_string()),
+            true,
+        )
+        .expect("seed app-session profile");
+
+    let mut config = Config::default();
+    // Credentials resolve against `config_path`'s parent, so this is what points
+    // `build_client` at the seeded store rather than the operator's real one.
+    config.config_path = tmp.path().join("config.toml");
+    config.api_url = Some(base_url.clone());
+    config.secrets.encrypt = false;
+
+    // Cached client carries the token the tool was BUILT with — now superseded.
+    let stale = Arc::new(IntegrationClient::new(base_url, "stale-token".to_string()));
+
+    let _ = WebSearchTool::new(Some(stale), Some(Arc::new(config)), 5, 15)
+        .execute(json!({"query": "who holds the token"}))
         .await;
 
-    assert!(
-        result.is_err(),
-        "non-200 backend response must surface as Err"
+    let seen_auth = seen.0.lock().expect("auth header mutex").clone();
+    assert_eq!(
+        seen_auth.as_deref(),
+        Some("Bearer fresh-token"),
+        "the request must carry the token from the credential store, not the \
+         superseded one baked into the cached client"
+    );
+}
+
+/// The other half of the same branch: when the cached token is still current,
+/// no swap happens and the cached client is reused as-is.
+#[tokio::test]
+async fn test_keeps_cached_client_when_its_token_is_still_current() {
+    use crate::openhuman::config::Config;
+    use crate::openhuman::security::credentials::profiles::{AuthProfile, AuthProfilesStore};
+    use crate::openhuman::security::credentials::APP_SESSION_PROVIDER;
+    use std::sync::Mutex;
+
+    #[derive(Clone, Default)]
+    struct SeenAuth(Arc<Mutex<Option<String>>>);
+
+    let seen = SeenAuth::default();
+    let app = Router::new()
+        .route(
+            "/agent-integrations/parallel/search",
+            post(
+                |State(seen): State<SeenAuth>, headers: HeaderMap, Json(_): Json<Value>| async move {
+                    *seen.0.lock().expect("auth header mutex") = headers
+                        .get("authorization")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    Json(json!({
+                        "success": true,
+                        "data": { "searchId": "s-1", "results": [], "costUsd": 0.0 }
+                    }))
+                },
+            ),
+        )
+        .with_state(seen.clone());
+
+    let base_url = start_mock_backend(app).await;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    AuthProfilesStore::new(tmp.path(), false)
+        .upsert_profile(
+            AuthProfile::new_token(APP_SESSION_PROVIDER, "default", "same-token".to_string()),
+            true,
+        )
+        .expect("seed app-session profile");
+
+    let mut config = Config::default();
+    config.config_path = tmp.path().join("config.toml");
+    config.api_url = Some(base_url.clone());
+    config.secrets.encrypt = false;
+
+    let cached = Arc::new(IntegrationClient::new(base_url, "same-token".to_string()));
+
+    let _ = WebSearchTool::new(Some(cached), Some(Arc::new(config)), 5, 15)
+        .execute(json!({"query": "unchanged"}))
+        .await;
+
+    assert_eq!(
+        seen.0.lock().expect("auth header mutex").as_deref(),
+        Some("Bearer same-token"),
+        "an unchanged token must not trigger a client swap"
     );
 }

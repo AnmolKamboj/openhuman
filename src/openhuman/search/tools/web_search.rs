@@ -40,6 +40,50 @@ pub struct WebSearchTool {
 }
 
 impl WebSearchTool {
+    /// The client to use for this call, preferring one whose JWT matches what
+    /// the credential store holds *right now*.
+    ///
+    /// The tool's client is built once, when the search-tool registry is built,
+    /// and its JWT is baked in at that moment; after a session refresh it is
+    /// stale and posting with it 401s. That 401 is not a cheap failure. For a
+    /// non-Composio path `handle_session_jwt_unauthorized` publishes
+    /// `DomainEvent::SessionExpired`, and `SessionExpiredSubscriber` answers it
+    /// with an unconditional `clear_session` that never compares the rejected
+    /// token against the stored one. So recovering *after* the 401 races a
+    /// teardown that is already in flight — a retry can succeed with the fresh
+    /// JWT and the queued event then deletes that same JWT, signing the user
+    /// out on a search that just worked.
+    ///
+    /// Refreshing *before* the request avoids that entirely: the stale-token
+    /// 401 is never provoked. A genuinely dead session still 401s and still
+    /// tears down, which is the correct outcome for that case and is
+    /// deliberately left alone (#5873).
+    ///
+    /// Also covers the tool that was built while signed out: `client` is `None`
+    /// there, and before this it stayed dead until the registry was rebuilt.
+    fn resolve_client(&self) -> Option<Arc<IntegrationClient>> {
+        let fresh = self
+            .root_config
+            .as_deref()
+            .and_then(crate::openhuman::integrations::build_client);
+
+        match (fresh, self.client.as_ref()) {
+            (Some(fresh), Some(cached)) => {
+                if fresh.auth_token == cached.auth_token {
+                    Some(Arc::clone(cached))
+                } else {
+                    tracing::debug!(
+                        "[web_search] cached client holds a superseded session token — using the refreshed one"
+                    );
+                    Some(fresh)
+                }
+            }
+            (Some(fresh), None) => Some(fresh),
+            (None, Some(cached)) => Some(Arc::clone(cached)),
+            (None, None) => None,
+        }
+    }
+
     pub fn new(
         client: Option<Arc<IntegrationClient>>,
         root_config: Option<Arc<Config>>,
@@ -205,7 +249,7 @@ impl Tool for WebSearchTool {
                 .await;
         }
 
-        let client = self.client.as_ref().ok_or_else(|| {
+        let client = self.resolve_client().ok_or_else(|| {
             anyhow::anyhow!(
                 "Web search unavailable: no backend session token. \
                  Sign in to TinyHumans so the server can proxy search, \
@@ -238,34 +282,9 @@ impl Tool for WebSearchTool {
             }
         });
 
-        // On SESSION_EXPIRED the baked-in client carries a JWT that expired
-        // mid-session. If the user has since re-authenticated, `build_client`
-        // will read the new JWT from the credential store and the retry
-        // succeeds. On any other error the original error propagates (#5873).
-        let resp = match client
+        let resp = client
             .post::<SearchResponse>("/agent-integrations/parallel/search", &body)
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) if e.to_string().starts_with("SESSION_EXPIRED:") => {
-                let fresh = self
-                    .root_config
-                    .as_deref()
-                    .and_then(crate::openhuman::integrations::build_client);
-                match fresh {
-                    Some(fresh_client) => {
-                        tracing::debug!(
-                            "[web_search] session expired — retrying with fresh client"
-                        );
-                        fresh_client
-                            .post::<SearchResponse>("/agent-integrations/parallel/search", &body)
-                            .await?
-                    }
-                    None => return Err(e),
-                }
-            }
-            Err(e) => return Err(e),
-        };
+            .await?;
 
         // Attribute the search to the provider the managed backend resolved to
         // (Exa by default). The provider name is echoed in the result text so
