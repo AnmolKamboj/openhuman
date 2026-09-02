@@ -1052,6 +1052,15 @@ async fn file_tools_cannot_reach_retained_legacy_state_in_the_workspace() {
             "{legacy}: agent write into retained legacy state succeeded: {}",
             attempted_write.output()
         );
+        // The refusal must not itself disclose what it is protecting. A write
+        // path that echoes the existing file back in its error would satisfy
+        // the flag and the byte-comparison below while still leaking the
+        // secret (CodeRabbit, #5974).
+        assert!(
+            !attempted_write.output().contains("do-not-read"),
+            "{legacy}: the write refusal leaked the file it refused to touch: {}",
+            attempted_write.output()
+        );
         // The refusal has to be a refusal, not a message printed after the fact.
         assert_eq!(
             std::fs::read_to_string(&secret).expect("legacy file still present"),
@@ -1111,9 +1120,12 @@ async fn openclaw_import_names_a_null_classed_driver_rather_than_the_build() {
         .await
         .expect_err("importing into a null-classed driver must refuse");
 
+    // `contains("null")` alone would be satisfied by the driver id `mynull`,
+    // so this asserts the *quoted* class value the message renders — which a
+    // generic class-validation error could not produce (CodeRabbit, #5974).
     assert!(
-        err.contains("mynull") && err.contains("class"),
-        "the refusal must name the configured driver and its class; got: {err}"
+        err.contains("mynull") && err.contains("class") && err.contains("\"null\""),
+        "the refusal must name the configured driver and its `class = \"null\"`; got: {err}"
     );
     assert!(
         !err.contains("no memory module compiled in"),
