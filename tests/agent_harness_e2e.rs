@@ -3197,3 +3197,219 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
 
     stack.shutdown();
 }
+
+// ── #5821: the tool-policy boundary is APPENDED, not prepended ──────────────
+//
+// Lives here rather than in `tests/raw_coverage/`: `raw_coverage_all` declares
+// `required-features = ["voice", "inference"]` (`Cargo.toml:117`), so a test
+// placed there is silently SKIPPED by any default-feature run — including the
+// one a contributor does locally. This target has no required features, so the
+// assertion actually executes.
+//
+// Self-contained rather than built on `streaming_support::agent_with_s`: that
+// helper resolves a real memory store, which needs an `EmbeddingHost` seam a
+// `tests/` binary cannot install (`host_impls::install_for_tests` is
+// `#[cfg(test)]`, visible only to the crate's own unit tests). The prompt path
+// under test never touches memory, so a stub is both sufficient and steadier.
+mod tool_policy_boundary_placement {
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use openhuman_core::openhuman::agent::context::prompt::LearnedContextData;
+    use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
+    use openhuman_core::openhuman::agent::Agent;
+    use openhuman_core::openhuman::config::AgentConfig;
+    use openhuman_core::openhuman::memory::{
+        Memory, MemoryCategory, MemoryEntry, NamespaceSummary as MemoryNamespaceSummary, RecallOpts,
+    };
+    use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+
+    use super::streaming_support::ScriptedProvider;
+    use tinyinference::model::{ChatModel, ModelProfile};
+
+    struct StubMemory;
+
+    #[async_trait]
+    impl Memory for StubMemory {
+        async fn store(
+            &self,
+            _namespace: &str,
+            _key: &str,
+            _content: &str,
+            _category: MemoryCategory,
+            _session_id: Option<&str>,
+        ) -> Result<()> {
+            Ok(())
+        }
+        async fn recall(
+            &self,
+            _query: &str,
+            _limit: usize,
+            _opts: RecallOpts<'_>,
+        ) -> Result<Vec<MemoryEntry>> {
+            Ok(Vec::new())
+        }
+        async fn get(&self, _namespace: &str, _key: &str) -> Result<Option<MemoryEntry>> {
+            Ok(None)
+        }
+        async fn list(
+            &self,
+            _namespace: Option<&str>,
+            _category: Option<&MemoryCategory>,
+            _session_id: Option<&str>,
+        ) -> Result<Vec<MemoryEntry>> {
+            Ok(Vec::new())
+        }
+        async fn forget(&self, _namespace: &str, _key: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn namespace_summaries(&self) -> Result<Vec<MemoryNamespaceSummary>> {
+            Ok(Vec::new())
+        }
+        async fn count(&self) -> Result<usize> {
+            Ok(0)
+        }
+        async fn health_check(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "boundary-placement-memory"
+        }
+    }
+
+    /// Two tools at different permission levels. A `read_only` channel
+    /// permission blocks the write one, and that restriction is what makes the
+    /// boundary render at all — `render_tool_policy_boundary` returns `None`
+    /// unless `session.has_restrictions()` (`tools/agent_policy/prompt.rs:12`).
+    struct ScopedTool {
+        name: &'static str,
+        level: PermissionLevel,
+    }
+
+    #[async_trait]
+    impl Tool for ScopedTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            "tool-policy placement fixture"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object", "properties": {} })
+        }
+        fn permission_level(&self) -> PermissionLevel {
+            self.level
+        }
+        async fn execute(&self, _args: serde_json::Value) -> Result<ToolResult> {
+            Ok(ToolResult::success("ok"))
+        }
+    }
+
+    fn restricted_prompt() -> String {
+        let workspace = tempfile::TempDir::new().expect("temp workspace");
+        let provider: Arc<dyn ChatModel<()>> = Arc::new(ScriptedProvider {
+            responses: Mutex::new(VecDeque::new()),
+            stream_events: Vec::new(),
+            profile: ModelProfile::default(),
+        });
+        let mut config = AgentConfig::default();
+        config
+            .channel_permissions
+            .insert("boundary-channel".to_string(), "read_only".to_string());
+
+        let agent = Agent::builder()
+            .chat_model(provider)
+            .tools(vec![
+                Box::new(ScopedTool {
+                    name: "boundary_read",
+                    level: PermissionLevel::ReadOnly,
+                }),
+                Box::new(ScopedTool {
+                    name: "boundary_write",
+                    level: PermissionLevel::Write,
+                }),
+            ])
+            .memory(Arc::new(StubMemory))
+            .tool_dispatcher(Box::new(NativeToolDispatcher))
+            .workspace_dir(workspace.path().to_path_buf())
+            .event_context("boundary-session", "boundary-channel")
+            .config(config)
+            .build()
+            .expect("complete builder should succeed");
+
+        agent
+            .build_system_prompt(LearnedContextData::default())
+            .expect("system prompt builds")
+    }
+
+    /// #5821 (closes #5704). Every line of the boundary block is session-scoped
+    /// — agent id, channel, entry point, risk level, allowed tools — so putting
+    /// it first moves the prompt's first diverging byte to offset 0 and costs
+    /// the inference backend's automatic prefix cache everything behind it. It
+    /// also replaced each agent's opening persona line with a constant heading.
+    ///
+    /// This drives the real `Agent::build_system_prompt`. The four tests #5821
+    /// shipped exercise the extracted pure helper `append_tool_policy_boundary`
+    /// and would all still pass if `build_system_prompt` stopped calling it; the
+    /// one existing test that goes through the builder,
+    /// `turn_tests_part_01_tests::system_prompt_includes_tool_policy_boundary`,
+    /// asserts the block is PRESENT and says nothing about where.
+    #[test]
+    fn system_prompt_appends_the_tool_policy_boundary_after_the_body() {
+        let prompt = restricted_prompt();
+
+        let boundary_at = prompt
+            .find("## Tool Policy Boundary")
+            .expect("a restricted channel must render the boundary block");
+
+        assert!(
+            boundary_at > 0,
+            "the boundary must not open the prompt — prepending it moves the \
+             first diverging byte to offset 0 and defeats the backend's prefix \
+             cache (#5704). Prompt begins: {:?}",
+            prompt.chars().take(160).collect::<String>()
+        );
+        assert!(
+            !prompt.starts_with("## Tool Policy Boundary"),
+            "prepending replaced every agent's opening line with a constant heading"
+        );
+        assert!(
+            !prompt[..boundary_at].trim().is_empty(),
+            "there must be prompt body BEFORE the boundary"
+        );
+    }
+
+    /// The placement's payoff, stated exactly: the block is the LAST thing in
+    /// the prompt, so every stable byte precedes it. That is the property a
+    /// prefix cache keys on, and the one a revert to prepending destroys.
+    ///
+    /// `render_tool_policy_boundary` emits `- Restricted tools: N omitted by
+    /// policy` last whenever anything is restricted, so asserting the prompt
+    /// ENDS with that line pins the whole block to the tail rather than merely
+    /// somewhere after offset 0.
+    #[test]
+    fn the_tool_policy_boundary_is_the_last_block_in_the_prompt() {
+        let prompt = restricted_prompt();
+        let trimmed = prompt.trim_end();
+        let tail: String = trimmed
+            .chars()
+            .rev()
+            .take(220)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        assert!(
+            trimmed.contains("- Restricted tools:"),
+            "the fixture must actually restrict a tool, or this asserts nothing; tail: {tail}"
+        );
+        assert!(
+            trimmed.ends_with("omitted by policy"),
+            "the boundary block must be the prompt's FINAL block — prepending \
+             puts it first and leaves the stable body trailing it (#5704). \
+             Prompt ends: {tail}"
+        );
+    }
+}

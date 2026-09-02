@@ -14663,3 +14663,145 @@ async fn json_rpc_flows_strict_create_still_refuses_prose_prompt_without_message
     rpc_join.abort();
     api_join.abort();
 }
+
+// ---------------------------------------------------------------------------
+// Migration import guard: refusing the null memory driver (#5799)
+// ---------------------------------------------------------------------------
+
+/// An apply-mode migration into a null memory driver must REFUSE, and the
+/// refusal must not name the wrong product.
+///
+/// The guard exists because every write into a null driver is discarded, so an
+/// import that reports "migrated N entries" having written none is silent data
+/// loss of the worst kind: the user may delete the source workspace on the
+/// strength of that report and have nothing left to re-run against.
+///
+/// #5799 rewrote the refusal. The half reachable in a modules-on build — which
+/// is every build this lane runs — is the headline: it used to read "refusing to
+/// import **OpenClaw** memory into the null driver" and was raised verbatim by
+/// `migrate_hermes` too, telling a Hermes user about a product they were not
+/// migrating. That is what this drives: the Hermes RPC, asserting the refusal
+/// does not say "OpenClaw".
+///
+/// Not covered here, and deliberately: the third arm #5799 added, which names a
+/// modules-off *build* rather than the user's config. `binding::module_provider`
+/// only substitutes the null provider under `#[cfg(not(feature = "modules"))]`
+/// (`memory/binding.rs:406-415`); with modules on it always answers
+/// `DriverClass::Module`, so that arm is unreachable from this binary. It is
+/// asserted by the gates-off unit test
+/// `migration_helpers::ops_tests::apply_refuses_and_names_the_build_when_no_memory_module_is_compiled_in`.
+#[tokio::test]
+async fn json_rpc_migrate_hermes_refuses_null_driver_without_naming_openclaw() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    // `Config::workspace_dir` is `#[serde(skip)]` (`config/schema/types_part_01.rs:78`),
+    // so it cannot be set from config.toml — the workspace comes from the
+    // `OPENHUMAN_WORKSPACE` env overlay, which is what this sets. A `workspace_dir`
+    // key in the TOML would be silently inert, and the migration's
+    // self-migration guard compares against whatever the overlay resolved.
+    let workspace = home.join("workspace");
+    std::fs::create_dir_all(&workspace).expect("mkdir workspace");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let mock_origin = format!("http://{}", mock_addr);
+
+    // `driver = "null"` is the one route to a null-classed binding that a
+    // modules-on build can take: `admit` returns the configured id, and the id
+    // *is* the null driver, so the binding reports class Null with no fallback.
+    let cfg = format!(
+        r#"api_url = "{mock_origin}"
+default_model = "e2e-mock-model"
+default_temperature = 0.7
+chat_onboarding_completed = true
+
+[secrets]
+encrypt = false
+
+[subsystems.memory]
+driver = "null"
+"#
+    );
+    std::fs::create_dir_all(&openhuman_home).expect("mkdir openhuman");
+    std::fs::write(openhuman_home.join("config.toml"), &cfg).expect("write config");
+    std::fs::create_dir_all(openhuman_home.join("users").join("local")).expect("mkdir users/local");
+    std::fs::write(
+        openhuman_home
+            .join("users")
+            .join("local")
+            .join("config.toml"),
+        &cfg,
+    )
+    .expect("write user config");
+    let _: openhuman_core::openhuman::config::Config =
+        toml::from_str(&cfg).expect("config toml must match Config schema");
+
+    // A Hermes source with something real to lose. `MEMORY.md` is the first of
+    // `hermes_file_mappings()`, so the import has an entry to write and the
+    // refusal has to come from the guard rather than from an empty plan.
+    let source = home.join("hermes-src");
+    std::fs::create_dir_all(&source).expect("mkdir hermes source");
+    let source_memory = source.join("MEMORY.md");
+    std::fs::write(&source_memory, "# Note\nwould be lost").expect("write hermes MEMORY.md");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let response = post_json_rpc(
+        &rpc_base,
+        7310,
+        "openhuman.migrate_hermes",
+        json!({
+            "source_workspace": source.to_string_lossy(),
+            "dry_run": false,
+        }),
+    )
+    .await;
+
+    // The refusal may surface as a JSON-RPC error or as an error payload
+    // depending on how the controller maps it; take whichever carries text so
+    // the assertions below are about the message, not the envelope.
+    let message = response
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| response.to_string());
+
+    assert!(
+        message.contains("null driver"),
+        "apply into a null memory driver must be refused by the guard; got: {message}"
+    );
+    assert!(
+        !message.contains("OpenClaw"),
+        "the Hermes migration must not blame OpenClaw — #5799 dropped the \
+         hard-coded product name from a message both migrations raise; got: {message}"
+    );
+    assert!(
+        message.contains("the source workspace is untouched"),
+        "the refusal must still promise the source survived; got: {message}"
+    );
+
+    // The promise in that sentence, checked rather than taken on trust.
+    assert!(
+        source_memory.exists(),
+        "the refusal promised the source workspace was untouched, but {} is gone",
+        source_memory.display()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&source_memory).expect("read source memory"),
+        "# Note\nwould be lost",
+        "the source workspace must be byte-identical after a refused import"
+    );
+
+    mock_join.abort();
+    rpc_join.abort();
+}
