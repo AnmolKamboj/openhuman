@@ -442,6 +442,37 @@ pub async fn memory_list_documents(
     ))
 }
 
+/// `openhuman.memory_namespace_summaries` result: per-namespace document
+/// counts plus the grand total — the "did my stuff actually land" number.
+#[derive(Debug, serde::Serialize)]
+pub struct NamespaceSummariesResponse {
+    pub namespaces: Vec<crate::openhuman::memory::api::types::NamespaceSummary>,
+    pub total_documents: u64,
+}
+
+/// `openhuman.memory_namespace_summaries` — the mandatory `namespaces()`
+/// surface, exposed: name, stored-document count and last-updated per
+/// namespace. `list_namespaces` answers names alone, and a user verifying a
+/// sync needs the count — a Gmail source that stored 1,120 documents should
+/// be checkable as exactly that number (#5932 field finding).
+pub async fn memory_namespace_summaries(
+) -> Result<crate::rpc::RpcOutcome<NamespaceSummariesResponse>, String> {
+    use crate::openhuman::memory::api::provider::MemoryCore;
+    let guard = active_memory_guard().await?;
+    let namespaces = guard
+        .namespaces()
+        .await
+        .map_err(|error| error.to_string())?;
+    let total_documents = namespaces.iter().map(|n| n.count as u64).sum();
+    Ok(crate::rpc::RpcOutcome::new(
+        NamespaceSummariesResponse {
+            namespaces,
+            total_documents,
+        },
+        vec![],
+    ))
+}
+
 /// Lists all namespaces that contain memory documents.
 pub async fn memory_list_namespaces(
     _request: EmptyRequest,

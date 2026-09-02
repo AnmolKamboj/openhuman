@@ -1074,7 +1074,9 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
 fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
     let memory_schemas = all_memory_controller_schemas();
     let memory_controllers = all_memory_registered_controllers();
-    assert_eq!(memory_schemas.len(), 35);
+    // 35 → 37 with #5932: memory.scheduler_override (the gate's manual
+    // window) and memory.namespace_summaries (the sync-verification counts).
+    assert_eq!(memory_schemas.len(), 37);
     assert_eq!(memory_schemas.len(), memory_controllers.len());
     for function in [
         "init",

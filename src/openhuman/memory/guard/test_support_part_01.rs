@@ -1,3 +1,7 @@
+use crate::openhuman::memory::api::provider::operations::{
+    MemoryAnswer, MemoryConversationIngest, MemoryDocumentIngest, MemoryEventIngest,
+    MemoryLearningIngest,
+};
 use std::sync::{Arc, Mutex};
 
 use crate::openhuman::memory::api::capabilities::Capabilities;
