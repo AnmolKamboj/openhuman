@@ -81,11 +81,39 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
     }
 }
 
+/// Serializes every test in this file that touches process-global reporting
+/// state.
+///
+/// `with_default` is thread-scoped, so the capture below looked independent —
+/// but the `paging` module calls `sentry::init`, which binds a client to the
+/// process-global Hub, and `sentry-tracing` is compiled in under
+/// `crash-reporting`. With a client bound, a `tracing::error!` raised on
+/// *another* thread can be consumed by the Sentry layer instead of reaching
+/// this thread's fmt subscriber — so a capture here comes back EMPTY and the
+/// assertion fails for a reason that has nothing to do with the behaviour
+/// under test.
+///
+/// That is not hypothetical: it turned up as
+/// `reporting_a_genuine_wallet_failure_still_emits_error` failing on
+/// "Captured output:" with nothing after it, only in the full-suite lane and
+/// only under `crash-reporting` (the gate `paging` is behind). `mod paging`
+/// had a lock of its own, which serialized its two tests against each other
+/// and against nothing else. One lock for the whole file is what actually
+/// closes it.
+static REPORTING_STATE_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_reporting_state() -> std::sync::MutexGuard<'static, ()> {
+    REPORTING_STATE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Run `body` with a capturing subscriber installed and return what it logged.
 ///
-/// `with_default` is scoped to this thread, so tests stay independent even
-/// though the test binary runs them in parallel.
+/// Holds [`REPORTING_STATE_LOCK`] for the duration: the subscriber is
+/// thread-local, but what it is able to observe is not.
 fn capture_reporting<F: FnOnce()>(body: F) -> String {
+    let _state = lock_reporting_state();
     let capture = Capture::default();
     let subscriber = tracing_subscriber::fmt()
         .with_writer(capture.clone())
@@ -262,10 +290,14 @@ mod paging {
     /// here rather than by imposing `--test-threads=1` on the whole binary —
     /// the same reasoning, and the same shape, as `observability_smoke.rs`.
     fn captured_events_for(message: &str) -> usize {
-        static SENTRY_TEST_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = SENTRY_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The file-wide lock, not a private one. `sentry::init` below binds a
+        // client to the process-global Hub, and with `sentry-tracing` compiled
+        // in that changes what a `tracing::error!` on ANY thread is able to
+        // reach — including the fmt subscriber the capture tests above install.
+        // A lock scoped to this module serialized these two functions against
+        // each other and against nothing else, which is what let the capture
+        // tests come back empty in the full-suite lane.
+        let _guard = lock_reporting_state();
 
         let transport = sentry::test::TestTransport::new();
         let transport_for_factory = transport.clone();
