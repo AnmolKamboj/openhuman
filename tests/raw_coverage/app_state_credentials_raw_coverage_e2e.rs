@@ -1557,10 +1557,22 @@ async fn an_empty_user_response_is_not_counted_as_a_refresh() {
         .expect("snapshot with an empty backend user")
         .value;
 
-    // The stored identity is still what the app shows.
+    // The stored identity is still what the app shows. Asserted by id, not
+    // `is_some()`: the backend answered `{}`, and a snapshot that echoed that
+    // back as `Some({})` would satisfy `is_some()` while having lost the user.
+    assert_eq!(
+        snap.current_user.as_ref().and_then(|v| v.get("id")),
+        Some(&json!("empty-user-round")),
+        "an empty backend answer must leave the stored identity in place"
+    );
+    // NOT stale: `current_user_stale` reports whether the backend could be
+    // *reached*, and here it answered fine — it simply had no user. Marking an
+    // empty 200 as stale would conflate an outage with an account that has no
+    // profile, and would keep the flag raised while the backoff it is derived
+    // from is closed.
     assert!(
-        snap.current_user.is_some(),
-        "an empty backend answer must leave the stored user in place"
+        !snap.current_user_stale,
+        "a backend that answered is not an outage, even when it answered empty"
     );
     // And its age is unknown rather than zero: nothing was refreshed, so there
     // is no successful refresh to measure from.
