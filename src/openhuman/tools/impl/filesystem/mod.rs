@@ -4,6 +4,8 @@ mod edit_file;
 mod file_read;
 mod file_write;
 mod git_operations;
+mod git_operations_config;
+mod git_operations_render;
 mod glob_search;
 mod grep;
 mod list_files;
