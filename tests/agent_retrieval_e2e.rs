@@ -21,6 +21,9 @@
 
 use chrono::{TimeZone, Utc};
 use openhuman_core::openhuman::config::Config;
+use openhuman_core::openhuman::memory::read_rpc::{self, ChunkFilter};
+use openhuman_core::openhuman::memory::tree::tree::canonicalize_types::IngestRequest;
+use openhuman_core::openhuman::memory::tree::tree::rpc::ingest_rpc;
 use openhuman_core::openhuman::tools::{
     MemoryTreeFetchLeavesTool, MemoryTreeSearchEntitiesTool, Tool,
 };
@@ -28,7 +31,7 @@ use serde_json::{json, Value};
 use tempfile::TempDir;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
 use tinycortex::memory::ingest::canonicalize::email::{EmailMessage, EmailThread};
-use tinymemory_core::ingest_pipeline::{ingest_chat, ingest_email};
+use tinymemory_api::chunks::SourceKind;
 use tinymemory_core::queue::drain_until_idle;
 
 /// Install the host seams the memory subsystem needs.
@@ -241,9 +244,6 @@ fn orchestrator_reaches_memory_agent_on_demand() {
 /// (issue#1505): the retrieval tool must be able to surface facts from a
 /// channel the current conversation did not originate in.
 #[tokio::test]
-#[ignore = "needs a released tinymemory module serving the Retrieval family: \
-             the port routes these tools through the module driver, and the \
-             currently pinned artifact predates SearchEntities/RetrieveLeaves"]
 async fn cross_chat_entity_index_spans_source_boundaries() {
     ensure_memory_seams();
     let (tmp, cfg) = test_config();
@@ -261,9 +261,18 @@ async fn cross_chat_entity_index_spans_source_boundaries() {
             source_ref: Some("slack://eng/1".into()),
         }],
     };
-    ingest_chat(&cfg, "slack:#eng", "alice", vec![], chat_a)
-        .await
-        .expect("ingest chat A should succeed");
+    ingest_rpc(
+        &cfg,
+        IngestRequest {
+            source_kind: SourceKind::Chat,
+            source_id: "slack:#eng".into(),
+            owner: "alice".into(),
+            tags: vec![],
+            payload: serde_json::to_value(chat_a).expect("chat batch serialises"),
+        },
+    )
+    .await
+    .expect("ingest chat A should succeed");
 
     // Chat B — a separate channel with no overlap with chat A
     let chat_b = ChatBatch {
@@ -276,9 +285,18 @@ async fn cross_chat_entity_index_spans_source_boundaries() {
             source_ref: Some("slack://ops/1".into()),
         }],
     };
-    ingest_chat(&cfg, "slack:#ops", "carol", vec![], chat_b)
-        .await
-        .expect("ingest chat B should succeed");
+    ingest_rpc(
+        &cfg,
+        IngestRequest {
+            source_kind: SourceKind::Chat,
+            source_id: "slack:#ops".into(),
+            owner: "carol".into(),
+            tags: vec![],
+            payload: serde_json::to_value(chat_b).expect("chat batch serialises"),
+        },
+    )
+    .await
+    .expect("ingest chat B should succeed");
 
     drain_until_idle(&cfg)
         .await
@@ -356,61 +374,80 @@ async fn cross_chat_entity_index_spans_source_boundaries() {
 /// fetch_leaves and each returned leaf must carry `source_ref` when one was
 /// set at ingest time.
 #[tokio::test]
-#[ignore = "needs a released tinymemory module serving the Retrieval family: \
-             the port routes these tools through the module driver, and the \
-             currently pinned artifact predates SearchEntities/RetrieveLeaves"]
 async fn fetch_leaves_hydrates_source_ref_for_cited_chunks() {
     ensure_memory_seams();
     let (tmp, cfg) = test_config();
 
     // Ingest an email thread with explicit source_refs on every message.
-    ingest_email(
+    ingest_rpc(
         &cfg,
-        "gmail:thread-provenance-1",
-        "alice",
-        vec![],
-        EmailThread {
-            provider: "gmail".into(),
-            thread_subject: "Q3 roadmap decision".into(),
-            messages: vec![
-                EmailMessage {
-                    from: "pm@example.com".into(),
-                    to: vec!["alice@example.com".into()],
-                    cc: vec![],
-                    subject: "Q3 roadmap decision".into(),
-                    sent_at: Utc.timestamp_millis_opt(1_710_000_000_000).unwrap(),
-                    body: "We are committing to the Q3 roadmap with Phoenix as the \
+        IngestRequest {
+            source_kind: SourceKind::Email,
+            source_id: "gmail:thread-provenance-1".into(),
+            owner: "alice".into(),
+            tags: vec![],
+            payload: serde_json::to_value(EmailThread {
+                provider: "gmail".into(),
+                thread_subject: "Q3 roadmap decision".into(),
+                messages: vec![
+                    EmailMessage {
+                        from: "pm@example.com".into(),
+                        to: vec!["alice@example.com".into()],
+                        cc: vec![],
+                        subject: "Q3 roadmap decision".into(),
+                        sent_at: Utc.timestamp_millis_opt(1_710_000_000_000).unwrap(),
+                        body: "We are committing to the Q3 roadmap with Phoenix as the \
                            flagship feature. pm@example.com signed off."
-                        .into(),
-                    source_ref: Some("<q3-roadmap-1@example.com>".into()),
-                    list_unsubscribe: None,
-                },
-                EmailMessage {
-                    from: "alice@example.com".into(),
-                    to: vec!["pm@example.com".into()],
-                    cc: vec![],
-                    subject: "Re: Q3 roadmap decision".into(),
-                    sent_at: Utc.timestamp_millis_opt(1_710_000_060_000).unwrap(),
-                    body: "Confirmed. alice@example.com will own the Phoenix delivery.".into(),
-                    source_ref: Some("<q3-roadmap-2@example.com>".into()),
-                    list_unsubscribe: None,
-                },
-            ],
+                            .into(),
+                        source_ref: Some("<q3-roadmap-1@example.com>".into()),
+                        list_unsubscribe: None,
+                    },
+                    EmailMessage {
+                        from: "alice@example.com".into(),
+                        to: vec!["pm@example.com".into()],
+                        cc: vec![],
+                        subject: "Re: Q3 roadmap decision".into(),
+                        sent_at: Utc.timestamp_millis_opt(1_710_000_060_000).unwrap(),
+                        body: "Confirmed. alice@example.com will own the Phoenix delivery.".into(),
+                        source_ref: Some("<q3-roadmap-2@example.com>".into()),
+                        list_unsubscribe: None,
+                    },
+                ],
+            })
+            .expect("email thread serialises"),
         },
     )
     .await
-    .expect("ingest_email must succeed");
+    .expect("ingest_rpc(email) must succeed");
 
     drain_until_idle(&cfg).await.expect("queue must drain");
 
     let _ws_guard = set_workspace_env(&tmp);
 
-    // List the ingested chunks directly to get leaf chunk ids with their refs.
-    let chunks = tinymemory_core::store::chunks::store::list_chunks(
+    // List the ingested chunks through the host read RPC. Not the engine's
+    // `store::chunks::store::list_chunks`: ingest went through the bound
+    // driver, so this reads the same surface the product reads.
+    let chunks = read_rpc::list_chunks_rpc(
         &cfg,
-        &tinymemory_core::store::chunks::store::ListChunksQuery::default(),
+        ChunkFilter {
+            // Scoped to the thread this test ingested. An unfiltered listing
+            // returns whatever else the store holds, and taking its first two
+            // rows fetched chunks this test never wrote — which is how the
+            // provenance assertion below came to pass on somebody else's
+            // `agent://session/...` segments.
+            source_ids: Some(vec!["gmail:thread-provenance-1".to_string()]),
+            ..ChunkFilter::default()
+        },
     )
-    .expect("list_chunks must not error");
+    .await
+    .expect("list_chunks must not error")
+    .value
+    .chunks;
+
+    assert!(
+        !chunks.is_empty(),
+        "the ingested thread must be listable under its own source id"
+    );
 
     assert!(!chunks.is_empty(), "ingest must produce at least one chunk");
 
@@ -446,17 +483,21 @@ async fn fetch_leaves_hydrates_source_ref_for_cited_chunks() {
         "fetch_leaves must hydrate at least one chunk"
     );
 
-    // Every leaf that has a source_ref at the ingest level must preserve it.
-    // The email thread had explicit source_refs on both messages — at least one
-    // leaf should carry provenance.
-    let with_source_ref = leaves
+    // The point of the test is that the ref set at INGEST reaches the citation,
+    // so assert the value, not merely that the field is inhabited. Asserting
+    // presence alone passed even with `email_items` dropping `source_ref`
+    // outright, because something further down still populates the field —
+    // which is exactly the shape of a provenance test that proves nothing.
+    let refs: Vec<&str> = leaves
         .iter()
-        .filter(|l| l.get("source_ref").and_then(|v| v.as_str()).is_some())
-        .count();
+        .filter_map(|l| l.get("source_ref").and_then(|v| v.as_str()))
+        .collect();
     assert!(
-        with_source_ref >= 1,
-        "fetch_leaves must return at least one leaf with source_ref populated \
-         (provenance chain for citation); got leaves: {fetched:#}"
+        refs.iter()
+            .any(|r| r.contains("q3-roadmap-1@example.com")
+                || r.contains("q3-roadmap-2@example.com")),
+        "fetch_leaves must carry the source_ref set at ingest so a citation \
+         points at the message it came from; got refs {refs:?} in leaves: {fetched:#}"
     );
 
     // Verify content round-trips.
