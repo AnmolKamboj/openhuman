@@ -24,7 +24,7 @@ fn capability_partitions_are_disjoint_and_total() {
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), all.len(), "a function appears in two parts");
-    assert_eq!(all.len(), 15, "the documents file advertises 15 functions");
+    assert_eq!(all.len(), 16, "the documents file advertises 16 functions");
     for f in &all {
         assert!(schema(f).is_some(), "{f} has no schema");
     }

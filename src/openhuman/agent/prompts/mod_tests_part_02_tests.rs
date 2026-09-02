@@ -68,12 +68,11 @@ fn render_subagent_system_prompt_renders_workspace_tail() {
 
 #[test]
 fn subagent_render_options_invert_definition_flags() {
-    // (omit_identity, omit_safety_preamble, omit_skills_catalog,
+    // (omit_identity, omit_safety_preamble,
     //  omit_profile, omit_memory_md)
-    let options = SubagentRenderOptions::from_definition_flags(true, false, true, false, false);
+    let options = SubagentRenderOptions::from_definition_flags(true, false, false, false);
     assert!(!options.include_identity);
     assert!(options.include_safety_preamble);
-    assert!(!options.include_skills_catalog);
     assert!(options.include_profile);
     assert!(options.include_memory_md);
     let narrow = SubagentRenderOptions::narrow();
@@ -82,10 +81,6 @@ fn subagent_render_options_invert_definition_flags() {
     assert_eq!(
         narrow.include_safety_preamble,
         default.include_safety_preamble
-    );
-    assert_eq!(
-        narrow.include_skills_catalog,
-        default.include_skills_catalog
     );
     assert_eq!(narrow.include_profile, default.include_profile);
     assert_eq!(narrow.include_memory_md, default.include_memory_md);
@@ -113,7 +108,6 @@ fn render_subagent_system_prompt_honors_identity_safety_and_skills_flags() {
         SubagentRenderOptions {
             include_identity: true,
             include_safety_preamble: true,
-            include_skills_catalog: true,
             include_profile: false,
             include_memory_md: false,
         },
@@ -197,7 +191,6 @@ fn render_subagent_system_prompt_injects_profile_md_even_when_identity_omitted()
         SubagentRenderOptions {
             include_identity: false,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: false,
         },
@@ -297,7 +290,6 @@ fn render_subagent_system_prompt_frames_memory_md_as_background() {
         SubagentRenderOptions {
             include_identity: false,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: false,
             include_memory_md: true,
         },
@@ -346,7 +338,6 @@ fn render_subagent_system_prompt_omits_memory_framing_when_no_memory_content() {
         SubagentRenderOptions {
             include_identity: false,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: false,
             include_memory_md: true,
         },
@@ -386,7 +377,6 @@ fn render_subagent_system_prompt_injects_profile_md_when_identity_included() {
         SubagentRenderOptions {
             include_identity: true,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: false,
         },
@@ -442,7 +432,7 @@ fn render_subagent_system_prompt_silently_skips_missing_profile_md() {
 
 #[test]
 fn narrow_agent_with_omit_identity_still_loads_profile_md() {
-    // Verify that an agent configured with omit_identity=true/omit_skills_catalog=true/
+    // Verify that an agent configured with omit_identity=true/
     // omit_safety_preamble=true/omit_profile=false still gets PROFILE.md injected.
     // This exercises the SubagentRenderOptions::from_definition_flags path for agents
     // that want PROFILE.md without the full SOUL/IDENTITY preamble.
@@ -460,7 +450,6 @@ fn narrow_agent_with_omit_identity_still_loads_profile_md() {
     let options = SubagentRenderOptions::from_definition_flags(
         true,  // omit_identity
         true,  // omit_safety_preamble
-        true,  // omit_skills_catalog
         false, // omit_profile   — opts IN to PROFILE.md
         false, // omit_memory_md — opts IN to MEMORY.md too
     );
@@ -509,7 +498,7 @@ fn narrow_subagent_definition_flags_skip_profile_md() {
     .unwrap();
 
     // Mirrors e.g. `critic/agent.toml` — all omit_* default-true.
-    let options = SubagentRenderOptions::from_definition_flags(true, true, true, true, true);
+    let options = SubagentRenderOptions::from_definition_flags(true, true, true, true);
 
     let tools: Vec<Box<dyn Tool>> = vec![Box::new(TestTool)];
     let rendered = render_subagent_system_prompt(
@@ -562,7 +551,6 @@ fn render_subagent_system_prompt_injects_memory_md_when_enabled() {
         SubagentRenderOptions {
             include_identity: false,
             include_safety_preamble: false,
-            include_skills_catalog: false,
             include_profile: false,
             include_memory_md: true,
         },

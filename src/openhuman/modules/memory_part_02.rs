@@ -695,3 +695,51 @@ impl MemorySourceSync for ModuleMemoryProvider {
         )
     }
 }
+
+impl ModuleMemoryProvider {
+    /// Open a bounded manual-override window on the module's scheduler gate.
+    ///
+    /// Not part of the `MemoryProvider` contract traits: the override is a
+    /// host-initiated maintenance action, not a memory capability, and adding
+    /// it to `tinymemory-api` would put a consent-bypass lever into every
+    /// embedding's vocabulary. The module serves it as a plain member
+    /// (`OverrideSchedulerGate`), and only this host client names it.
+    pub(crate) async fn override_scheduler_gate(&self, seconds: u64) -> Result<(), MemoryError> {
+        self.proxy("override_scheduler_gate")
+            .await?
+            .call(methods::OVERRIDE_SCHEDULER_GATE, (seconds,))
+            .await
+            .map_err(|error| {
+                // Typed, not text-matched: a module predating the member
+                // answers `tinybus::Error::UnknownMethod`, and mapping that
+                // variant to `Unsupported` here lets the RPC report a version
+                // gap on the type rather than by grepping arbitrary error
+                // strings (review finding on #5932).
+                if matches!(error, tinybus::Error::UnknownMethod { .. }) {
+                    MemoryError::unsupported_raw("scheduler_override")
+                } else {
+                    from_bus(&error)
+                }
+            })
+    }
+}
+
+/// Load config and publish the module host policy, for a CLI process.
+///
+/// The server does this during boot; every CLI family that crosses the memory
+/// module binding (`memory`, `tree-summarizer`, the raw `call` dispatcher) is
+/// its own process and must do the same before its first driver call, or that
+/// call fails with "the module host policy was never published". One helper so
+/// the sequence lives in the openhuman layer — `src/core/` is transport and
+/// carries a one-line call, not the business of loading config and installing
+/// sinks (review finding on #5932).
+pub async fn publish_cli_boot_policy() -> Result<Config, String> {
+    let mut config = Config::load_or_init()
+        .await
+        .map_err(|error| format!("load config for module policy: {error}"))?;
+    config.apply_env_overrides();
+    crate::openhuman::memory::host::install_memory_event_sink();
+    set_modules_policy(Arc::new(config.clone()));
+    Ok(config)
+}
+

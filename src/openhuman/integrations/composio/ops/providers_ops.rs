@@ -34,6 +34,51 @@ use tinyconnectors_bus::records::{ConnectorSyncRequest, ConnectorSyncResponse};
 /// Slack are both Composio records; the *toolkit* lives in the source id.
 const SOURCE_KIND: &str = "composio";
 
+/// Per-pass item budget handed to the connector's `Sync` member.
+///
+/// One pass is one budgeted slice of the account; the pass loop in
+/// `composio_sync_for_source` multiplies this by its `MAX_PASSES` bound into a
+/// worst case of 25k items per click, instead of "whatever the module decides
+/// a call means".
+pub const SYNC_PASS_MAX_ITEMS: usize = 500;
+
+/// The next pass's item budget, or `None` when the configured per-run cap is
+/// spent and the run should end.
+///
+/// Pure on purpose: this is the arithmetic the budgeted loop stands on —
+/// unlimited slices at the pass ceiling, a cap slices to `min(remaining,
+/// ceiling)`, an exhausted cap stops — and a unit test can hold it still.
+pub(crate) fn next_pass_budget(source_max_items: Option<u32>, total_written: u64) -> Option<usize> {
+    match source_max_items {
+        None => Some(SYNC_PASS_MAX_ITEMS),
+        Some(cap) => {
+            let remaining = u64::from(cap).saturating_sub(total_written);
+            if remaining == 0 {
+                None
+            } else {
+                Some(
+                    usize::try_from(remaining)
+                        .unwrap_or(usize::MAX)
+                        .min(SYNC_PASS_MAX_ITEMS),
+                )
+            }
+        }
+    }
+}
+
+/// The `completed` stage's detail string.
+///
+/// A parse contract, not prose: the Sources UI extracts the count with
+/// `/ingested\s+(\d+)\s+item/i` and falls back to a generic "up to date"
+/// when it cannot (#3295). Pinned by a unit test against that exact pattern.
+pub(crate) fn completed_sync_detail(total_written: u64, more_pending: bool) -> String {
+    if more_pending {
+        format!("ingested {total_written} item(s), more pending — Sync again to continue")
+    } else {
+        format!("ingested {total_written} item(s)")
+    }
+}
+
 /// Aggregate result of [`composio_refresh_all_identities`].
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefreshIdentitiesReport {
@@ -187,6 +232,34 @@ pub async fn composio_sync(
     connection_id: &str,
     reason: Option<String>,
 ) -> OpResult<RpcOutcome<SyncOutcome>> {
+    composio_sync_for_source(config, connection_id, reason, None).await
+}
+
+/// [`composio_sync`], carrying the originating memory-source row id so the
+/// background task can publish `MemorySyncStageChanged` events the Brain
+/// sources row keys its per-row indicator on (#3295). The composio path never
+/// emitted them — the driver pipeline's events come from the module host
+/// bridge, which this path does not cross — so a successful sync left the row
+/// on "Syncing" forever, waiting for a terminal stage that never arrived.
+pub async fn composio_sync_for_source(
+    config: &Config,
+    connection_id: &str,
+    reason: Option<String>,
+    source_id: Option<String>,
+) -> OpResult<RpcOutcome<SyncOutcome>> {
+    composio_sync_budgeted(config, connection_id, reason, source_id, None).await
+}
+
+/// [`composio_sync_for_source`] with the source's configured per-run ingest
+/// cap. `None` preserves unlimited: the loop still slices the account into
+/// 500-item passes, but stops only when the connector reports the end.
+pub async fn composio_sync_budgeted(
+    config: &Config,
+    connection_id: &str,
+    reason: Option<String>,
+    source_id: Option<String>,
+    source_max_items: Option<u32>,
+) -> OpResult<RpcOutcome<SyncOutcome>> {
     let reason = parse_sync_reason(reason.as_deref())?;
     tracing::debug!(
         connection_id = %connection_id,
@@ -213,37 +286,110 @@ pub async fn composio_sync(
     )
     .unwrap_or(u64::MAX);
 
-    let config_for_task = config.clone();
     let toolkit_for_task = toolkit.clone();
     let connection_for_task = connection_id.to_string();
     let reason_for_task = reason.as_str().to_string();
+    let source_for_task = source_id.clone();
+
+    let trigger_for_task = reason.as_str().to_string();
+    let publish_stage = move |stage: &str, detail: Option<String>| {
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::MemorySyncStageChanged {
+            trigger: trigger_for_task.clone(),
+            stage: stage.to_string(),
+            provider: Some(toolkit_for_task.clone()),
+            connection_id: Some(connection_for_task.clone()),
+            detail,
+            source_id: source_for_task.clone(),
+        });
+    };
+
+    let toolkit_for_log = toolkit.clone();
+    let connection_for_log = connection_id.to_string();
+    let config_for_run = config.clone();
+
+    // A connector page is one `run_sync_pass`; `more_pending` means the run
+    // stopped mid-account and "the next run resumes". The button's terminal
+    // stage must describe the whole user intent, not one page — emitting
+    // `completed` with pages unfetched cleared the row while records remained
+    // (review finding on this PR) — so loop passes until the connector reports
+    // the end, bounded so an upstream that never completes cannot pin this
+    // task forever. The bound is generous: 50 pages ≈ 5,000 records per click.
+    const MAX_PASSES: usize = 50;
+
+    // Published before the spawn: the row's "running" exists before the RPC
+    // returns, and the bus preserves publisher order, so completed can never
+    // overtake it (review question on ordering).
+    publish_stage("running", None);
 
     tokio::spawn(async move {
-        let outcome = run_sync_pass(
-            &config_for_task,
-            &toolkit_for_task,
-            &connection_for_task,
-            &reason_for_task,
-        )
-        .await;
+        let mut total_written: u64 = 0;
+        let mut passes = 0usize;
+        let mut more_pending = false;
+        let outcome = loop {
+            passes += 1;
+            // The source's configured per-run cap wins over the pass ceiling:
+            // a budget of 200 means one 200-item pass, not 50 passes of 500
+            // (review finding). `None` from the arithmetic = cap spent, and a
+            // spent cap is a completed run, not a failed one.
+            let Some(pass_budget) = next_pass_budget(source_max_items, total_written) else {
+                break Ok(());
+            };
+            match run_sync_pass(
+                &config_for_run,
+                &toolkit_for_log,
+                &connection_for_log,
+                &reason_for_task,
+                pass_budget,
+            )
+            .await
+            {
+                Ok(pass) => {
+                    total_written = total_written.saturating_add(u64::from(pass.written));
+                    more_pending = pass.more_pending;
+                    tracing::info!(
+                        toolkit = %toolkit_for_log,
+                        connection_id = %connection_for_log,
+                        pass = passes,
+                        items_ingested = pass.records_read,
+                        written = pass.written,
+                        already_ingested = pass.already_ingested,
+                        more_pending = pass.more_pending,
+                        "[composio] background sync pass ok"
+                    );
+                    if !pass.more_pending {
+                        break Ok(());
+                    }
+                    if passes >= MAX_PASSES {
+                        // The cap is pacing, not failure: everything fetched is
+                        // ingested and the next click resumes from the cursor.
+                        // Routing this through the failed stage put an error
+                        // toast on a working feature (review finding); the row
+                        // settles with the honest count and the remainder named.
+                        break Ok(());
+                    }
+                }
+                Err(error) => break Err(error),
+            }
+        };
         match outcome {
-            Ok(pass) => tracing::info!(
-                toolkit = %toolkit_for_task,
-                connection_id = %connection_for_task,
-                items_ingested = pass.records_read,
-                written = pass.written,
-                already_ingested = pass.already_ingested,
-                more_pending = pass.more_pending,
-                "[composio] background sync ok"
-            ),
+            Ok(()) => {
+                // The detail is a parse contract, not prose: the Sources UI
+                // extracts the count with `/ingested\s+(\d+)\s+item/i` and
+                // falls back to a generic "up to date" when it cannot (#3295).
+                publish_stage(
+                    "completed",
+                    Some(completed_sync_detail(total_written, more_pending)),
+                );
+            }
             Err(error) => {
                 report_composio_op_error("sync", &anyhow::anyhow!("{error}"));
                 tracing::warn!(
-                    toolkit = %toolkit_for_task,
-                    connection_id = %connection_for_task,
+                    toolkit = %toolkit_for_log,
+                    connection_id = %connection_for_log,
                     error = %error,
                     "[composio] background sync failed"
                 );
+                publish_stage("failed", Some(error.clone()));
             }
         }
     });
@@ -300,6 +446,7 @@ pub(crate) async fn run_sync_pass(
     toolkit: &str,
     connection_id: &str,
     reason: &str,
+    pass_budget: usize,
 ) -> Result<SyncPassOutcome, String> {
     // Sync pages the whole account inside the call; the default 30s bus
     // deadline reported failure on runs the module then finished successfully.
@@ -310,6 +457,11 @@ pub(crate) async fn run_sync_pass(
             toolkit: toolkit.to_string(),
             connection_id: Some(connection_id.to_string()),
             reason: Some(reason.to_string()),
+            // One pass is one budgeted slice, not "the whole account": without
+            // a budget the module pages until its own limits and the caller's
+            // pass loop bounds nothing (review finding). complete=false at the
+            // budget → more_pending → the loop (or the next click) resumes.
+            max_items: Some(pass_budget),
             ..ConnectorSyncRequest::default()
         },
     )
@@ -393,4 +545,11 @@ pub(crate) fn parse_sync_reason(raw: Option<&str>) -> OpResult<SyncReason> {
              'manual', 'periodic', 'connection_created'"
         )),
     }
+}
+
+/// Test window over the two-arg detail (the one-arg-era test path kept its
+/// name; this avoids re-plumbing the cfg(test) re-export).
+#[cfg(test)]
+pub(crate) fn completed_sync_detail_for_test(total: u64, more: bool) -> String {
+    completed_sync_detail(total, more)
 }

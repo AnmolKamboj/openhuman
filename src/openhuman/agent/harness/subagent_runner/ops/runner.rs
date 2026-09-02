@@ -1258,7 +1258,6 @@ async fn run_typed_mode(
     let render_options = SubagentRenderOptions::from_definition_flags(
         definition.omit_identity,
         definition.omit_safety_preamble,
-        definition.omit_skills_catalog,
         definition.omit_profile,
         definition.omit_memory_md,
     );

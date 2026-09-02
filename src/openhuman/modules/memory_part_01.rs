@@ -7,7 +7,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.6";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.7";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -73,6 +73,13 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // and embedder identification, served by the module's engine and forwarded
     // by `MemoryScoring for ModuleMemoryProvider` below.
     Capability::Scoring,
+    // v1.13.7 (tinymemory#125 + #127): the typed ingestion round and the
+    // answer surface, served and advertised by the pinned artifact.
+    Capability::DocumentIngest,
+    Capability::ConversationIngest,
+    Capability::LearningIngest,
+    Capability::EventIngest,
+    Capability::Answer,
 ];
 
 /// Escape hatch for a locally-built module.
@@ -124,6 +131,11 @@ use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
+use tinymemory_api::provider::operations::{
+    AnswerRequest, AnswerResponse, MemoryAnswer, MemoryConversationIngest,
+    MemoryDocumentIngest, MemoryEventIngest, MemoryLearningIngest, RawMemoryEvent,
+};
+use tinymemory_api::learning::LearningCandidate;
 use tinymemory_api::provider::sessions::{
     CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
 };
@@ -539,6 +551,22 @@ impl MemoryProvider for ModuleMemoryProvider {
     }
     fn as_scoring(&self) -> Option<&dyn MemoryScoring> {
         artifact_serves(Capability::Scoring).then_some(self as &dyn MemoryScoring)
+    }
+    fn as_document_ingest(&self) -> Option<&dyn MemoryDocumentIngest> {
+        artifact_serves(Capability::DocumentIngest).then_some(self as &dyn MemoryDocumentIngest)
+    }
+    fn as_conversation_ingest(&self) -> Option<&dyn MemoryConversationIngest> {
+        artifact_serves(Capability::ConversationIngest)
+            .then_some(self as &dyn MemoryConversationIngest)
+    }
+    fn as_learning_ingest(&self) -> Option<&dyn MemoryLearningIngest> {
+        artifact_serves(Capability::LearningIngest).then_some(self as &dyn MemoryLearningIngest)
+    }
+    fn as_event_ingest(&self) -> Option<&dyn MemoryEventIngest> {
+        artifact_serves(Capability::EventIngest).then_some(self as &dyn MemoryEventIngest)
+    }
+    fn as_answer(&self) -> Option<&dyn MemoryAnswer> {
+        artifact_serves(Capability::Answer).then_some(self as &dyn MemoryAnswer)
     }
 }
 

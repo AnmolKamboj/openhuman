@@ -123,7 +123,6 @@ fn crypto_agent_has_narrow_wallet_market_tools_and_safety_on() {
     );
     assert!(def.omit_identity);
     assert!(def.omit_memory_context);
-    assert!(def.omit_skills_catalog);
     // Pure-function specialist (omit_memory_context = true) — no eager
     // memory pre-fetch; the orchestrator hands it a grounded request.
     assert_eq!(def.trigger_memory_agent, TriggerMemoryAgent::Never);

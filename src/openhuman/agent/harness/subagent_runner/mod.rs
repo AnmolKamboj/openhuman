@@ -11,7 +11,7 @@
 //!    inherits the parent's tools verbatim).
 //! 4. Builds a narrow system prompt that strips the sections the
 //!    definition asks to omit (`omit_identity`, `omit_memory_context`,
-//!    `omit_safety_preamble`, `omit_skills_catalog`).
+//!    `omit_safety_preamble`).
 //! 5. Runs the child turn on the TinyAgents harness (`ops::graph` →
 //!    [`crate::openhuman::agent::tinyagents::run_turn_via_tinyagents_shared`]) using
 //!    the parent's [`crate::openhuman::inference::provider::Provider`], then

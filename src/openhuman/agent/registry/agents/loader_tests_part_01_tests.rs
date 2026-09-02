@@ -127,7 +127,6 @@ fn trigger_triage_has_no_tools_and_pulls_memory_context() {
     );
     assert!(def.omit_identity);
     assert!(def.omit_safety_preamble);
-    assert!(def.omit_skills_catalog);
     assert_eq!(def.sandbox_mode, SandboxMode::ReadOnly);
     assert_eq!(def.max_iterations, 2);
 }

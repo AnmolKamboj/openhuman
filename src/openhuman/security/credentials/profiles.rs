@@ -252,6 +252,43 @@ pub struct AuthProfilesStore {
     #[cfg(test)]
     force_lock_unwritable: Arc<AtomicBool>,
 }
+/// Write `bytes` to `path` with the file readable only by its owner.
+///
+/// `fs::write` creates at `0o666 & ~umask` — `0644` under the usual `022` — and
+/// `fs::rename` carries the source mode onto the destination, so the credential
+/// store inherited it on every save. Any process running under a different UID
+/// could read it, and on the encrypted-JSON path — the normal state on Linux and
+/// on any headless install without a keyring — that file is OAuth token
+/// ciphertext, leaving `.secret_key` as the only remaining control.
+///
+/// Same shape as the fix #2360 landed for the secret key in
+/// `keyring/encrypted_store.rs`: create with the mode already set rather than
+/// widening then narrowing, so the file is never briefly world-readable.
+///
+/// `.mode()` only applies when the file is *created*, so a leftover tmp from an
+/// interrupted save would keep its old mode — hence the explicit
+/// `set_permissions` afterwards.
+fn write_owner_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        file.write_all(bytes)
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows has no mode to set here; the file inherits the ACL of the
+        // per-user profile directory it is created in.
+        fs::write(path, bytes)
+    }
+}
 include!("profiles_impl_01_part_01.rs");
 include!("profiles_impl_01_part_02.rs");
 include!("profiles_impl_01_part_03.rs");

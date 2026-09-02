@@ -338,7 +338,8 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                     &toolkit,
                     &connection_id,
                     "connection_created",
-                )
+                                    crate::openhuman::integrations::composio::ops::SYNC_PASS_MAX_ITEMS,
+)
                 .await;
                 match attempted {
                     Ok(pass) => {

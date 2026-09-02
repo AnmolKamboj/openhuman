@@ -107,11 +107,31 @@ pub(crate) struct ToolPolicyEnforcement {
 /// routes (chat→burst, reasoning→agentic, …) the way the harness registry can.
 /// Default per-turn wall-clock ceiling for an openhuman agent turn, in seconds
 /// (issue #4746). Applied as the harness `RunLimits::max_wall_clock_ms` so the
-/// loop interrupts a hung/slow model or tool/sub-agent call instead of parking
-/// forever with no terminal event. Deliberately generous — a normal turn, even
-/// a slow multi-step reasoning one, finishes well under it; this is a hang
-/// backstop, not a UX deadline. 10 minutes.
-const DEFAULT_AGENT_TURN_TIMEOUT_SECS: u64 = 600;
+/// loop interrupts a call instead of parking forever with no terminal event.
+///
+/// 60 minutes (#5766, was 10). With hang detection now owned by the per-call
+/// ceiling below, this is a pure runaway guard over the whole turn — its old
+/// 600s value doubled as the per-call bound (every call got the turn's
+/// *remainder*), which killed long *productive* turns: a turn that had
+/// legitimately spent ~543s across many successful calls handed its next model
+/// call a 56s budget and died. A turn's real bounds are the model/tool call
+/// caps times the per-call ceiling; this only catches what escapes those.
+const DEFAULT_AGENT_TURN_TIMEOUT_SECS: u64 = 3_600;
+
+/// Default wall-clock ceiling for a **single model call** within a turn, in
+/// seconds (#5766). Applied as the harness `RunLimits::max_model_call_ms`, so
+/// every model call (and every retry attempt) gets a fresh
+/// `min(this, turn remainder)` budget instead of only the shrinking remainder.
+/// This is the hang detector the turn ceiling used to double as — scoped to
+/// the one call that wedged, not the whole turn's history.
+///
+/// Deliberately generous — 15 minutes: a hidden-reasoning model call can be
+/// legitimately app-silent for several minutes, so this is a backstop for
+/// calls that will never return, not a latency target. Tool calls (including
+/// sub-agent delegations, which wrap entire child turns) are exempt by design
+/// in the harness and stay bounded by the turn remainder plus their own
+/// per-tool timeouts.
+const DEFAULT_MODEL_CALL_TIMEOUT_SECS: u64 = 900;
 
 /// Resolve the per-turn wall-clock ceiling in milliseconds for the harness
 /// policy. Reads `OPENHUMAN_AGENT_TURN_TIMEOUT_SECS` (falling back to
@@ -138,6 +158,32 @@ fn parse_agent_turn_wall_clock_ms(env_value: Option<&str>) -> Option<u64> {
     (secs > 0).then(|| secs.saturating_mul(1_000))
 }
 
+/// Resolve the per-model-call wall-clock ceiling in milliseconds for the
+/// harness policy. Reads `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS` (falling back to
+/// [`DEFAULT_MODEL_CALL_TIMEOUT_SECS`]); `0` means "no per-call ceiling" →
+/// `None`, leaving calls bounded only by the turn's remaining wall clock as
+/// before #5766.
+fn model_call_wall_clock_ms() -> Option<u64> {
+    parse_model_call_wall_clock_ms(
+        std::env::var("OPENHUMAN_MODEL_CALL_TIMEOUT_SECS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// Pure core of [`model_call_wall_clock_ms`]: map an optional
+/// `OPENHUMAN_MODEL_CALL_TIMEOUT_SECS` value to a per-call ceiling in
+/// milliseconds. An absent/unparseable value falls back to
+/// [`DEFAULT_MODEL_CALL_TIMEOUT_SECS`]; `0` yields `None` (opt-out). Kept
+/// env-free so it is deterministically unit-testable — the same shape as
+/// [`parse_agent_turn_wall_clock_ms`].
+fn parse_model_call_wall_clock_ms(env_value: Option<&str>) -> Option<u64> {
+    let secs = env_value
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_MODEL_CALL_TIMEOUT_SECS);
+    (secs > 0).then(|| secs.saturating_mul(1_000))
+}
+
 fn run_policy_for(max_iterations: usize, response_cache_enabled: bool) -> RunPolicy {
     let mut policy = RunPolicy::default();
     policy.limits.max_model_calls = max_iterations;
@@ -158,6 +204,14 @@ fn run_policy_for(max_iterations: usize, response_cache_enabled: bool) -> RunPol
     // turn with no per-run timeout inherits this policy-level cap. Generous by
     // design (a backstop, not a UX deadline); env-overridable, `0` disables.
     policy.limits.max_wall_clock_ms = agent_turn_wall_clock_ms();
+    // Per-model-call ceiling (#5766): each model call (and retry attempt) gets
+    // a fresh `min(ceiling, turn remainder)` budget, so hang detection is
+    // per-call instead of riding the turn deadline — which let the turn
+    // ceiling above grow from 10 to 60 minutes without a wedged call being
+    // able to hold a turn for more than this. Tool calls (incl. sub-agent
+    // delegations) are exempt in the harness and keep the remainder-only
+    // budget. Env-overridable, `0` disables.
+    policy.limits.max_model_call_ms = model_call_wall_clock_ms();
     // Crate-owned retry (Phase 3a): mirror the former `ReliableProvider` schedule
     // (2 retries, 500 ms exponential backoff). `backoff_sleep` is on so a
     // transient 429/5xx actually waits before retrying, as it did before.

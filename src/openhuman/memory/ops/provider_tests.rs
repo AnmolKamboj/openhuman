@@ -61,35 +61,42 @@ async fn bound_driver_status_reports_id_class_contract_and_capabilities() {
             // under-claim. The list stays spelled out: a NEW contract
             // family must still widen this deliberately, with its
             // accessor and its release.
-            "chunks",
             // v1.7.0's two families. Deliberately widened here rather than
             // derived: this list is the wire surface the frontend reads, so
             // a new family has to be a decision someone made, not something
             // that appeared.
+            // Added with tinymemory v1.13.0: the MemoryScoring bus family
+            // (#5560). Widened deliberately — the wire surface the frontend
+            // reads must be an explicit decision, not a silent addition.
+            // Widened to twenty-six with v1.13.7: the typed ingestion round
+            // (document/conversation/learning/event) and the answer surface.
+            "answer",
+            "chunks",
             "coding_sessions",
+            "conversation_ingest",
             "core",
             "diff",
+            "document_ingest",
             "documents",
             "entities",
             "episodic",
+            "event_ingest",
             "goals",
             "graph",
             "ingest",
+            "learning_ingest",
             "maintenance",
             "people",
             "portability",
             "profile",
             "recall",
             "retrieval",
-            // Added with tinymemory v1.13.0: the MemoryScoring bus family
-            // (#5560). Widened deliberately — the wire surface the frontend
-            // reads must be an explicit decision, not a silent addition.
             "scoring",
             "source_sync",
             "sources",
             "tool_memory",
-            "tree"
-        ]
+            "tree",
+        ],
     );
     assert_eq!(status.fell_back_from, None);
     assert_eq!(status.last_error, None);

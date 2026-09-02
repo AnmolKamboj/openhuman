@@ -1644,6 +1644,9 @@ const MEMORY_FUNCTION_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("init", Some(Capability::Core)),
     ("list_documents", Some(Capability::Core)),
     ("list_namespaces", Some(Capability::Core)),
+    // Same tier as list_namespaces beside it: the per-namespace counts are
+    // the sync-verification surface, gated with the core partition.
+    ("namespace_summaries", Some(Capability::Core)),
     ("delete_document", Some(Capability::Core)),
     ("query_namespace", Some(Capability::Core)),
     ("recall_context", Some(Capability::Core)),
@@ -1673,6 +1676,11 @@ const MEMORY_FUNCTION_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("sync_channel", Some(Capability::Sources)),
     ("sync_all", Some(Capability::Sources)),
     ("ingestion_status", Some(Capability::Sources)),
+    // Sources, with the rest of its schema family (one push_cap site): the
+    // override exists so user-requested source maintenance runs while the
+    // gate is paused, and a driver serving no Sources family has nothing the
+    // window would unblock.
+    ("scheduler_override", Some(Capability::Sources)),
     // the tree summarizer, NOT ingestion
     ("learn_all", Some(Capability::Tree)),
     // never gated: this is the RPC that reports the capability set
@@ -1791,6 +1799,15 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             // is represented by that same partition; Portability is RPC-less.
             Capability::Core => true,
             Capability::Recall | Capability::Portability => false,
+            // v1.13.7's ingestion round: engine-side families (typed document
+            // /conversation/learning/event ingest and the answer surface) the
+            // host reaches through existing controllers, not per-family RPC
+            // namespaces — no controller carries these tags yet.
+            Capability::DocumentIngest
+            | Capability::ConversationIngest
+            | Capability::LearningIngest
+            | Capability::EventIngest
+            | Capability::Answer => false,
             // Folded into `Tree`: the tree registry's ~25 methods span tree,
             // entities, graph and maintenance and are tagged as ONE family.
             // See the push site in `all.rs` for why that trade was chosen.
