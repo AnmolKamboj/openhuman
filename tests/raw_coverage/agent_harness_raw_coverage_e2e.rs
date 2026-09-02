@@ -306,7 +306,6 @@ fn coverage_definition() -> AgentDefinition {
         omit_identity: true,
         omit_memory_context: false,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: Default::default(),
@@ -563,7 +562,6 @@ agent_tier = "chat"
 omit_identity = true
 omit_memory_context = true
 omit_safety_preamble = true
-omit_skills_catalog = true
 omit_profile = true
 omit_memory_md = true
 
@@ -585,7 +583,6 @@ max_iterations = 3
 omit_identity = true
 omit_memory_context = true
 omit_safety_preamble = true
-omit_skills_catalog = true
 omit_profile = true
 omit_memory_md = true
 

@@ -1515,7 +1515,6 @@ named = ["todo", "plan_exit"]
         omit_identity: true,
         omit_memory_context: true,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: ModelSpec::Inherit,
@@ -2916,7 +2915,6 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
         "You are a narrow coverage sub-agent.".into(),
         false,
         false,
-        true,
     )
     .build(&ctx)
     .expect("subagent builder");
@@ -2934,7 +2932,6 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
         SubagentRenderOptions {
             include_safety_preamble: true,
             include_identity: true,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: true,
         },
@@ -2964,10 +2961,9 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
     assert!(PromptTool::with_schema("x", "desc", "{}".into())
         .parameters_schema
         .is_some());
-    let options = SubagentRenderOptions::from_definition_flags(false, true, false, true, false);
+    let options = SubagentRenderOptions::from_definition_flags(false, true, true, false);
     assert!(options.include_identity);
     assert!(!options.include_safety_preamble);
-    assert!(options.include_skills_catalog);
     assert!(!options.include_profile);
     assert!(options.include_memory_md);
 }

@@ -326,7 +326,6 @@ fn definition(max_result_chars: Option<usize>) -> AgentDefinition {
         omit_identity: true,
         omit_memory_context: false,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: ModelSpec::Inherit,
@@ -661,7 +660,6 @@ fn subagent_prompt_renderer_handles_formats_caps_and_stale_tool_indices() -> Res
     let options = SubagentRenderOptions {
         include_safety_preamble: true,
         include_identity: false,
-        include_skills_catalog: false,
         include_profile: true,
         include_memory_md: true,
     };

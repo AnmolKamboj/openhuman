@@ -330,7 +330,6 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
         SubagentRenderOptions {
             include_safety_preamble: true,
             include_identity: true,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: true,
         },
