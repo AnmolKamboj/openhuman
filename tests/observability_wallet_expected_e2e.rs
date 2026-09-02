@@ -124,8 +124,9 @@ fn a_context_wrapped_wallet_state_is_classified_as_expected() {
 /// gained an intermediate layer.
 #[test]
 fn a_multiply_wrapped_wallet_state_is_still_classified_as_expected() {
-    let nested =
-        format!("rpc.invoke_method failed: self_identity key_status: {WALLET_NOT_CONFIGURED_MESSAGE}");
+    let nested = format!(
+        "rpc.invoke_method failed: self_identity key_status: {WALLET_NOT_CONFIGURED_MESSAGE}"
+    );
 
     assert_eq!(
         expected_error_kind(&nested),
