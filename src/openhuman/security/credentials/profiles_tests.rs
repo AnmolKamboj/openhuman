@@ -12,3 +12,6 @@ const SYNTHETIC_DEAD_PID: u32 = i32::MAX as u32;
 mod part_01_tests;
 #[path = "profiles_tests_part_02_tests.rs"]
 mod part_02_tests;
+
+#[path = "profiles_owner_only_tests.rs"]
+mod owner_only_tests;
