@@ -850,3 +850,113 @@ fn supervisor_default_probe_window_stays_eight_seconds() {
          regression b44b958d reverted"
     );
 }
+
+/// An HTTP-remote install pointed at `url`.
+///
+/// The stdio fixture above cannot reach the auth path at all: a 401 is an HTTP
+/// fact, so the credential hints only exist for this transport.
+fn make_http_remote_server(url: &str) -> InstalledServer {
+    InstalledServer {
+        server_id: format!("test-http-{}", uuid::Uuid::new_v4()),
+        qualified_name: "@openhuman-test/remote".to_string(),
+        display_name: "Test Remote".to_string(),
+        description: Some("Stub HTTP-remote MCP server used by mcp_registry_e2e tests.".into()),
+        icon_url: None,
+        // Carried but unread for this transport — callers route off `transport`.
+        command_kind: CommandKind::Binary,
+        command: String::new(),
+        args: Vec::new(),
+        env_keys: Vec::new(),
+        config: None,
+        installed_at: 0,
+        last_connected_at: None,
+        transport: Transport::HttpRemote {
+            url: url.to_string(),
+        },
+        enabled: true,
+    }
+}
+
+/// The failure side of the per-config lookups (#5701).
+///
+/// `per_config_lookups_see_a_per_config_connection` covers the success side and
+/// asserts `last_error_for_config` is `None` after a clean connect. That leaves
+/// the half that matters for diagnosis untested: `auth_hint_for_config` had no
+/// reference in any e2e lane at all, and nothing anywhere asserted that a real
+/// failure is actually *surfaced* rather than folded into the same `None` a
+/// missing workspace returns.
+///
+/// The two-workspace precondition is what makes this discriminate. With two
+/// hosts open and no default, `host::try_service()` refuses to guess, so the
+/// ambient forms answer `None` for a server that genuinely has both a hint and
+/// an error recorded — which is exactly the confusion #5701 was filed about.
+#[tokio::test]
+async fn per_config_failure_lookups_surface_the_reason() {
+    use openhuman_core::openhuman::mcp::host;
+    use openhuman_core::openhuman::mcp::registry::connections;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // A server that refuses everything for want of credentials.
+    let upstream = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&upstream)
+        .await;
+
+    let (_tmp_a, cfg_a) = fresh_workspace_config();
+    let (_tmp_b, cfg_b) = fresh_workspace_config();
+    let _host_b = host(&cfg_b);
+
+    let h = host(&cfg_a);
+    let server = make_http_remote_server(&upstream.uri());
+    h.dynamic()
+        .store()
+        .insert_server(&server)
+        .expect("insert installed server");
+
+    let outcome = connections::connect(&cfg_a, &server).await;
+    assert!(
+        outcome.is_err(),
+        "a 401 from the endpoint must fail the connect, not report success"
+    );
+
+    assert!(
+        host::try_service().is_none(),
+        "two workspaces open and no default: the ambient service must refuse to guess, \
+         which is what makes the per-config forms the only correct ones here"
+    );
+
+    let hint = connections::auth_hint_for_config(&cfg_a, &server.server_id).await;
+    assert_eq!(
+        hint,
+        Some("credential_required"),
+        "the workspace that attempted the connect must see why its 401 happened"
+    );
+
+    let last_error = connections::last_error_for_config(&cfg_a, &server.server_id).await;
+    // Non-empty after trimming, not merely `Some`: the contract this pins is a
+    // *readable* reason, and `Some(String::new())` satisfies `is_some()` while
+    // telling a caller polling status precisely nothing.
+    assert!(
+        last_error
+            .as_deref()
+            .is_some_and(|error| !error.trim().is_empty()),
+        "a failed attempt must leave a readable reason behind — `connect`'s own contract \
+         is that a caller polling status sees it without re-attempting; got {last_error:?}"
+    );
+
+    // A failure belongs to the workspace that hit it, not to every workspace.
+    assert!(
+        connections::auth_hint_for_config(&cfg_b, &server.server_id)
+            .await
+            .is_none(),
+        "an auth hint must not leak across workspaces"
+    );
+    assert!(
+        connections::last_error_for_config(&cfg_b, &server.server_id)
+            .await
+            .is_none(),
+        "a failure must not leak across workspaces"
+    );
+}

@@ -21,6 +21,12 @@ import {
  * `ForwardSearch`, which copies `search` and `hash` onto the destination; the
  * `?tab=` tests below assert that forwarding rather than the old defect.
  *
+ * `/webhooks` forwards the same way but in TWO hops — via
+ * `/settings/integrations`, which is itself a redirect (#5939). Both hops used
+ * a bare `<Navigate>`, so a fix to only the first would have handed the query
+ * to the second and had it dropped there; the `/webhooks` tests below assert
+ * the FINAL destination for that reason.
+ *
  * NOTE ON SCOPE: nothing here opens the Composio tab. Doing so downloads the
  * `tinyconnectors` module from a GitHub release, and a failed download is
  * terminal for the core process — which takes the rest of the file with it.
@@ -217,6 +223,42 @@ test.describe('Connections — the /skills back-compat redirect', () => {
     const hash = await currentHash(page);
     expect(hash).not.toContain('tab=');
     await expectSelectedTab(page, 'welcome');
+  });
+
+  test('/webhooks?tab= survives BOTH hops of its redirect', async ({ page }) => {
+    // #5939 (closes #5908). `/webhooks` is a TWO-hop redirect:
+    //
+    //   /webhooks              -> /settings/integrations   (AppRoutes.tsx:239)
+    //   /settings/integrations -> /connections             (settingsRouteElements.tsx:130)
+    //
+    // Both hops used a bare `<Navigate>`, so fixing only the first would have
+    // handed the query to hop two and had it dropped there instead. That is why
+    // this asserts the FINAL destination rather than the intermediate one — a
+    // half-fix passes an assertion on `/settings/integrations` and still loses
+    // the deep link the user actually followed.
+    await openRoute(page, 'pw-webhooks-tab-keep', '/webhooks?tab=channels', '/connections');
+    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('/connections');
+
+    expect(await currentHash(page)).toContain('tab=channels');
+    await expectSelectedTab(page, 'channels');
+  });
+
+  test('/webhooks carries the fragment through as well as the query', async ({ page }) => {
+    // `ForwardSearch` copies `hash` alongside `search`. Under HashRouter the
+    // fragment is the part after a SECOND `#`, so this also pins that the two
+    // are not conflated — a redirect that forwarded only `search` would land on
+    // the right tab and still drop the anchor.
+    await openRoute(
+      page,
+      'pw-webhooks-fragment-keep',
+      '/webhooks?tab=channels#delivery-3',
+      '/connections'
+    );
+    await expect.poll(() => currentHash(page), { timeout: 15_000 }).toContain('/connections');
+
+    const hash = await currentHash(page);
+    expect(hash).toContain('tab=channels');
+    expect(hash).toContain('#delivery-3');
   });
 
   test('/channels keeps working, because its redirect names the tab explicitly', async ({

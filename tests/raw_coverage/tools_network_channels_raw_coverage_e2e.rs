@@ -412,3 +412,118 @@ fn run_git(repo: &std::path::Path, args: &[&str]) {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// #5494 / #5672 — a repository config that names a command does not get to run it,
+/// asserted through the live agent tool surface rather than the private helper.
+///
+/// The tool's own workspace is agent-writable, and several git config keys name a
+/// program git then executes — `core.fsmonitor` is run by `git status`, which every
+/// operation this tool exposes reaches through `run_git_command_in`. So an agent that
+/// can write a file can choose what the next `status` executes.
+///
+/// The unit suite in `git_operations_tests.rs` already pins the predicate. What it
+/// cannot show is that the *tool surface an agent actually calls* is the one sitting
+/// behind the guard: a new operation, or a refactor that reaches git another way,
+/// would restore the exploit with every unit test still green. That is what this
+/// drives — `GitOperationsTool::execute`, the same entry the agent tool loop uses.
+///
+/// The marker assertion is the security one. An error message alone would not prove
+/// the hook did not run: the guard could refuse *after* spawning git. The hook is
+/// proven to work before it is planted, so a missing marker afterwards means it was
+/// refused, not that the hook was silently broken.
+#[cfg(unix)]
+#[tokio::test]
+async fn git_tool_refuses_a_workspace_repo_config_that_names_a_command() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempdir().expect("repo tempdir");
+    let repo = tmp.path();
+    run_git(repo, &["init"]);
+    run_git(repo, &["config", "user.email", "guard@example.test"]);
+    run_git(repo, &["config", "user.name", "Guard"]);
+
+    // A hook that records the fact it ran. Proven to run on its own first, so a
+    // later absent marker is evidence of refusal rather than of a broken fixture.
+    let hook = repo.join("hook.sh");
+    let marker = repo.join("COMMAND_RAN");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\ntouch {:?}\nexit 1\n", marker.to_string_lossy()),
+    )
+    .expect("write hook");
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).expect("chmod hook");
+    std::process::Command::new(&hook)
+        .status()
+        .expect("hook runs");
+    assert!(marker.exists(), "the planted hook does not run at all");
+    std::fs::remove_file(&marker).expect("clear marker");
+
+    let hook_path = hook.to_string_lossy().into_owned();
+    run_git(repo, &["config", "core.fsmonitor", &hook_path]);
+
+    let tool = GitOperationsTool::new(full_security(repo), repo.to_path_buf());
+    let refused = tool.execute(json!({"operation": "status"})).await;
+    let message = match &refused {
+        Ok(result) => result.output(),
+        Err(err) => err.to_string(),
+    };
+
+    // Checked BEFORE anything about the result, deliberately: whether the call
+    // reported an error is secondary, and asserting that first would abort the
+    // test before it reached the question that matters. Remove the guard and
+    // `status` succeeds, so an is-error assertion fires first and reports a
+    // missing error rather than an executed command.
+    //
+    // THE assertion. An error alone would not prove anything — the guard could
+    // refuse after spawning git, or git could fail for an unrelated reason. The
+    // marker is the only evidence that the command named by the workspace's own
+    // config never ran.
+    assert!(
+        !marker.exists(),
+        "git executed the command named by the workspace's own repository config \
+         (`core.fsmonitor`); the tool returned: {message}"
+    );
+
+    // Secondary: the call must not report success either.
+    if let Ok(result) = &refused {
+        assert!(
+            result.is_error,
+            "status under a hostile repository config reported success: {message}"
+        );
+    }
+
+    // The refusal must also be legible. This was briefly not true: the
+    // repository probe used to run through the guarded `run_git_command_in`,
+    // so a refused probe was flattened by `is_ok_and` into the generic "Not in
+    // a git repository" — false, and un-actionable, for a directory that
+    // plainly is one. `25ea41efe` fixed that by probing with `hardened_git`
+    // and asking the guard before concluding anything. Asserting the key here
+    // keeps the diagnostic from regressing back to the generic message.
+    assert_contains(&message, "core.fsmonitor");
+}
+
+/// The other half of #5672, and the reason the allowlist is not simply "refuse any
+/// local config": an ordinary repository still works.
+///
+/// `git init` plus an identity is what every real workspace looks like, so a guard
+/// that refused it would make the tool useless and would be reverted rather than
+/// fixed. Pinning it here means a future tightening of `ALLOWED_REPO_CONFIG` that
+/// breaks ordinary repositories fails in the e2e lane rather than in the field.
+#[tokio::test]
+async fn git_tool_still_runs_under_an_ordinary_repository_config() {
+    let tmp = tempdir().expect("repo tempdir");
+    let repo = tmp.path();
+    run_git(repo, &["init"]);
+    run_git(repo, &["config", "user.email", "ordinary@example.test"]);
+    run_git(repo, &["config", "user.name", "Ordinary"]);
+    std::fs::write(repo.join("visible.txt"), "hello\n").expect("write file");
+
+    let tool = GitOperationsTool::new(full_security(repo), repo.to_path_buf());
+    let status = tool
+        .execute(json!({"operation": "status"}))
+        .await
+        .expect("status on an ordinary repo must not error");
+
+    assert!(!status.is_error, "ordinary repo refused: {}", text(&status));
+    assert_contains(&text(&status), "visible.txt");
+}
