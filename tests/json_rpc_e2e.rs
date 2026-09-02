@@ -14164,3 +14164,226 @@ async fn json_rpc_memory_diff_surface_is_gone_and_memory_still_answers() {
 
     rpc_join.abort();
 }
+
+// ── Backfilled e2e cover (#5795, #5947) ──────────────────────────────────────
+//
+// Both of these drive the JSON-RPC surface rather than the library type the
+// fix lives on, so a future refactor that swaps the write path or the dispatch
+// arm is caught even though the inner unit tests keep passing.
+
+/// Set on the re-exec below so the child runs the test body instead of
+/// spawning another child.
+#[cfg(unix)]
+const OWNER_ONLY_CHILD_ENV: &str = "OPENHUMAN_E2E_OWNER_ONLY_CHILD";
+#[cfg(unix)]
+const OWNER_ONLY_TEST_NAME: &str =
+    "auth_store_provider_credentials_writes_an_owner_only_store_file";
+
+/// Find `auth-profiles.json` beneath a temp `HOME`.
+///
+/// `cfg(unix)` to match its only caller: the mode assertion below has nothing
+/// to check on a platform without permission bits, and an uncalled helper
+/// would be dead code there.
+///
+/// Searched rather than hard-coded: the state dir is resolved from config and
+/// user scope, and pinning that layout here would make this test fail for a
+/// reason that has nothing to do with file modes.
+#[cfg(unix)]
+fn find_auth_profiles_store(root: &Path) -> Option<PathBuf> {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name() == Some(std::ffi::OsStr::new("auth-profiles.json")) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// #5795 — the credential store must not be group/world readable.
+///
+/// `fs::write` creates at `0o666 & ~umask` (0644 under the usual 022) and
+/// `fs::rename` carries the source mode onto the destination, so before the fix
+/// every save left OAuth-token ciphertext readable by any UID on the box.
+///
+/// Driven through `auth.store_provider_credentials` — the RPC a user hits when
+/// they paste a provider key — because the existing unit cover calls
+/// `AuthProfilesStore` directly and would not notice the RPC path acquiring a
+/// different writer.
+#[cfg(unix)]
+#[tokio::test]
+async fn auth_store_provider_credentials_writes_an_owner_only_store_file() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    // Re-exec this one test under a known-permissive umask before doing
+    // anything else.
+    //
+    // umask is process-global and libtest runs tests as threads, so it cannot
+    // be set in-process without racing every other test in this binary. It has
+    // to be controlled, though: a reverted `fs::write` creates at
+    // `0o666 & ~umask`, which is 0644 under the usual 022 but ALSO 0600 under a
+    // hardened 077 — and under 077 an owner-only assertion passes whether or not
+    // the fix is present. Skipping in that case is not a way out either: libtest
+    // records an early `return` as a PASS, so on a hardened runner this
+    // security regression test would go green having checked nothing.
+    if std::env::var(OWNER_ONLY_CHILD_ENV).is_err() {
+        let exe = std::env::current_exe().expect("current_exe");
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "umask 022 && exec '{}' --exact {} --nocapture --test-threads=1",
+                exe.display(),
+                OWNER_ONLY_TEST_NAME
+            ))
+            .env(OWNER_ONLY_CHILD_ENV, "1")
+            .status()
+            .expect("re-exec the owner-only test under umask 022");
+        assert!(
+            status.success(),
+            "the owner-only credential-store check failed under umask 022 (see child output above)"
+        );
+        return;
+    }
+
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    // Precondition, asserted rather than skipped: with umask 022 an ordinary
+    // create must land group/world-readable. If it does not, the umask did not
+    // take and the assertion below could not tell the fix from its absence —
+    // that is a failure, not a pass.
+    let probe = home.join("umask-probe");
+    std::fs::write(&probe, b"probe").expect("write probe");
+    let probe_mode = std::fs::metadata(&probe)
+        .expect("probe metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_ne!(
+        probe_mode & 0o077,
+        0,
+        "umask 022 should leave a plain create group-readable, got {probe_mode:#o}; \
+         without that this test cannot distinguish the owner-only fix from its absence"
+    );
+
+    let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let mock_origin = format!("http://{}", mock_addr);
+    write_min_config(&openhuman_home, &mock_origin);
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let stored = post_json_rpc(
+        &rpc_base,
+        9_795,
+        "openhuman.auth_store_provider_credentials",
+        json!({
+            "provider": "provider:openai",
+            "profile": "default",
+            "token": "sk-owner-only-e2e",
+            "setActive": true
+        }),
+    )
+    .await;
+    assert_no_jsonrpc_error(&stored, "auth_store_provider_credentials");
+
+    let store_path =
+        find_auth_profiles_store(home).expect("the save must have produced an auth-profiles.json");
+    let mode = std::fs::metadata(&store_path)
+        .expect("store metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(
+        mode,
+        0o600,
+        "the credential store at {} must be owner-only, got {mode:#o} \
+         (a plain create in this environment yields {probe_mode:#o})",
+        store_path.display()
+    );
+
+    mock_join.abort();
+    rpc_join.abort();
+}
+
+/// #5947 — `validate_only` is a dry run for **stt**, not only for tts.
+///
+/// It used to be checked inside the `"tts"` arm alone. Every provider the
+/// settings modal can reach maps to `"stt"`, so the modal's dry-run request
+/// fell through to a live transcription — the opposite of what "Test Key"
+/// promises. A reserved slug is used because it is the one dry-run answer that
+/// is fully determined with no network: there is no user-held key to check, so
+/// the handler reports success without calling a provider.
+#[tokio::test]
+async fn voice_test_provider_honours_validate_only_for_the_stt_workload() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+    let _piper_guard = EnvVarGuard::unset("PIPER_BIN");
+
+    let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let mock_origin = format!("http://{}", mock_addr);
+    write_min_config(&openhuman_home, &mock_origin);
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let dry_run = post_json_rpc(
+        &rpc_base,
+        9_947,
+        "openhuman.voice_test_provider",
+        json!({ "workload": "stt", "provider": "cloud", "validate_only": true }),
+    )
+    .await;
+    // Asserted on the whole envelope rather than through
+    // `assert_no_jsonrpc_error` so that BOTH shapes a regression can take —
+    // an error response from `create_stt_provider`, or an ok response
+    // carrying a live-transcription verdict — fail on this assertion and say
+    // why, instead of tripping a generic harness helper first.
+    let detail = dry_run
+        .get("result")
+        .and_then(|r| r.get("detail"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        detail.contains("managed by OpenHuman"),
+        "validate_only must short-circuit an stt request before any provider call: \
+         expected a managed-provider answer, got detail {detail:?} in {dry_run}. \
+         An error here, or an \"STT test …\" verdict, means validate_only was \
+         ignored for the stt workload (#5947)."
+    );
+    assert_eq!(
+        dry_run
+            .get("result")
+            .and_then(|r| r.get("ok"))
+            .and_then(Value::as_bool),
+        Some(true),
+        "a managed provider has no key to check, which is not a failed check: {dry_run}"
+    );
+
+    mock_join.abort();
+    rpc_join.abort();
+}
