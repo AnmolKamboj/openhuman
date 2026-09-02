@@ -418,15 +418,27 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
           }
           log('post-identity thread reload failed: %O', sanitizeError(err));
         });
-      // Seed the active agent profile from the backend at the earliest safe
-      // moment — before any chat request can fire with a stale 'default' id.
-      // Without this, activeProfileId resets to 'default' on every reboot
-      // because the agentProfile slice is not persisted (#5872).
+    }
+
+    // Seed the active agent profile at the earliest safe moment so no chat
+    // request can fire with a stale 'default' id (#5872). Intentionally not
+    // gated on !isFlip: on Tauri a flip triggers restartApp() so the provider
+    // remounts with undefined previousIdentity and profiles load on the boot
+    // poll; on web restartApp() is a no-op and by the next poll
+    // previousIdentity === nextIdentity, making shouldClearScopedCaches false
+    // — so we must dispatch here while it is still true.
+    if (
+      requestId === snapshotRequestIdRef.current &&
+      shouldClearScopedCaches &&
+      nextIdentity &&
+      !isLogout
+    ) {
+      const profileReloadRequestId = requestId;
       void store
         .dispatch(loadAgentProfiles())
         .unwrap()
         .catch(err => {
-          if (threadReloadRequestId !== snapshotRequestIdRef.current) {
+          if (profileReloadRequestId !== snapshotRequestIdRef.current) {
             return;
           }
           log('post-identity agent profiles load failed: %O', sanitizeError(err));
