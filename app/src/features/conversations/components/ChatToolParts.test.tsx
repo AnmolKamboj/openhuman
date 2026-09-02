@@ -113,6 +113,33 @@ describe('ChatToolParts', () => {
     expect(screen.getByText('running')).toBeInTheDocument();
   });
 
+  it('does not show a success icon beside a cancelled tool', () => {
+    // The adapter forwards `cancelled` now, and the card gated its non-success
+    // icon on `error` alone — so the check icon sat next to the word
+    // "cancelled". `failed` still gates the failure-explanation block, which
+    // only an `error` carries.
+    const { container } = render(
+      <ChatToolFallback
+        type="tool-call"
+        toolName="web_search"
+        toolCallId="call-1"
+        args={{} as never}
+        argsText="{}"
+        result={{ status: 'cancelled' } as never}
+        status={{ type: 'complete' }}
+        addResult={() => {}}
+        resume={() => {}}
+        respondToApproval={() => {}}
+      />
+    );
+
+    expect(screen.getByText('cancelled')).toBeInTheDocument();
+    const card = screen.getByTestId('assistant-ui-tool-call');
+    expect(card.querySelector('.lucide-circle-x')).not.toBeNull();
+    expect(card.querySelector('.lucide-check')).toBeNull();
+    expect(container).toBeTruthy();
+  });
+
   it('opens a group containing in-flight work on mount', () => {
     render(
       <ChatToolGroup group={{ type: 'group-tool-call', status: { type: 'running' }, indices: [0] }}>

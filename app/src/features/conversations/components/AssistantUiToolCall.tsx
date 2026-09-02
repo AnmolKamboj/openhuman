@@ -143,6 +143,11 @@ export function AssistantUiToolCallCard({
             ? 'running'
             : 'done';
   const failed = status === 'error';
+  // `failed` gates the failure-explanation block, which only an `error` carries.
+  // The icon is a wider question: a cancelled call did not succeed either, and
+  // before the adapter forwarded a status this branch was unreachable, so the
+  // check icon sat next to the word "cancelled".
+  const terminalNonSuccess = failed || status === 'cancelled';
 
   return (
     <Collapsible
@@ -164,7 +169,7 @@ export function AssistantUiToolCallCard({
         <span className="flex shrink-0 items-center gap-1 text-[11px]">
           {running ? (
             <Loader2Icon className="size-3 animate-spin [animation-duration:0.6s]" />
-          ) : failed ? (
+          ) : terminalNonSuccess ? (
             <CircleXIcon className="size-3.5" />
           ) : (
             <CheckIcon className="size-3.5" />
