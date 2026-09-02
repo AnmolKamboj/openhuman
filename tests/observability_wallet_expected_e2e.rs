@@ -223,3 +223,100 @@ fn reporting_a_genuine_wallet_failure_still_emits_error() {
         "a real wallet failure must still page. Captured output:\n{logged}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// the reporting decision, observed at Sentry
+// ---------------------------------------------------------------------------
+
+// The tracing assertions above pin the breadcrumb: its level, and the `kind`
+// field that makes a demotion attributable. They do not pin *paging*, and this
+// file's whole claim is that the wallet state "does not page".
+//
+// `report_error_message` reaches Sentry by calling `sentry::with_scope` /
+// `capture_message` directly (`src/core/observability.rs`), not through a
+// tracing layer, and no Sentry tracing layer is installed here. So a capture
+// that started firing for the expected case — or one that stopped firing for a
+// genuine failure — would leave the INFO/ERROR text untouched and every
+// assertion above would still pass. These two tests close that gap by counting
+// envelopes on a `TestTransport`, which is the same wiring
+// `tests/observability_smoke.rs` uses.
+//
+// Gated, not `required-features`: the Sentry capture in `report_error_message`
+// is `#[cfg(feature = "crash-reporting")]`, so with the gate off there is
+// nothing to observe and both counts would be a vacuous 0. Putting
+// `required-features` on the target instead would take the classification tests
+// above down with it in every contributor build — the blunt instrument
+// `Cargo.toml` warns about on `observability_smoke`. The e2e lane runs this
+// target with the product feature set (`scripts/test-rust-e2e.sh` passes
+// `product-features.sh`, which includes `crash-reporting`), so these run where
+// it counts.
+#[cfg(feature = "crash-reporting")]
+mod paging {
+    use super::*;
+
+    /// Drive `report_error_or_expected` against an envelope-capturing Sentry
+    /// client and return how many events it actually sent.
+    ///
+    /// `sentry::init` mutates the process-global hub and cargo runs these
+    /// functions on parallel threads, so the critical section is serialized
+    /// here rather than by imposing `--test-threads=1` on the whole binary —
+    /// the same reasoning, and the same shape, as `observability_smoke.rs`.
+    fn captured_events_for(message: &str) -> usize {
+        static SENTRY_TEST_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = SENTRY_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let transport = sentry::test::TestTransport::new();
+        let transport_for_factory = transport.clone();
+        let options = sentry::ClientOptions {
+            dsn: Some(
+                "https://public@sentry.example.com/1"
+                    .parse()
+                    .expect("dsn parses"),
+            ),
+            transport: Some(Arc::new(move |_opts: &sentry::ClientOptions| {
+                transport_for_factory.clone() as Arc<dyn sentry::Transport>
+            })),
+            sample_rate: 1.0,
+            ..sentry::ClientOptions::default()
+        };
+        let _sentry_guard = sentry::init(options);
+
+        report_error_or_expected(message, "rpc", "invoke_method", &[]);
+
+        sentry::Hub::current()
+            .client()
+            .map(|c| c.flush(Some(std::time::Duration::from_secs(2))));
+        transport.fetch_and_clear_envelopes().len()
+    }
+
+    /// The contract #5805 is about, stated as the thing a user notices:
+    /// an unconfigured wallet sends Sentry nothing at all.
+    #[test]
+    fn a_wrapped_wallet_state_pages_nobody() {
+        let wrapped = wrapped_like_issue_5805();
+
+        assert_eq!(
+            captured_events_for(&wrapped),
+            0,
+            "an unconfigured wallet is expected user-state; reaching Sentry at \
+             all is the 55-events-in-72-minutes behaviour #5805 reported. \
+             Message under test: {wrapped}"
+        );
+    }
+
+    /// The contrast case. Without it, a change that demoted *everything* would
+    /// satisfy the test above and this file would be pinning silence rather
+    /// than a decision.
+    #[test]
+    fn a_genuine_wallet_failure_still_pages() {
+        assert_eq!(
+            captured_events_for("wallet signing failed: invalid nonce"),
+            1,
+            "a real wallet defect must still reach Sentry; demotion that \
+             swallowed it would hide exactly the failures #5805 found were \
+             already invisible"
+        );
+    }
+}
