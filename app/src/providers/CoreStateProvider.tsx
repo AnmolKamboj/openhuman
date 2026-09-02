@@ -707,6 +707,15 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         // timeout post-login doesn't surface as an unhandled rejection
         // (OPENHUMAN-REACT-Z/Y) — the polling loop reconciles within
         // `POLL_MS`.
+        // `refresh()` dedupes onto any poll already in flight. A poll that
+        // began before `storeSession` resolved answers with the pre-store
+        // snapshot; awaiting that one here would commit stale cloud identity,
+        // then the `finally` below would drop the local-token marker on it and
+        // a late confirmed 401 could clear the session just stored. Wait the
+        // stale poll out, then require a refresh that began after the store.
+        if (refreshInFlightRef.current) {
+          await refreshInFlightRef.current.catch(() => undefined);
+        }
         await refresh().catch(err => {
           log('refresh failed after session store: %O', sanitizeError(err));
         });
