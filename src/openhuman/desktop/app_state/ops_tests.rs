@@ -325,9 +325,11 @@ fn degraded_runtime_snapshot_has_expected_degraded_fields() {
 #[test]
 fn auth_fetch_timeout_constant_is_below_rpc_timeout() {
     // The 30s RPC timeout on the frontend means auth fetch + runtime snapshot
-    // must fit comfortably. Verify the constants are sane.
+    // must fit comfortably. Asserted across the whole configurable range
+    // (#5930), not just the default, because the operator override is what
+    // could push the pair past the ceiling.
     assert!(
-        AUTH_FETCH_TIMEOUT.as_secs() < 15,
+        MAX_AUTH_FETCH_TIMEOUT_SECS < 15,
         "auth fetch timeout should be well under the 30s RPC timeout"
     );
     assert!(
@@ -335,9 +337,92 @@ fn auth_fetch_timeout_constant_is_below_rpc_timeout() {
         "runtime snapshot timeout should be well under the 30s RPC timeout"
     );
     assert!(
-        AUTH_FETCH_TIMEOUT + RUNTIME_SNAPSHOT_TIMEOUT < Duration::from_secs(30),
-        "total of auth + runtime timeouts must fit within the 30s RPC timeout"
+        Duration::from_secs(MAX_AUTH_FETCH_TIMEOUT_SECS) + RUNTIME_SNAPSHOT_TIMEOUT
+            < Duration::from_secs(30),
+        "even the widest permitted auth timeout plus the runtime timeout must fit within the 30s RPC timeout"
     );
+    assert!(
+        (MIN_AUTH_FETCH_TIMEOUT_SECS..=MAX_AUTH_FETCH_TIMEOUT_SECS)
+            .contains(&DEFAULT_AUTH_FETCH_TIMEOUT_SECS),
+        "the default must itself be an accepted override value"
+    );
+}
+
+// ── Configurable auth fetch timeout (#5930) ─────────────────────────────────
+//
+// "5s may be too tight" is the issue's first acceptance criterion. The risk in
+// answering it is that a wider timeout re-opens #5624: the backoff's first step
+// was a fixed 10s, so an operator setting 20s would make every poll find the
+// window already closed and pay the full 20s again. The clamp and the derived
+// base are what stop that, so both are pinned here.
+
+#[test]
+fn parse_auth_fetch_timeout_secs_clamps_and_falls_back() {
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(None),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS,
+        "an unset override leaves the default in place"
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some("not-a-number")),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some("")),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some("0")),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS,
+        "0 would disable the timeout entirely and is rejected"
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some(&(MIN_AUTH_FETCH_TIMEOUT_SECS - 1).to_string())),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS,
+        "below the floor is rejected rather than clamped up, so a typo is visible in the logs"
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some(&(MAX_AUTH_FETCH_TIMEOUT_SECS + 1).to_string())),
+        DEFAULT_AUTH_FETCH_TIMEOUT_SECS,
+        "above the ceiling is rejected rather than clamped down"
+    );
+    assert_eq!(
+        parse_auth_fetch_timeout_secs(Some("  7  ")),
+        7,
+        "surrounding whitespace is tolerated"
+    );
+
+    for secs in MIN_AUTH_FETCH_TIMEOUT_SECS..=MAX_AUTH_FETCH_TIMEOUT_SECS {
+        assert_eq!(
+            parse_auth_fetch_timeout_secs(Some(&secs.to_string())),
+            secs,
+            "{secs}s is inside the accepted range and must pass through unchanged"
+        );
+    }
+}
+
+#[test]
+fn the_derived_backoff_base_outlasts_every_permitted_fetch_timeout() {
+    // This is #5624's invariant, restated as a property over the range #5930
+    // opened up. A first step shorter than the fetch timeout means the next
+    // poll finds the window already closed and pays the full timeout again —
+    // which is the bug, not the fix.
+    for secs in MIN_AUTH_FETCH_TIMEOUT_SECS..=MAX_AUTH_FETCH_TIMEOUT_SECS {
+        let timeout = Duration::from_secs(secs);
+        let base = current_user_backoff_base_for(timeout);
+        assert!(
+            base > timeout,
+            "first backoff step {base:?} must exceed the fetch timeout {timeout:?}"
+        );
+        assert!(
+            base > CURRENT_USER_REFRESH_TTL,
+            "first backoff step {base:?} must exceed the cache TTL {CURRENT_USER_REFRESH_TTL:?}"
+        );
+        assert!(
+            base <= CURRENT_USER_BACKOFF_MAX,
+            "first backoff step {base:?} must not start at or above the cap {CURRENT_USER_BACKOFF_MAX:?}"
+        );
+    }
 }
 
 fn build_dummy_runtime_snapshot() -> RuntimeSnapshot {
@@ -405,7 +490,7 @@ async fn current_user_fetch_carries_the_product_identity() {
 // ── Current-user failure backoff (#5624) ────────────────────────────────────
 //
 // While the backend is unreachable, every `app_state_snapshot` poll used to
-// re-attempt `auth_get_me` and re-pay the full `AUTH_FETCH_TIMEOUT`, because a
+// re-attempt `auth_get_me` and re-pay the full `auth_fetch_timeout`, because a
 // failure was never recorded anywhere: `fetch_current_user_cached` cached only
 // successes, and on a timeout its future was dropped before it could cache
 // anything at all. 51 timeouts in one session is what that costs at a 5s poll
@@ -453,13 +538,14 @@ fn seed_current_user_failure(
 
 #[test]
 fn current_user_backoff_doubles_and_saturates_at_the_cap() {
-    assert_eq!(current_user_backoff(1), CURRENT_USER_BACKOFF_BASE);
-    assert_eq!(current_user_backoff(2), CURRENT_USER_BACKOFF_BASE * 2);
-    assert_eq!(current_user_backoff(3), CURRENT_USER_BACKOFF_BASE * 4);
+    let base = current_user_backoff_base();
+    assert_eq!(current_user_backoff(1), base);
+    assert_eq!(current_user_backoff(2), base * 2);
+    assert_eq!(current_user_backoff(3), base * 4);
     assert_eq!(current_user_backoff(u32::MAX), CURRENT_USER_BACKOFF_MAX);
     // 0 is not a state the recorder can produce, but the function must not
     // answer it with a zero-length window.
-    assert_eq!(current_user_backoff(0), CURRENT_USER_BACKOFF_BASE);
+    assert_eq!(current_user_backoff(0), base);
 
     let mut previous = Duration::ZERO;
     for consecutive in 1..=12 {
@@ -485,10 +571,10 @@ fn the_first_backoff_step_outlasts_both_the_fetch_timeout_and_the_poll() {
     // outlast the positive-cache TTL, because that TTL is what governs how soon
     // a poll asks for a live fetch at all.
     assert!(
-        current_user_backoff(1) > AUTH_FETCH_TIMEOUT,
+        current_user_backoff(1) > auth_fetch_timeout(),
         "first backoff step {:?} must exceed the fetch timeout {:?}",
         current_user_backoff(1),
-        AUTH_FETCH_TIMEOUT
+        auth_fetch_timeout()
     );
     assert!(
         current_user_backoff(1) > CURRENT_USER_REFRESH_TTL,
@@ -514,7 +600,7 @@ fn a_recorded_failure_suppresses_a_retry_inside_its_window() {
             .expect("a just-recorded failure must suppress the next attempt");
     assert_eq!(consecutive, 1);
     assert_eq!(error.message(), "request timed out after 5s");
-    assert!(remaining <= CURRENT_USER_BACKOFF_BASE && !remaining.is_zero());
+    assert!(remaining <= current_user_backoff_base() && !remaining.is_zero());
 }
 
 #[test]
@@ -526,7 +612,7 @@ fn a_recorded_failure_stops_suppressing_once_its_window_closes() {
         "https://api.example.test",
         "token-a",
         1,
-        CURRENT_USER_BACKOFF_BASE + Duration::from_millis(1),
+        current_user_backoff_base() + Duration::from_millis(1),
         CurrentUserFetchError::FetchFailed("boom".to_string()),
     );
 
@@ -560,7 +646,7 @@ fn consecutive_failures_widen_the_window() {
         "https://api.example.test",
         "token-a",
         3,
-        CURRENT_USER_BACKOFF_BASE + Duration::from_millis(1),
+        current_user_backoff_base() + Duration::from_millis(1),
         CurrentUserFetchError::FetchFailed("boom".to_string()),
     );
     assert!(
@@ -671,4 +757,163 @@ async fn fetch_current_user_cached_replays_a_recorded_failure_without_calling_th
         "seeded outage marker",
         "the fetch must replay the recorded failure rather than issue a request"
     );
+}
+
+// ── Replay is distinguishable from a live failure (#5930) ───────────────────
+//
+// #5930 was filed on four `WRN … current user refresh failed … request timed
+// out after 5s` lines seconds apart, read as the app hammering a failing
+// endpoint. They were replays of one recorded failure — microseconds each, no
+// request made — because the suppression path returned the recorded error
+// verbatim and the snapshot caller had no way to tell the two apart. These pin
+// the distinction so the same false alarm cannot be filed twice.
+
+#[tokio::test]
+async fn a_replayed_failure_is_tagged_suppressed_and_keeps_the_original_message() {
+    let _failure_lock = CURRENT_USER_FAILURE_TEST_LOCK.lock().await;
+    let _reset = CurrentUserFailureResetGuard;
+
+    let mut config = Config::default();
+    config.api_url = Some("http://127.0.0.1:9/".to_string());
+    let api_base = current_user_api_base(&config);
+    let token = "token-a";
+
+    seed_current_user_failure(
+        &api_base,
+        token,
+        3,
+        Duration::from_millis(1),
+        CurrentUserFetchError::FetchFailed("request timed out after 5s".to_string()),
+    );
+
+    let error = fetch_current_user_cached(&config, token, true)
+        .await
+        .expect_err("a recorded failure inside its window must be replayed");
+
+    match &error {
+        CurrentUserFetchError::Suppressed {
+            inner,
+            consecutive,
+            retry_in,
+        } => {
+            assert_eq!(*consecutive, 3, "the run length must survive the replay");
+            assert!(
+                *retry_in > Duration::ZERO && *retry_in <= current_user_backoff(3),
+                "remaining window {retry_in:?} must be inside the step for 3 failures"
+            );
+            assert!(
+                matches!(**inner, CurrentUserFetchError::FetchFailed(_)),
+                "the original variant must be preserved, not flattened"
+            );
+        }
+        other => panic!("expected a Suppressed replay, got {other:?}"),
+    }
+
+    assert_eq!(
+        error.message(),
+        "request timed out after 5s",
+        "callers reading only the message must be unaffected by the wrapper"
+    );
+}
+
+#[test]
+fn a_suppressed_replay_is_never_recorded_as_a_fresh_failure() {
+    let _failure_lock = CURRENT_USER_FAILURE_TEST_LOCK.blocking_lock();
+    let _reset = CurrentUserFailureResetGuard;
+
+    let suppressed = CurrentUserFetchError::Suppressed {
+        inner: Box::new(CurrentUserFetchError::FetchFailed("boom".to_string())),
+        consecutive: 2,
+        retry_in: Duration::from_secs(7),
+    };
+    assert!(
+        !suppressed.is_availability_failure(),
+        "a replay is not a new observation; recording it would widen the window \
+         on evidence the backend never supplied"
+    );
+
+    record_current_user_failure("https://api.example.test", "token-a", suppressed);
+    assert!(
+        suppressed_current_user_failure("https://api.example.test", "token-a").is_none(),
+        "recording a replay must be a no-op"
+    );
+}
+
+// ── Stale-snapshot age (#5930) ──────────────────────────────────────────────
+
+/// Drops both the outage and the success stamp on the way out.
+struct CurrentUserStalenessResetGuard;
+
+impl Drop for CurrentUserStalenessResetGuard {
+    fn drop(&mut self) {
+        clear_current_user_failure();
+        clear_current_user_success();
+    }
+}
+
+#[test]
+fn staleness_is_reported_only_for_the_identity_that_actually_failed() {
+    let _failure_lock = CURRENT_USER_FAILURE_TEST_LOCK.blocking_lock();
+    let _reset = CurrentUserStalenessResetGuard;
+    clear_current_user_failure();
+    clear_current_user_success();
+
+    let api_base = "https://api.example.test";
+
+    let (stale, age) = current_user_staleness(api_base, "token-a");
+    assert!(!stale, "no recorded failure means nothing is stale");
+    assert_eq!(
+        age, None,
+        "no success this process means the age is unknown"
+    );
+
+    record_current_user_failure(
+        api_base,
+        "token-a",
+        CurrentUserFetchError::FetchFailed("boom".to_string()),
+    );
+
+    assert!(
+        current_user_staleness(api_base, "token-a").0,
+        "the identity that failed is serving data it could not refresh"
+    );
+    assert!(
+        !current_user_staleness(api_base, "token-b").0,
+        "a different token must not inherit this identity's outage"
+    );
+    assert!(
+        !current_user_staleness("https://other.example.test", "token-a").0,
+        "a different backend must not inherit this environment's outage"
+    );
+}
+
+#[test]
+fn a_success_stamps_the_age_and_clears_the_stale_flag() {
+    let _failure_lock = CURRENT_USER_FAILURE_TEST_LOCK.blocking_lock();
+    let _reset = CurrentUserStalenessResetGuard;
+    clear_current_user_failure();
+    clear_current_user_success();
+
+    let api_base = "https://api.example.test";
+    record_current_user_failure(
+        api_base,
+        "token-a",
+        CurrentUserFetchError::FetchFailed("boom".to_string()),
+    );
+    assert!(current_user_staleness(api_base, "token-a").0);
+
+    // What `fetch_current_user_cached` does on every successful answer.
+    clear_current_user_failure();
+    note_current_user_success();
+
+    let (stale, age) = current_user_staleness(api_base, "token-a");
+    assert!(!stale, "a success must clear the stale flag");
+    assert!(
+        age.is_some(),
+        "once the backend has answered, the age of the data is knowable"
+    );
+
+    // Sign-out must not leave the next account inheriting this one's freshness.
+    clear_current_user_success();
+    assert_eq!(current_user_staleness(api_base, "token-a").1, None);
 }

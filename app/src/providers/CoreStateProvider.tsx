@@ -241,6 +241,8 @@ function normalizeSnapshot(
       backendName: 'os',
     },
     runtime: { localAi: result.runtime?.localAi ?? null, service: result.runtime?.service ?? null },
+    currentUserStale: result.currentUserStale ?? false,
+    currentUserStaleSeconds: result.currentUserStaleSeconds ?? null,
   };
 }
 
@@ -252,6 +254,10 @@ function toSignedOutSnapshot(snapshot: CoreAppSnapshot): CoreAppSnapshot {
     currentUser: null,
     onboardingCompleted: false,
     chatOnboardingCompleted: false,
+    // Signed out there is no backend-backed user for the stored snapshot to be
+    // stale relative to.
+    currentUserStale: false,
+    currentUserStaleSeconds: null,
   };
 }
 

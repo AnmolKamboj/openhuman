@@ -140,6 +140,7 @@ async fn clear_deferred_session_after_backend_rejection(
 
     *CURRENT_USER_CACHE.lock() = None;
     clear_current_user_failure();
+    clear_current_user_success();
     crate::openhuman::cron::scheduler_gate::set_signed_out(true);
 
     match crate::openhuman::config::default_root_openhuman_dir() {
@@ -201,7 +202,7 @@ async fn fetch_current_user_cached(
 
         // Nothing fresh to serve, so this poll would normally go to the network
         // — and if the backend is unreachable it would sit there for the full
-        // `AUTH_FETCH_TIMEOUT` before the caller gives up and uses the stored
+        // `auth_fetch_timeout` before the caller gives up and uses the stored
         // snapshot anyway. Replay the recorded failure instead while its window
         // is open. The caller's behaviour is unchanged (it already falls back on
         // `Err`); it just does so in microseconds. Gated on `allow_cache` for
@@ -215,7 +216,15 @@ async fn fetch_current_user_cached(
                  retrying in {}ms",
                 remaining.as_millis()
             );
-            return Err(error);
+            // Wrapped rather than returned bare so the caller can tell a replay
+            // from a live failure. Both fall back to the stored snapshot, but
+            // only one of them made a request, and logging them identically is
+            // what made a working backoff read as a hammering loop (#5930).
+            return Err(CurrentUserFetchError::Suppressed {
+                inner: Box::new(error),
+                consecutive,
+                retry_in: remaining,
+            });
         }
     }
 
@@ -227,6 +236,7 @@ async fn fetch_current_user_cached(
         }
     };
     clear_current_user_failure();
+    note_current_user_success();
 
     let mut cache = CURRENT_USER_CACHE.lock();
     match fetched.clone() {

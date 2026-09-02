@@ -43,15 +43,90 @@ const CURRENT_USER_REFRESH_TTL: Duration = Duration::from_secs(5);
 // the agent harness runs on — the agent's turns stalled 50-100s between model
 // calls even though inference itself was idle).
 const RUNTIME_SNAPSHOT_TTL: Duration = Duration::from_secs(10);
-const AUTH_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+/// Wall-clock budget for one `auth_get_me` refresh when nothing overrides it.
+pub const DEFAULT_AUTH_FETCH_TIMEOUT_SECS: u64 = 5;
+/// Smallest accepted override. Anything shorter would time out a healthy
+/// backend on a merely slow link on every poll — the #5624 treadmill inverted.
+pub const MIN_AUTH_FETCH_TIMEOUT_SECS: u64 = 2;
+/// Largest accepted override.
+///
+/// The ceiling exists because this budget is spent *inside* the snapshot RPC,
+/// concurrently with [`RUNTIME_SNAPSHOT_TIMEOUT`], and the frontend gives that
+/// RPC 30s total. `12 + 10 = 22` leaves headroom; a larger value would let an
+/// operator turn a slow backend into a failed snapshot call.
+pub const MAX_AUTH_FETCH_TIMEOUT_SECS: u64 = 12;
+/// Operator override for [`auth_fetch_timeout`]. A missing, non-numeric or
+/// out-of-range value leaves the default in place (and is logged once).
+pub const AUTH_FETCH_TIMEOUT_ENV_VAR: &str = "OPENHUMAN_AUTH_FETCH_TIMEOUT_SECS";
+
+/// Floor under the first backoff step, independent of the fetch timeout.
+///
+/// Must stay above [`CURRENT_USER_REFRESH_TTL`], which governs how soon a poll
+/// asks for a live fetch at all.
+const CURRENT_USER_BACKOFF_BASE_FLOOR: Duration = Duration::from_secs(10);
+
+/// Parse a raw override into a bounded timeout in seconds.
+///
+/// Pure and global-free so the clamp can be tested without touching the process
+/// environment. `None`, unparseable input, and out-of-range values all fall back
+/// to [`DEFAULT_AUTH_FETCH_TIMEOUT_SECS`].
+pub fn parse_auth_fetch_timeout_secs(raw: Option<&str>) -> u64 {
+    auth_fetch_timeout_override(raw).unwrap_or(DEFAULT_AUTH_FETCH_TIMEOUT_SECS)
+}
+
+/// The override if `raw` names one inside the accepted range, else `None`.
+///
+/// Split from [`parse_auth_fetch_timeout_secs`] so the resolver can tell
+/// "accepted" from "fell back" without re-deriving it by comparing strings —
+/// which would report a valid `05` as ignored.
+fn auth_fetch_timeout_override(raw: Option<&str>) -> Option<u64> {
+    raw.map(str::trim)
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|n| (MIN_AUTH_FETCH_TIMEOUT_SECS..=MAX_AUTH_FETCH_TIMEOUT_SECS).contains(n))
+}
+
+/// The effective `auth_get_me` timeout, resolved once per process.
+///
+/// Read through a function rather than held as a `const` so #5930's "5s may be
+/// too tight" has an answer that does not need a rebuild. Every caller — the
+/// `tokio::time::timeout` wrapper, the timeout log line, and the recorded
+/// timeout error's message — reads the same value, so they cannot drift.
+fn auth_fetch_timeout() -> Duration {
+    static RESOLVED: Lazy<Duration> = Lazy::new(|| {
+        let raw = std::env::var(AUTH_FETCH_TIMEOUT_ENV_VAR).ok();
+        match (raw.as_deref(), auth_fetch_timeout_override(raw.as_deref())) {
+            (Some(raw), None) => warn!(
+                "{LOG_PREFIX} ignoring {AUTH_FETCH_TIMEOUT_ENV_VAR}={raw:?}: not an integer in \
+                 {MIN_AUTH_FETCH_TIMEOUT_SECS}..={MAX_AUTH_FETCH_TIMEOUT_SECS}; \
+                 using {DEFAULT_AUTH_FETCH_TIMEOUT_SECS}s"
+            ),
+            (Some(_), Some(secs)) => debug!(
+                "{LOG_PREFIX} auth fetch timeout overridden to {secs}s by {AUTH_FETCH_TIMEOUT_ENV_VAR}"
+            ),
+            (None, _) => {}
+        }
+        Duration::from_secs(parse_auth_fetch_timeout_secs(raw.as_deref()))
+    });
+    *RESOLVED
+}
+
 /// First backoff step after the backend fails to answer `auth_get_me`.
 ///
-/// Deliberately larger than both [`AUTH_FETCH_TIMEOUT`] and the frontend's
-/// ~5s `app_state_snapshot` poll. That relationship is the whole point of the
-/// backoff: with a shorter step, the next poll would find the window already
-/// expired and pay the full timeout again, which is exactly the treadmill this
-/// exists to stop (#5624 — 51 timeouts in one session, ~5s each).
-const CURRENT_USER_BACKOFF_BASE: Duration = Duration::from_secs(10);
+/// Derived from `fetch_timeout` rather than fixed, because the property that
+/// actually stops the treadmill is *relational*: the step must outlast both the
+/// fetch timeout and the frontend's ~5s `app_state_snapshot` poll, or the next
+/// poll finds the window already expired and pays the full timeout again
+/// (#5624 — 51 timeouts in one session, ~5s each). Making the timeout
+/// configurable (#5930) without deriving this would let an operator re-open
+/// that bug by widening the timeout past a fixed 10s step.
+fn current_user_backoff_base_for(fetch_timeout: Duration) -> Duration {
+    CURRENT_USER_BACKOFF_BASE_FLOOR.max(fetch_timeout.saturating_mul(2))
+}
+
+/// [`current_user_backoff_base_for`] applied to the effective timeout.
+fn current_user_backoff_base() -> Duration {
+    current_user_backoff_base_for(auth_fetch_timeout())
+}
 /// Ceiling on that backoff. Modest on purpose: this window is time during which
 /// a recovered backend still will not be noticed, so it trades a bounded amount
 /// of staleness for not stalling every poll. At the cap a 5s poll loop attempts
@@ -65,7 +140,7 @@ static APP_STATE_FILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static CURRENT_USER_CACHE: Lazy<Mutex<Option<CachedCurrentUser>>> = Lazy::new(|| Mutex::new(None));
 /// Negative counterpart to [`CURRENT_USER_CACHE`]: the last *availability*
 /// failure against `auth_get_me`, so a client whose backend is unreachable stops
-/// re-paying [`AUTH_FETCH_TIMEOUT`] on every snapshot poll.
+/// re-paying [`auth_fetch_timeout`] on every snapshot poll.
 ///
 /// Kept separate from the positive cache rather than folded into it because the
 /// two have different lifetimes and different readers —
@@ -73,6 +148,15 @@ static CURRENT_USER_CACHE: Lazy<Mutex<Option<CachedCurrentUser>>> = Lazy::new(||
 /// identity throughout an outage, and it reads only the positive cache.
 static CURRENT_USER_FAILURE: Lazy<Mutex<Option<CurrentUserFailure>>> =
     Lazy::new(|| Mutex::new(None));
+/// When the backend last answered `auth_get_me` successfully in this process.
+///
+/// Neither existing cache can answer "how old is the user data we are showing":
+/// [`CURRENT_USER_FAILURE`] only knows about failures, and
+/// [`CURRENT_USER_CACHE`] is set to `None` whenever the backend returns an
+/// empty user, which erases the timestamp on a path that is not an outage.
+/// `None` here means "no success yet this process" — the snapshot then reports
+/// staleness with an unknown age rather than inventing one (#5930).
+static LAST_CURRENT_USER_SUCCESS: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));
 static RUNTIME_SNAPSHOT_CACHE: Lazy<Mutex<Option<CachedRuntimeSnapshot>>> =
     Lazy::new(|| Mutex::new(None));
 /// Single-flight gate for the runtime-snapshot rebuild. Concurrent callers whose
@@ -128,6 +212,24 @@ enum CurrentUserFetchError {
     Rejected(String),
     TransientResponse(String),
     FetchFailed(String),
+    /// A recorded availability failure replayed from the backoff window
+    /// instead of going to the network (see
+    /// [`suppressed_current_user_failure`]).
+    ///
+    /// Carries the original error so callers that only want the message behave
+    /// exactly as before, plus the two numbers that distinguish "the backend
+    /// just failed" from "we did not ask the backend". Without this the
+    /// snapshot caller logs a replay — which costs microseconds and makes no
+    /// request — with the same `WARN … refresh failed` wording as a real 5s
+    /// timeout, so a healthy backoff reads in the logs like a hammering loop.
+    /// That misreading is what #5930 was filed on.
+    Suppressed {
+        inner: Box<CurrentUserFetchError>,
+        /// Length of the failure run that opened the window.
+        consecutive: u32,
+        /// How long until the next live attempt is allowed.
+        retry_in: Duration,
+    },
 }
 
 impl CurrentUserFetchError {
@@ -136,6 +238,7 @@ impl CurrentUserFetchError {
             CurrentUserFetchError::Rejected(message)
             | CurrentUserFetchError::TransientResponse(message)
             | CurrentUserFetchError::FetchFailed(message) => message,
+            CurrentUserFetchError::Suppressed { inner, .. } => inner.message(),
         }
     }
 }
@@ -155,6 +258,11 @@ impl CurrentUserFetchError {
                 true
             }
             CurrentUserFetchError::Rejected(_) => false,
+            // Defensive: a replay is not a new observation, and recording it
+            // would extend the window on evidence the backend never supplied.
+            // `fetch_current_user_cached` returns this variant before it can
+            // reach the recorder, so this arm should never actually run.
+            CurrentUserFetchError::Suppressed { .. } => false,
         }
     }
 }
@@ -176,12 +284,12 @@ struct CurrentUserFailure {
 
 /// How long a run of `consecutive` failures suppresses the next live attempt.
 ///
-/// Doubles from [`CURRENT_USER_BACKOFF_BASE`] and saturates at
+/// Doubles from [`current_user_backoff_base`] and saturates at
 /// [`CURRENT_USER_BACKOFF_MAX`]. `consecutive` is 1-based; 0 is treated as 1 so
 /// the function has no surprising zero-length window.
 fn current_user_backoff(consecutive: u32) -> Duration {
     let steps = consecutive.saturating_sub(1).min(16);
-    CURRENT_USER_BACKOFF_BASE
+    current_user_backoff_base()
         .saturating_mul(2u32.saturating_pow(steps))
         .min(CURRENT_USER_BACKOFF_MAX)
 }
@@ -237,6 +345,41 @@ fn clear_current_user_failure() {
     *CURRENT_USER_FAILURE.lock() = None;
 }
 
+/// Stamp a successful backend answer, so the snapshot can report how old the
+/// data it is serving has become.
+fn note_current_user_success() {
+    *LAST_CURRENT_USER_SUCCESS.lock() = Some(Instant::now());
+}
+
+/// Forget the success stamp on sign-out, so the next account does not inherit
+/// this one's freshness.
+fn clear_current_user_success() {
+    *LAST_CURRENT_USER_SUCCESS.lock() = None;
+}
+
+/// Whether the snapshot is being served from data the backend could not
+/// refresh, and how long since it last did.
+///
+/// Keyed like both caches: a recorded failure only makes *this* `(api_base,
+/// token)` stale. Without the key check, switching environment or signing in as
+/// someone else would inherit the previous identity's outage and report the
+/// fresh data it is about to fetch as stale.
+///
+/// The age is `None` when the backend has not answered at all in this process —
+/// the stored snapshot then came off disk, and its true age is not knowable
+/// from here.
+fn current_user_staleness(api_base: &str, token: &str) -> (bool, Option<u64>) {
+    let stale = CURRENT_USER_FAILURE
+        .lock()
+        .as_ref()
+        .is_some_and(|entry| entry.api_base == api_base && entry.token == token);
+    let age = LAST_CURRENT_USER_SUCCESS
+        .lock()
+        .as_ref()
+        .map(|at| at.elapsed().as_secs());
+    (stale, age)
+}
+
 /// Record the timeout path's failure.
 ///
 /// The timeout is applied by the snapshot caller, wrapping the whole of
@@ -250,7 +393,7 @@ fn note_current_user_timeout(config: &Config, token: &str) {
         token,
         CurrentUserFetchError::FetchFailed(format!(
             "request timed out after {}s",
-            AUTH_FETCH_TIMEOUT.as_secs()
+            auth_fetch_timeout().as_secs()
         )),
     );
 }
@@ -322,6 +465,21 @@ pub struct AppStateSnapshot {
     /// healed; the frontend raises a one-shot "settings were reset" notice
     /// (#5167). Serialized as `configRecovered`.
     pub config_recovered: bool,
+    /// `true` when `current_user` came from the stored snapshot because the
+    /// backend could not be refreshed — the plan tier, credit balance and
+    /// feature flags in it may be out of date (#5930).
+    ///
+    /// The frontend can warn on this; the core deliberately does not decide
+    /// what "significantly out of date" means, because that threshold belongs
+    /// to whatever surface is presenting the number.
+    pub current_user_stale: bool,
+    /// Seconds since the backend last answered `auth_get_me` in this process.
+    ///
+    /// Absent when it never has — the stored snapshot then came off disk and
+    /// its real age is not knowable here, which is a different statement from
+    /// "zero seconds old" and is why this is an `Option`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_user_stale_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
