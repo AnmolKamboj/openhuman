@@ -3108,7 +3108,9 @@ async fn model_call_ceiling_bounds_a_wedged_call_below_the_turn_deadline_inner()
     // ceiling and comfortably short of the 600s turn deadline. Armed globally
     // so retry attempts stall too.
     arm_scripted_stall(25_000);
-    reset_script(vec![text_completion("this reply is never delivered in time")]);
+    reset_script(vec![text_completion(
+        "this reply is never delivered in time",
+    )]);
     let stack = boot_stack().await;
 
     let mut events = spawn_sse_collector(format!(
