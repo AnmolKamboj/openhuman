@@ -258,10 +258,7 @@ impl Tool for WebSearchTool {
                             "[web_search] session expired — retrying with fresh client"
                         );
                         fresh_client
-                            .post::<SearchResponse>(
-                                "/agent-integrations/parallel/search",
-                                &body,
-                            )
+                            .post::<SearchResponse>("/agent-integrations/parallel/search", &body)
                             .await?
                     }
                     None => return Err(e),

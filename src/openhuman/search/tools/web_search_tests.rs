@@ -396,5 +396,8 @@ async fn test_session_expired_propagates_when_root_config_absent() {
         .execute(json!({"query": "test"}))
         .await;
 
-    assert!(result.is_err(), "non-200 backend response must surface as Err");
+    assert!(
+        result.is_err(),
+        "non-200 backend response must surface as Err"
+    );
 }
