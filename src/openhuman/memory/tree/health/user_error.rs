@@ -116,17 +116,44 @@ pub(crate) fn notice_memory_module_unavailable_once(reason: &str) {
 /// once-per-process matches the rationale of [`notice_corrupt_store_once`]:
 /// per-segment notices would be a banner storm. `origin` names the producing
 /// path — logged, never sent to the frontend.
+///
+/// Uses [`std::sync::Once`] so the latch is not set until after the publish
+/// runs: a panic inside `publish_web_channel_event` leaves the `Once`
+/// un-initialized, so the next call retries rather than silently swallowing the
+/// failure (matching the pattern of [`notice_memory_module_unavailable_once`]).
 pub(crate) fn notice_local_model_unavailable_once(origin: &str) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static EMBED_UNAVAILABLE_NOTICED: AtomicBool = AtomicBool::new(false);
-    if EMBED_UNAVAILABLE_NOTICED.swap(true, Ordering::Relaxed) {
-        return;
-    }
-    log::warn!(
-        "[archivist] action=broadcast_user_error kind={LOCAL_MODEL_UNAVAILABLE_KIND} \
-         source={MEMORY_USER_ERROR_SOURCE} origin={origin}"
-    );
-    crate::openhuman::web_chat::publish_web_channel_event(local_model_unavailable_user_error());
+    static EMBED_UNAVAILABLE_NOTICED: std::sync::Once = std::sync::Once::new();
+    EMBED_UNAVAILABLE_NOTICED.call_once(|| {
+        log::warn!(
+            "[archivist] action=broadcast_user_error kind={LOCAL_MODEL_UNAVAILABLE_KIND} \
+             source={MEMORY_USER_ERROR_SOURCE} origin={origin}"
+        );
+        crate::openhuman::web_chat::publish_web_channel_event(
+            local_model_unavailable_user_error(),
+        );
+    });
+}
+
+/// Text classifier for a local Ollama embedding failure, for errors that crossed
+/// the bus and only exist as strings.
+///
+/// Matches the two error shapes emitted by `tinyinference::embeddings::ollama`:
+/// - `"ollama embed request failed (is Ollama running at <base>?): …"` —
+///   the transport bail when the daemon is not listening.
+/// - `"Ollama embedding model `<id>` is not installed at <base>. …"` —
+///   the rewritten 404 when the configured model was never pulled.
+///
+/// Both strings are Ollama-specific, so a generic cloud-embedder transport
+/// failure ("error sending request for url …") does not match and keeps its
+/// own non-notification path. Mirrors `classify_embed_error_str` from
+/// `tinycortex` — the typed host-side classifier it maps to
+/// `FailureCode::LocalModelUnavailable` — but operates on the pre-stringified
+/// `MemoryError` rendering so it works across the module-bus boundary where the
+/// typed error is no longer available.
+pub(crate) fn is_local_embedding_error(message: &str) -> bool {
+    let msg = message.to_ascii_lowercase();
+    msg.contains("is ollama running at")
+        || (msg.contains("ollama embedding model") && msg.contains("is not installed at"))
 }
 
 /// host-side fallback for paths that only ever see text.

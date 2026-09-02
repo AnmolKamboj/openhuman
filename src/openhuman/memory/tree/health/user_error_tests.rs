@@ -99,6 +99,39 @@ fn wire_notice_is_latched_once_per_process() {
     notice_corrupt_store_once("test detector");
 }
 
+/// The local-embedding classifier matches the two Ollama error shapes and
+/// nothing else. A false positive here would tell the user to start Ollama
+/// for a generic storage or bus failure that has nothing to do with the local
+/// model runtime.
+#[test]
+fn local_embedding_error_classifier_matches_ollama_patterns_only() {
+    // Transport bail: daemon is not listening.
+    assert!(is_local_embedding_error(
+        "unreachable: ollama embed request failed \
+         (is Ollama running at http://localhost:11434?): connection refused"
+    ));
+    // Plain string variant the bus may emit.
+    assert!(is_local_embedding_error(
+        "is Ollama running at http://127.0.0.1:11434"
+    ));
+    // Model-not-pulled shape.
+    assert!(is_local_embedding_error(
+        "Ollama embedding model `nomic-embed-text` is not installed at \
+         http://localhost:11434. Run `ollama pull nomic-embed-text`."
+    ));
+    // Case-insensitive match.
+    assert!(is_local_embedding_error("IS OLLAMA RUNNING AT localhost"));
+
+    // Non-Ollama failures must not match.
+    assert!(!is_local_embedding_error("database or disk is full"));
+    assert!(!is_local_embedding_error("timed out: rpc timeout exceeded"));
+    assert!(!is_local_embedding_error(
+        "unreachable: connection refused to memory bus"
+    ));
+    assert!(!is_local_embedding_error("backend failed: 500 internal"));
+    assert!(!is_local_embedding_error(""));
+}
+
 /// Once-latch for the archivist embedding failure path (openhuman#5867):
 /// one failed embedding per segment must not become one banner per segment.
 #[test]
