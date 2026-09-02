@@ -617,3 +617,124 @@ async fn run_subagent_surfaces_provider_errors_and_can_be_cancelled() -> Result<
 
     Ok(())
 }
+
+/// The tool-policy boundary is APPENDED to the system prompt, not prepended
+/// (#5821, closes #5704).
+///
+/// Every line of that block is session-scoped — agent id, channel, entry point,
+/// risk level, the allowed-tool list — so putting it first moves the prompt's
+/// first diverging byte to offset 0 and costs the inference backend's automatic
+/// prefix cache everything behind it. Prepending also replaced each agent's
+/// opening persona line with a constant heading.
+///
+/// This drives the real `Agent::build_system_prompt`, which is the gap it exists
+/// to close. The four tests #5821 shipped
+/// (`turn::context::tool_policy_boundary_placement_tests`) exercise the
+/// extracted pure helper `append_tool_policy_boundary` and would all still pass
+/// if `build_system_prompt` stopped calling it; the one existing test that does
+/// go through the builder,
+/// `turn_tests_part_01_tests::system_prompt_includes_tool_policy_boundary`,
+/// asserts the boundary is PRESENT and says nothing about where — it passes
+/// unchanged under the old prepend.
+#[test]
+fn system_prompt_appends_the_tool_policy_boundary_after_the_body() {
+    // A visible-name set narrower than the tool set is what gives the policy
+    // session something to restrict, which is what makes the block render at
+    // all. With no restrictions there is no boundary and nothing to place.
+    // A tempdir workspace keeps the AGENTS.md layers `build_system_prompt`
+    // loads out of the picture, so the prompt is a function of the builder
+    // arguments and nothing on the developer's disk.
+    let workspace = tempfile::tempdir().expect("temp workspace");
+    let agent = Agent::builder()
+        .tools(vec![tool("echo"), tool("write_notes")])
+        .chat_model(ScriptedModel::new(vec![]))
+        .memory(Arc::new(StubMemory))
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .visible_tool_names(HashSet::from(["echo".to_string()]))
+        .config(AgentConfig::default())
+        .workspace_dir(workspace.path().to_path_buf())
+        .build()
+        .expect("complete builder should succeed");
+
+    let prompt = agent
+        .build_system_prompt(LearnedContextData::default())
+        .expect("system prompt builds");
+
+    let boundary_at = prompt
+        .find("## Tool Policy Boundary")
+        .expect("a restricted tool set must render the boundary block");
+
+    assert!(
+        boundary_at > 0,
+        "the boundary must not open the prompt — prepending it moves the first \
+         diverging byte to offset 0 and defeats the backend's prefix cache \
+         (#5704). Prompt begins: {:?}",
+        prompt.chars().take(160).collect::<String>()
+    );
+    assert!(
+        !prompt.starts_with("## Tool Policy Boundary"),
+        "prepending replaced every agent's opening line with a constant heading"
+    );
+
+    // Position stated against something concrete rather than "not zero": the
+    // boundary must come after the body the builder assembled, not merely after
+    // some byte of it.
+    let body_end = prompt[..boundary_at].trim_end();
+    assert!(
+        !body_end.is_empty(),
+        "there must be prompt body BEFORE the boundary; got only: {prompt:?}"
+    );
+    assert!(
+        prompt[boundary_at..].contains("Allowed tools: echo"),
+        "the appended block must still carry the policy detail: {}",
+        &prompt[boundary_at..]
+    );
+}
+
+/// The placement's actual payoff, stated exactly: the boundary block is the
+/// LAST thing in the prompt, so everything stable precedes it.
+///
+/// That is the property a prefix cache keys on — the varying bytes are at the
+/// tail, not the head — and it is the one a revert to prepending destroys
+/// outright: under prepend the block is the prompt's first line and the stable
+/// body starts after it.
+///
+/// `render_tool_policy_boundary` (`tools/agent_policy/prompt.rs:8-47`) emits
+/// `- Restricted tools: N omitted by policy` last whenever anything is
+/// restricted, so asserting the prompt ENDS with that line pins the whole block
+/// to the tail rather than merely somewhere after offset 0.
+#[test]
+fn the_tool_policy_boundary_is_the_last_block_in_the_prompt() {
+    let workspace = tempfile::tempdir().expect("temp workspace");
+    let agent = Agent::builder()
+        .tools(vec![tool("echo"), tool("write_notes")])
+        .chat_model(ScriptedModel::new(vec![]))
+        .memory(Arc::new(StubMemory))
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .visible_tool_names(HashSet::from(["echo".to_string()]))
+        .config(AgentConfig::default())
+        .workspace_dir(workspace.path().to_path_buf())
+        .build()
+        .expect("complete builder should succeed");
+
+    let prompt = agent
+        .build_system_prompt(LearnedContextData::default())
+        .expect("system prompt builds");
+
+    assert!(
+        prompt
+            .trim_end()
+            .ends_with("- Restricted tools: 1 omitted by policy"),
+        "the boundary block must be the prompt's final block — prepending puts \
+         it first and leaves the stable body trailing it (#5704). Prompt ends: {:?}",
+        prompt
+            .trim_end()
+            .chars()
+            .rev()
+            .take(200)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<String>()
+    );
+}
