@@ -375,10 +375,34 @@ async fn web_channel_public_paths_cover_validation_cancel_schema_and_event_bus()
     assert_eq!(event.message.as_deref(), Some("payload"));
 }
 
+/// Run `git` in `repo` with the developer's own git configuration closed out.
+///
+/// The fixture below performs a real `commit`, and without this it inherits
+/// whatever the machine running it happens to configure. A global
+/// `commit.gpgsign = true` — which every maintainer who signs commits has, and
+/// which this repository's own contributing guide asks for — makes that commit
+/// try to sign, and it fails with `error: gpg failed to sign the data` for
+/// reasons that have nothing to do with the code under test. CI has no global
+/// git config, so the test is green there and red only on the laptops of the
+/// people most likely to be running it.
+///
+/// `GIT_CONFIG_GLOBAL` must name a readable-but-empty path rather than be
+/// unset: unsetting it lets git fall back to `~/.gitconfig`, which is the thing
+/// being closed. This mirrors `NULL_CONFIG_PATH` and `suppress_ambient_git_config`
+/// in `tools/impl/filesystem/git_operations_config.rs`, and the unit suite's
+/// own `hermetic()` helper.
+///
+/// The committer identity is unaffected: it is set repository-locally at the
+/// top of the fixture, so closing the global config does not strand the commit
+/// the way it would if the identity were ambient too.
 fn run_git(repo: &std::path::Path, args: &[&str]) {
+    // `/dev/null` is not a path on Windows; `NUL` is.
+    let null_config = if cfg!(windows) { "NUL" } else { "/dev/null" };
     let output = Command::new("git")
         .args(args)
         .current_dir(repo)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", null_config)
         .output()
         .expect("spawn git");
     assert!(
