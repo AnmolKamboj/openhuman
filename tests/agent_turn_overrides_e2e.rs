@@ -405,61 +405,84 @@ async fn suppress_transcript_autoload_does_not_replay_a_prior_threads_transcript
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
 
     const PRIOR_MARKER: &str = "turn-overrides-prior-thread-secret-topic";
+    // Two ids, so the run enacts #1725's actual shape: a host that has re-bound
+    // its history to a *different* chat, not merely a second agent on the same
+    // one.
+    //
+    // These scopes do not steer the lookup, and are not meant to. Autoload is
+    // `session_io_impl_01_part_01.rs:45` — `latest_for_agent(&self.agent_definition_name)`
+    // — which never reads `thread_context::current_thread_id()`; that
+    // agent-name-only resolution IS the defect the override exists to work
+    // around. They are here so the control states the stronger fact (the prior
+    // transcript is replayed *even under a different thread id*), and so that a
+    // future change making autoload thread-scoped fails this control loudly
+    // instead of passing while quietly changing what the test means.
+    const PRIOR_THREAD: &str = "turn-overrides-autoload-thread-a";
+    const LATER_THREAD: &str = "turn-overrides-autoload-thread-b";
 
     // A first conversation persists a transcript under this agent name.
-    let first_model = ScriptedModel::new(vec![text("first thread reply")]);
-    let mut first = agent_with(
-        first_model.clone(),
-        Vec::new(),
-        workspace_path.clone(),
-        Box::new(XmlToolDispatcher),
-    );
-    first
-        .turn(PRIOR_MARKER)
-        .await
-        .expect("first thread turn should succeed");
+    with_thread_id(PRIOR_THREAD, async {
+        let first_model = ScriptedModel::new(vec![text("first thread reply")]);
+        let mut first = agent_with(
+            first_model.clone(),
+            Vec::new(),
+            workspace_path.clone(),
+            Box::new(XmlToolDispatcher),
+        );
+        first
+            .turn(PRIOR_MARKER)
+            .await
+            .expect("first thread turn should succeed");
+    })
+    .await;
 
-    // CONTROL — a fresh agent with an empty history DOES pick that transcript up.
-    let control_model = ScriptedModel::new(vec![text("control reply")]);
-    let mut control = agent_with(
-        control_model.clone(),
-        Vec::new(),
-        workspace_path.clone(),
-        Box::new(XmlToolDispatcher),
-    );
-    control
-        .turn("an unrelated question")
-        .await
-        .expect("control turn should succeed");
-    assert!(
-        control_model.all_prompt_text().contains(PRIOR_MARKER),
-        "control: a fresh agent must auto-load the prior transcript, otherwise this test \
-         cannot prove that suppress_transcript_autoload prevents anything"
-    );
+    // Everything below is the *later* chat the host has re-bound to.
+    with_thread_id(LATER_THREAD, async {
+        // CONTROL — a fresh agent with an empty history DOES pick that transcript
+        // up, across the thread change.
+        let control_model = ScriptedModel::new(vec![text("control reply")]);
+        let mut control = agent_with(
+            control_model.clone(),
+            Vec::new(),
+            workspace_path.clone(),
+            Box::new(XmlToolDispatcher),
+        );
+        control
+            .turn("an unrelated question")
+            .await
+            .expect("control turn should succeed");
+        assert!(
+            control_model.all_prompt_text().contains(PRIOR_MARKER),
+            "control: a fresh agent must auto-load the prior thread's transcript even under a \
+             different thread id, otherwise this test cannot prove that \
+             suppress_transcript_autoload prevents anything"
+        );
 
-    // SUPPRESSED — the same shape must not see the earlier conversation.
-    let model = ScriptedModel::new(vec![text("clean reply")]);
-    let mut agent = agent_with(
-        model.clone(),
-        Vec::new(),
-        workspace_path.clone(),
-        Box::new(XmlToolDispatcher),
-    );
-    agent.set_next_turn_overrides(TurnOverrides {
-        suppress_transcript_autoload: true,
-        ..Default::default()
-    });
-    agent
-        .turn("an unrelated question")
-        .await
-        .expect("suppressed turn should succeed");
+        // SUPPRESSED — the same shape must not see the earlier conversation.
+        let model = ScriptedModel::new(vec![text("clean reply")]);
+        let mut agent = agent_with(
+            model.clone(),
+            Vec::new(),
+            workspace_path.clone(),
+            Box::new(XmlToolDispatcher),
+        );
+        agent.set_next_turn_overrides(TurnOverrides {
+            suppress_transcript_autoload: true,
+            ..Default::default()
+        });
+        agent
+            .turn("an unrelated question")
+            .await
+            .expect("suppressed turn should succeed");
 
-    let prompt = model.all_prompt_text();
-    assert!(
-        !prompt.contains(PRIOR_MARKER),
-        "suppress_transcript_autoload must not replay another conversation's transcript \
-         into the prompt; found the prior thread's marker in: {prompt}"
-    );
+        let prompt = model.all_prompt_text();
+        assert!(
+            !prompt.contains(PRIOR_MARKER),
+            "suppress_transcript_autoload must not replay another conversation's transcript \
+             into the prompt; found the prior thread's marker in: {prompt}"
+        );
+    })
+    .await;
 }
 
 // ─── one-shot semantics ─────────────────────────────────────────────────────
@@ -615,6 +638,52 @@ async fn thread_goal_complete_and_clear_stop_the_goal_reaching_later_turns_inner
                 .await
                 .is_none(),
             "clear_for_current_thread must remove the goal row outright"
+        );
+
+        // The goal cleared above was already Completed, and a completed goal is
+        // excluded from later prompts anyway — so on its own that only proves a
+        // completed row can be deleted. A `clear` that silently no-opped on an
+        // ACTIVE goal would pass everything above it. Seed a fresh active goal
+        // and clear that one too.
+        const ACTIVE_OBJECTIVE: &str = "turn-overrides-active-goal-to-be-cleared";
+        goal_store::set(&workspace_path, THREAD, ACTIVE_OBJECTIVE, None)
+            .await
+            .expect("seed a second, still-active thread goal");
+        let active = goal_runtime::load_for_current_thread(&workspace_path)
+            .await
+            .expect("the second goal must load while it is still active");
+        assert_eq!(
+            active.objective, ACTIVE_OBJECTIVE,
+            "control: the active goal must be live before clearing it, otherwise clearing it \
+             proves nothing"
+        );
+
+        goal_runtime::clear_for_current_thread(&workspace_path).await;
+        assert!(
+            goal_runtime::load_for_current_thread(&workspace_path)
+                .await
+                .is_none(),
+            "clear_for_current_thread must remove an ACTIVE goal, not only a completed one"
+        );
+
+        // And it must actually stop reaching the prompt — deletion of the row is
+        // the mechanism, absence from the turn is the contract.
+        let post_clear_model = ScriptedModel::new(vec![text("post-clear reply")]);
+        let mut post_clear = agent_with(
+            post_clear_model.clone(),
+            Vec::new(),
+            workspace_path.clone(),
+            Box::new(XmlToolDispatcher),
+        );
+        post_clear
+            .turn("something else entirely")
+            .await
+            .expect("post-clear turn");
+        let post_clear_prompt = post_clear_model.all_prompt_text();
+        assert!(
+            !post_clear_prompt.contains(ACTIVE_OBJECTIVE),
+            "an active goal cleared via clear_for_current_thread must stop being injected \
+             into later turns; found it in: {post_clear_prompt}"
         );
     })
     .await;
