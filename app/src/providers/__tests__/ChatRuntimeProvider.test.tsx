@@ -2070,6 +2070,16 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     window.removeEventListener('openhuman:session-expired', handler);
     expect(received).toHaveLength(1);
     expect((received[0] as CustomEvent).detail?.source).toBe('chat-error');
+    // The reason is the load-bearing half, not decoration. `CoreStateProvider`
+    // defaults a reason-less `openhuman:session-expired` to `confirmed`, which
+    // SKIPS `confirmSessionTokenGone()` and runs the destructive
+    // `clearSession()`. The core reaches this error type through
+    // `is_session_expired_message`, which also matches the local guards
+    // "no backend session token" and "session jwt required" — the transient
+    // pre-profile-load signals #2758 exists to corroborate rather than trust.
+    // Dropping this field silently reintroduces that bug through a new door,
+    // so it is asserted here, at the dispatch, where the value is decided.
+    expect((received[0] as CustomEvent).detail?.reason).toBe('unconfirmed');
   });
 
   it('does not dispatch openhuman:session-expired for non-session error types', () => {

@@ -785,7 +785,13 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       pendingConfirmedReauthRef.current = false;
       log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
       window.dispatchEvent(
-        new CustomEvent('openhuman:session-expired', { detail: { source: 'bootstrap-replay' } })
+        // Explicit rather than relying on the default: what is being replayed
+        // was already established as a confirmed expiry before it was queued,
+        // and saying so here keeps the replay correct if the default above is
+        // ever made stricter.
+        new CustomEvent('openhuman:session-expired', {
+          detail: { source: 'bootstrap-replay', reason: 'confirmed' },
+        })
       );
     }
   }, [state.isBootstrapping]);
@@ -920,8 +926,22 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         typeof (event.detail as { source?: unknown }).source === 'string'
           ? (event.detail as { source: string }).source
           : 'unknown';
-      // The socket `auth:session_expired` push is an explicit backend expiry → confirmed.
-      void runReauth('socket.session_expired', source, 'confirmed');
+      // The socket `auth:session_expired` push is an explicit backend expiry, and
+      // `socketService` sends no `reason` — so the default stays `confirmed`
+      // and that path is unchanged. A dispatcher that KNOWS its signal is
+      // merely suggestive says so, and is corroborated instead of trusted:
+      // `ChatRuntimeProvider`'s chat-error dispatch sends `unconfirmed`,
+      // because the core classifies local token-absent guards under the same
+      // `session_expired` error type as a real expiry.
+      const reason: AuthExpiredReason =
+        event instanceof CustomEvent &&
+        event.detail &&
+        typeof event.detail === 'object' &&
+        'reason' in event.detail &&
+        (event.detail as { reason?: unknown }).reason === 'unconfirmed'
+          ? 'unconfirmed'
+          : 'confirmed';
+      void runReauth('socket.session_expired', source, reason);
     };
 
     window.addEventListener('core-rpc-auth-expired', onRpcExpired as EventListener);

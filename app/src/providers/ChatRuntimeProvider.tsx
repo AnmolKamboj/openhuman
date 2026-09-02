@@ -1290,8 +1290,22 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           // debounce in runReauth() ensures a concurrent socket event does not
           // cause a double-clear.
           if (event.error_type === 'session_expired') {
+            // `reason: 'unconfirmed'` is load-bearing, not defensive. The core
+            // classifies this error with `is_session_expired_message`, which
+            // matches the LOCAL guards "no backend session token" and
+            // "session jwt required" as well as a real backend expiry
+            // (`core/observability.rs`). Those two fire transiently before the
+            // on-disk auth profile has been read — #2758 is the bug where
+            // treating them as definitive forced a re-login even though the
+            // token had survived the restart. `unconfirmed` routes through
+            // `confirmSessionTokenGone()` in `runReauth`, so a signal raised
+            // while the token is still on disk stops short of the destructive
+            // `clearSession()`. A genuine expiry still corroborates and signs
+            // out; only the false positive is filtered.
             window.dispatchEvent(
-              new CustomEvent('openhuman:session-expired', { detail: { source: 'chat-error' } })
+              new CustomEvent('openhuman:session-expired', {
+                detail: { source: 'chat-error', reason: 'unconfirmed' },
+              })
             );
           }
         }
