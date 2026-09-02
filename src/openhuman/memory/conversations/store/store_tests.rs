@@ -53,6 +53,54 @@ fn store_roundtrips_threads_and_messages() {
 }
 
 #[test]
+fn append_message_is_idempotent_by_message_id() {
+    let (_temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t".to_string(),
+            title: "Conversation".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .expect("ensure thread");
+    let first = ConversationMessage {
+        id: "agent:run-1".to_string(),
+        content: "first".to_string(),
+        message_type: "text".to_string(),
+        extra_metadata: json!({}),
+        sender: "agent".to_string(),
+        created_at: "2026-04-10T12:01:00Z".to_string(),
+    };
+    store.append_message("t", first.clone()).expect("append");
+
+    // A second writer racing for the same id (the client persisting the
+    // `chat_done` an autonomous run already persisted itself — #5933).
+    let returned = store
+        .append_message(
+            "t",
+            ConversationMessage {
+                content: "second".to_string(),
+                created_at: "2026-04-10T12:02:00Z".to_string(),
+                ..first
+            },
+        )
+        .expect("append again");
+
+    // The stored row wins, and is what the second writer gets back.
+    assert_eq!(returned.content, "first");
+    assert_eq!(returned.created_at, "2026-04-10T12:01:00Z");
+    let messages = store.get_messages("t").expect("get messages");
+    assert_eq!(messages.len(), 1, "one id, one row");
+    assert_eq!(messages[0].content, "first");
+    // The no-op append did not bump the stat trail either.
+    let threads = store.list_threads().expect("list threads");
+    assert_eq!(threads[0].message_count, 1);
+    assert_eq!(threads[0].last_message_at, "2026-04-10T12:01:00Z");
+}
+
+#[test]
 fn get_messages_for_new_empty_thread_returns_empty_list() {
     let (_temp, store) = make_store();
     store

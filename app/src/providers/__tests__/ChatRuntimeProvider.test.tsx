@@ -482,6 +482,75 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       await waitFor(() => expect(mockRefetchSnapshot).toHaveBeenCalledTimes(1));
     });
 
+    it('persists a core-initiated (system) turn under the id the core already wrote (#5933)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-sys',
+          request_id: 'bgdeliver-1',
+          client_id: 'system',
+          full_response: 'Same two issues as before',
+          rounds_used: 1,
+        });
+      });
+
+      // The same `agent:<run_id>` id `task_session::append_final` used, so the
+      // core's idempotent store collapses this append onto its own row instead
+      // of keeping a second copy of the reply.
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys',
+          expect.objectContaining({
+            id: 'agent:bgdeliver-1',
+            sender: 'agent',
+            content: 'Same two issues as before',
+            extraMetadata: expect.objectContaining({ requestId: 'bgdeliver-1' }),
+          })
+        )
+      );
+    });
+
+    it('persists a core-initiated (system) turn failure under the same core id', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err',
+          request_id: 'bgdeliver-2',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err',
+          expect.objectContaining({ id: 'agent:bgdeliver-2', sender: 'agent' })
+        )
+      );
+    });
+
+    it('keeps a generated id for an interactive chat_done (nothing else persisted it)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-user',
+          request_id: 'r-user',
+          full_response: 'hi',
+          rounds_used: 1,
+        });
+      });
+
+      await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
+      const [, persisted] = vi.mocked(threadApi.appendMessage).mock.calls[0];
+      expect(persisted.id).not.toBe('agent:r-user');
+      expect(persisted.sender).toBe('agent');
+    });
+
     it('stores a parked plan review from the plan_review_request event', () => {
       const listeners = renderProvider();
       act(() => {

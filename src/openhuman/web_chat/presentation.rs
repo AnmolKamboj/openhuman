@@ -76,46 +76,15 @@ pub(crate) async fn deliver_response(
 
     if segments.len() <= 1 {
         // Single bubble — emit chat_done directly.
-        publish_web_channel_event(WebChannelEvent {
-            event: "chat_done".to_string(),
-            client_id: client_id.to_string(),
-            thread_id: thread_id.to_string(),
-            request_id: request_id.to_string(),
-            full_response: Some(full_response.to_string()),
-            message: None,
-            error_type: None,
-            error_source: None,
-            error_retryable: None,
-            error_retry_after_ms: None,
-            error_provider: None,
-            error_fallback_available: None,
-            tool_name: None,
-            skill_id: None,
-            args: None,
-            output: None,
-            success: None,
-            round: None,
+        publish_chat_done(
+            client_id,
+            thread_id,
+            request_id,
+            full_response,
             reaction_emoji,
-            segment_index: None,
-            segment_total: None,
-            delta: None,
-            delta_kind: None,
-            tool_call_id: None,
-            failure: None,
-            subagent: None,
-            task_board: None,
-            tool_display_label: None,
-            tool_display_detail: None,
-            citations: if citations.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!(citations))
-            },
-            usage: usage_payload,
-            // Terminal delivery events are emitted outside the seq-stamping
-            // progress bridge; leave `seq` unset (older clients ignore it).
-            seq: None,
-        });
+            citations,
+            usage_payload,
+        );
         return;
     }
 
@@ -193,6 +162,85 @@ pub(crate) async fn deliver_response(
         reaction_emoji: None,
         segment_index: None,
         segment_total: Some(total),
+        delta: None,
+        delta_kind: None,
+        tool_call_id: None,
+        failure: None,
+        subagent: None,
+        task_board: None,
+        tool_display_label: None,
+        tool_display_detail: None,
+        citations: if citations.is_empty() {
+            None
+        } else {
+            Some(serde_json::json!(citations))
+        },
+        usage: usage_payload,
+        // Terminal delivery events are emitted outside the seq-stamping
+        // progress bridge; leave `seq` unset (older clients ignore it).
+        seq: None,
+    });
+}
+
+/// Deliver an agent response as exactly one `chat_done` bubble — no
+/// segmentation, no reaction — for turns the core runs on its own behalf
+/// (autonomous task sessions, background sub-agent result delivery).
+///
+/// Those turns persist their closing message themselves, as a single row,
+/// before announcing it (`task_session::append_final`). Splitting the reply
+/// into `chat_segment` bubbles would have a viewing client persist one row per
+/// segment beside that single row (#5933), so the conversational segmentation
+/// of [`deliver_response`] is deliberately not offered here.
+pub(crate) fn deliver_response_single_bubble(
+    client_id: &str,
+    thread_id: &str,
+    request_id: &str,
+    full_response: &str,
+    usage: Option<&LastTurnUsage>,
+) {
+    publish_chat_done(
+        client_id,
+        thread_id,
+        request_id,
+        full_response,
+        None,
+        &[],
+        usage_payload(usage),
+    );
+}
+
+/// Emit the terminal `chat_done` for an unsegmented reply.
+fn publish_chat_done(
+    client_id: &str,
+    thread_id: &str,
+    request_id: &str,
+    full_response: &str,
+    reaction_emoji: Option<String>,
+    citations: &[crate::openhuman::memory::agent::memory_loader::MemoryCitation],
+    usage_payload: Option<TurnUsagePayload>,
+) {
+    publish_web_channel_event(WebChannelEvent {
+        event: "chat_done".to_string(),
+        client_id: client_id.to_string(),
+        thread_id: thread_id.to_string(),
+        request_id: request_id.to_string(),
+        full_response: Some(full_response.to_string()),
+        message: None,
+        error_type: None,
+        error_source: None,
+        error_retryable: None,
+        error_retry_after_ms: None,
+        error_provider: None,
+        error_fallback_available: None,
+        tool_name: None,
+        skill_id: None,
+        args: None,
+        output: None,
+        success: None,
+        round: None,
+        reaction_emoji,
+        segment_index: None,
+        segment_total: None,
         delta: None,
         delta_kind: None,
         tool_call_id: None,

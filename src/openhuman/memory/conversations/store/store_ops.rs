@@ -115,6 +115,15 @@ impl ConversationStore {
     /// row, then a compact `MessageAppended` stat entry. Thread reads reconcile
     /// that stat trail against the message file, repairing a crash between the
     /// two appends.
+    ///
+    /// Idempotent by `message.id`: when the thread already holds a row with
+    /// that id, nothing is written (no message row, no stat bump, no index
+    /// insert) and the stored row is returned exactly as a fresh append would
+    /// return its input. Two writers can legitimately persist the same reply —
+    /// an autonomous run's `task_session::append_final` and the client that
+    /// also persists the `chat_done` it announced (#5933) — and a thread must
+    /// never carry two messages under one id (the frontend keys React and
+    /// assistant-ui resources by it).
     pub fn append_message(
         &self,
         thread_id: &str,
@@ -125,6 +134,14 @@ impl ConversationStore {
             return Err(format!("thread {} not found", thread_id));
         }
         let path = self.thread_messages_path(thread_id);
+        if path.exists() {
+            if let Some(existing) = read_jsonl::<ConversationMessage>(&path)?
+                .into_iter()
+                .find(|stored| stored.id == message.id)
+            {
+                return Ok(existing);
+            }
+        }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("create conversation dir {}: {e}", parent.display()))?;

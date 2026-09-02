@@ -59,22 +59,61 @@ fn creates_top_level_tasks_thread_and_seeds_prompt() {
 }
 
 #[test]
-fn append_final_writes_assistant_outcome() {
+fn append_final_writes_agent_outcome_keyed_by_run_id() {
     let ws = temp_ws();
     let id = create_session_thread(ws.clone(), &card("X"), "run-2", "prompt").expect("thread");
-    append_final(ws.clone(), &id, &Ok("All done.".to_string()));
+    append_final(ws.clone(), &id, "run-2", &Ok("All done.".to_string()));
 
     let msgs = conversations::get_messages(ws, &id).expect("messages");
     let last = msgs.last().expect("has messages");
-    assert_eq!(last.sender, "assistant");
+    // `agent` is the sender every renderer keys on; `assistant` used to land
+    // here and painted the closing reply as a USER bubble (#5933).
+    assert_eq!(last.sender, "agent");
     assert_eq!(last.content, "All done.");
+    // Deterministic per run so a client that also persists the announced
+    // reply under `agent:<request_id>` collapses onto this row.
+    assert_eq!(last.id, "agent:run-2");
+    assert_eq!(last.extra_metadata["requestId"], "run-2");
+    assert_eq!(last.extra_metadata["success"], true);
+    assert_eq!(last.extra_metadata["scope"], "autonomous_task_result");
+}
+
+#[test]
+fn append_final_records_failure_as_unsuccessful_agent_message() {
+    let ws = temp_ws();
+    let id = create_session_thread(ws.clone(), &card("X"), "run-5", "prompt").expect("thread");
+    append_final(ws.clone(), &id, "run-5", &Err("boom".to_string()));
+
+    let msgs = conversations::get_messages(ws, &id).expect("messages");
+    let last = msgs.last().expect("has messages");
+    assert_eq!(last.sender, "agent");
+    assert_eq!(last.id, "agent:run-5");
+    assert_eq!(last.content, "Run failed: boom");
+    assert_eq!(last.extra_metadata["success"], false);
+}
+
+#[test]
+fn append_final_is_idempotent_per_run() {
+    // The core persists first, then a viewing client persists the announced
+    // reply under the same id — the store must keep exactly one row.
+    let ws = temp_ws();
+    let id = create_session_thread(ws.clone(), &card("X"), "run-4", "prompt").expect("thread");
+    append_final(ws.clone(), &id, "run-4", &Ok("All done.".to_string()));
+    append_final(ws.clone(), &id, "run-4", &Ok("All done.".to_string()));
+
+    let msgs = conversations::get_messages(ws, &id).expect("messages");
+    assert_eq!(
+        msgs.iter().filter(|m| m.sender == "agent").count(),
+        1,
+        "a second append for the same run must not add a second closing message"
+    );
 }
 
 #[test]
 fn append_final_skips_empty_response() {
     let ws = temp_ws();
     let id = create_session_thread(ws.clone(), &card("X"), "run-3", "prompt").expect("thread");
-    append_final(ws.clone(), &id, &Ok("   ".to_string()));
+    append_final(ws.clone(), &id, "run-3", &Ok("   ".to_string()));
 
     let msgs = conversations::get_messages(ws, &id).expect("messages");
     assert_eq!(
