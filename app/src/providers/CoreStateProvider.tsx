@@ -420,8 +420,14 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         });
     }
 
-    // Seed the active agent profile at the earliest safe moment so no chat
-    // request can fire with a stale 'default' id (#5872). Intentionally not
+    // Seed the active agent profile at the earliest safe moment, so the window
+    // in which a chat request could carry the stale 'default' id is as short as
+    // the snapshot allows (#5872). It is a narrowing, NOT a guarantee: this
+    // dispatch is deliberately not awaited, so a send issued before it resolves
+    // still reads 'default' from the slice. Closing that window for good means
+    // omitting `profileId` while the slice is still loading — the core keeps
+    // its own authoritative `active_profile_id` and resolves an absent id
+    // against it — which belongs in the send path, not here. Intentionally not
     // gated on !isFlip: on Tauri a flip triggers restartApp() so the provider
     // remounts with undefined previousIdentity and profiles load on the boot
     // poll; on web restartApp() is a no-op and by the next poll

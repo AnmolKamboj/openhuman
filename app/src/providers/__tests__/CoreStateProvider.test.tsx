@@ -974,6 +974,47 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
 
     expect(listProfiles).toHaveBeenCalled();
   });
+
+  // The isFlip = TRUE half, which is the whole reason the guard above omits
+  // `!isFlip` (the neighbouring loadThreads block does gate on it). Without
+  // this, a future refactor "tidying" `!isFlip` back in to match its neighbour
+  // would pass every test in this file and silently break the web path, where
+  // restartApp() is a no-op and the next poll has shouldClearScopedCaches
+  // false — so this dispatch would never fire again.
+  it('still dispatches loadAgentProfiles when the identity FLIPS (#5872)', async () => {
+    // u1 established first; `tok*` is not a local session token
+    // (isLocalSessionToken requires a 3-part `….local` shape), so the
+    // subsequent change to u2 gives seedUserId !== nextIdentity && !isLocalSession
+    // => isFlip === true.
+    setActiveUserId('u1');
+    fetchSnapshot.mockResolvedValue(makeSnapshot({ userId: 'u1', sessionToken: 'tok1' }));
+    listTeams.mockResolvedValue([]);
+
+    let ctx: CoreStateContextValue | undefined;
+    render(
+      <CoreStateProvider>
+        <Consumer
+          captureCtx={next => {
+            ctx = next;
+          }}
+        />
+      </CoreStateProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+    await act(async () => {});
+
+    // Ignore the establish-time load; we are asserting on the flip itself.
+    listProfiles.mockClear();
+
+    fetchSnapshot.mockResolvedValue(makeSnapshot({ userId: 'u2', sessionToken: 'tok2' }));
+    await act(async () => {
+      await ctx!.refresh();
+    });
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('u2'));
+    await act(async () => {});
+
+    expect(listProfiles).toHaveBeenCalled();
+  });
 });
 
 describe('coreStatePollFailureWarningMessage', () => {
