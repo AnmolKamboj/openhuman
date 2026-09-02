@@ -995,9 +995,7 @@ describe('session expiry fixes (#5868)', () => {
 
     // Even though logout threw, refresh must still have fired and the snapshot
     // should now show signed-out state.
-    await waitFor(() =>
-      expect(screen.getByTestId('token').textContent).toBe('none')
-    );
+    await waitFor(() => expect(screen.getByTestId('token').textContent).toBe('none'));
   });
 
   it('confirmed session-expiry during bootstrap is replayed after the first snapshot lands (#5868)', async () => {
@@ -1006,9 +1004,14 @@ describe('session expiry fixes (#5868)', () => {
     setCoreStateSnapshot({ ...getCoreStateSnapshot(), isBootstrapping: true, isReady: false });
 
     // Hold the first snapshot until we control the release.
-    let resolveSnapshot!: (v: Awaited<ReturnType<typeof coreStateApi.fetchCoreAppSnapshot>>) => void;
+    let resolveSnapshot!: (
+      v: Awaited<ReturnType<typeof coreStateApi.fetchCoreAppSnapshot>>
+    ) => void;
     vi.mocked(coreStateApi.fetchCoreAppSnapshot).mockImplementation(
-      () => new Promise(res => { resolveSnapshot = res; })
+      () =>
+        new Promise(res => {
+          resolveSnapshot = res;
+        })
     );
     vi.mocked(tauriCommands.logout).mockReset();
     vi.mocked(tauriCommands.logout).mockResolvedValue(undefined as never);

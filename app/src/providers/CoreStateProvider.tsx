@@ -815,7 +815,11 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
           // snapshot lands. Without this the event is lost: signed_out=true prevents
           // re-publication, leaving the user stuck in the chat shell forever.
           pendingConfirmedReauthRef.current = true;
-          log('auth-expired queued for post-bootstrap replay (method=%s source=%s)', method, source);
+          log(
+            'auth-expired queued for post-bootstrap replay (method=%s source=%s)',
+            method,
+            source
+          );
         } else {
           log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
         }
