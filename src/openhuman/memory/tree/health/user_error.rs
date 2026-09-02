@@ -117,13 +117,14 @@ pub(crate) fn notice_memory_module_unavailable_once(reason: &str) {
 /// per-segment notices would be a banner storm. `origin` names the producing
 /// path — logged, never sent to the frontend.
 ///
-/// Uses [`std::sync::Once`] so the latch is not set until after the publish
-/// runs: a panic inside `publish_web_channel_event` leaves the `Once`
-/// un-initialized, so the next call retries rather than silently swallowing the
-/// failure (matching the pattern of [`notice_memory_module_unavailable_once`]).
+/// Uses [`std::sync::Once::call_once_force`] so the latch is not set until
+/// after the publish runs: if `publish_web_channel_event` panics, the `Once`
+/// is left in the poisoned state and `call_once_force` lets the next call
+/// retry rather than re-panicking, so a transient panic does not permanently
+/// suppress the notification.
 pub(crate) fn notice_local_model_unavailable_once(origin: &str) {
     static EMBED_UNAVAILABLE_NOTICED: std::sync::Once = std::sync::Once::new();
-    EMBED_UNAVAILABLE_NOTICED.call_once(|| {
+    EMBED_UNAVAILABLE_NOTICED.call_once_force(|_| {
         log::warn!(
             "[archivist] action=broadcast_user_error kind={LOCAL_MODEL_UNAVAILABLE_KIND} \
              source={MEMORY_USER_ERROR_SOURCE} origin={origin}"
