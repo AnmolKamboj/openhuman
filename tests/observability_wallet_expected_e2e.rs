@@ -289,9 +289,23 @@ mod paging {
     /// a sibling test's `report_error_or_expected` on another thread landed in
     /// this transport too — `left: 2` for a genuine failure, deterministic
     /// under the product feature set, invisible under the contributor default
-    /// set where this module does not compile. No process-global state is
-    /// touched, so the tests need no serialisation.
+    /// set where this module does not compile.
+    ///
+    /// The private hub removes the *client* binding, but it does not remove the
+    /// need to serialise. `sentry-tracing`'s layer sits in the global
+    /// subscriber stack, so while a client is current on this thread a
+    /// `tracing::error!` raised by `capture_reporting` on ANOTHER thread can be
+    /// consumed by that layer instead of reaching its fmt subscriber — the
+    /// capture then comes back empty and
+    /// `reporting_a_genuine_wallet_failure_still_emits_error` fails for a
+    /// reason unrelated to the behaviour under test. That is `main`'s
+    /// `d0509bb17` finding, and it still holds here: an earlier revision of
+    /// this merge dropped the guard on the reasoning that a private hub made it
+    /// redundant, and CI reproduced exactly that failure. Both fixes are
+    /// needed — the private hub for the paging count, the file-wide lock for
+    /// the capture.
     fn captured_events_for(message: &str) -> usize {
+        let _guard = lock_reporting_state();
         let transport = sentry::test::TestTransport::new();
         let transport_for_factory = transport.clone();
         let options = sentry::ClientOptions {
