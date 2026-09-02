@@ -1,4 +1,5 @@
 use super::{SearchResponse, SearchResultItem, SeltzSearchTool};
+use crate::openhuman::config::Config;
 use crate::openhuman::integrations::IntegrationClient;
 use crate::openhuman::tools::traits::{Tool, ToolCallOptions, ToolResult};
 use async_trait::async_trait;
@@ -29,6 +30,10 @@ pub(crate) fn resolve_managed_provider(resp: &SearchResponse) -> &str {
 /// Web search tool backed by the server-side Parallel integration proxy.
 pub struct WebSearchTool {
     client: Option<Arc<IntegrationClient>>,
+    /// Root config held so `execute_with_options` can rebuild a fresh
+    /// `IntegrationClient` when the baked-in one carries a stale JWT
+    /// (i.e. when the user re-authenticated after token expiry — #5873).
+    root_config: Option<Arc<Config>>,
     direct_search: Option<SeltzSearchTool>,
     max_results: usize,
     timeout_secs: u64,
@@ -37,11 +42,13 @@ pub struct WebSearchTool {
 impl WebSearchTool {
     pub fn new(
         client: Option<Arc<IntegrationClient>>,
+        root_config: Option<Arc<Config>>,
         max_results: usize,
         timeout_secs: u64,
     ) -> Self {
         Self {
             client,
+            root_config,
             direct_search: None,
             max_results: max_results.clamp(1, 10),
             timeout_secs: timeout_secs.max(1),
@@ -200,7 +207,9 @@ impl Tool for WebSearchTool {
 
         let client = self.client.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
-                "Web search unavailable: no backend session token. Sign in first so the server can proxy search."
+                "Web search unavailable: no backend session token. \
+                 Sign in to TinyHumans so the server can proxy search, \
+                 or configure a direct search API key under Settings → Search."
             )
         })?;
 
@@ -229,9 +238,37 @@ impl Tool for WebSearchTool {
             }
         });
 
-        let resp = client
+        // On SESSION_EXPIRED the baked-in client carries a JWT that expired
+        // mid-session. If the user has since re-authenticated, `build_client`
+        // will read the new JWT from the credential store and the retry
+        // succeeds. On any other error the original error propagates (#5873).
+        let resp = match client
             .post::<SearchResponse>("/agent-integrations/parallel/search", &body)
-            .await?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) if e.to_string().starts_with("SESSION_EXPIRED:") => {
+                let fresh = self
+                    .root_config
+                    .as_deref()
+                    .and_then(crate::openhuman::integrations::build_client);
+                match fresh {
+                    Some(fresh_client) => {
+                        tracing::debug!(
+                            "[web_search] session expired — retrying with fresh client"
+                        );
+                        fresh_client
+                            .post::<SearchResponse>(
+                                "/agent-integrations/parallel/search",
+                                &body,
+                            )
+                            .await?
+                    }
+                    None => return Err(e),
+                }
+            }
+            Err(e) => return Err(e),
+        };
 
         // Attribute the search to the provider the managed backend resolved to
         // (Exa by default). The provider name is echoed in the result text so
