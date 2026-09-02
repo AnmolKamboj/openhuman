@@ -68,6 +68,53 @@ impl NotificationBridgeSubscriber {
             config: Some(config),
         }
     }
+
+    /// Whether a workspace-bound event belongs to the workspace this bridge
+    /// was registered for.
+    ///
+    /// The bridge is registered once, with the workspace that booted, but the
+    /// MCP reconnect supervisor ticks *every* workspace the process has opened
+    /// and a workspace switch leaves the old one open and still supervised.
+    /// Without this check, switching accounts would announce — and persist
+    /// into the current workspace's store — an outage belonging to the account
+    /// the user has left (#5931).
+    ///
+    /// An event that names no workspace is not workspace-bound and passes, as
+    /// every event this bridge handled before #5931 does. So does everything
+    /// when `config` is `None`, which is unit tests only — see the field.
+    fn is_for_this_workspace(&self, event: &DomainEvent) -> bool {
+        let (Some(event_workspace), Some(config)) = (workspace_of(event), self.config.as_ref())
+        else {
+            return true;
+        };
+        if event_workspace == config.workspace_dir.as_path() {
+            return true;
+        }
+        log::debug!(
+            "{LOG_PREFIX} dropping stale-workspace {} event_ws={} self_ws={}",
+            event.variant_name(),
+            event_workspace.display(),
+            config.workspace_dir.display()
+        );
+        false
+    }
+}
+
+/// The workspace an event belongs to, for the variants that name one.
+///
+/// `None` means the event is not bound to a workspace and any subscriber may
+/// act on it. Only the MCP supervisor variants are bound today, because they
+/// are the only ones this bridge handles that one process produces for more
+/// than one workspace (#5931).
+fn workspace_of(event: &DomainEvent) -> Option<&std::path::Path> {
+    match event {
+        DomainEvent::McpServerProbeTimedOut { workspace_dir, .. }
+        | DomainEvent::McpServerTransportDropped { workspace_dir, .. }
+        | DomainEvent::McpServerReconnected { workspace_dir, .. }
+        | DomainEvent::McpServerReconnectFailed { workspace_dir, .. }
+        | DomainEvent::McpServerParked { workspace_dir, .. } => Some(workspace_dir.as_path()),
+        _ => None,
+    }
 }
 
 fn now_ms() -> u64 {
@@ -219,6 +266,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             error,
             failures,
             retry_in_secs,
+            ..
         } if *failures == 1 => Some(CoreNotificationEvent {
             id: format!("mcp-unavailable:{}:{}", server_id, ts),
             category: CoreNotificationCategory::System,
@@ -237,6 +285,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             qualified_name,
             tool_count,
             after_failures,
+            ..
         } if *after_failures > 0 => Some(CoreNotificationEvent {
             id: format!("mcp-restored:{}:{}", server_id, ts),
             category: CoreNotificationCategory::System,
@@ -253,6 +302,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             server_id,
             qualified_name,
             error,
+            ..
         } => Some(CoreNotificationEvent {
             id: format!("mcp-parked:{}:{}", server_id, ts),
             category: CoreNotificationCategory::System,
@@ -282,6 +332,11 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
     // correctness boundary.
 
     async fn handle(&self, event: &DomainEvent) {
+        // A workspace-bound event from a workspace that is not this bridge's
+        // is not this bridge's to announce or store (#5931).
+        if !self.is_for_this_workspace(event) {
+            return;
+        }
         if let Some(notification) = event_to_notification(event) {
             // #3805: persist BEFORE broadcasting so the event is durable even
             // when no client is currently subscribed (app closed / minimised /

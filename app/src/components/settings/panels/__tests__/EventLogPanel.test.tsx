@@ -15,7 +15,7 @@ vi.mock('../../hooks/useSettingsNavigation', () => ({
 
 vi.mock('../../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 
-function mockFetchSSE(events: Array<{ domain: string; event: string }>) {
+function mockFetchSSE(events: Array<{ domain: string; event: string; detail?: string }>) {
   const lines = events.map(e => `data:${JSON.stringify({ ...e, timestamp: '12:00:00' })}\n`);
   const body = lines.join('');
   const encoder = new TextEncoder();
@@ -68,6 +68,47 @@ describe('EventLogPanel', () => {
 
     expect(screen.getByText('settings.developerMenu.eventLog.badge.tool')).toBeTruthy();
     expect(screen.getByText('settings.developerMenu.eventLog.badge.agent')).toBeTruthy();
+  });
+
+  it('renders the backend detail line for events that carry one', async () => {
+    // The envelope carries the variant name only, so an MCP transport drop
+    // reaches the log with its reason in `detail` (#5931).
+    mockFetchSSE([
+      {
+        domain: 'mcp_client',
+        event: 'McpServerTransportDropped',
+        detail: 'session ended: broken after 1961ms — connection reset',
+      },
+      { domain: 'tool', event: 'ToolExecuted' },
+    ]);
+    renderWithProviders(<EventLogPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText('McpServerTransportDropped')).toBeTruthy();
+    });
+    expect(screen.getByText('session ended: broken after 1961ms — connection reset')).toBeTruthy();
+    // An event without a detail renders exactly as it did before.
+    expect(screen.getByText('ToolExecuted')).toBeTruthy();
+  });
+
+  it('matches the filter text against the detail line', async () => {
+    mockFetchSSE([
+      { domain: 'mcp_client', event: 'McpServerTransportDropped', detail: 'connection reset' },
+      { domain: 'tool', event: 'ToolExecuted' },
+    ]);
+    const { container } = renderWithProviders(<EventLogPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText('ToolExecuted')).toBeTruthy();
+    });
+
+    const filter = container.querySelector('input')!;
+    fireEvent.change(filter, { target: { value: 'connection reset' } });
+
+    await waitFor(() => {
+      expect(screen.queryByText('ToolExecuted')).toBeNull();
+    });
+    expect(screen.getByText('McpServerTransportDropped')).toBeTruthy();
   });
 
   it('shows disconnected state when fetch fails', async () => {

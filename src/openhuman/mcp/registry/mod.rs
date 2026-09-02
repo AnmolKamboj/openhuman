@@ -445,7 +445,7 @@ pub mod supervisor {
             // proxy it was opened with.
             for (workspace, service, identity, proxy) in host::all_hosts() {
                 let supervisor = supervisors
-                    .entry(workspace)
+                    .entry(workspace.clone())
                     .or_insert_with(|| tinymcp::Supervisor::new(config.clone(), identity, proxy));
 
                 let report = supervisor
@@ -458,8 +458,11 @@ pub mod supervisor {
                     .await;
                 // What the tick observed becomes this domain's events, so a
                 // probe outcome reaches the Event Log and a server that stays
-                // down reaches the user (#5931).
-                super::supervisor_events::publish(&report);
+                // down reaches the user (#5931). The workspace goes with them:
+                // this loop covers every host the process has opened, and a
+                // subscriber that persists or announces one must not take a
+                // switched-away workspace's outage for its own.
+                super::supervisor_events::publish(&workspace, &report);
             }
         }
     }

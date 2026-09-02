@@ -1,9 +1,16 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tinymcp::{ProbeOutcome, ServerRef, SupervisorEvent, TickReport};
 
 use super::*;
 use crate::core::events::DomainEvent;
+
+/// The workspace a tick is attributed to. One process supervises every
+/// workspace it has opened, so every event has to name the one it came from.
+fn workspace() -> &'static Path {
+    Path::new("/tmp/openhuman-ws-a")
+}
 
 fn server() -> ServerRef {
     ServerRef {
@@ -16,21 +23,27 @@ fn server() -> ServerRef {
 #[test]
 fn an_answered_probe_is_not_an_event() {
     // One row per server per minute would bury everything else in the log.
-    let events = domain_events_for(&[SupervisorEvent::ProbeAnswered {
-        server: server(),
-        elapsed: Duration::from_millis(190),
-    }]);
+    let events = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::ProbeAnswered {
+            server: server(),
+            elapsed: Duration::from_millis(190),
+        }],
+    );
     assert!(events.is_empty());
 }
 
 #[test]
 fn a_kept_timeout_becomes_probe_timed_out_with_its_place_in_the_streak() {
-    let events = domain_events_for(&[SupervisorEvent::ProbeTimedOut {
-        server: server(),
-        after: Duration::from_secs(8),
-        consecutive: 1,
-        teardown_after: 3,
-    }]);
+    let events = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::ProbeTimedOut {
+            server: server(),
+            after: Duration::from_secs(8),
+            consecutive: 1,
+            teardown_after: 3,
+        }],
+    );
     match events.as_slice() {
         [DomainEvent::McpServerProbeTimedOut {
             server_id,
@@ -38,6 +51,7 @@ fn a_kept_timeout_becomes_probe_timed_out_with_its_place_in_the_streak() {
             probe_timeout_secs,
             consecutive_timeouts,
             teardown_after,
+            ..
         }] => {
             assert_eq!(server_id, "srv-1");
             assert_eq!(qualified_name, "ac.inference.sh/mcp");
@@ -53,14 +67,18 @@ fn a_kept_timeout_becomes_probe_timed_out_with_its_place_in_the_streak() {
 
 #[test]
 fn a_broken_drop_carries_the_error_and_how_long_it_took_to_fail() {
-    let events = domain_events_for(&[SupervisorEvent::TransportDropped {
-        server: server(),
-        outcome: ProbeOutcome::Broken {
-            error: "mcp transport failure for `https://api.inference.sh`: connection reset".into(),
-            elapsed: Duration::from_millis(1961),
-        },
-        consecutive_timeouts: 0,
-    }]);
+    let events = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::TransportDropped {
+            server: server(),
+            outcome: ProbeOutcome::Broken {
+                error: "mcp transport failure for `https://api.inference.sh`: connection reset"
+                    .into(),
+                elapsed: Duration::from_millis(1961),
+            },
+            consecutive_timeouts: 0,
+        }],
+    );
     match events.as_slice() {
         [DomainEvent::McpServerTransportDropped {
             outcome,
@@ -83,13 +101,16 @@ fn a_broken_drop_carries_the_error_and_how_long_it_took_to_fail() {
 
 #[test]
 fn a_timeout_drop_carries_the_window_and_the_streak_that_ended_the_session() {
-    let events = domain_events_for(&[SupervisorEvent::TransportDropped {
-        server: server(),
-        outcome: ProbeOutcome::TimedOut {
-            after: Duration::from_secs(8),
-        },
-        consecutive_timeouts: 3,
-    }]);
+    let events = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::TransportDropped {
+            server: server(),
+            outcome: ProbeOutcome::TimedOut {
+                after: Duration::from_secs(8),
+            },
+            consecutive_timeouts: 3,
+        }],
+    );
     match events.as_slice() {
         [DomainEvent::McpServerTransportDropped {
             outcome,
@@ -109,11 +130,14 @@ fn a_timeout_drop_carries_the_window_and_the_streak_that_ended_the_session() {
 
 #[test]
 fn a_missing_entry_drop_carries_nothing_measured() {
-    let events = domain_events_for(&[SupervisorEvent::TransportDropped {
-        server: server(),
-        outcome: ProbeOutcome::Missing,
-        consecutive_timeouts: 0,
-    }]);
+    let events = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::TransportDropped {
+            server: server(),
+            outcome: ProbeOutcome::Missing,
+            consecutive_timeouts: 0,
+        }],
+    );
     match events.as_slice() {
         [DomainEvent::McpServerTransportDropped {
             outcome,
@@ -131,23 +155,26 @@ fn a_missing_entry_drop_carries_nothing_measured() {
 
 #[test]
 fn a_reconnect_a_failure_and_a_parking_translate_in_order() {
-    let events = domain_events_for(&[
-        SupervisorEvent::Reconnected {
-            server: server(),
-            tools: 25,
-            after_failures: 2,
-        },
-        SupervisorEvent::ReconnectFailed {
-            server: server(),
-            error: "mcp error response: not accepting sessions".into(),
-            failures: 1,
-            retry_in: Duration::from_secs(5),
-        },
-        SupervisorEvent::Parked {
-            server: server(),
-            error: "the `npx` launcher is not installed".into(),
-        },
-    ]);
+    let events = domain_events_for(
+        workspace(),
+        &[
+            SupervisorEvent::Reconnected {
+                server: server(),
+                tools: 25,
+                after_failures: 2,
+            },
+            SupervisorEvent::ReconnectFailed {
+                server: server(),
+                error: "mcp error response: not accepting sessions".into(),
+                failures: 1,
+                retry_in: Duration::from_secs(5),
+            },
+            SupervisorEvent::Parked {
+                server: server(),
+                error: "the `npx` launcher is not installed".into(),
+            },
+        ],
+    );
 
     match events.as_slice() {
         [DomainEvent::McpServerReconnected {
@@ -203,6 +230,100 @@ fn publish_counts_only_what_became_an_event() {
             },
         ],
     };
-    assert_eq!(publish(&report), 1);
-    assert_eq!(publish(&TickReport::default()), 0);
+    assert_eq!(publish(workspace(), &report), 1);
+    assert_eq!(publish(workspace(), &TickReport::default()), 0);
+}
+
+/// Every translated event names the workspace whose host was ticked.
+///
+/// The supervisor walks every workspace the process has opened, so an event
+/// that did not say which one it came from would let a switched-away
+/// account's outage be stored in, and announced from, the current one
+/// (#5931).
+#[test]
+fn every_event_is_stamped_with_the_workspace_it_came_from() {
+    let events = domain_events_for(
+        workspace(),
+        &[
+            SupervisorEvent::ProbeTimedOut {
+                server: server(),
+                after: Duration::from_secs(8),
+                consecutive: 1,
+                teardown_after: 3,
+            },
+            SupervisorEvent::TransportDropped {
+                server: server(),
+                outcome: ProbeOutcome::Missing,
+                consecutive_timeouts: 0,
+            },
+            SupervisorEvent::Reconnected {
+                server: server(),
+                tools: 25,
+                after_failures: 2,
+            },
+            SupervisorEvent::ReconnectFailed {
+                server: server(),
+                error: "connection refused".into(),
+                failures: 1,
+                retry_in: Duration::from_secs(5),
+            },
+            SupervisorEvent::Parked {
+                server: server(),
+                error: "the `npx` launcher is not installed".into(),
+            },
+        ],
+    );
+
+    let expected = PathBuf::from(workspace());
+    let stamps: Vec<&PathBuf> = events
+        .iter()
+        .map(|event| match event {
+            DomainEvent::McpServerProbeTimedOut { workspace_dir, .. }
+            | DomainEvent::McpServerTransportDropped { workspace_dir, .. }
+            | DomainEvent::McpServerReconnected { workspace_dir, .. }
+            | DomainEvent::McpServerReconnectFailed { workspace_dir, .. }
+            | DomainEvent::McpServerParked { workspace_dir, .. } => workspace_dir,
+            other => panic!("not a supervisor event: {other:?}"),
+        })
+        .collect();
+    assert_eq!(stamps.len(), 5);
+    assert!(stamps.iter().all(|stamp| **stamp == expected));
+}
+
+/// A second workspace's tick is stamped with *its* workspace, not the first's.
+#[test]
+fn two_workspaces_ticked_in_one_pass_keep_their_own_stamps() {
+    let other = Path::new("/tmp/openhuman-ws-b");
+    let one = domain_events_for(
+        workspace(),
+        &[SupervisorEvent::Parked {
+            server: server(),
+            error: "the `npx` launcher is not installed".into(),
+        }],
+    );
+    let two = domain_events_for(
+        other,
+        &[SupervisorEvent::Parked {
+            server: server(),
+            error: "the `npx` launcher is not installed".into(),
+        }],
+    );
+
+    match (one.as_slice(), two.as_slice()) {
+        (
+            [DomainEvent::McpServerParked {
+                workspace_dir: first,
+                ..
+            }],
+            [DomainEvent::McpServerParked {
+                workspace_dir: second,
+                ..
+            }],
+        ) => {
+            assert_eq!(first, workspace());
+            assert_eq!(second, other);
+            assert_ne!(first, second);
+        }
+        other => panic!("expected one parked event each, got {other:?}"),
+    }
 }

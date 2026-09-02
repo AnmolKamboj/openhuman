@@ -1122,6 +1122,16 @@ pub enum DomainEvent {
         consecutive_timeouts: u32,
         /// The streak length at which the session is torn down.
         teardown_after: u32,
+        /// Workspace the supervised host belongs to.
+        ///
+        /// One process supervises every workspace it has opened over its life
+        /// (`mcp::host::all_hosts`), and a workspace switch leaves the old
+        /// host open and still supervised. A subscriber that persists or
+        /// shows one of these must therefore reject an event whose
+        /// `workspace_dir` is not its own binding — otherwise a switched-away
+        /// account's outage is stored in, and announced from, the current
+        /// workspace.
+        workspace_dir: std::path::PathBuf,
     },
     /// The supervisor ended an MCP server's session because its liveness
     /// probe found the transport unusable. A reconnect follows in the same
@@ -1144,6 +1154,10 @@ pub enum DomainEvent {
         /// The timeout streak that ended the session; zero unless `outcome`
         /// is `"timed_out"`.
         consecutive_timeouts: u32,
+        /// Workspace the supervised host belongs to — see
+        /// [`Self::McpServerProbeTimedOut::workspace_dir`] for the rule
+        /// subscribers must apply.
+        workspace_dir: std::path::PathBuf,
     },
     /// The supervisor connected an MCP server, either rebuilding a session
     /// it had just ended or bringing back one that had stayed down.
@@ -1157,6 +1171,10 @@ pub enum DomainEvent {
         /// unavailable across at least one whole tick, which is what the
         /// notification bridge keys off to announce a recovery.
         after_failures: u32,
+        /// Workspace the supervised host belongs to — see
+        /// [`Self::McpServerProbeTimedOut::workspace_dir`] for the rule
+        /// subscribers must apply.
+        workspace_dir: std::path::PathBuf,
     },
     /// The supervisor failed to connect an MCP server and will retry after
     /// a backoff. Until a retry succeeds the server's tools are unavailable
@@ -1173,6 +1191,10 @@ pub enum DomainEvent {
         failures: u32,
         /// Seconds until the next attempt.
         retry_in_secs: u64,
+        /// Workspace the supervised host belongs to — see
+        /// [`Self::McpServerProbeTimedOut::workspace_dir`] for the rule
+        /// subscribers must apply.
+        workspace_dir: std::path::PathBuf,
     },
     /// The supervisor gave up on an MCP server because the failure is one
     /// retrying cannot fix — today, the launcher runtime (`npx` / `uvx`) is
@@ -1184,6 +1206,10 @@ pub enum DomainEvent {
         /// The failure, already rendered, including the install guidance
         /// `tinymcp` attaches to a missing runtime.
         error: String,
+        /// Workspace the supervised host belongs to — see
+        /// [`Self::McpServerProbeTimedOut::workspace_dir`] for the rule
+        /// subscribers must apply.
+        workspace_dir: std::path::PathBuf,
     },
 
     /// An `OPENHUMAN_APPROVAL_GATE=0` env override was observed but
@@ -1667,6 +1693,87 @@ impl DomainEvent {
             | Self::McpServerReconnected { qualified_name, .. }
             | Self::McpServerReconnectFailed { qualified_name, .. }
             | Self::McpServerParked { qualified_name, .. } => Some(qualified_name.as_str()),
+            _ => None,
+        }
+    }
+
+    /// A one-line summary for the developer Event Log, for the variants whose
+    /// name and [`Self::agent_hint`] are not enough to act on.
+    ///
+    /// The Event Log envelope (`GET /events/domain`) carries the domain, the
+    /// variant name, the agent hint and a timestamp — no payload. A variant
+    /// whose whole point is a failure *reason* would otherwise reach the UI
+    /// with the reason discarded: a transport that broke and one that timed
+    /// out are the same row (#5931). This is the opt-in escape hatch. A
+    /// variant with something a reader needs returns a short rendering of it;
+    /// every other variant returns `None` and its row is unchanged.
+    ///
+    /// What comes back is shown verbatim to anyone who can open the Event Log
+    /// and lands in the log's NDJSON download, so it carries no payload
+    /// content, no credentials and no un-redacted endpoint — the MCP arms
+    /// pass through strings `tinymcp` has already rendered and
+    /// endpoint-redacted — and no `workspace_dir`, which is on the event for
+    /// subscribers to filter on, not for a shared panel to print.
+    #[must_use]
+    pub fn log_detail(&self) -> Option<String> {
+        /// Long enough for a rendered transport error, short enough that one
+        /// row cannot push the rest of the log off the screen. Counted in
+        /// `char`s, so a multi-byte error cannot be split mid-character.
+        const MAX_DETAIL_CHARS: usize = 160;
+
+        fn clip(text: &str) -> String {
+            let mut out: String = text.chars().take(MAX_DETAIL_CHARS).collect();
+            if text.chars().nth(MAX_DETAIL_CHARS).is_some() {
+                out.push('…');
+            }
+            out
+        }
+
+        match self {
+            Self::McpServerProbeTimedOut {
+                probe_timeout_secs,
+                consecutive_timeouts,
+                teardown_after,
+                ..
+            } => Some(format!(
+                "no answer in {probe_timeout_secs}s; timeout {consecutive_timeouts} of \
+                 {teardown_after} before teardown"
+            )),
+            Self::McpServerTransportDropped {
+                outcome,
+                detail,
+                elapsed_ms,
+                ..
+            } => {
+                let mut summary = format!("session ended: {outcome}");
+                if let Some(elapsed_ms) = elapsed_ms {
+                    summary.push_str(&format!(" after {elapsed_ms}ms"));
+                }
+                if let Some(detail) = detail {
+                    summary.push_str(" — ");
+                    summary.push_str(&clip(detail));
+                }
+                Some(summary)
+            }
+            Self::McpServerReconnected {
+                tool_count,
+                after_failures,
+                ..
+            } => Some(format!(
+                "connected with {tool_count} tools after {after_failures} failed attempt(s)"
+            )),
+            Self::McpServerReconnectFailed {
+                error,
+                failures,
+                retry_in_secs,
+                ..
+            } => Some(format!(
+                "attempt {failures} failed, retrying in {retry_in_secs}s — {}",
+                clip(error)
+            )),
+            Self::McpServerParked { error, .. } => {
+                Some(format!("parked, not retrying — {}", clip(error)))
+            }
             _ => None,
         }
     }

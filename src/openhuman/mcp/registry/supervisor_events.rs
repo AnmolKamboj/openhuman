@@ -9,9 +9,18 @@
 //! of the notification bridge (`desktop::notifications::bus`), where the
 //! stays-down, restored and parked cases become user notifications (#5931).
 //!
+//! Every event is stamped with the workspace whose host was ticked. One
+//! process supervises every workspace it has opened over its life, and a
+//! workspace switch leaves the old one open and still supervised, so a
+//! subscriber that persists or announces one of these — the notification
+//! bridge — needs the stamp to tell a live outage from a switched-away
+//! account's.
+//!
 //! An answered probe is the nominal case and is deliberately *not* an event:
 //! one row per server per minute would bury everything else in the log.
 //! `tinymcp` logs it at trace level, and that is enough.
+
+use std::path::Path;
 
 use tinymcp::{ProbeOutcome, SupervisorEvent, TickReport};
 
@@ -26,14 +35,21 @@ const LOG_PREFIX: &str = "[mcp]";
 /// Pure, so the mapping is testable without a bus. Observations this host has
 /// no event for — an answered probe today, and whatever `tinymcp` adds to its
 /// non-exhaustive report later — map to nothing.
-pub fn domain_events_for(events: &[SupervisorEvent]) -> Vec<DomainEvent> {
-    events.iter().filter_map(domain_event_for).collect()
+///
+/// `workspace` is the host's workspace, stamped onto every event so a
+/// subscriber can reject one that is not its own.
+pub fn domain_events_for(workspace: &Path, events: &[SupervisorEvent]) -> Vec<DomainEvent> {
+    events
+        .iter()
+        .filter_map(|event| domain_event_for(workspace, event))
+        .collect()
 }
 
-fn domain_event_for(event: &SupervisorEvent) -> Option<DomainEvent> {
+fn domain_event_for(workspace: &Path, event: &SupervisorEvent) -> Option<DomainEvent> {
     let server = event.server();
     let server_id = server.server_id.clone();
     let qualified_name = server.qualified_name.clone();
+    let workspace_dir = workspace.to_path_buf();
 
     match event {
         SupervisorEvent::ProbeAnswered { .. } => None,
@@ -48,6 +64,7 @@ fn domain_event_for(event: &SupervisorEvent) -> Option<DomainEvent> {
             probe_timeout_secs: after.as_secs(),
             consecutive_timeouts: *consecutive,
             teardown_after: *teardown_after,
+            workspace_dir,
         }),
         SupervisorEvent::TransportDropped {
             outcome,
@@ -70,6 +87,7 @@ fn domain_event_for(event: &SupervisorEvent) -> Option<DomainEvent> {
                 detail,
                 elapsed_ms,
                 consecutive_timeouts: *consecutive_timeouts,
+                workspace_dir,
             })
         }
         SupervisorEvent::Reconnected {
@@ -81,6 +99,7 @@ fn domain_event_for(event: &SupervisorEvent) -> Option<DomainEvent> {
             qualified_name,
             tool_count: u32::try_from(*tools).unwrap_or(u32::MAX),
             after_failures: *after_failures,
+            workspace_dir,
         }),
         SupervisorEvent::ReconnectFailed {
             error,
@@ -93,11 +112,13 @@ fn domain_event_for(event: &SupervisorEvent) -> Option<DomainEvent> {
             error: error.clone(),
             failures: *failures,
             retry_in_secs: retry_in.as_secs(),
+            workspace_dir,
         }),
         SupervisorEvent::Parked { error, .. } => Some(DomainEvent::McpServerParked {
             server_id,
             qualified_name,
             error: error.clone(),
+            workspace_dir,
         }),
         // `SupervisorEvent` is non-exhaustive: a report entry this host does
         // not know yet is logged and skipped rather than mistranslated.
@@ -120,8 +141,10 @@ fn millis(duration: std::time::Duration) -> u64 {
 ///
 /// Returns how many were published: zero for a quiet tick. A bus that is not
 /// initialised drops them, as it does every other publish before startup.
-pub fn publish(report: &TickReport) -> usize {
-    let events = domain_events_for(&report.events);
+///
+/// `workspace` is the host the report came from, stamped onto every event.
+pub fn publish(workspace: &Path, report: &TickReport) -> usize {
+    let events = domain_events_for(workspace, &report.events);
     let published = events.len();
     if published > 0 {
         tracing::debug!(
