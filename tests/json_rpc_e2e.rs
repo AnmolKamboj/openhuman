@@ -14235,13 +14235,20 @@ async fn auth_store_provider_credentials_writes_an_owner_only_store_file() {
     // security regression test would go green having checked nothing.
     if std::env::var(OWNER_ONLY_CHILD_ENV).is_err() {
         let exe = std::env::current_exe().expect("current_exe");
+        // The exe path and the test name go in as POSITIONAL PARAMETERS rather
+        // than interpolated into the command string. A repository or
+        // CARGO_TARGET_DIR containing a single quote (`/home/o'connor/openhuman`)
+        // would close the literal `'...'` early and hand `sh` invalid syntax, so
+        // this test would fail before its child ever started — on exactly the
+        // machines whose paths are least likely to be noticed. `$0` is the
+        // conventional placeholder slot for `sh -c`, so the real arguments start
+        // at `$1`.
         let status = std::process::Command::new("sh")
             .arg("-c")
-            .arg(format!(
-                "umask 022 && exec '{}' --exact {} --nocapture --test-threads=1",
-                exe.display(),
-                OWNER_ONLY_TEST_NAME
-            ))
+            .arg("umask 022 && exec \"$1\" --exact \"$2\" --nocapture --test-threads=1")
+            .arg("sh")
+            .arg(&exe)
+            .arg(OWNER_ONLY_TEST_NAME)
             .env(OWNER_ONLY_CHILD_ENV, "1")
             .status()
             .expect("re-exec the owner-only test under umask 022");
