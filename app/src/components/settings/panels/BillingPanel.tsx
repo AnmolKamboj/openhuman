@@ -6,6 +6,7 @@ import type { PlanTier } from '../../../types/api';
 import { BILLING_DASHBOARD_URL } from '../../../utils/links';
 import { openUrl } from '../../../utils/openUrl';
 import Button from '../../ui/Button';
+import { SettingsStatusLine } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import SettingsPanel from '../layout/SettingsPanel';
 import SubscriptionPlans from './billing/SubscriptionPlans';
@@ -19,16 +20,18 @@ const BillingPanel = () => {
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'crypto'>('card');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchasingTier, setPurchasingTier] = useState<PlanTier | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const paymentConfirmed = false;
 
   useEffect(() => {
     billingApi
       .getCurrentPlan()
       .then(data => setCurrentTier(data.plan))
-      .catch(() => {});
+      .catch(err => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
   const handleUpgrade = async (tier: PlanTier): Promise<void> => {
+    setError(null);
     setIsPurchasing(true);
     setPurchasingTier(tier);
     try {
@@ -41,8 +44,8 @@ const BillingPanel = () => {
           await openUrl(session.checkoutUrl);
         }
       }
-    } catch {
-      // errors surface through the standard error boundary
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsPurchasing(false);
       setPurchasingTier(null);
@@ -51,6 +54,7 @@ const BillingPanel = () => {
 
   return (
     <SettingsPanel>
+      <SettingsStatusLine saving={false} error={error} savingLabel="" />
       <SubscriptionPlans
         currentTier={currentTier}
         billingInterval={billingInterval}

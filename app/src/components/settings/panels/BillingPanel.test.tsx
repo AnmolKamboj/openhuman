@@ -115,4 +115,24 @@ describe('<BillingPanel />', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to settings' }));
     expect(navigateBack).toHaveBeenCalledTimes(2);
   });
+
+  it('shows an error message when getCurrentPlan rejects', async () => {
+    getCurrentPlanMock.mockRejectedValue(new Error('Network error'));
+
+    render(<BillingPanel />);
+
+    await waitFor(() => expect(screen.getByText('Network error')).toBeInTheDocument());
+  });
+
+  it('shows an error message when purchasePlan rejects', async () => {
+    purchasePlanMock.mockRejectedValue(new Error('Payment failed'));
+
+    render(<BillingPanel />);
+    await waitFor(() => expect(getCurrentPlanMock).toHaveBeenCalledTimes(1));
+
+    const upgradeButtons = screen.getAllByRole('button', { name: 'Upgrade' });
+    fireEvent.click(upgradeButtons[0]);
+
+    await waitFor(() => expect(screen.getByText('Payment failed')).toBeInTheDocument());
+  });
 });
