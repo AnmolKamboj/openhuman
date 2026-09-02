@@ -92,10 +92,9 @@ pub async fn emit_register() -> Result<TunnelRegisterResponse, String> {
         .map_err(|e| format!("[devices/tunnel] emit tunnel:register failed: {e}"))?;
 
     serde_json::from_value::<TunnelRegisterResponse>(ack.clone()).map_err(|e| {
-        // Log the raw ACK so mismatches between backend field naming and this
-        // struct's rename/alias table are immediately visible in the logs.
         log::error!(
-            "[devices/tunnel] parse tunnel:register ack failed: {e}; raw ack = {ack}"
+            "[devices/tunnel] parse tunnel:register ack failed: {e}; ack fields = {:?}",
+            ack.as_object().map(|o| o.keys().collect::<Vec<_>>())
         );
         format!("[devices/tunnel] parse tunnel:register ack failed: {e}")
     })
