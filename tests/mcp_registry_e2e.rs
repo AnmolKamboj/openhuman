@@ -819,7 +819,11 @@ async fn probe_alive_distinguishes_a_missing_entry_from_a_timed_out_one() {
         .await
     {
         tinymcp::ProbeOutcome::TimedOut { after } => {
-            assert_eq!(after, std::time::Duration::ZERO, "the window is reported back");
+            assert_eq!(
+                after,
+                std::time::Duration::ZERO,
+                "the window is reported back"
+            );
         }
         other => panic!(
             "a healthy server probed with an unmeetable window must report TimedOut, not a \

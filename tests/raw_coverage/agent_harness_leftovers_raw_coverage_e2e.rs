@@ -767,7 +767,9 @@ async fn dispatch_is_refused_once_the_turn_has_requested_a_cap_pause() -> Result
 
     let (allowed, refused) = outcome;
     assert_eq!(
-        allowed.expect("a dispatch before the pause must be allowed").output,
+        allowed
+            .expect("a dispatch before the pause must be allowed")
+            .output,
         "first child answer",
         "the guard must not refuse before a pause is recorded"
     );
@@ -942,7 +944,10 @@ async fn waiting_twice_on_one_orchestration_child_misses_the_pruned_entry() -> R
         .await
         .expect("the first wait resolves");
 
-    assert!(first.completed, "the first wait must reach a terminal status");
+    assert!(
+        first.completed,
+        "the first wait must reach a terminal status"
+    );
     assert_eq!(first.agents.len(), 1);
     assert!(
         first.agents[0].status.is_terminal(),
