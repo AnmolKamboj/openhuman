@@ -785,9 +785,7 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       pendingConfirmedReauthRef.current = false;
       log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
       window.dispatchEvent(
-        new CustomEvent('openhuman:session-expired', {
-          detail: { source: 'bootstrap-replay' },
-        })
+        new CustomEvent('openhuman:session-expired', { detail: { source: 'bootstrap-replay' } })
       );
     }
   }, [state.isBootstrapping]);
