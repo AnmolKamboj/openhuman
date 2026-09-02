@@ -175,7 +175,8 @@ fn notification_triaged_unrouted_escalate_is_silent() {
 // ── MCP reconnect supervisor (#5931) ────────────────────────────────────────
 
 /// The workspace an MCP supervisor event is attributed to. The pure
-/// translator ignores it — the bridge's `is_for_this_workspace` is what reads
+/// translator ignores it — the bridge's `store_target` / `should_announce`
+/// are what read
 /// it — so these cases all use the same one.
 fn mcp_workspace() -> std::path::PathBuf {
     std::path::PathBuf::from("/tmp/openhuman-ws")

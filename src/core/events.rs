@@ -1363,6 +1363,22 @@ pub enum DomainEvent {
     ThreadGoalCleared { thread_id: String },
 }
 
+/// Truncate to `max` characters, appending `…` when anything was dropped.
+///
+/// Counted in `char`s, so a multi-byte error cannot be split mid-character.
+/// The ellipsis is the point: without it a clipped provider error reads as if
+/// it ended where it was cut, and a reader cannot tell a complete message from
+/// a truncated one. Shared so the Event Log summary and the notification
+/// bodies cannot drift into three different truncation rules — they had.
+#[must_use]
+pub fn clip_to_chars(text: &str, max: usize) -> String {
+    let mut out: String = text.chars().take(max).collect();
+    if text.chars().nth(max).is_some() {
+        out.push('…');
+    }
+    out
+}
+
 impl DomainEvent {
     /// Returns the domain name for routing and filtering.
     pub fn domain(&self) -> &'static str {
@@ -1721,13 +1737,7 @@ impl DomainEvent {
         /// `char`s, so a multi-byte error cannot be split mid-character.
         const MAX_DETAIL_CHARS: usize = 160;
 
-        fn clip(text: &str) -> String {
-            let mut out: String = text.chars().take(MAX_DETAIL_CHARS).collect();
-            if text.chars().nth(MAX_DETAIL_CHARS).is_some() {
-                out.push('…');
-            }
-            out
-        }
+        let clip = |text: &str| clip_to_chars(text, MAX_DETAIL_CHARS);
 
         match self {
             Self::McpServerProbeTimedOut {

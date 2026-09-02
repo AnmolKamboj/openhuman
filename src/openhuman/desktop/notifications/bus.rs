@@ -364,7 +364,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             body: format!(
                 "{qualified_name} stopped answering, so its tools are unavailable until it \
                  reconnects. It retries automatically. {}",
-                error.chars().take(120).collect::<String>()
+                crate::core::events::clip_to_chars(error, 120)
             ),
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
@@ -400,7 +400,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             body: format!(
                 "{qualified_name} will not be retried: {}. Install the missing runtime, then \
                  disable and re-enable the server.",
-                error.chars().take(160).collect::<String>()
+                crate::core::events::clip_to_chars(error, 160)
             ),
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
