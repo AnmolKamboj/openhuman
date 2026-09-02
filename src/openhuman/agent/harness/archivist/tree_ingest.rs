@@ -201,6 +201,22 @@ impl ArchivistHook {
                     crate::openhuman::memory::tree::health::user_error::notice_corrupt_store_once(
                         "archivist tree ingest",
                     );
+                } else if crate::openhuman::memory::tree::health::user_error::is_local_embedding_error(
+                    &rendered,
+                ) {
+                    tracing::warn!(
+                        "[archivist] tree ingest hit a local-model embedding failure \
+                         (non-fatal): source_id={source_id} session={session_id} \
+                         segment={segment_id} error={rendered}"
+                    );
+                    // Surface a once-per-process user notification so the
+                    // frontend can prompt the user to check their local model
+                    // configuration (openhuman#5867). Only fires for confirmed
+                    // Ollama-specific errors; storage/bus/RPC failures are
+                    // logged above and left to the existing retry/backoff path.
+                    crate::openhuman::memory::tree::health::user_error::notice_local_model_unavailable_once(
+                        "archivist tree ingest",
+                    );
                 } else {
                     tracing::warn!(
                         "[archivist] tree ingest failed (non-fatal): source_id={source_id} \
