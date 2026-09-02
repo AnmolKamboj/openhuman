@@ -14561,6 +14561,19 @@ async fn json_rpc_flows_strict_create_accepts_binding_to_schemaless_agent() {
     .await;
 
     if let Some(refusal) = strict_create_refusal(&create) {
+        // A refusal is expected here and is NOT this gate's doing: the fixture
+        // also carries a Slack node whose `channel` arg binds to an upstream
+        // field that is null under a sandboxed dry run, which strict mode
+        // refuses on its own. Success therefore cannot be asserted.
+        //
+        // But the refusal must still be a *strict-validation* one. Without this
+        // the test would also pass on a transport failure, an unknown-method
+        // error or any other structural break — the false-positive shape a bare
+        // "does not contain" check leaves open.
+        assert!(
+            refusal.starts_with("strict validation failed:"),
+            "expected a strict-validation refusal, not an unrelated failure: {refusal}"
+        );
         assert!(
             !refusal.contains("output_parser.schema"),
             "a schema-less agent must be treated as unverifiable, not refused: {refusal}"
@@ -14593,12 +14606,27 @@ async fn json_rpc_flows_strict_create_accepts_prose_prompt_beside_real_messages(
     )
     .await;
 
-    if let Some(refusal) = strict_create_refusal(&create) {
-        assert!(
-            !refusal.contains("reads as an instruction written as a"),
-            "a `=`-prose prompt beside real messages must not block the save: {refusal}"
-        );
-    }
+    // Asserted as a successful save, not merely "no refusal naming this gate".
+    // This fixture is a trigger plus one agent node — no bindings, no
+    // connections, no external-tool args — so there is no later gate it could
+    // legitimately trip, and a tolerated-error form would have gone green on a
+    // structural error, a transport failure or a renamed diagnostic while
+    // proving nothing. Confirmed against the running stack: the create returns
+    // a flow id.
+    let created = assert_no_jsonrpc_error(&create, "flows_create prose prompt beside messages");
+    let created = peel_logs_envelope(created);
+    assert_eq!(
+        created.get("name").and_then(Value::as_str),
+        Some("prose-prompt-with-messages"),
+        "the saved flow must be the one submitted: {created}"
+    );
+    assert!(
+        created
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty()),
+        "a saved flow must come back with an id: {created}"
+    );
 
     rpc_join.abort();
     api_join.abort();
