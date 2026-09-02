@@ -101,6 +101,87 @@ fn append_message_is_idempotent_by_message_id() {
 }
 
 #[test]
+fn append_message_does_not_dedupe_client_generated_ids() {
+    // The idempotency lookup is scoped to the ids the core mints
+    // deterministically. Client-generated ids are UUID-fresh per message, so
+    // paying a transcript scan to verify that on every append would put a
+    // quadratic write path under the process-wide store lock — the store takes
+    // them at face value instead.
+    let (_temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t".to_string(),
+            title: "Conversation".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .expect("ensure thread");
+    let message = ConversationMessage {
+        id: "user:5f1d0c3e-1f8b-4c1a-9c2e-2a7b6d4e8f90".to_string(),
+        content: "hello".to_string(),
+        message_type: "text".to_string(),
+        extra_metadata: json!({}),
+        sender: "user".to_string(),
+        created_at: "2026-04-10T12:01:00Z".to_string(),
+    };
+    store.append_message("t", message.clone()).expect("append");
+    store.append_message("t", message).expect("append again");
+
+    assert_eq!(store.get_messages("t").expect("get messages").len(), 2);
+}
+
+#[test]
+fn append_message_idempotency_ignores_an_id_quoted_inside_content() {
+    // The lookup narrows candidate lines by raw text before parsing them; a
+    // message that merely *quotes* another message's id must not be mistaken
+    // for that message and swallow the real append.
+    let (_temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t".to_string(),
+            title: "Conversation".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .expect("ensure thread");
+    store
+        .append_message(
+            "t",
+            ConversationMessage {
+                id: "user:1".to_string(),
+                content: "agent:run-9".to_string(),
+                message_type: "text".to_string(),
+                extra_metadata: json!({}),
+                sender: "user".to_string(),
+                created_at: "2026-04-10T12:01:00Z".to_string(),
+            },
+        )
+        .expect("append quoting message");
+    let stored = store
+        .append_message(
+            "t",
+            ConversationMessage {
+                id: "agent:run-9".to_string(),
+                content: "the real reply".to_string(),
+                message_type: "text".to_string(),
+                extra_metadata: json!({}),
+                sender: "agent".to_string(),
+                created_at: "2026-04-10T12:02:00Z".to_string(),
+            },
+        )
+        .expect("append reply");
+
+    assert_eq!(stored.content, "the real reply");
+    let messages = store.get_messages("t").expect("get messages");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1].id, "agent:run-9");
+}
+
+#[test]
 fn get_messages_for_new_empty_thread_returns_empty_list() {
     let (_temp, store) = make_store();
     store
