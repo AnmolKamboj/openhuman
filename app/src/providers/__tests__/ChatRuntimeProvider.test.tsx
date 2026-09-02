@@ -2052,6 +2052,45 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     );
   });
 
+  it('dispatches openhuman:session-expired window event on session_expired chat error (#5868)', () => {
+    const listeners = renderProvider();
+    const received: Event[] = [];
+    const handler = (e: Event) => received.push(e);
+    window.addEventListener('openhuman:session-expired', handler);
+
+    act(() => {
+      listeners.onError?.({
+        thread_id: 't-sess',
+        request_id: 'r1',
+        error_type: 'session_expired',
+        message: 'Your OpenHuman session has expired. Please sign in again to continue.',
+      } as chatService.ChatErrorEvent);
+    });
+
+    window.removeEventListener('openhuman:session-expired', handler);
+    expect(received).toHaveLength(1);
+    expect((received[0] as CustomEvent).detail?.source).toBe('chat-error');
+  });
+
+  it('does not dispatch openhuman:session-expired for non-session error types', () => {
+    const listeners = renderProvider();
+    const received: Event[] = [];
+    const handler = (e: Event) => received.push(e);
+    window.addEventListener('openhuman:session-expired', handler);
+
+    act(() => {
+      listeners.onError?.({
+        thread_id: 't-inf',
+        request_id: 'r1',
+        error_type: 'inference',
+        message: 'Something went wrong.',
+      } as chatService.ChatErrorEvent);
+    });
+
+    window.removeEventListener('openhuman:session-expired', handler);
+    expect(received).toHaveLength(0);
+  });
+
   it('closes the latency window on chat_error without warning', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const listeners = renderProvider();

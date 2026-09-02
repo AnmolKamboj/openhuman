@@ -1281,6 +1281,19 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             scope: 'chat',
             sourceDomain: 'chat',
           });
+          // #5868: a session_expired chat error means the Rust core already
+          // published DomainEvent::SessionExpired and set signed_out=true, but
+          // the auth:session_expired socket event may have been suppressed
+          // (isBootstrapping guard) or missed. Dispatch the same window event
+          // socketService emits so CoreStateProvider's runReauth() fires the
+          // clearSession() → login redirect path from this side too. The 10s
+          // debounce in runReauth() ensures a concurrent socket event does not
+          // cause a double-clear.
+          if (event.error_type === 'session_expired') {
+            window.dispatchEvent(
+              new CustomEvent('openhuman:session-expired', { detail: { source: 'chat-error' } })
+            );
+          }
         }
 
         // Parallel (forked) turn error: resolve only its lane, leaving the

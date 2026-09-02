@@ -971,6 +971,77 @@ describe('CoreStateProvider — config recovery notice (#5167)', () => {
   });
 });
 
+describe('session expiry fixes (#5868)', () => {
+  it('clearSession calls refresh even when tauriLogout throws', async () => {
+    vi.mocked(coreStateApi.fetchCoreAppSnapshot).mockResolvedValue(
+      makeSnapshot({ userId: 'u1', sessionToken: 'tok1' })
+    );
+    vi.mocked(tauriCommands.logout).mockReset();
+    vi.mocked(tauriCommands.logout).mockRejectedValue(new Error('already cleared'));
+
+    render(
+      <CoreStateProvider>
+        <Consumer />
+      </CoreStateProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+
+    // Trigger a confirmed session-expiry via the socket path.
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('openhuman:session-expired', { detail: { source: 'test' } })
+      );
+    });
+
+    // Even though logout threw, refresh must still have fired and the snapshot
+    // should now show signed-out state.
+    await waitFor(() =>
+      expect(screen.getByTestId('token').textContent).toBe('none')
+    );
+  });
+
+  it('confirmed session-expiry during bootstrap is replayed after the first snapshot lands (#5868)', async () => {
+    // The module-level store may carry isBootstrapping:false from prior tests;
+    // reset it so the component mounts with the correct initial value.
+    setCoreStateSnapshot({ ...getCoreStateSnapshot(), isBootstrapping: true, isReady: false });
+
+    // Hold the first snapshot until we control the release.
+    let resolveSnapshot!: (v: Awaited<ReturnType<typeof coreStateApi.fetchCoreAppSnapshot>>) => void;
+    vi.mocked(coreStateApi.fetchCoreAppSnapshot).mockImplementation(
+      () => new Promise(res => { resolveSnapshot = res; })
+    );
+    vi.mocked(tauriCommands.logout).mockReset();
+    vi.mocked(tauriCommands.logout).mockResolvedValue(undefined as never);
+    // getSessionToken: return null so confirmSessionTokenGone fast-paths to true
+    // (only reached for unconfirmed events — confirmed skips the check entirely).
+    vi.mocked(tauriCommands.getSessionToken).mockResolvedValue(null);
+
+    render(
+      <CoreStateProvider>
+        <Consumer />
+      </CoreStateProvider>
+    );
+
+    // Fire a confirmed session-expiry WHILE bootstrap is still pending.
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('openhuman:session-expired', { detail: { source: 'test-bootstrap' } })
+      );
+    });
+
+    // logout must NOT have been called yet — bootstrap not done.
+    expect(vi.mocked(tauriCommands.logout)).not.toHaveBeenCalled();
+
+    // Now let the snapshot land, completing bootstrap.
+    await act(async () => {
+      resolveSnapshot(makeSnapshot({ userId: 'u1', sessionToken: 'tok1' }));
+    });
+
+    // The pending reauth must replay and call logout.
+    await waitFor(() => expect(vi.mocked(tauriCommands.logout)).toHaveBeenCalledTimes(1));
+  });
+});
+
 describe('coreStatePollFailureDebugMessage', () => {
   it('describes post-bootstrap poll failures without impossible retry counters', () => {
     expect(coreStatePollFailureDebugMessage(0)).toBeNull();

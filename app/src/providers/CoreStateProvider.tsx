@@ -719,6 +719,9 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const lastReauthReasonRef = useRef<AuthExpiredReason | null>(null);
   const reauthAttemptIdRef = useRef(0);
   const suppressReauthUntilRef = useRef(0);
+  // Set to true when a `confirmed` session-expiry event fires while isBootstrapping
+  // is still true. The bootstrap-completion effect below replays it.
+  const pendingConfirmedReauthRef = useRef(false);
 
   // Listen for deep-link auth suppression signals so that an in-flight
   // `auth_store_session` call (OAuth deep link) does not race with the
@@ -754,11 +757,31 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     // here either — the signed-out UI doesn't render user-scoped slices,
     // and a same-user re-login should not pay a "rehydrate from disk"
     // cost (slices are still in memory). See [#900].
-    await tauriLogout();
+    // Wrap tauriLogout separately so a failure (e.g. the Rust-side
+    // SessionExpiredSubscriber already cleared the session first) does not
+    // prevent the subsequent refresh() — which is what actually flips the
+    // router to the login screen.
+    await tauriLogout().catch(err => {
+      log('tauriLogout failed in clearSession — proceeding with refresh: %O', sanitizeError(err));
+    });
     await refresh().catch(err => {
       log('refresh failed after clearSession: %O', sanitizeError(err));
     });
   }, [commitState, refresh]);
+
+  // When a confirmed session-expiry event arrives while the core is still
+  // bootstrapping, runReauth() sets pendingConfirmedReauthRef instead of
+  // dropping it. Once isBootstrapping flips to false (first successful
+  // snapshot) this effect replays it so the router reaches the login screen.
+  useEffect(() => {
+    if (!state.isBootstrapping && pendingConfirmedReauthRef.current) {
+      pendingConfirmedReauthRef.current = false;
+      log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
+      void clearSession().catch(err => {
+        log('clearSession failed after post-bootstrap replay: %O', sanitizeError(err));
+      });
+    }
+  }, [state.isBootstrapping, clearSession]);
 
   // Listen for two flavours of session expiry, both routed through the
   // same debounced `clearSession`:
@@ -787,7 +810,15 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         return;
       }
       if (getCoreStateSnapshot().isBootstrapping) {
-        log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        if (reason === 'confirmed') {
+          // Queue so the bootstrap-completion effect can replay it once the first
+          // snapshot lands. Without this the event is lost: signed_out=true prevents
+          // re-publication, leaving the user stuck in the chat shell forever.
+          pendingConfirmedReauthRef.current = true;
+          log('auth-expired queued for post-bootstrap replay (method=%s source=%s)', method, source);
+        } else {
+          log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        }
         return;
       }
       const now = Date.now();
