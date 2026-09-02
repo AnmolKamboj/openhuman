@@ -24,13 +24,17 @@ pub struct TunnelRegisterPayload {
 }
 
 /// Response from the `tunnel:register` ACK callback.
+///
+/// Accepts both camelCase (historic backend shape) and snake_case (backend
+/// PR #709 shape) field names via `alias` so the client is forward- and
+/// backward-compatible without a coordinated deploy.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TunnelRegisterResponse {
-    #[serde(rename = "channelId")]
+    #[serde(rename = "channelId", alias = "channel_id")]
     pub channel_id: String,
-    #[serde(rename = "pairingToken")]
+    #[serde(rename = "pairingToken", alias = "pairing_token")]
     pub pairing_token: String,
-    #[serde(rename = "pairingExpiresAt")]
+    #[serde(rename = "pairingExpiresAt", alias = "pairing_expires_at")]
     pub pairing_expires_at: String,
 }
 
@@ -87,8 +91,14 @@ pub async fn emit_register() -> Result<TunnelRegisterResponse, String> {
         .await
         .map_err(|e| format!("[devices/tunnel] emit tunnel:register failed: {e}"))?;
 
-    serde_json::from_value::<TunnelRegisterResponse>(ack)
-        .map_err(|e| format!("[devices/tunnel] parse tunnel:register ack failed: {e}"))
+    serde_json::from_value::<TunnelRegisterResponse>(ack.clone()).map_err(|e| {
+        // Log the raw ACK so mismatches between backend field naming and this
+        // struct's rename/alias table are immediately visible in the logs.
+        log::error!(
+            "[devices/tunnel] parse tunnel:register ack failed: {e}; raw ack = {ack}"
+        );
+        format!("[devices/tunnel] parse tunnel:register ack failed: {e}")
+    })
 }
 
 /// Emit `tunnel:connect` to start listening on a channel as `role:"core"`.
