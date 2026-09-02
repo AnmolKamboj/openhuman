@@ -494,6 +494,14 @@ async fn an_ordinary_repository_still_produces_a_diff() {
     let tmp = TempDir::new().unwrap();
     init_git_repo(tmp.path());
 
+    // A committer identity has to be set in the repository itself. `hermetic`
+    // closes the global and system config, which is the point of it — so on a
+    // CI container with no identity of its own `git commit` fails with
+    // "Author identity unknown". Both keys are on `ALLOWED_REPO_CONFIG`, so
+    // setting them does not trip the repository-config refusal.
+    set_config(tmp.path(), "user.email", "test@example.invalid");
+    set_config(tmp.path(), "user.name", "Test");
+
     let tracked = tmp.path().join("tracked.txt");
     std::fs::write(&tracked, "first\n").unwrap();
     // `hermetic` closes the ambient git config the way the fixtures do —
