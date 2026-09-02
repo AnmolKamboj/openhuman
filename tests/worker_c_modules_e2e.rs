@@ -245,12 +245,24 @@ fn assert_rpc_completed(value: &Value, context: &str) {
         ),
         (None, None) => panic!("{context}: response carries neither result nor error: {value}"),
     };
-    let message = error
-        .get("message")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    // Not `unwrap_or_default()`: that turns a missing, null or non-string
+    // `message` into `""`, which then satisfies the check below and lets a
+    // malformed error-only response count as a completed dispatch — the same
+    // vacuous-pass shape this helper was rewritten to remove.
+    let Some(message) = error.get("message").and_then(Value::as_str) else {
+        panic!(
+            "{context}: error response carries no string `message`, so nothing can be \
+             concluded about whether the method dispatched: {value}"
+        );
+    };
+    // `starts_with`, not `contains`: `dispatch.rs:96` builds the string as
+    // `format!("{UNKNOWN_METHOD_PREFIX}{method}")`, so the marker is always at
+    // byte zero — `dispatch.rs:151` reads it back with `strip_prefix` for the
+    // same reason. `contains` would additionally reject a REGISTERED method
+    // whose own validation error quoted the phrase later in the message,
+    // turning a reachable surface into a false failure.
     assert!(
-        !message.contains(UNKNOWN_METHOD_PREFIX),
+        !message.starts_with(UNKNOWN_METHOD_PREFIX),
         "{context}: the core does not serve this method, so the surface is NOT reachable \
          — the registry entry is missing or its namespace was renamed. Got: {message}"
     );

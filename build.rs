@@ -121,7 +121,11 @@ fn warn_about_silently_skipped_test_targets(manifest_dir: &Path) {
         return;
     };
 
-    let mut skipped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // Per target: what is missing NOW (the diagnostic) and what the target
+    // requires IN FULL (the remediation). They differ whenever a caller has
+    // some of the gates already, and conflating them is what made the
+    // suggested command wrong — see the `all` union below.
+    let mut skipped: BTreeMap<String, (Vec<String>, Vec<String>)> = BTreeMap::new();
     for (target, required) in gated_test_targets(&manifest) {
         let missing: Vec<String> = required
             .iter()
@@ -136,7 +140,7 @@ fn warn_about_silently_skipped_test_targets(manifest_dir: &Path) {
             .cloned()
             .collect();
         if !missing.is_empty() {
-            skipped.insert(target, missing);
+            skipped.insert(target, (missing, required));
         }
     }
     if skipped.is_empty() {
@@ -145,13 +149,21 @@ fn warn_about_silently_skipped_test_targets(manifest_dir: &Path) {
 
     let detail = skipped
         .iter()
-        .map(|(target, missing)| format!("{target} (needs {})", missing.join(" + ")))
+        .map(|(target, (missing, _))| format!("{target} (needs {})", missing.join(" + ")))
         .collect::<Vec<_>>()
         .join(", ");
+    // The union of every skipped target's FULL `required-features`, not just
+    // the subset currently missing. `--features` is the complete set to
+    // activate, not a delta applied to the current one, so a command built from
+    // the missing subset drops the gates the caller already had: with `voice`
+    // on, `raw_coverage_all` is missing only `inference`, and
+    // `--features inference` would silently skip both voice targets again — the
+    // warning would be handing out a command that reproduces the exact failure
+    // it exists to prevent.
     let all: Vec<&str> = {
         let mut features: Vec<&str> = skipped
             .values()
-            .flat_map(|missing| missing.iter().map(String::as_str))
+            .flat_map(|(_, required)| required.iter().map(String::as_str))
             .collect();
         features.sort_unstable();
         features.dedup();
