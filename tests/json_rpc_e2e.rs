@@ -14394,3 +14394,272 @@ async fn voice_test_provider_honours_validate_only_for_the_stt_workload() {
     mock_join.abort();
     rpc_join.abort();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #5846 — the two authoring-gate behaviour changes, driven end-to-end through
+// the real strict-mode create path.
+//
+// `flows_create` with `strict: true` runs `ops::strict_gate`
+// (`flows/schemas_handlers.rs:18`) -> `run_builder_gates`
+// (`flows/ops_part_01.rs:509`) -> `validate_binding_resolvability`
+// (`flows/ops_part_02.rs:433`) -> `tinyflows::gates::failures`, the stack
+// #5846 evicted upstream.
+//
+// `ops_tests_part_06_tests.rs` already pins the gate FUNCTION at unit level.
+// What no test covered is that the evicted gate is still WIRED into the strict
+// RPC path — the eviction moved the implementation out of this repository, so
+// the wiring is exactly the thing that can now rot without a local test failing.
+//
+// A NOTE ON #5846's SUMMARY. The PR body reads "a workflow whose `tool_call`
+// arg binds to a schema-less agent is now refused". Taken literally that is not
+// what the gate does, deliberately: an agent with NO `output_parser.schema` is
+// skipped because "the field may exist, so it is unverifiable rather than
+// guaranteed invalid" (`gates/mod.rs:234-239`). Only a field absent from a
+// schema that EXISTS is refused. These tests pin the implemented contract, and
+// the carve-out gets its own case precisely because the PR wording invites
+// someone to "fix" it away.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A `tool_call` arg reading a field the target agent's declared schema omits.
+#[cfg(feature = "flows")]
+fn graph_binding_to_undeclared_agent_field() -> Value {
+    json!({
+        "name": "undeclared-field",
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "summarize", "kind": "agent", "name": "Summarize",
+              "config": { "prompt": "summarize",
+                "output_parser": { "schema": { "type": "object",
+                  "properties": { "summary": { "type": "string" } } } } } },
+            { "id": "post", "kind": "tool_call", "name": "Post",
+              "config": { "slug": "SLACK_SEND_MESSAGE",
+                "args": { "channel": "=nodes.summarize.item.json.channel" } } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "summarize" },
+            { "from_node": "summarize", "to_node": "post" }
+        ]
+    })
+}
+
+/// The same shape with NO declared schema — the deliberate carve-out.
+#[cfg(feature = "flows")]
+fn graph_binding_to_schemaless_agent() -> Value {
+    json!({
+        "name": "schemaless-agent",
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "summarize", "kind": "agent", "name": "Summarize",
+              "config": { "prompt": "summarize" } },
+            { "id": "post", "kind": "tool_call", "name": "Post",
+              "config": { "slug": "SLACK_SEND_MESSAGE",
+                "args": { "channel": "=nodes.summarize.item.json.channel" } } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "summarize" },
+            { "from_node": "summarize", "to_node": "post" }
+        ]
+    })
+}
+
+/// An instruction written as a `=`-expression beside a real `messages` array.
+#[cfg(feature = "flows")]
+fn graph_prose_prompt_beside_real_messages() -> Value {
+    json!({
+        "name": "prose-prompt-with-messages",
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "writer", "kind": "agent", "name": "Writer",
+              "config": {
+                "prompt": "=Write a short friendly summary of the article above",
+                "messages": [{ "role": "user", "content": "summarise the article" }] } }
+        ],
+        "edges": [{ "from_node": "t", "to_node": "writer" }]
+    })
+}
+
+/// The same prompt with no `messages` to fall through to — still refused.
+#[cfg(feature = "flows")]
+fn graph_prose_prompt_without_messages() -> Value {
+    json!({
+        "name": "prose-prompt-alone",
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "writer", "kind": "agent", "name": "Writer",
+              "config": { "prompt": "=Write a short friendly summary of the article above" } }
+        ],
+        "edges": [{ "from_node": "t", "to_node": "writer" }]
+    })
+}
+
+/// The refusal message from a strict `flows_create`, or `None` when it saved.
+#[cfg(feature = "flows")]
+fn strict_create_refusal(response: &Value) -> Option<String> {
+    response
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_strict_create_refuses_binding_to_undeclared_agent_field() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    let create = post_json_rpc(
+        &rpc_base,
+        9801,
+        "openhuman.flows_create",
+        json!({
+            "name": "undeclared-field",
+            "graph": graph_binding_to_undeclared_agent_field(),
+            "strict": true
+        }),
+    )
+    .await;
+
+    let refusal = strict_create_refusal(&create)
+        .unwrap_or_else(|| panic!("strict create must be refused, got: {create}"));
+    assert!(
+        refusal.contains("output_parser.schema"),
+        "the refusal must come from the undeclared-field gate, got: {refusal}"
+    );
+    assert!(
+        refusal.contains("channel"),
+        "the refusal must name the offending field, got: {refusal}"
+    );
+
+    rpc_join.abort();
+    api_join.abort();
+}
+
+/// The carve-out: an agent with no declared schema is unverifiable, not
+/// invalid, so this binding must NOT be refused by the schema gate.
+///
+/// Asserted as "no refusal naming this gate" rather than "the save succeeded",
+/// because a strict create must clear every later gate too and this test is
+/// about one of them. It is still non-vacuous: revert the carve-out and the
+/// refusal names `output_parser.schema`, which is exactly what this forbids.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_strict_create_accepts_binding_to_schemaless_agent() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    let create = post_json_rpc(
+        &rpc_base,
+        9803,
+        "openhuman.flows_create",
+        json!({
+            "name": "schemaless-agent",
+            "graph": graph_binding_to_schemaless_agent(),
+            "strict": true
+        }),
+    )
+    .await;
+
+    if let Some(refusal) = strict_create_refusal(&create) {
+        // A refusal is expected here and is NOT this gate's doing: the fixture
+        // also carries a Slack node whose `channel` arg binds to an upstream
+        // field that is null under a sandboxed dry run, which strict mode
+        // refuses on its own. Success therefore cannot be asserted.
+        //
+        // But the refusal must still be a *strict-validation* one. Without this
+        // the test would also pass on a transport failure, an unknown-method
+        // error or any other structural break — the false-positive shape a bare
+        // "does not contain" check leaves open.
+        assert!(
+            refusal.starts_with("strict validation failed:"),
+            "expected a strict-validation refusal, not an unrelated failure: {refusal}"
+        );
+        assert!(
+            !refusal.contains("output_parser.schema"),
+            "a schema-less agent must be treated as unverifiable, not refused: {refusal}"
+        );
+    }
+
+    rpc_join.abort();
+    api_join.abort();
+}
+
+/// #5846's second behaviour change: a vestigial `=`-prose `prompt` beside real
+/// `messages` no longer blocks the save — the node never runs on `prompt` once
+/// `messages` supply the turn, so refusing it was a refusal with no failure
+/// behind it.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_strict_create_accepts_prose_prompt_beside_real_messages() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    let create = post_json_rpc(
+        &rpc_base,
+        9804,
+        "openhuman.flows_create",
+        json!({
+            "name": "prose-prompt-with-messages",
+            "graph": graph_prose_prompt_beside_real_messages(),
+            "strict": true
+        }),
+    )
+    .await;
+
+    // Asserted as a successful save, not merely "no refusal naming this gate".
+    // This fixture is a trigger plus one agent node — no bindings, no
+    // connections, no external-tool args — so there is no later gate it could
+    // legitimately trip, and a tolerated-error form would have gone green on a
+    // structural error, a transport failure or a renamed diagnostic while
+    // proving nothing. Confirmed against the running stack: the create returns
+    // a flow id.
+    let created = assert_no_jsonrpc_error(&create, "flows_create prose prompt beside messages");
+    let created = peel_logs_envelope(created);
+    assert_eq!(
+        created.get("name").and_then(Value::as_str),
+        Some("prose-prompt-with-messages"),
+        "the saved flow must be the one submitted: {created}"
+    );
+    assert!(
+        created
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty()),
+        "a saved flow must come back with an id: {created}"
+    );
+
+    rpc_join.abort();
+    api_join.abort();
+}
+
+/// The other side of the same rule: with no `messages` to fall through to, the
+/// `=`-prose prompt is still a hard refusal. #5846 narrowed this rule; it did
+/// not remove it, and pinning that stops the narrowing being widened.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_strict_create_still_refuses_prose_prompt_without_messages() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    let create = post_json_rpc(
+        &rpc_base,
+        9805,
+        "openhuman.flows_create",
+        json!({
+            "name": "prose-prompt-alone",
+            "graph": graph_prose_prompt_without_messages(),
+            "strict": true
+        }),
+    )
+    .await;
+
+    let refusal = strict_create_refusal(&create)
+        .unwrap_or_else(|| panic!("strict create must be refused, got: {create}"));
+    assert!(
+        refusal.contains("reads as an instruction written as a"),
+        "the refusal must come from the `=`-prose prompt gate, got: {refusal}"
+    );
+
+    rpc_join.abort();
+    api_join.abort();
+}
