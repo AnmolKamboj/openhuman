@@ -533,6 +533,78 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       );
     });
 
+    it('persists a second core failure with identical text under its own id (#5933)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err-dup',
+          request_id: 'bgdeliver-a',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err-dup',
+          expect.objectContaining({ id: 'agent:bgdeliver-a' })
+        )
+      );
+
+      // Same thread, same failure text, a different run. The core persisted
+      // this one as `agent:bgdeliver-b`; deduping on the last row's content
+      // would read the previous run's row as this one and drop the new
+      // failure from the cache entirely.
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err-dup',
+          request_id: 'bgdeliver-b',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err-dup',
+          expect.objectContaining({ id: 'agent:bgdeliver-b', sender: 'agent' })
+        )
+      );
+      expect(threadApi.appendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('still suppresses a repeat of the same core failure event', async () => {
+      const listeners = renderProvider();
+      const fire = () =>
+        act(() => {
+          listeners.onError?.({
+            thread_id: 't-sys-err-same',
+            request_id: 'bgdeliver-c',
+            client_id: 'system',
+            message: 'Run failed: boom',
+            error_type: 'inference',
+            round: null,
+          });
+        });
+
+      fire();
+      await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
+
+      // The row is in the cache under `agent:bgdeliver-c` now, so the id check
+      // recognises the redelivery. Trading the content check for an id check
+      // must not turn a duplicate event into a duplicate append.
+      fire();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(threadApi.appendMessage).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps a generated id for an interactive chat_done (nothing else persisted it)', async () => {
       const listeners = renderProvider();
 

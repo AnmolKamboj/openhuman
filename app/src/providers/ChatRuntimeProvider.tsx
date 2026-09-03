@@ -1355,12 +1355,22 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           // surfacing it tells the user *why* the turn failed instead of a blanket apology.
           // The hardcoded constant is only a last-resort fallback for an empty/missing message.
           const errorContent = event.message || USER_FACING_AGENT_ERROR_MESSAGE;
-          if (!(lastMsg?.sender === 'agent' && lastMsg?.content === errorContent)) {
+          // A core-owned failure carries a deterministic id, so dedupe on that
+          // rather than on the text. Two runs can fail with byte-identical
+          // content — the same upstream provider message, or the generic
+          // fallback above — and a text check would then read the previous
+          // run's row as this one and drop the current failure from the cache.
+          // Interactive turns have no pre-persisted id and keep the text check.
+          const errorMessageId = corePersistedMessageId(event);
+          const alreadyPresent = errorMessageId
+            ? threadMessages.some(message => message.id === errorMessageId)
+            : lastMsg?.sender === 'agent' && lastMsg?.content === errorContent;
+          if (!alreadyPresent) {
             void dispatch(
               addInferenceResponse({
                 content: errorContent,
                 threadId: event.thread_id,
-                messageId: corePersistedMessageId(event),
+                messageId: errorMessageId,
               })
             );
           }
