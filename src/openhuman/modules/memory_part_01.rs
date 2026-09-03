@@ -7,7 +7,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.7";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.8";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -73,6 +73,13 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // and embedder identification, served by the module's engine and forwarded
     // by `MemoryScoring for ModuleMemoryProvider` below.
     Capability::Scoring,
+    // Re-read at tag `v1.13.8` (tinymemory#134, openhuman#6007): the connector
+    // sync path now routes its items into the memory-tree ingest funnel, and
+    // `forget_source` sweeps the per-item tree rows it creates. Behaviour inside
+    // `Sources`/`Maintenance`, not a new family —
+    // `git diff v1.13.7..v1.13.8 -- crates/tinymemory-api/src/capabilities.rs`
+    // returns empty, so the list below is unchanged and only the pin moves.
+    //
     // v1.13.7 (tinymemory#125 + #127): the typed ingestion round and the
     // answer surface, served and advertised by the pinned artifact.
     Capability::DocumentIngest,
