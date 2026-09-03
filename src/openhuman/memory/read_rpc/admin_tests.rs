@@ -180,22 +180,33 @@ async fn backfill_connector_trees_refuses_a_driver_that_serves_no_maintenance() 
     );
 }
 
-/// `executed` reports the **mode**, not the effect.
+/// `executed` reports the **mode**, not the effect — and every counter the
+/// driver reports reaches the caller unchanged.
 ///
-/// A real pass that finds everything already treed still ran, and that is the
-/// expected second run — folding it into "did anything change" would make it
-/// indistinguishable from a preview. `ingested` is what answers the effect, and
-/// the host must pass the driver's number through rather than infer one.
+/// The counters are deliberately distinct and non-zero. An all-zero fixture
+/// would pass just as happily if this RPC dropped the driver's numbers or
+/// replaced them with zeros, which is the whole class of bug the mapping can
+/// have (review finding). Distinct values also catch a transposition — two
+/// fields swapped is invisible when both are 0.
 #[tokio::test]
 async fn backfill_connector_trees_reports_the_mode_and_passes_the_counters_through() {
+    use crate::openhuman::memory::api::provider::types::BackfillTreesOutcome;
+
     let (_tmp, cfg) = test_config();
     binding::install_for_test(
         &cfg.workspace_dir,
         &cfg.subsystems.memory,
-        Arc::new(binding::FixedDiagnostics::new(
-            Default::default(),
-            Default::default(),
-        )) as Arc<dyn MemoryProvider>,
+        Arc::new(
+            binding::FixedDiagnostics::new(Default::default(), Default::default())
+                .backfilling_trees(BackfillTreesOutcome {
+                    scanned: 41,
+                    ingested: 17,
+                    already_present: 23,
+                    skipped: 5,
+                    more_pending: true,
+                    notes: vec!["skill-gmail: skipped".to_string()],
+                }),
+        ) as Arc<dyn MemoryProvider>,
     );
 
     let preview = super::backfill_connector_trees_rpc(&cfg, None, true)
@@ -212,8 +223,20 @@ async fn backfill_connector_trees_reports_the_mode_and_passes_the_counters_throu
         real.executed,
         "a real pass reports the mode even when it finds nothing left to do"
     );
+    assert_eq!(real.scanned, 41, "scanned must come from the driver");
+    assert_eq!(real.ingested, 17, "ingested must come from the driver");
     assert_eq!(
-        real.ingested, 0,
-        "the driver reported no writes, and the host must not invent any"
+        real.already_present, 23,
+        "already_present must come from the driver"
+    );
+    assert_eq!(real.skipped, 5, "skipped must come from the driver");
+    assert!(
+        real.more_pending,
+        "more_pending must survive; a pass that stopped on its limit must not read as complete"
+    );
+    assert_eq!(
+        real.notes,
+        vec!["skill-gmail: skipped".to_string()],
+        "the skip reasons are what tell an operator which accounts were left alone"
     );
 }

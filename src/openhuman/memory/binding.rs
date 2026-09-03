@@ -527,6 +527,13 @@ pub(crate) struct FixedDiagnostics {
     /// between them — nothing ready, nothing running, backfill unfinished —
     /// has to set the two independently.
     backfill: bool,
+    /// What [`MemoryMaintenance::backfill_connector_trees`] answers, when a test
+    /// sets it.
+    ///
+    /// Distinct from [`Self::backfill`], which is the unrelated
+    /// `backfill_in_progress` flag — one is "is a re-embed running", the other
+    /// is the connector-tree pass's counters.
+    backfill_trees: crate::openhuman::memory::api::provider::types::BackfillTreesOutcome,
     /// What [`MemoryMaintenance::flush_pending`] answers, when a test sets it.
     flush: crate::openhuman::memory::api::provider::types::FlushOutcome,
     /// What [`MemoryMaintenance::reset_derived_index`] answers, likewise.
