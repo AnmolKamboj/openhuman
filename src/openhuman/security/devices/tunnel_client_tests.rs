@@ -152,3 +152,62 @@ fn a_successful_ack_is_not_treated_as_a_failure_envelope() {
     let response = parse_register_ack(ack).expect("a successful ack must parse");
     assert_eq!(response.channel_id, "ch_1");
 }
+
+/// The out-of-range arm of the expiry conversion — the one branch this change
+/// added that had no test, and the one the failure-path requirement and the
+/// diff-coverage gate both land on.
+#[test]
+fn an_unrepresentable_pairing_expiry_is_refused() {
+    let err = serde_json::from_value::<TunnelRegisterResponse>(json!({
+        "channelId": "ch_x",
+        "pairingToken": "pt_x",
+        "pairingExpiresAt": i64::MAX
+    }))
+    .expect_err("a millisecond value no date can represent must not be accepted");
+
+    assert!(
+        err.to_string().contains("out of range"),
+        "the error must say the value is unrepresentable, got: {err}"
+    );
+}
+
+/// A refusal whose `ok` is present but not the boolean `true` is still a
+/// refusal. `as_bool()` yields `None` for `"false"`, so an earlier version read
+/// this as success and fell through to `missing field 'channelId'` — the bug
+/// this function exists to prevent.
+#[test]
+fn a_non_boolean_ok_is_still_treated_as_a_refusal() {
+    for ack in [
+        json!({ "ok": "false", "error": "nope" }),
+        json!({ "ok": 0, "error": "nope" }),
+        json!({ "ok": null, "error": "nope" }),
+    ] {
+        let err = parse_register_ack(ack.clone())
+            .expect_err("a non-boolean `ok` must not be read as success");
+        assert!(err.contains("nope"), "got: {err} for {ack}");
+    }
+
+    // …while an explicit `ok: true` is not a refusal.
+    assert!(backend_ack_error(&json!({ "ok": true })).is_none());
+}
+
+/// A non-string `error` is rendered, not discarded. Throwing away the backend's
+/// explanation is the failure mode being fixed; an unexpected shape does not
+/// make it acceptable.
+#[test]
+fn a_structured_error_payload_is_rendered_rather_than_dropped() {
+    let err = parse_register_ack(json!({
+        "ok": false,
+        "error": { "code": 429, "message": "channel limit" }
+    }))
+    .expect_err("a structured refusal is still a refusal");
+
+    assert!(
+        err.contains("channel limit") && err.contains("429"),
+        "the backend's payload must survive into the message, got: {err}"
+    );
+    assert!(
+        !err.contains("unspecified error"),
+        "a present error payload must not be reported as unspecified, got: {err}"
+    );
+}

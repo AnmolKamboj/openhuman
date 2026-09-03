@@ -177,11 +177,11 @@ pub(crate) fn parse_register_ack(ack: serde_json::Value) -> Result<TunnelRegiste
         return Err(format!("[devices/tunnel] tunnel:register failed: {error}"));
     }
 
-    serde_json::from_value::<TunnelRegisterResponse>(ack.clone()).map_err(|e| {
-        log::error!(
-            "[devices/tunnel] parse tunnel:register ack failed: {e}; ack fields = {:?}",
-            ack.as_object().map(|o| o.keys().collect::<Vec<_>>())
-        );
+    // Describe the shape before `from_value` consumes the value, so the success
+    // path pays no clone and the failure path can still say what arrived.
+    let shape = describe_ack_shape(&ack);
+    serde_json::from_value::<TunnelRegisterResponse>(ack).map_err(|e| {
+        log::error!("[devices/tunnel] parse tunnel:register ack failed: {e}; ack was a {shape}");
         format!("[devices/tunnel] parse tunnel:register ack failed: {e}")
     })
 }
@@ -194,16 +194,41 @@ pub(crate) fn parse_register_ack(ack: serde_json::Value) -> Result<TunnelRegiste
 /// unambiguously a refusal and its `error` is the only useful thing in it.
 pub(crate) fn backend_ack_error(ack: &serde_json::Value) -> Option<String> {
     let object = ack.as_object()?;
-    if object.get("ok")?.as_bool()? {
+    // Absent `ok` is the success shape. Anything else is a refusal — including
+    // a present-but-not-`true` value such as the string `"false"` or `0`. An
+    // earlier version asked `as_bool()?`, which yields `None` for those and so
+    // fell through to `missing field 'channelId'`: the exact bug this function
+    // exists to prevent, reintroduced for a backend that answers sloppily.
+    if object.get("ok")?.as_bool() == Some(true) {
         return None;
     }
-    Some(
-        object
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unspecified error")
-            .to_string(),
-    )
+    // A non-string `error` (say `{ code, message }`) is rendered rather than
+    // discarded — throwing away the backend's explanation is the failure mode
+    // being fixed, and it does not become acceptable because the shape
+    // surprised us.
+    Some(match object.get("error") {
+        None | Some(serde_json::Value::Null) => "unspecified error".to_string(),
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(other) => other.to_string(),
+    })
+}
+
+/// A short description of an ACK's shape, for the parse-failure log.
+///
+/// `as_object()` is `None` for an array, a string or `null` — precisely the
+/// cases where "what actually arrived?" is the open question, and precisely
+/// where an earlier version logged the unhelpful `ack fields = None`.
+fn describe_ack_shape(ack: &serde_json::Value) -> String {
+    match ack {
+        serde_json::Value::Object(map) => {
+            format!("object with fields {:?}", map.keys().collect::<Vec<_>>())
+        }
+        serde_json::Value::Array(items) => format!("array of {} element(s)", items.len()),
+        serde_json::Value::String(_) => "string".to_string(),
+        serde_json::Value::Number(_) => "number".to_string(),
+        serde_json::Value::Bool(_) => "bool".to_string(),
+        serde_json::Value::Null => "null".to_string(),
+    }
 }
 
 /// Emit `tunnel:connect` to start listening on a channel as `role:"core"`.
