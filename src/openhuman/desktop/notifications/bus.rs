@@ -133,12 +133,17 @@ impl NotificationBridgeSubscriber {
     /// broadcast as best effort. Announcing on an unknown workspace would
     /// instead put another account's server name and transport error in front
     /// of whoever is connected, and there is no undoing that.
-    async fn should_announce(&self, event: &DomainEvent) -> bool {
+    async fn should_announce(&self, event: &DomainEvent) -> Announce {
         let Some(event_workspace) = workspace_of(event) else {
-            return true;
+            return Announce::Unbound;
         };
-        let active = match crate::openhuman::config::active_workspace_dir().await {
-            Ok(active) => Some(active),
+        // One snapshot, so the revision stamped on the notification is the
+        // one the comparison below was made against. Resolved separately, a
+        // switch in between would stamp an event from workspace A with B's
+        // newer revision — and a client that had not yet seen the switch
+        // would read that as "I am behind" and accept the stale alert.
+        let snapshot = match crate::openhuman::config::active_workspace_snapshot().await {
+            Ok(snapshot) => Some(snapshot),
             Err(error) => {
                 log::warn!(
                     "{LOG_PREFIX} could not resolve the active workspace ({error}); not announcing {} — it is persisted and will show in the notification centre",
@@ -147,17 +152,38 @@ impl NotificationBridgeSubscriber {
                 None
             }
         };
-        let announces = announces_to(Some(event_workspace), active.as_deref());
+        let active = snapshot.as_ref().map(|(dir, _)| dir.as_path());
+        let announces = announces_to(Some(event_workspace), active);
         if !announces && active.is_some() {
             log::debug!(
                 "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
                 event.variant_name(),
                 event_workspace.display(),
-                active.as_deref().unwrap_or(std::path::Path::new("?")).display()
+                active.unwrap_or(std::path::Path::new("?")).display()
             );
         }
-        announces
+        match (announces, snapshot) {
+            (true, Some((_, revision))) => Announce::Active(revision),
+            _ => Announce::Suppressed,
+        }
     }
+}
+
+/// The announcement gate's verdict.
+///
+/// Carries the revision the gate compared against so the caller can stamp
+/// exactly that on the payload — a receiver whose own revision is older then
+/// knows it is simply behind on the switch broadcast, rather than looking at
+/// a stale notification (#5966).
+enum Announce {
+    /// Not workspace-bound: announced everywhere, nothing to stamp.
+    Unbound,
+    /// Bound to the active workspace: announced, stamped with the revision
+    /// that workspace was current under when the gate checked.
+    Active(u64),
+    /// Bound to a workspace that is not active, or the active workspace could
+    /// not be resolved (fail closed — see `should_announce`).
+    Suppressed,
 }
 
 /// The announcement rule, as a function of its two inputs.
@@ -185,18 +211,16 @@ fn announces_to(
 /// The workspace an event belongs to, for the variants that name one.
 ///
 /// `None` means the event is not bound to a workspace and any subscriber may
-/// act on it. Only the MCP supervisor variants are bound today, because they
-/// are the only ones this bridge handles that one process produces for more
-/// than one workspace (#5931).
+/// act on it.
+///
+/// This used to list the MCP supervisor variants here, which was correct for
+/// what the bridge handled at the time but wrong as a general rule: the
+/// channel and artifact families carry the same field and were not matched,
+/// so a bridge that grew an arm for one of them would have gated it against
+/// nothing. The list now lives on the event itself (#5966), where a new
+/// workspace-bound variant is one arm to add rather than several to find.
 fn workspace_of(event: &DomainEvent) -> Option<&std::path::Path> {
-    match event {
-        DomainEvent::McpServerProbeTimedOut { workspace_dir, .. }
-        | DomainEvent::McpServerTransportDropped { workspace_dir, .. }
-        | DomainEvent::McpServerReconnected { workspace_dir, .. }
-        | DomainEvent::McpServerReconnectFailed { workspace_dir, .. }
-        | DomainEvent::McpServerParked { workspace_dir, .. } => Some(workspace_dir.as_path()),
-        _ => None,
-    }
+    event.workspace_dir()
 }
 
 fn now_ms() -> u64 {
@@ -208,7 +232,26 @@ fn now_ms() -> u64 {
 
 /// Pure translation function — kept free so unit tests can drive it
 /// without spinning up tokio or the broadcast channel.
+///
+/// The workspace handle is stamped here rather than inside [`translate`],
+/// once, from the event's own
+/// [`workspace_dir`](DomainEvent::workspace_dir). Letting each arm decide
+/// would reproduce the shape of the bug #5966 exists to fix: the arms that
+/// happened to be written with a workspace in mind would carry the identity
+/// and the rest would silently not, and which is which would depend on the
+/// order the arms were added.
 pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEvent> {
+    let mut notification = translate(event)?;
+    notification.workspace = event
+        .workspace_dir()
+        .map(crate::openhuman::config::workspace_handle);
+    Some(notification)
+}
+
+/// The per-variant translation. Every arm leaves `workspace: None`; the
+/// identity is applied uniformly by [`event_to_notification`], which is the
+/// only caller.
+fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
     let ts = now_ms();
     match event {
         DomainEvent::CronJobCompleted {
@@ -229,6 +272,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/settings/cron-jobs".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::WebhookProcessed {
             skill_id,
@@ -256,6 +301,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
                 deep_link: Some("/settings/webhooks-triggers".into()),
                 timestamp_ms: ts,
                 actions: None,
+                workspace: None,
+                workspace_revision: None,
             })
         }
         DomainEvent::SubagentCompleted {
@@ -272,6 +319,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/chat".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::SubagentFailed {
             parent_session,
@@ -289,6 +338,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/chat".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::NotificationTriaged {
             id,
@@ -316,6 +367,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
                 deep_link: Some("/notifications".into()),
                 timestamp_ms: ts,
                 actions: None,
+                workspace: None,
+                workspace_revision: None,
             })
         }
         DomainEvent::ProviderApiKeyRejected { provider, message } => Some(CoreNotificationEvent {
@@ -333,6 +386,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=llm".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         // The MCP reconnect supervisor's verdicts (#5931), published by
         // `mcp::registry::supervisor_events`. Only the cases a user can act on
@@ -369,6 +424,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::McpServerReconnected {
             server_id,
@@ -387,6 +444,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::McpServerParked {
             server_id,
@@ -405,6 +464,8 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
+            workspace_revision: None,
         }),
         _ => None,
     }
@@ -422,7 +483,7 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
     // correctness boundary.
 
     async fn handle(&self, event: &DomainEvent) {
-        if let Some(notification) = event_to_notification(event) {
+        if let Some(mut notification) = event_to_notification(event) {
             // #3805: persist BEFORE broadcasting so the event is durable even
             // when no client is currently subscribed (app closed / minimised /
             // disconnected) — otherwise the broadcast send finds zero
@@ -449,9 +510,16 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
             }
             // Persisted above under the workspace it belongs to; announced
             // only if that workspace is the one the user is in (#5931).
-            if self.should_announce(event).await {
-                publish_core_notification(notification);
-            }
+            match self.should_announce(event).await {
+                Announce::Unbound => {
+                    publish_core_notification(notification);
+                }
+                Announce::Active(revision) => {
+                    notification.workspace_revision = Some(revision);
+                    publish_core_notification(notification);
+                }
+                Announce::Suppressed => {}
+            };
         }
     }
 }

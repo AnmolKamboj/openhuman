@@ -19,7 +19,28 @@ interface EventEntry {
    */
   detail: string;
   timestamp: string;
+  /**
+   * Opaque handle for the workspace this event belongs to, or `null` when the
+   * event is not workspace-bound (#5966).
+   *
+   * A handle, never a path: the core hashes `workspace_dir` before it reaches
+   * this envelope, because the log renders in a settings panel and downloads
+   * as NDJSON, and the path is under the user's home directory.
+   */
+  workspace: string | null;
 }
+
+/**
+ * Which rows the log shows (#5966).
+ *
+ * One core process serves more than one workspace over its life — a switch
+ * leaves the previous one open — so this single stream mixes them, and until
+ * now a row from a workspace the reader had left was indistinguishable from
+ * one belonging to the workspace they were in. `active` is the default
+ * because someone watching a live log is almost always asking about the
+ * workspace they are in; `all` keeps the process-wide view for debugging.
+ */
+type WorkspaceScope = 'active' | 'all';
 
 const DOMAIN_BADGE_KEYS: Record<string, string> = {
   tool: 'settings.developerMenu.eventLog.badge.tool',
@@ -69,6 +90,19 @@ const EventLogPanel = () => {
   const [isLive, setIsLive] = useState(false);
   const [filterType, setFilterType] = useState<string>('');
   const [filterText, setFilterText] = useState('');
+  const [scope, setScope] = useState<WorkspaceScope>('active');
+  /**
+   * Handle of the workspace the core is serving right now, or `null` while
+   * that is unknown — the core could not resolve it, or has not resolved it
+   * since a workspace marker was rewritten.
+   *
+   * Tracked as state rather than a ref because the row filter reads it: a
+   * switch has to re-render the list so the previous workspace's rows fall
+   * out of the default view. It is only ever *set* when the value actually
+   * changes, so an idle stream does not re-render on every event.
+   */
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const activeWorkspaceRef = useRef<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
@@ -79,6 +113,23 @@ const EventLogPanel = () => {
   const newEntriesRef = useRef<'top' | 'bottom'>('top');
 
   const connectRef = useRef<(() => Promise<void>) | null>(null);
+
+  /**
+   * Record which workspace the core says is current, if it said anything.
+   *
+   * The ref guard matters: this runs for every streamed row, and calling
+   * `setActiveWorkspace` unconditionally would re-render the whole list on
+   * each one. A missing or non-string value is ignored rather than treated as
+   * `null` — the core omits the field when it could not resolve the
+   * workspace, and forgetting a handle we already know would silently widen
+   * the default view back to every workspace.
+   */
+  const rememberActiveWorkspace = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return;
+    if (activeWorkspaceRef.current === value) return;
+    activeWorkspaceRef.current = value;
+    setActiveWorkspace(value);
+  };
 
   const connect = async () => {
     if (unmountedRef.current) return;
@@ -135,8 +186,18 @@ const EventLogPanel = () => {
                 if (data.new_entries === 'top' || data.new_entries === 'bottom') {
                   newEntriesRef.current = data.new_entries;
                 }
+                // The connect-time answer, so a client that joins between
+                // switches can scope the log immediately instead of waiting
+                // for an event to tell it which workspace is current.
+                rememberActiveWorkspace(data.active_workspace);
                 continue;
               }
+              // Every row also carries the workspace that was active when it
+              // was emitted. That is what makes a *switch* visible on a
+              // connection that stays open: the next row after one says a
+              // different workspace is current, and the previous workspace's
+              // rows drop out of the default view.
+              rememberActiveWorkspace(data.active_workspace);
               const entry: EventEntry = {
                 id: ++idRef.current,
                 domain: data.domain || 'unknown',
@@ -144,6 +205,7 @@ const EventLogPanel = () => {
                 agent: data.agent || '',
                 detail: data.detail || '',
                 timestamp: data.timestamp || '',
+                workspace: typeof data.workspace === 'string' ? data.workspace : null,
               };
               setEntries(prev => {
                 const next = newEntriesRef.current === 'top' ? [entry, ...prev] : [...prev, entry];
@@ -205,6 +267,18 @@ const EventLogPanel = () => {
   };
 
   const filteredEntries = entries.filter(e => {
+    // Workspace scope first — it is the one filter that changes what the log
+    // *means* rather than narrowing what it shows, and it also scopes the
+    // NDJSON download, which exports exactly these rows.
+    //
+    // Two rows always survive it: one with no workspace of its own (most
+    // events are process-wide and belong wherever they land), and every row
+    // while `activeWorkspace` is still unknown — with nothing to compare
+    // against, hiding rows would empty the panel and give the reader no way
+    // to tell that from a quiet process.
+    if (scope === 'active' && activeWorkspace && e.workspace && e.workspace !== activeWorkspace) {
+      return false;
+    }
     if (filterType && e.domain !== filterType) return false;
     if (filterText) {
       const q = filterText.toLowerCase();
@@ -236,6 +310,16 @@ const EventLogPanel = () => {
     <SettingsPanel testId="event-log-panel" description={t('settings.developerMenu.eventLog.desc')}>
       {/* Status bar */}
       <div className="flex flex-wrap items-center gap-2">
+        <SettingsSelect
+          value={scope}
+          onChange={e => setScope(e.target.value === 'all' ? 'all' : 'active')}
+          aria-label={t('settings.developerMenu.eventLog.workspaceScope')}
+          inputSize="sm">
+          <option value="active">
+            {t('settings.developerMenu.eventLog.workspaceScopeActive')}
+          </option>
+          <option value="all">{t('settings.developerMenu.eventLog.workspaceScopeAll')}</option>
+        </SettingsSelect>
         <SettingsSelect
           value={filterType}
           onChange={e => setFilterType(e.target.value)}

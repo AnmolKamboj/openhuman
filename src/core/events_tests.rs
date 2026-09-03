@@ -852,3 +852,195 @@ fn events_outside_the_supervisor_have_no_event_log_detail() {
     .log_detail()
     .is_none());
 }
+
+// ── workspace_dir ────────────────────────────────────────────────────────
+
+/// A workspace that is not [`mcp_workspace`], so a test can tell "the
+/// accessor returned *a* path" apart from "the accessor returned *this*
+/// path".
+fn other_workspace() -> std::path::PathBuf {
+    std::path::PathBuf::from("/tmp/openhuman-other-ws")
+}
+
+/// Every variant that carries a workspace must be reachable through the one
+/// accessor. The bug this guards is not a missing arm in the abstract: before
+/// #5966 the notification bridge kept its own list, it named only the MCP
+/// family, and the channel and artifact families — which carry the same field
+/// — were silently ungated. A consumer that filters by workspace must be able
+/// to ask one question and get every bound event, or it covers a subset and
+/// nothing says which.
+#[test]
+fn every_workspace_bound_variant_is_reachable_through_one_accessor() {
+    let ws = other_workspace();
+    let cases: Vec<DomainEvent> = vec![
+        DomainEvent::ChannelMessageReceived {
+            channel: "c".into(),
+            message_id: "m1".into(),
+            sender: "s".into(),
+            reply_target: "r".into(),
+            content: "hi".into(),
+            thread_ts: None,
+            inbound_envelope: None,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::ChannelMessageProcessed {
+            channel: "c".into(),
+            message_id: "m1".into(),
+            sender: "s".into(),
+            reply_target: "r".into(),
+            content: "hi".into(),
+            thread_ts: None,
+            response: "ok".into(),
+            provider: "p".into(),
+            model: "m".into(),
+            elapsed_ms: 1,
+            success: true,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::ArtifactReady {
+            artifact_id: "a1".into(),
+            kind: "document".into(),
+            title: "t".into(),
+            workspace_dir: ws.to_string_lossy().into_owned(),
+            path: "a1/doc.docx".into(),
+            size_bytes: 1,
+            thread_id: None,
+            client_id: None,
+        },
+        DomainEvent::ArtifactFailed {
+            artifact_id: "a1".into(),
+            kind: "document".into(),
+            title: "t".into(),
+            workspace_dir: ws.to_string_lossy().into_owned(),
+            error: "boom".into(),
+            thread_id: None,
+            client_id: None,
+        },
+        DomainEvent::ArtifactPending {
+            artifact_id: "a1".into(),
+            kind: "document".into(),
+            title: "t".into(),
+            workspace_dir: ws.to_string_lossy().into_owned(),
+            path: "a1/doc.docx".into(),
+            thread_id: None,
+            client_id: None,
+        },
+        DomainEvent::McpServerProbeTimedOut {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+            probe_timeout_secs: 8,
+            consecutive_timeouts: 1,
+            teardown_after: 3,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::McpServerTransportDropped {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+            outcome: "timed_out".into(),
+            detail: None,
+            elapsed_ms: Some(8_000),
+            consecutive_timeouts: 3,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::McpServerReconnected {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+            tool_count: 4,
+            after_failures: 1,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::McpServerReconnectFailed {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+            error: "refused".into(),
+            failures: 1,
+            retry_in_secs: 30,
+            workspace_dir: ws.clone(),
+        },
+        DomainEvent::McpServerParked {
+            server_id: "srv-1".into(),
+            qualified_name: "ac.inference.sh/mcp".into(),
+            error: "refused".into(),
+            workspace_dir: ws.clone(),
+        },
+    ];
+
+    for event in cases {
+        assert_eq!(
+            event.workspace_dir(),
+            Some(ws.as_path()),
+            "{} carries a workspace but the accessor did not return it",
+            event.variant_name()
+        );
+    }
+}
+
+/// `None` here means "not bound to a workspace", which a consumer filtering
+/// by workspace must let through rather than drop. Getting this backwards
+/// would silence cron, webhook and sub-agent notifications entirely.
+#[test]
+fn events_without_a_workspace_report_none() {
+    assert_eq!(
+        DomainEvent::AgentPathsChanged.workspace_dir(),
+        None,
+        "a process-wide event must not claim a workspace"
+    );
+    assert_eq!(
+        DomainEvent::CronJobCompleted {
+            job_id: "job-1".into(),
+            success: true,
+            output: "done".into(),
+        }
+        .workspace_dir(),
+        None
+    );
+    assert_eq!(
+        DomainEvent::ChannelReactionReceived {
+            channel: "c".into(),
+            sender: "s".into(),
+            target_message_id: "m1".into(),
+            emoji: "👍".into(),
+        }
+        .workspace_dir(),
+        None,
+        "a channel event with no workspace field must not borrow one"
+    );
+}
+
+/// The artifact family carries its workspace as a `String`, so it is the one
+/// place an *empty* value is representable. Reading that back as the empty
+/// path would bind the event to a workspace nothing matches, hiding it from
+/// every scoped consumer — strictly worse than reporting it unbound, which at
+/// least shows it everywhere.
+#[test]
+fn an_empty_artifact_workspace_reads_as_unbound_not_as_a_workspace() {
+    assert_eq!(
+        DomainEvent::ArtifactReady {
+            artifact_id: "a1".into(),
+            kind: "document".into(),
+            title: "t".into(),
+            workspace_dir: String::new(),
+            path: "a1/doc.docx".into(),
+            size_bytes: 1,
+            thread_id: None,
+            client_id: None,
+        }
+        .workspace_dir(),
+        None
+    );
+}
+
+/// The switch announcement names a workspace but is deliberately not *bound*
+/// to one: it is what tells a consumer the active workspace changed, so
+/// filtering it by the rule it announces would hide the announcement from
+/// exactly the consumers that are still out of date.
+#[test]
+fn the_workspace_switch_announcement_is_not_itself_workspace_bound() {
+    let event = DomainEvent::ActiveWorkspaceChanged {
+        workspace_dir: other_workspace(),
+        revision: 1,
+    };
+    assert_eq!(event.workspace_dir(), None);
+    assert_eq!(event.variant_name(), "ActiveWorkspaceChanged");
+    assert_eq!(DomainEvent::domain(&event), "system");
+}

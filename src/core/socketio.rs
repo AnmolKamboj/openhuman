@@ -499,6 +499,46 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
             log::debug!("[socketio] emit event=ready to_client={}", socket.id);
             let _ = socket.emit("ready", &ready_payload);
 
+            // Seed this client with the workspace that is current (#5966).
+            // The `workspace_changed` bridge in `spawn_web_channel_bridge`
+            // only fires on a switch, so a client that connects between
+            // switches — the common case, since the app connects at launch —
+            // would otherwise have no idea which workspace is active and
+            // could not scope anything.
+            //
+            // Spawned because this handler is synchronous and the resolve is
+            // not. Emitting to `socket` rather than broadcasting keeps a
+            // late-joining client from re-announcing a workspace every other
+            // client already knows about.
+            {
+                let socket = socket.clone();
+                let client_id = client_id.clone();
+                tokio::spawn(async move {
+                    match crate::openhuman::config::active_workspace_snapshot().await {
+                        Ok((dir, revision)) => {
+                            let handle = crate::openhuman::config::workspace_handle(&dir);
+                            // One snapshot, not two reads: resolved
+                            // separately, a switch between them would pair
+                            // this workspace with the *next* one's revision,
+                            // and the client would rank a stale seed above
+                            // the switch it lost to. This task and the switch
+                            // bridge are separate, so that race is real; the
+                            // client keeps the highest revision it has seen.
+                            log::debug!(
+                                "[socketio] emit event=workspace_changed to_client={client_id} workspace={handle} revision={revision}"
+                            );
+                            let payload =
+                                json!({ "workspace": handle, "revision": revision });
+                            let _ = socket.emit("workspace_changed", &payload);
+                            let _ = socket.emit("workspace:changed", &payload);
+                        }
+                        Err(error) => log::warn!(
+                            "[socketio] could not resolve the active workspace to seed client={client_id}: {error}"
+                        ),
+                    }
+                });
+            }
+
             // Handler for JSON-RPC over WebSocket.
             socket.on(
                 "rpc:request",
@@ -686,6 +726,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
     let io_memory_sync = io.clone();
     let io_channel_status = io.clone();
     let io_companion = io.clone();
+    let io_workspace = io.clone();
 
     // 2. Dictation hotkey events → broadcast to all connected clients.
     tokio::spawn(async move {
@@ -844,6 +885,62 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             }
         }
         log::debug!("[socketio] auth session_expired bridge stopped");
+    });
+
+    // 6a. ActiveWorkspaceChanged → broadcast `workspace_changed` carrying the
+    //     new workspace's opaque handle (#5966).
+    //
+    //     `core_notification` is emitted to every connected client with no
+    //     per-client routing, and the publish-time gate that decides whether a
+    //     workspace-bound notification may be broadcast resolves the active
+    //     workspace and then sends — two steps, not one. A switch in between
+    //     still lets one through. Telling clients the handle of the workspace
+    //     that is current lets the receiver re-check on render instead of
+    //     trusting a boolean taken at an instant.
+    //
+    //     The handle, never `workspace_dir`: this reaches every connected
+    //     client and the path is under the user's home directory.
+    tokio::spawn(async move {
+        let bus = {
+            const RETRY_INTERVAL_MS: u64 = 250;
+            const MAX_WAIT_SECS: u64 = 30;
+            let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
+            let mut attempts: u64 = 0;
+            loop {
+                if let Some(bus) = crate::core::bus::BUS.get() {
+                    break bus;
+                }
+                attempts += 1;
+                if attempts > max_attempts {
+                    log::warn!(
+                        "[socketio] event_bus not initialised after {}s — workspace bridge giving up",
+                        MAX_WAIT_SECS
+                    );
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
+            }
+        };
+        let mut rx = bus.receiver();
+        loop {
+            let Some(event) = rx.recv().await else {
+                break;
+            };
+            if let crate::core::events::DomainEvent::ActiveWorkspaceChanged {
+                workspace_dir,
+                revision,
+            } = event
+            {
+                let handle = crate::openhuman::config::workspace_handle(&workspace_dir);
+                log::info!(
+                    "[socketio] broadcast workspace_changed workspace={handle} revision={revision}"
+                );
+                let payload = serde_json::json!({ "workspace": handle, "revision": revision });
+                let _ = io_workspace.emit("workspace_changed", &payload);
+                let _ = io_workspace.emit("workspace:changed", &payload);
+            }
+        }
+        log::debug!("[socketio] workspace_changed bridge stopped");
     });
 
     // 6b. McpSetupSecretRequested → broadcast `mcp_setup:secret_requested`

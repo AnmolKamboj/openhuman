@@ -1180,7 +1180,7 @@ Domains: `agent`, `memory`, `channel`, `cron`, `skill`, `tool`, `webhook`, `syst
 
 Each domain owns `bus.rs` with handlers. Convention: `<Purpose>Subscriber`, `name()` → `"<domain>::<purpose>"`.
 
-**Adding events:** add to `DomainEvent`, extend `domain()` match, create `<domain>/bus.rs`, register at startup, publish via `publish_global`.
+**Adding events:** add to `DomainEvent`, extend `domain()` match, create `<domain>/bus.rs`, register at startup, publish via `publish_global`, and bump `EVENTS_VERSION` in [`src/core/bus.rs`](src/core/bus.rs) — minor for an added variant or field, major (plus a new interface name) for anything an older subscriber cannot parse. Peers exchange that version through the manifest, so skipping the bump turns a version skew into a decode failure later instead of a startup warning.
 
 **Adding native handlers:** define req/resp types (`Send + 'static`, not `Serialize`), register at startup keyed by `"<domain>.<verb>"`, dispatch via `request_native_global`.
 

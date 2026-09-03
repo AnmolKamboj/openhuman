@@ -510,7 +510,10 @@ async fn the_active_workspace_s_outage_is_announced() {
         .expect("the override resolves");
     let bridge = bridge_for(&resolved);
     assert!(
-        bridge.should_announce(&parked_in(&resolved)).await,
+        matches!(
+            bridge.should_announce(&parked_in(&resolved)).await,
+            super::Announce::Active(_)
+        ),
         "the workspace the user is in must still hear about its own outage"
     );
 }
@@ -538,9 +541,12 @@ async fn a_switched_away_workspace_s_outage_is_not_announced() {
     // with, or it would reproduce the staleness it exists to avoid.
     let bridge = bridge_for(switched_away.path());
     assert!(
-        !bridge
-            .should_announce(&parked_in(switched_away.path()))
-            .await,
+        matches!(
+            bridge
+                .should_announce(&parked_in(switched_away.path()))
+                .await,
+            super::Announce::Suppressed
+        ),
         "another workspace's server name and error must not reach this one"
     );
 }
@@ -551,15 +557,16 @@ async fn a_process_wide_event_is_announced_without_consulting_the_workspace() {
     // the first line, before any resolution, so it cannot be affected by
     // whichever workspace happens to be active.
     let bridge = bridge_for(std::path::Path::new("/tmp/openhuman-ws-a"));
-    assert!(
+    assert!(matches!(
         bridge
             .should_announce(&DomainEvent::CronJobCompleted {
                 job_id: "job-1".into(),
                 success: true,
                 output: "done".into(),
             })
-            .await
-    );
+            .await,
+        super::Announce::Unbound
+    ));
 }
 
 /// The announcement rule, including the arm that is otherwise reachable only

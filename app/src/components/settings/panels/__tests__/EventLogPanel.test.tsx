@@ -125,13 +125,18 @@ describe('EventLogPanel', () => {
       { domain: 'tool', event: 'ToolA' },
       { domain: 'agent', event: 'AgentB' },
     ]);
-    const { container } = renderWithProviders(<EventLogPanel />);
+    renderWithProviders(<EventLogPanel />);
 
     await waitFor(() => {
       expect(screen.getByText('ToolA')).toBeTruthy();
     });
 
-    const select = container.querySelector('select')!;
+    // By label, not by position: the toolbar has more than one select since
+    // the workspace-scope control landed (#5966), and `querySelector('select')`
+    // silently picks whichever comes first in the DOM.
+    const select = screen.getByLabelText(
+      'settings.developerMenu.eventLog.allTypes'
+    ) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'tool' } });
 
     await waitFor(() => {

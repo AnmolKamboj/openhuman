@@ -5624,6 +5624,9 @@ const en: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Event Log',
   'settings.developerMenu.eventLog.desc':
     'Live colour-coded stream of all agent, tool, and system events',
+  'settings.developerMenu.eventLog.workspaceScope': 'Workspace scope',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'This workspace',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'All workspaces',
   'settings.developerMenu.eventLog.allTypes': 'All types',
   'settings.developerMenu.eventLog.filterAgent': 'Filter...',
   'settings.developerMenu.eventLog.download': 'Download',

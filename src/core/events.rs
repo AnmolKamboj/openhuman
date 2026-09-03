@@ -1256,6 +1256,34 @@ pub enum DomainEvent {
     /// `SecurityPolicy` is hot-swapped in-band; this broadcast lets other
     /// listeners observe the change.
     AgentPathsChanged,
+    /// The process switched to a different workspace (#5966).
+    ///
+    /// One process serves more than one workspace over its life — desktop
+    /// login, logout and pending-session revalidation all re-resolve it — and
+    /// until now that happened silently. Long-lived consumers had no way to
+    /// learn about a switch other than to re-read the marker on a timer, and a
+    /// process-wide stream like the Event Log had no way at all: it would keep
+    /// presenting the previous workspace's rows as the current ones.
+    ///
+    /// Published by the config loader's cached-workspace write-through, and
+    /// only when the value actually changes — the loader itself runs on far
+    /// more than switches, and announcing every load would bury the real ones.
+    ///
+    /// `workspace_dir` is for in-process consumers. Anything crossing to a
+    /// client sends
+    /// [`workspace_handle`](crate::openhuman::config::workspace_handle)
+    /// instead, since the path is under the user's home directory.
+    ActiveWorkspaceChanged {
+        workspace_dir: std::path::PathBuf,
+        /// Monotonic revision of this transition.
+        ///
+        /// The connect-time snapshot a client is seeded with and this
+        /// broadcast travel on separate tasks, so a snapshot resolved before
+        /// a switch can be delivered after it. Carrying the revision lets a
+        /// client keep the highest it has seen and discard anything older,
+        /// rather than being talked back into the previous workspace.
+        revision: u64,
+    },
     /// A component's health status changed.
     HealthChanged {
         component: String,
@@ -1484,6 +1512,7 @@ impl DomainEvent {
             | Self::SystemShutdownRequested { .. }
             | Self::AutonomyConfigChanged
             | Self::AgentPathsChanged
+            | Self::ActiveWorkspaceChanged { .. }
             | Self::HealthChanged { .. }
             | Self::HealthRestarted { .. }
             | Self::HarnessInitProgress { .. }
@@ -1625,6 +1654,7 @@ impl DomainEvent {
             Self::SystemShutdownRequested { .. } => "SystemShutdownRequested",
             Self::AutonomyConfigChanged => "AutonomyConfigChanged",
             Self::AgentPathsChanged => "AgentPathsChanged",
+            Self::ActiveWorkspaceChanged { .. } => "ActiveWorkspaceChanged",
             Self::HealthChanged { .. } => "HealthChanged",
             Self::HealthRestarted { .. } => "HealthRestarted",
             Self::HarnessInitProgress { .. } => "HarnessInitProgress",
@@ -1784,6 +1814,70 @@ impl DomainEvent {
             Self::McpServerParked { error, .. } => {
                 Some(format!("parked, not retrying — {}", clip(error)))
             }
+            _ => None,
+        }
+    }
+
+    /// The workspace this event belongs to, for the variants bound to one.
+    ///
+    /// One process serves more than one workspace over its life, so a
+    /// process-wide consumer — the Event Log, the `core_notification`
+    /// broadcast — has to be able to ask which workspace a given event came
+    /// from. Three families already carry the answer and each used to be read
+    /// by whoever happened to need it: `desktop::notifications` matched the
+    /// MCP arms in a private helper of its own, and silently did not gate the
+    /// channel and artifact families that carry the same field. This is the
+    /// one place that question is answered, so a consumer cannot cover a
+    /// subset by accident and a new workspace-bound variant has one arm to
+    /// add rather than several to find (#5966).
+    ///
+    /// `None` means "not workspace-bound", which is the common case and is
+    /// **not** the same as "unknown workspace": a consumer filtering by
+    /// workspace should let these through rather than drop them.
+    ///
+    /// The value is an absolute path under the user's home directory. It is
+    /// for in-process comparison only — anything that reaches a client or an
+    /// export sends
+    /// [`workspace_handle`](crate::openhuman::config::workspace_handle)
+    /// instead.
+    #[must_use]
+    pub fn workspace_dir(&self) -> Option<&std::path::Path> {
+        match self {
+            // Channel — the workspace the inbound message was received under.
+            Self::ChannelMessageReceived { workspace_dir, .. }
+            | Self::ChannelMessageProcessed { workspace_dir, .. } => Some(workspace_dir.as_path()),
+
+            // Artifact — carried as a `String` because the producer takes it
+            // from a config field it already has as text; same meaning.
+            //
+            // An empty string reads back as "bound to the empty path", which
+            // matches no workspace and would therefore hide the event from
+            // every scoped consumer — a worse failure than not knowing. Today
+            // the producers pass a real `Path`, so this is a guard against a
+            // future one that does not, not a case that occurs.
+            Self::ArtifactReady { workspace_dir, .. }
+            | Self::ArtifactFailed { workspace_dir, .. }
+            | Self::ArtifactPending { workspace_dir, .. } => {
+                if workspace_dir.is_empty() {
+                    None
+                } else {
+                    Some(std::path::Path::new(workspace_dir))
+                }
+            }
+
+            // MCP reconnect supervisor (#5931).
+            Self::McpServerProbeTimedOut { workspace_dir, .. }
+            | Self::McpServerTransportDropped { workspace_dir, .. }
+            | Self::McpServerReconnected { workspace_dir, .. }
+            | Self::McpServerReconnectFailed { workspace_dir, .. }
+            | Self::McpServerParked { workspace_dir, .. } => Some(workspace_dir.as_path()),
+
+            // The switch itself is *about* a workspace rather than bound to
+            // one: it is what tells a consumer the active workspace changed,
+            // so filtering it out by the very rule it announces would hide
+            // the announcement from everyone who is not already up to date.
+            Self::ActiveWorkspaceChanged { .. } => None,
+
             _ => None,
         }
     }

@@ -4921,6 +4921,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'ইভেন্টের লগ',
   'settings.developerMenu.eventLog.desc':
     'লাইভ রঙ-কোডকৃত সব এজেন্ট, টুল, এবং সিস্টেম ইভেন্টের জন্য',
+  'settings.developerMenu.eventLog.workspaceScope': 'ওয়ার্কস্পেসের পরিসর',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'এই ওয়ার্কস্পেস',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'সব ওয়ার্কস্পেস',
   'settings.developerMenu.eventLog.allTypes': 'সর্ব প্রকার',
   'settings.developerMenu.eventLog.filterAgent': 'ফিল্টার...',
   'settings.developerMenu.eventLog.download': 'ডাউনলোড করা হয়েছে',
