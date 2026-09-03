@@ -133,6 +133,23 @@ describe('buildRuntimeMessages', () => {
     expect(ids).toEqual(['a', STREAMING_TAIL_ID]);
   });
 
+  it('does not keep a synthetic thinking/tool tail running after lifecycle completion', () => {
+    const projected = buildRuntimeMessages([msg({ id: 'answer', sender: 'agent' })], null, {
+      isRunning: false,
+      liveTimeline: [tool({ id: 'stale-tool', status: 'success' })],
+      liveTranscript: [{ kind: 'thinking', round: 1, seq: 0, text: 'already finished thinking' }],
+    });
+    const ids = projected.map(message => message.id);
+
+    expect(ids).toEqual(['answer']);
+    expect(ids).not.toContain(STREAMING_TAIL_ID);
+    expect(projected[0]?.content).toEqual([
+      { type: 'reasoning', text: 'already finished thinking' },
+      expect.objectContaining({ type: 'tool-call', toolCallId: 'stale-tool' }),
+      { type: 'text', text: 'hello' },
+    ]);
+  });
+
   it('replays a settled turn reasoning and tool calls from its request id', () => {
     const answer = msg({
       id: 'answer',
@@ -143,7 +160,8 @@ describe('buildRuntimeMessages', () => {
     const timeline = [tool({ id: 'call-1', status: 'success', result: 'found it' })];
     const transcript = [
       { kind: 'thinking' as const, round: 1, seq: 0, text: 'need to search' },
-      { kind: 'toolCall' as const, round: 1, seq: 1, callId: 'call-1' },
+      { kind: 'narration' as const, round: 1, seq: 1, text: 'I will check the sources.' },
+      { kind: 'toolCall' as const, round: 1, seq: 2, callId: 'call-1' },
     ];
 
     expect(
@@ -153,6 +171,7 @@ describe('buildRuntimeMessages', () => {
       })[0]?.content
     ).toEqual([
       { type: 'reasoning', text: 'need to search' },
+      { type: 'text', text: 'I will check the sources.' },
       expect.objectContaining({
         type: 'tool-call',
         toolCallId: 'call-1',
@@ -161,6 +180,181 @@ describe('buildRuntimeMessages', () => {
       }),
       { type: 'text', text: 'finished' },
     ]);
+  });
+
+  it('chronologically anchors persisted trails to async agent messages without request ids', () => {
+    const acknowledgement = msg({
+      id: 'ack',
+      sender: 'agent',
+      content: 'Accepted background work',
+      extraMetadata: {},
+    });
+    const content = buildRuntimeMessages([acknowledgement], null, {
+      isRunning: false,
+      turnTimelines: { 'request-async': [tool({ id: 'async-tool', status: 'success' })] },
+      turnTranscripts: {
+        'request-async': [
+          { kind: 'thinking', round: 1, seq: 0, text: 'delegate this research' },
+          { kind: 'toolCall', round: 1, seq: 1, callId: 'async-tool' },
+        ],
+      },
+    })[0]?.content;
+
+    expect(content).toEqual([
+      { type: 'reasoning', text: 'delegate this research' },
+      expect.objectContaining({ type: 'tool-call', toolCallId: 'async-tool' }),
+      { type: 'text', text: 'Accepted background work' },
+    ]);
+  });
+
+  it('renders final streamed narration only once', () => {
+    const finalText = 'hey! what is up?';
+    const answer = msg({ id: 'answer', sender: 'agent', content: finalText });
+    const content = buildRuntimeMessages([answer], null, {
+      turnTranscripts: { request: [{ kind: 'narration', round: 1, seq: 0, text: finalText }] },
+      turnTimelines: { request: [] },
+    })[0]?.content;
+
+    expect(content).toEqual([{ type: 'text', text: finalText }]);
+  });
+
+  it('coalesces legacy assistant segments into one bubble with one tool trail', () => {
+    const requestId = 'legacy-segmented-request';
+    const intro = "Here's the crypto picture today:";
+    const finalText = `${intro}\n\nBitcoin is trading around $77,000.`;
+    const messages = [
+      msg({ id: 'user', content: 'What is happening with Bitcoin?' }),
+      msg({
+        id: 'tool-envelope',
+        sender: 'agent',
+        content: JSON.stringify({
+          content: null,
+          tool_calls: [
+            { id: 'call-search', name: 'web_search_tool', arguments: '{"query":"bitcoin"}' },
+          ],
+        }),
+        extraMetadata: { requestId },
+      }),
+      msg({ id: 'intro', sender: 'agent', content: intro, extraMetadata: { requestId } }),
+      msg({ id: 'final', sender: 'agent', content: finalText, extraMetadata: { requestId } }),
+    ];
+
+    const projected = buildRuntimeMessages(messages, null, {
+      turnTimelines: {
+        [requestId]: [
+          tool({ id: 'call-search', name: 'tool', status: 'success', result: 'market results' }),
+        ],
+      },
+      turnTranscripts: {
+        [requestId]: [{ kind: 'toolCall', round: 1, seq: 0, callId: 'call-search' }],
+      },
+    });
+
+    expect(projected).toHaveLength(2);
+    expect(projected[1]).toMatchObject({ id: 'final', role: 'assistant' });
+    expect(projected[1]?.content).toEqual([
+      expect.objectContaining({
+        type: 'tool-call',
+        toolCallId: 'call-search',
+        toolName: 'web_search_tool',
+      }),
+      { type: 'text', text: finalText },
+    ]);
+  });
+
+  it('does not coalesce adjacent assistant turns with different request ids', () => {
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'first', sender: 'agent', content: 'first', extraMetadata: { requestId: 'r1' } }),
+        msg({
+          id: 'second',
+          sender: 'agent',
+          content: 'second',
+          extraMetadata: { requestId: 'r2' },
+        }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['first', 'second']);
+  });
+
+  it('keeps a scoped standalone delivery out of the adjacent legacy runs', () => {
+    // Legacy segments carry no request id; a background delivery persisted by
+    // the core carries no request id either but is stamped with a `scope`.
+    // Without the marker the three rows read as one segmented answer and the
+    // delivery's text and metadata would be folded into its neighbours.
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'seg-a', sender: 'agent', content: 'first paragraph' }),
+        msg({
+          id: 'delivery',
+          sender: 'agent',
+          content: 'Background result: inbox digest',
+          extraMetadata: { scope: 'autonomous_task_result', success: true },
+        }),
+        msg({ id: 'seg-b', sender: 'agent', content: 'a later paragraph' }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['seg-a', 'delivery', 'seg-b']);
+    expect(projected[1]?.content).toEqual([
+      { type: 'text', text: 'Background result: inbox digest' },
+    ]);
+  });
+
+  it('does not let a scoped delivery absorb the identified segment before it', () => {
+    const projected = buildRuntimeMessages(
+      [
+        msg({
+          id: 'answer',
+          sender: 'agent',
+          content: 'answer',
+          extraMetadata: { requestId: 'r1' },
+        }),
+        msg({
+          id: 'delivery',
+          sender: 'agent',
+          content: 'worker output',
+          extraMetadata: { scope: 'worker_thread', requestId: 'r-worker' },
+        }),
+      ],
+      null
+    );
+
+    expect(projected.map(message => message.id)).toEqual(['answer', 'delivery']);
+  });
+
+  it('does not hand a later turn trail to an earlier trail-less answer', () => {
+    // Two unanchored answers, one unclaimed trail. Positional pairing would
+    // give the trail to `earlier` (which produced nothing) and leave `later`
+    // (which actually used the tool) bare — a wrong attribution, not a loss.
+    const projected = buildRuntimeMessages(
+      [
+        msg({ id: 'ask-1', content: 'first question' }),
+        msg({ id: 'earlier', sender: 'agent', content: 'plain answer', extraMetadata: {} }),
+        msg({ id: 'ask-2', content: 'second question' }),
+        msg({ id: 'later', sender: 'agent', content: 'tool answer', extraMetadata: {} }),
+      ],
+      null,
+      {
+        isRunning: false,
+        turnTimelines: { 'request-later': [tool({ id: 'later-tool', status: 'success' })] },
+        turnTranscripts: {
+          'request-later': [{ kind: 'toolCall', round: 1, seq: 0, callId: 'later-tool' }],
+        },
+      }
+    );
+
+    const toolBearing = projected
+      .filter(
+        message =>
+          Array.isArray(message.content) && message.content.some(part => part.type === 'tool-call')
+      )
+      .map(message => message.id);
+    expect(toolBearing).not.toContain('earlier');
+    expect(projected[1]?.content).toEqual([{ type: 'text', text: 'plain answer' }]);
   });
 
   /**
@@ -235,5 +429,73 @@ describe('buildRuntimeMessages', () => {
     // Zero: settled messages are cached by identity and the tail is plain text.
     expect(parse).not.toHaveBeenCalled();
     parse.mockRestore();
+  });
+});
+
+describe('recovered tool names', () => {
+  it('does not consume a recovered name on an entry it does not rename', () => {
+    // `recoveredNames` comes from tool-call envelopes, so it only ever holds
+    // names for the *generic* rows. Advancing the cursor on every entry made a
+    // named row eat the first recovered name: the first generic row then took
+    // the second name and the last one kept the placeholder.
+    const converted = toThreadMessageLike(
+      msg({
+        id: 'a',
+        sender: 'agent',
+        content: 'done',
+        extraMetadata: { assistantUiToolNames: ['web_search', 'web_fetch'] },
+      }),
+      [
+        tool({ id: 'c1', name: 'read_file', seq: 0, status: 'success' }),
+        tool({ id: 'c2', name: 'tool', seq: 1, status: 'success' }),
+        tool({ id: 'c3', name: 'tool', seq: 2, status: 'success' }),
+      ]
+    );
+    const names = (converted.content as unknown as { type: string; toolName?: string }[])
+      .filter(part => part.type === 'tool-call')
+      .map(part => part.toolName);
+    expect(names).toEqual(['read_file', 'web_search', 'web_fetch']);
+  });
+});
+
+describe('terminal tool status', () => {
+  it('carries a failed tool status through to the rendered part', () => {
+    // assistant-ui's tool-call part has no status field, so a failed tool that
+    // produced output used to arrive as a bare result and read as success.
+    const converted = toThreadMessageLike(msg({ id: 'a', sender: 'agent', content: 'done' }), [
+      tool({ id: 'c1', name: 'web_search', seq: 0, status: 'error', result: 'boom' }),
+    ]);
+    const part = (converted.content as unknown as { type: string; result?: unknown }[]).find(
+      candidate => candidate.type === 'tool-call'
+    );
+    expect(part?.result).toMatchObject({ status: 'error', value: 'boom' });
+  });
+
+  it('leaves a successful tool result untouched', () => {
+    const converted = toThreadMessageLike(msg({ id: 'a', sender: 'agent', content: 'done' }), [
+      tool({ id: 'c1', name: 'web_search', seq: 0, status: 'success', result: 'the answer' }),
+    ]);
+    const part = (converted.content as unknown as { type: string; result?: unknown }[]).find(
+      candidate => candidate.type === 'tool-call'
+    );
+    expect(part?.result).toBe('the answer');
+  });
+});
+
+describe('narration merged into the final answer', () => {
+  it('does not render narration that the final text already contains', () => {
+    // `mergedAssistantText` prefers the longest text when it *contains* every
+    // segment, so the duplicate is a substring rather than an exact match and
+    // the old equality guard let it through twice.
+    const finalText = 'I will check the sources. Here is what I found.';
+    const converted = toThreadMessageLike(
+      msg({ id: 'a', sender: 'agent', content: finalText }),
+      [],
+      [{ kind: 'narration', round: 1, seq: 0, text: 'I will check the sources.' }]
+    );
+    const texts = (converted.content as unknown as { type: string; text?: string }[])
+      .filter(part => part.type === 'text')
+      .map(part => part.text);
+    expect(texts).toEqual([finalText]);
   });
 });

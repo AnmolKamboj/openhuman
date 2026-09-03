@@ -316,10 +316,16 @@ function handleStreamingCompletion({
         if (!rule || typeof rule.keyword !== "string") continue;
         if (probe.includes(rule.keyword.toLowerCase())) {
           const rendered = applyDynamicPlaceholdersToResponse(rule, parsedBody);
-          script = defaultStreamScript({
-            content: rendered.content,
-            toolCalls: rendered.toolCalls,
-          });
+          // Keyword routes need the same control over event ordering as a
+          // global stream script. That lets browser tests exercise a real
+          // reasoning -> narration -> tool sequence without a FIFO script
+          // being consumed by an unrelated completion.
+          script = Array.isArray(rendered.streamScript)
+            ? rendered.streamScript
+            : defaultStreamScript({
+                content: rendered.content,
+                toolCalls: rendered.toolCalls,
+              });
           break;
         }
       }

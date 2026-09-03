@@ -281,24 +281,31 @@ fn reporting_a_genuine_wallet_failure_still_emits_error() {
 #[cfg(feature = "crash-reporting")]
 mod paging {
     use super::*;
-
-    /// Drive `report_error_or_expected` against an envelope-capturing Sentry
-    /// client and return how many events it actually sent.
+    /// Count the Sentry events one call to `report_error_or_expected` produces.
     ///
-    /// `sentry::init` mutates the process-global hub and cargo runs these
-    /// functions on parallel threads, so the critical section is serialized
-    /// here rather than by imposing `--test-threads=1` on the whole binary —
-    /// the same reasoning, and the same shape, as `observability_smoke.rs`.
+    /// The client is bound to a **private** hub that is current only inside
+    /// [`sentry::Hub::run`]. `sentry::init` instead binds it on the hub every
+    /// test thread's hub is copied from, so while a paging test held a client,
+    /// a sibling test's `report_error_or_expected` on another thread landed in
+    /// this transport too — `left: 2` for a genuine failure, deterministic
+    /// under the product feature set, invisible under the contributor default
+    /// set where this module does not compile.
+    ///
+    /// The private hub removes the *client* binding, but it does not remove the
+    /// need to serialise. `sentry-tracing`'s layer sits in the global
+    /// subscriber stack, so while a client is current on this thread a
+    /// `tracing::error!` raised by `capture_reporting` on ANOTHER thread can be
+    /// consumed by that layer instead of reaching its fmt subscriber — the
+    /// capture then comes back empty and
+    /// `reporting_a_genuine_wallet_failure_still_emits_error` fails for a
+    /// reason unrelated to the behaviour under test. That is `main`'s
+    /// `d0509bb17` finding, and it still holds here: an earlier revision of
+    /// this merge dropped the guard on the reasoning that a private hub made it
+    /// redundant, and CI reproduced exactly that failure. Both fixes are
+    /// needed — the private hub for the paging count, the file-wide lock for
+    /// the capture.
     fn captured_events_for(message: &str) -> usize {
-        // The file-wide lock, not a private one. `sentry::init` below binds a
-        // client to the process-global Hub, and with `sentry-tracing` compiled
-        // in that changes what a `tracing::error!` on ANY thread is able to
-        // reach — including the fmt subscriber the capture tests above install.
-        // A lock scoped to this module serialized these two functions against
-        // each other and against nothing else, which is what let the capture
-        // tests come back empty in the full-suite lane.
         let _guard = lock_reporting_state();
-
         let transport = sentry::test::TestTransport::new();
         let transport_for_factory = transport.clone();
         let options = sentry::ClientOptions {
@@ -313,13 +320,15 @@ mod paging {
             sample_rate: 1.0,
             ..sentry::ClientOptions::default()
         };
-        let _sentry_guard = sentry::init(options);
-
-        report_error_or_expected(message, "rpc", "invoke_method", &[]);
-
-        sentry::Hub::current()
-            .client()
-            .map(|c| c.flush(Some(std::time::Duration::from_secs(2))));
+        let client = Arc::new(sentry::Client::from_config(sentry::apply_defaults(options)));
+        let hub = Arc::new(sentry::Hub::new(
+            Some(Arc::clone(&client)),
+            Arc::new(sentry::Scope::default()),
+        ));
+        sentry::Hub::run(hub, || {
+            report_error_or_expected(message, "rpc", "invoke_method", &[]);
+        });
+        client.flush(Some(std::time::Duration::from_secs(2)));
         transport.fetch_and_clear_envelopes().len()
     }
 

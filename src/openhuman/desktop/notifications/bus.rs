@@ -10,6 +10,7 @@
 //! as `core_notification` / `core:notification` Socket.IO messages.
 
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
@@ -67,6 +68,134 @@ impl NotificationBridgeSubscriber {
         Self {
             config: Some(config),
         }
+    }
+
+    /// The workspace store a notification belongs in.
+    ///
+    /// Normally this bridge's own: it is registered once, with the workspace
+    /// that booted, and every event it handled before #5931 is process-wide.
+    ///
+    /// The MCP supervisor variants are the exception. One process supervises
+    /// every workspace it has opened (`mcp::host::all_hosts`), and a workspace
+    /// switch leaves the old one open and still supervised, so a supervisor
+    /// event can belong to a workspace that is not this bridge's — including
+    /// the *active* one, once the boot binding is the stale half of the pair.
+    /// Neither answer to that is right on its own: filing it under this
+    /// bridge's workspace puts one account's outage in another's inbox, and
+    /// dropping it silences the workspace the user is actually in. So the
+    /// event says where it belongs and nothing is dropped — the binding's
+    /// freshness stops mattering.
+    ///
+    /// Only `workspace_dir` is redirected because it is the only field the
+    /// notification store reads: `store::with_connection` opens
+    /// `<workspace_dir>/notifications/notifications.db` and looks at nothing
+    /// else. Broadcast is unaffected — `NOTIFICATION_BUS` is process-wide and
+    /// always has been.
+    fn store_target<'a>(&self, config: &'a Config, event: &DomainEvent) -> Cow<'a, Config> {
+        match workspace_of(event) {
+            Some(event_workspace) if event_workspace != config.workspace_dir.as_path() => {
+                log::debug!(
+                    "{LOG_PREFIX} filing {} under its own workspace event_ws={} self_ws={}",
+                    event.variant_name(),
+                    event_workspace.display(),
+                    config.workspace_dir.display()
+                );
+                let mut redirected = config.clone();
+                redirected.workspace_dir = event_workspace.to_path_buf();
+                Cow::Owned(redirected)
+            }
+            _ => Cow::Borrowed(config),
+        }
+    }
+
+    /// Whether a notification should reach connected clients.
+    ///
+    /// Storing an event under its own workspace is only half the answer. The
+    /// live path has no per-client routing at all — `core::socketio`'s bridge
+    /// emits `core_notification` to *every* connected client, and the banner
+    /// prints the server's qualified name and its error — so a supervisor
+    /// event from a workspace the user has switched away from would show one
+    /// account's server, and its failure text, inside the account they are
+    /// actually in (#5931).
+    ///
+    /// Only workspace-bound events are gated, and the active workspace is
+    /// resolved through `config::active_workspace_dir`, the same resolver the
+    /// config loader uses — deliberately not a value pinned at construction,
+    /// which is exactly what goes stale across a switch. It costs one small
+    /// marker read, paid only for the handful of events a supervisor tick
+    /// produces: everything else returns on the first line.
+    ///
+    /// **Fails closed.** If the workspace cannot be resolved, nothing is
+    /// announced. That costs a *banner*, not the alert: the notification is
+    /// already persisted under its own workspace by the time this runs, so it
+    /// still reaches the notification centre — which is exactly the durability
+    /// split #3805 built, with the store as the reliable channel and the
+    /// broadcast as best effort. Announcing on an unknown workspace would
+    /// instead put another account's server name and transport error in front
+    /// of whoever is connected, and there is no undoing that.
+    async fn should_announce(&self, event: &DomainEvent) -> bool {
+        let Some(event_workspace) = workspace_of(event) else {
+            return true;
+        };
+        let active = match crate::openhuman::config::active_workspace_dir().await {
+            Ok(active) => Some(active),
+            Err(error) => {
+                log::warn!(
+                    "{LOG_PREFIX} could not resolve the active workspace ({error}); not announcing {} — it is persisted and will show in the notification centre",
+                    event.variant_name()
+                );
+                None
+            }
+        };
+        let announces = announces_to(Some(event_workspace), active.as_deref());
+        if !announces && active.is_some() {
+            log::debug!(
+                "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
+                event.variant_name(),
+                event_workspace.display(),
+                active.as_deref().unwrap_or(std::path::Path::new("?")).display()
+            );
+        }
+        announces
+    }
+}
+
+/// The announcement rule, as a function of its two inputs.
+///
+/// Separated from the I/O so the decision can be asserted directly — in
+/// particular the fail-closed arm, which is otherwise reachable only by making
+/// the on-disk config unreadable.
+///
+/// - `event_workspace` `None`: the event is not workspace-bound, so it is not
+///   this rule's business and is announced.
+/// - `active` `None`: the active workspace could not be resolved. **Fail
+///   closed** — see [`NotificationBridgeSubscriber::should_announce`].
+/// - Otherwise the event is announced only in the workspace it belongs to.
+fn announces_to(
+    event_workspace: Option<&std::path::Path>,
+    active: Option<&std::path::Path>,
+) -> bool {
+    match (event_workspace, active) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(event), Some(active)) => event == active,
+    }
+}
+
+/// The workspace an event belongs to, for the variants that name one.
+///
+/// `None` means the event is not bound to a workspace and any subscriber may
+/// act on it. Only the MCP supervisor variants are bound today, because they
+/// are the only ones this bridge handles that one process produces for more
+/// than one workspace (#5931).
+fn workspace_of(event: &DomainEvent) -> Option<&std::path::Path> {
+    match event {
+        DomainEvent::McpServerProbeTimedOut { workspace_dir, .. }
+        | DomainEvent::McpServerTransportDropped { workspace_dir, .. }
+        | DomainEvent::McpServerReconnected { workspace_dir, .. }
+        | DomainEvent::McpServerReconnectFailed { workspace_dir, .. }
+        | DomainEvent::McpServerParked { workspace_dir, .. } => Some(workspace_dir.as_path()),
+        _ => None,
     }
 }
 
@@ -205,6 +334,78 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             timestamp_ms: ts,
             actions: None,
         }),
+        // The MCP reconnect supervisor's verdicts (#5931), published by
+        // `mcp::registry::supervisor_events`. Only the cases a user can act on
+        // or would otherwise wonder about become notifications: a server that
+        // *stays* down after a tick, its recovery, and a server the supervisor
+        // has given up on. A session torn down and rebuilt within one tick, or
+        // a single slow probe, is Event Log material only — nothing was
+        // unavailable long enough for anyone to notice, and a banner per blip
+        // would be the fourteen-a-day noise this exists to replace.
+        DomainEvent::McpServerReconnectFailed {
+            server_id,
+            qualified_name,
+            error,
+            failures,
+            ..
+        } if *failures == 1 => Some(CoreNotificationEvent {
+            id: format!("mcp-unavailable:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server unavailable".into(),
+            // Deliberately no "retrying in Ns": `retry_in_secs` is tinymcp's
+            // backoff (5s for the first failure) and is faithful on the event,
+            // but this host drives `Supervisor::tick` from its own 60s
+            // interval, so the backoff only decides *eligibility* on the next
+            // tick. Every sub-tick step (5/10/20/40s) would be under-reported
+            // to the user, who then watches a "5s" banner sit there for a
+            // minute. The exact backoff is still in the Event Log row via
+            // `DomainEvent::log_detail`, where a developer can read it against
+            // the tick interval; a banner cannot carry that caveat.
+            body: format!(
+                "{qualified_name} stopped answering, so its tools are unavailable until it \
+                 reconnects. It retries automatically. {}",
+                crate::core::events::clip_to_chars(error, 120)
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
+        DomainEvent::McpServerReconnected {
+            server_id,
+            qualified_name,
+            tool_count,
+            after_failures,
+            ..
+        } if *after_failures > 0 => Some(CoreNotificationEvent {
+            id: format!("mcp-restored:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server reconnected".into(),
+            body: format!(
+                "{qualified_name} is back with {tool_count} tools after {after_failures} failed \
+                 attempt(s)."
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
+        DomainEvent::McpServerParked {
+            server_id,
+            qualified_name,
+            error,
+            ..
+        } => Some(CoreNotificationEvent {
+            id: format!("mcp-parked:{}:{}", server_id, ts),
+            category: CoreNotificationCategory::System,
+            title: "MCP server can't start".into(),
+            body: format!(
+                "{qualified_name} will not be retried: {}. Install the missing runtime, then \
+                 disable and re-enable the server.",
+                crate::core::events::clip_to_chars(error, 160)
+            ),
+            deep_link: Some("/connections?tab=mcp".into()),
+            timestamp_ms: ts,
+            actions: None,
+        }),
         _ => None,
     }
 }
@@ -228,7 +429,10 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
             // receivers and the notification is lost forever. Best-effort: a
             // store failure must not suppress the live broadcast.
             if let Some(config) = &self.config {
-                match super::store::insert_core_notification(config, &notification) {
+                // A workspace-bound event is stored in ITS OWN workspace, not
+                // whichever one this bridge was registered with (#5931).
+                let config = self.store_target(config, event);
+                match super::store::insert_core_notification(&config, &notification) {
                     Ok(true) => log::debug!(
                         "{LOG_PREFIX} persisted core notification id={}",
                         notification.id
@@ -243,7 +447,11 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
                     ),
                 }
             }
-            publish_core_notification(notification);
+            // Persisted above under the workspace it belongs to; announced
+            // only if that workspace is the one the user is in (#5931).
+            if self.should_announce(event).await {
+                publish_core_notification(notification);
+            }
         }
     }
 }

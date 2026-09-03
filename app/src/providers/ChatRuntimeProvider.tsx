@@ -39,7 +39,7 @@ import {
   clearProcessingForThread,
   clearStreamingAssistantForThread,
   endInferenceTurn,
-  fetchAndHydrateDerivedTranscript,
+  fetchAndHydrateCompletedTurnState,
   markInferenceTurnStreaming,
   parseToolFailure,
   recordChatTurnUsage,
@@ -77,7 +77,7 @@ import {
   setActiveThread,
   setSelectedThread,
 } from '../store/threadSlice';
-import { DERIVED_TRANSCRIPT_ENABLED, IS_PROD } from '../utils/config';
+import { IS_PROD } from '../utils/config';
 import { AssistantUiRuntimeProvider } from './AssistantUiRuntimeProvider';
 import { isProactiveConversationSurface, proactiveThreadPins } from './proactiveThreadPins';
 
@@ -473,14 +473,13 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       await flushQueuedFollowups(event.thread_id);
       dispatch(endInferenceTurn({ threadId: event.thread_id }));
       dispatch(clearThreadInferenceActive(event.thread_id));
-      // Live-turn seam: the turn just settled and its line was appended to the
-      // append-only transcript. Invalidate/refresh the thread's derived
-      // settled-turn trails so the next reopen is fresh. The just-finished turn
-      // is the newest, so the derived hydration skips it — this never fights the
-      // live anchor, and it does not touch any socket delta handler.
-      if (DERIVED_TRANSCRIPT_ENABLED) {
-        void dispatch(fetchAndHydrateDerivedTranscript(event.thread_id));
-      }
+      // Socket reducers keep only the current iteration's prose in the live
+      // buffer. Once the turn settles, replace that partial projection with
+      // the core's completed snapshot, whose ordered transcript contains every
+      // parent and sub-agent event from the whole turn. Doing this here (after
+      // ending the live lifecycle) matters: `hydrateRuntimeFromSnapshot`
+      // intentionally refuses to overwrite an actively streaming turn.
+      await dispatch(fetchAndHydrateCompletedTurnState(event.thread_id));
     };
 
     rtLog('subscribe_chat_events', { socket: socketStatus });
