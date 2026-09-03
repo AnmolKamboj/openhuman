@@ -503,8 +503,8 @@ pub(crate) async fn run_sync_pass(
         .await
         .map_err(|error| format!("ingesting {toolkit} records failed: {error}"))?;
 
-    // openhuman#6007: ask for the summary tree to be sealed once this pass has
-    // written something.
+    // openhuman#6007: seal this source's summary tree once the pass has written
+    // something.
     //
     // Tree ingest writes its L0 chunk rows synchronously, but the Memory Tree
     // graph and tree-backed recall read *sealed* summaries. A buffer seals on
@@ -514,13 +514,24 @@ pub(crate) async fn run_sync_pass(
     // under the budget and its memories were invisible for up to a week, while
     // the source row reported them ingested the entire time.
     //
-    // `flush_pending` enqueues a flush with `max_age_secs = 0`, so every buffer
-    // is considered rather than only the stale ones. The engine dedupes it on
-    // `date + hour/3`, which is what makes asking once per page affordable:
-    // after the first writing page the rest answer `enqueued: false` and ride
-    // the job already scheduled. That three-hour window is also the residual
-    // latency ceiling, and it is the engine's dedupe key — not something a host
-    // can shorten from here.
+    // `flush_source_tree` rather than `flush_pending`, for two reasons that
+    // are the whole of tinyhumansai/tinymemory#135:
+    //
+    // - It **bypasses the job queue**. `flush_pending` enqueues, and that queue
+    //   dedupes on `date + hour/3`, so a request landing while an earlier flush
+    //   was already running was suppressed — and if that flush had already
+    //   walked past this buffer, nothing remained queued for it. The periodic
+    //   tick does not rescue those: it enqueues the default seven-day age and
+    //   steps straight over a buffer written minutes ago. With no queue there
+    //   is no dedupe key and nothing to be suppressed against.
+    // - It seals **one scope**. `flush_pending` is workspace-wide, so a Gmail
+    //   sync also sealed whatever a folder or `github_repo` source had left
+    //   pending — unrelated trees nudged by an unrelated event.
+    //
+    // The scope is built exactly as the ingest funnel builds `path_scope`
+    // (`{toolkit}:{connection_id}`, toolkit lowercased), because it has to name
+    // the same tree the items were filed under. A drift here seals nothing and
+    // says `Ok(0)` while doing it.
     //
     // Here rather than at the callers: `run_sync_pass` has three of them (the
     // budgeted loop in this file, the Slack trigger RPC, and the sync bus), and
@@ -528,27 +539,32 @@ pub(crate) async fn run_sync_pass(
     // would have got the flush and the third would have been forgotten.
     //
     // Best-effort by construction. The records are committed; an unsealed
-    // buffer is a delay, not a loss, and the scheduled flush still sits behind
-    // it. Nothing here may turn a successful sync into a failed one.
+    // buffer is a delay, not a loss. Nothing here may turn a successful sync
+    // into a failed one. Safe to call unconditionally, too: the contract makes
+    // an empty scope `Ok(0)` rather than an error.
     if outcome.written > 0 {
-        match binding.provider().as_maintenance() {
-            Some(maintenance) => match maintenance.flush_pending().await {
-                Ok(flush) => tracing::debug!(
-                    toolkit = %toolkit,
-                    enqueued = flush.enqueued,
-                    stale_buffers = flush.stale_buffers,
-                    "[composio] summary-tree flush requested after sync pass"
+        let scope = format!(
+            "{}:{}",
+            toolkit.trim().to_ascii_lowercase(),
+            connection_id.trim()
+        );
+        match binding.provider().as_tree() {
+            Some(tree) => match tree.flush_source_tree(&scope).await {
+                Ok(seals) => tracing::debug!(
+                    scope = %scope,
+                    seals_fired = seals,
+                    "[composio] source tree sealed after sync pass"
                 ),
                 Err(error) => tracing::warn!(
-                    toolkit = %toolkit,
+                    scope = %scope,
                     error = %error,
-                    "[composio] summary-tree flush could not be enqueued; ingested \
-                     records stay unsealed until the scheduled flush reaches them"
+                    "[composio] source tree could not be sealed; ingested records stay \
+                     unsealed until a later seal reaches them"
                 ),
             },
             None => tracing::debug!(
                 driver = %binding.driver_id(),
-                "[composio] bound driver serves no Maintenance; skipping the post-sync flush"
+                "[composio] bound driver serves no Tree; skipping the post-sync seal"
             ),
         }
     }

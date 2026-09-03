@@ -76,7 +76,7 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // Re-read at tag `v1.14.1` (tinymemory#136 + #137, openhuman#6012). It adds a bus
     // *member*, `BackfillConnectorTrees`, and no capability: `Capability` is the
     // family enum, and the member is a method inside `Maintenance`, which this
-    // build already advertises. `git diff v1.13.8..v1.14.0 --
+    // build already advertises. `git diff v1.13.8..v1.14.1 --
     // crates/tinymemory-bus/src/capabilities.rs` is empty, so nothing below moves.
     //
     // Re-read at tag `v1.13.8` (tinymemory#134, openhuman#6007): the connector
