@@ -63,18 +63,51 @@ struct ActiveWorkspace {
     /// that follows would announce a switch that never happened, putting a
     /// phantom row in the Event Log and making a real switch harder to spot.
     announced: Option<PathBuf>,
+    /// Monotonic revision, incremented on every announced transition.
+    ///
+    /// The bus publish happens *outside* the lock — a subscriber may reach
+    /// back into the config layer, and holding the slot across the publish
+    /// would deadlock — which leaves a window between committing the state
+    /// and emitting the event. Two resolvers can interleave there: A commits
+    /// A, B commits B and emits B, then A resumes and emits a stale A. Since
+    /// `announced` already equals B by then, no later resolution of B would
+    /// correct it, and every client would sit on A permanently.
+    ///
+    /// The revision closes that: a publisher captures the revision it
+    /// created, and emits only if it is still the newest. The stale emit is
+    /// dropped rather than reordered, because the newer publisher has
+    /// already emitted the right answer. It also goes on the wire, so a
+    /// client can discard a snapshot that lost a race to a switch.
+    revision: u64,
+}
+
+/// One announced transition: what to say, and which revision says it.
+struct Transition {
+    workspace_dir: PathBuf,
+    revision: u64,
 }
 
 impl ActiveWorkspace {
-    /// Record `workspace_dir` as current. Returns `true` when this is a
-    /// change the bus has not been told about yet.
-    fn publish(&mut self, workspace_dir: &Path) -> bool {
+    /// Record `workspace_dir` as current. Returns the transition to announce,
+    /// or `None` when the bus has already been told about this workspace.
+    fn publish(&mut self, workspace_dir: &Path) -> Option<Transition> {
         self.current = Some(workspace_dir.to_path_buf());
         if self.announced.as_deref() == Some(workspace_dir) {
-            return false;
+            return None;
         }
         self.announced = Some(workspace_dir.to_path_buf());
-        true
+        self.revision += 1;
+        Some(Transition {
+            workspace_dir: workspace_dir.to_path_buf(),
+            revision: self.revision,
+        })
+    }
+
+    /// Whether `revision` is still the newest announced transition. A
+    /// publisher that lost the race skips its emit; the winner has already
+    /// said the right thing.
+    fn is_current(&self, revision: u64) -> bool {
+        self.revision == revision
     }
 
     /// Forget the resolved answer because a marker that decides it was
@@ -96,7 +129,7 @@ static ACTIVE_WORKSPACE: Lazy<RwLock<ActiveWorkspace>> =
 /// visible row in the Event Log rather than an invisible reason its contents
 /// changed.
 pub(crate) fn publish_active_workspace(workspace_dir: &Path) {
-    let announce = match ACTIVE_WORKSPACE.write() {
+    let transition = match ACTIVE_WORKSPACE.write() {
         Ok(mut guard) => guard.publish(workspace_dir),
         Err(error) => {
             log::warn!("{LOG_PREFIX} active workspace slot poisoned: {error}");
@@ -104,20 +137,72 @@ pub(crate) fn publish_active_workspace(workspace_dir: &Path) {
         }
     };
 
-    if !announce {
+    let Some(transition) = transition else {
         return;
+    };
+
+    // Re-checked after the lock was dropped and before the emit: another
+    // resolver may have committed a newer workspace in between, in which case
+    // it has already announced the right answer and this one is stale.
+    match ACTIVE_WORKSPACE.read() {
+        Ok(guard) if !guard.is_current(transition.revision) => {
+            log::debug!(
+                "{LOG_PREFIX} dropping a superseded announcement for {} (revision {})",
+                transition.workspace_dir.display(),
+                transition.revision
+            );
+            return;
+        }
+        Ok(_) => {}
+        Err(error) => {
+            log::warn!("{LOG_PREFIX} active workspace slot poisoned: {error}");
+            return;
+        }
     }
 
     log::info!(
-        "{LOG_PREFIX} active workspace is now {}",
-        workspace_dir.display()
+        "{LOG_PREFIX} active workspace is now {} (revision {})",
+        transition.workspace_dir.display(),
+        transition.revision
     );
     // Published with no lock held: a subscriber is free to reach back into
     // the config layer, and holding the slot across the publish would make
     // that a deadlock.
     crate::core::bus::BUS.publish(crate::core::events::DomainEvent::ActiveWorkspaceChanged {
-        workspace_dir: workspace_dir.to_path_buf(),
+        workspace_dir: transition.workspace_dir,
+        revision: transition.revision,
     });
+}
+
+/// The revision of the newest announced workspace transition.
+///
+/// Goes on the wire beside the handle so a client can tell a stale delivery
+/// from a current one: the connect-time snapshot and the switch broadcast
+/// travel on separate tasks, so a snapshot resolved before a switch can
+/// arrive after it.
+pub fn active_workspace_revision() -> u64 {
+    ACTIVE_WORKSPACE
+        .read()
+        .map(|guard| guard.revision)
+        .unwrap_or(0)
+}
+
+/// Write-through hook for [`Config::load_or_init`](crate::openhuman::config::Config).
+///
+/// That is the process's real load path and has ~80 direct callers, so it is
+/// the earliest and most frequent moment the answer is known — which is what
+/// keeps the cache fresh enough for the Event Log to stamp events without
+/// resolving anything itself.
+///
+/// Deliberately hung off `load_or_init` rather than
+/// `load_or_init_with_env_lookup`: that one takes an injected `EnvLookup` so
+/// tests can drive the `OPENHUMAN_WORKSPACE` branch against a fixture, and
+/// publishing from there would make one test's temp directory the whole
+/// binary's idea of the active workspace.
+///
+/// Shaped for `Result::inspect`, which is why it takes `&Config`.
+pub(crate) fn publish_loaded_workspace(config: &crate::openhuman::config::Config) {
+    publish_active_workspace(&config.workspace_dir);
 }
 
 /// The active workspace as last resolved, or `None` when a marker has been
