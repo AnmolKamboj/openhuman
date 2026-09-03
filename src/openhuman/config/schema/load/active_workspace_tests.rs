@@ -31,7 +31,7 @@ fn starts_unknown_rather_than_guessing() {
 fn a_first_publish_is_readable_and_announces() {
     let mut state = ActiveWorkspace::default();
     assert!(
-        state.publish(&ws("a")).is_some(),
+        state.publish(&ws("a")).transition.is_some(),
         "the first resolve is news"
     );
     assert_eq!(state.current, Some(ws("a")));
@@ -42,7 +42,7 @@ fn a_later_publish_replaces_the_previous_workspace_and_announces() {
     let mut state = ActiveWorkspace::default();
     state.publish(&ws("a"));
     assert!(
-        state.publish(&ws("b")).is_some(),
+        state.publish(&ws("b")).transition.is_some(),
         "a different workspace is a switch"
     );
     assert_eq!(state.current, Some(ws("b")));
@@ -54,9 +54,9 @@ fn a_later_publish_replaces_the_previous_workspace_and_announces() {
 #[test]
 fn republishing_the_same_workspace_announces_once() {
     let mut state = ActiveWorkspace::default();
-    assert!(state.publish(&ws("a")).is_some());
-    assert!(state.publish(&ws("a")).is_none());
-    assert!(state.publish(&ws("a")).is_none());
+    assert!(state.publish(&ws("a")).transition.is_some());
+    assert!(state.publish(&ws("a")).transition.is_none());
+    assert!(state.publish(&ws("a")).transition.is_none());
     assert_eq!(state.current, Some(ws("a")));
 }
 
@@ -92,7 +92,7 @@ fn re_resolving_the_same_workspace_after_invalidation_does_not_re_announce() {
     state.invalidate();
 
     assert!(
-        state.publish(&ws("a")).is_none(),
+        state.publish(&ws("a")).transition.is_none(),
         "the workspace never actually changed"
     );
     assert_eq!(state.current, Some(ws("a")));
@@ -107,7 +107,7 @@ fn a_different_workspace_after_invalidation_is_announced() {
     state.publish(&ws("a"));
     state.invalidate();
 
-    assert!(state.publish(&ws("b")).is_some());
+    assert!(state.publish(&ws("b")).transition.is_some());
     assert_eq!(state.current, Some(ws("b")));
 }
 
@@ -142,8 +142,14 @@ fn the_global_publish_survives_an_uninitialised_bus() {
 fn a_superseded_transition_is_not_announced() {
     let mut state = ActiveWorkspace::default();
 
-    let first = state.publish(&ws("a")).expect("first resolve announces");
-    let second = state.publish(&ws("b")).expect("a switch announces");
+    let first = state
+        .publish(&ws("a"))
+        .transition
+        .expect("first resolve announces");
+    let second = state
+        .publish(&ws("b"))
+        .transition
+        .expect("a switch announces");
 
     // B committed after A, so only B may reach the bus.
     assert!(!state.is_current(first.revision), "A's emit is superseded");
@@ -157,12 +163,12 @@ fn a_superseded_transition_is_not_announced() {
 fn revisions_increase_only_for_announced_transitions() {
     let mut state = ActiveWorkspace::default();
 
-    let first = state.publish(&ws("a")).expect("announces");
+    let first = state.publish(&ws("a")).transition.expect("announces");
     assert!(
-        state.publish(&ws("a")).is_none(),
+        state.publish(&ws("a")).transition.is_none(),
         "same workspace is silent"
     );
-    let second = state.publish(&ws("b")).expect("announces");
+    let second = state.publish(&ws("b")).transition.expect("announces");
 
     assert!(
         second.revision > first.revision,
@@ -180,8 +186,34 @@ fn revisions_increase_only_for_announced_transitions() {
 #[test]
 fn invalidation_does_not_consume_a_revision() {
     let mut state = ActiveWorkspace::default();
-    let announced = state.publish(&ws("a")).expect("announces");
+    let announced = state.publish(&ws("a")).transition.expect("announces");
     state.invalidate();
     assert_eq!(state.revision, announced.revision);
     assert!(state.is_current(announced.revision));
+}
+
+/// The revision a resolve reports must be the one *its* workspace is current
+/// under — including when the resolve is not a transition. A consumer sending
+/// the pair to a client takes both from this one call; if a silent republish
+/// reported a stale or zero revision, the connect-time seed would rank below
+/// every switch and be discarded.
+#[test]
+fn a_resolve_reports_the_revision_of_the_workspace_it_resolved() {
+    let mut state = ActiveWorkspace::default();
+
+    let first = state.publish(&ws("a"));
+    let again = state.publish(&ws("a"));
+    assert!(again.transition.is_none(), "not a transition");
+    assert_eq!(
+        again.revision, first.revision,
+        "a silent republish reports the revision it was announced under"
+    );
+
+    let second = state.publish(&ws("b"));
+    assert!(second.revision > first.revision);
+
+    state.invalidate();
+    let after = state.publish(&ws("b"));
+    assert!(after.transition.is_none());
+    assert_eq!(after.revision, second.revision);
 }

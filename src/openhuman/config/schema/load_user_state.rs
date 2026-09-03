@@ -199,13 +199,14 @@ pub fn write_active_user_id(default_openhuman_dir: &Path, user_id: &str) -> Resu
         );
     }
 
-    sync_directory(default_openhuman_dir)?;
     // Again, now that the marker actually says the new user. The pre-write
     // clear is not enough on its own: a resolver racing this call can read the
     // *old* marker after that clear and refill the cache with the workspace
     // being switched away from, which would then read as current after a
-    // successful switch.
+    // successful switch. Before the directory sync, not after: the rename is
+    // what changed the answer, and a sync failure must not skip this.
     crate::openhuman::config::schema::invalidate_active_workspace();
+    sync_directory(default_openhuman_dir)?;
     tracing::debug!(user_id = %user_id, path = %path.display(), "active user written");
     Ok(())
 }

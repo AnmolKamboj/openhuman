@@ -246,12 +246,13 @@ pub(crate) async fn persist_active_workspace_config_dir(config_dir: &Path) -> Re
         );
     }
 
-    super::sync_directory(&default_config_dir).await?;
     // Again, now that the marker on disk actually says the new workspace. The
     // pre-write clear alone leaves a window in which a racing resolver reads
     // the *old* marker and refills the cache with the workspace being switched
-    // away from.
+    // away from. Before the directory sync, not after: the rename is what
+    // changed the answer, and a sync failure must not skip this.
     super::active_workspace::invalidate_active_workspace();
+    super::sync_directory(&default_config_dir).await?;
     Ok(())
 }
 
@@ -335,7 +336,15 @@ pub(crate) async fn resolve_runtime_config_dirs(
 /// about a workspace either of them has seen, and the embedder arm is
 /// included deliberately: an embedding host's chosen workspace is the
 /// authoritative answer for its process too.
-pub async fn active_workspace_dir() -> Result<PathBuf> {
+///
+/// The revision is the one the resolved workspace is current under, taken
+/// from the same lock acquisition that committed it. Anything sending the
+/// pair to a client — the connect-time seed, the notification stamp — must
+/// take it from here rather than resolving the workspace and reading the
+/// revision separately: a switch between those two reads pairs workspace A
+/// with B's revision, and a receiver comparing revisions then ranks the stale
+/// A above the B it should yield to.
+pub async fn active_workspace_snapshot() -> Result<(PathBuf, u64)> {
     // An embedding host that supplied its own `Config` is authoritative, and
     // `config::ops::load_config_with_timeout` already short-circuits on it for
     // exactly this reason. Resolving from disk/env here instead would answer
@@ -346,8 +355,8 @@ pub async fn active_workspace_dir() -> Result<PathBuf> {
     // with only a `debug!` line to say so. See AGENTS.md, "CoreBuilder::config
     // alone configures boot and nothing else".
     if let Some(config) = crate::core::runtime::context::CoreContext::current_embedder_config() {
-        super::active_workspace::publish_active_workspace(&config.workspace_dir);
-        return Ok(config.workspace_dir);
+        let revision = super::active_workspace::publish_active_workspace(&config.workspace_dir);
+        return Ok((config.workspace_dir, revision));
     }
     let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
     let (_, workspace_dir, source) =
@@ -356,8 +365,14 @@ pub async fn active_workspace_dir() -> Result<PathBuf> {
         source = source.as_str(),
         "active workspace resolved for a workspace-bound decision"
     );
-    super::active_workspace::publish_active_workspace(&workspace_dir);
-    Ok(workspace_dir)
+    let revision = super::active_workspace::publish_active_workspace(&workspace_dir);
+    Ok((workspace_dir, revision))
+}
+
+/// [`active_workspace_snapshot`] without the revision, for callers that only
+/// need to know which workspace is active.
+pub async fn active_workspace_dir() -> Result<PathBuf> {
+    active_workspace_snapshot().await.map(|(dir, _)| dir)
 }
 
 /// Env-injectable variant of [`resolve_runtime_config_dirs`]. Accepts any

@@ -87,20 +87,37 @@ struct Transition {
     revision: u64,
 }
 
+/// What a resolve left behind.
+struct Published {
+    /// Revision of the resolved workspace: freshly minted if this resolve was
+    /// a transition, otherwise the one that workspace was announced under.
+    /// Taken under the same lock as the commit, so it cannot belong to a
+    /// different workspace than the one resolved — which is what a consumer
+    /// sending the pair over the wire relies on.
+    revision: u64,
+    /// The transition to announce, if this resolve was one.
+    transition: Option<Transition>,
+}
+
 impl ActiveWorkspace {
-    /// Record `workspace_dir` as current. Returns the transition to announce,
-    /// or `None` when the bus has already been told about this workspace.
-    fn publish(&mut self, workspace_dir: &Path) -> Option<Transition> {
+    /// Record `workspace_dir` as current.
+    fn publish(&mut self, workspace_dir: &Path) -> Published {
         self.current = Some(workspace_dir.to_path_buf());
         if self.announced.as_deref() == Some(workspace_dir) {
-            return None;
+            return Published {
+                revision: self.revision,
+                transition: None,
+            };
         }
         self.announced = Some(workspace_dir.to_path_buf());
         self.revision += 1;
-        Some(Transition {
-            workspace_dir: workspace_dir.to_path_buf(),
+        Published {
             revision: self.revision,
-        })
+            transition: Some(Transition {
+                workspace_dir: workspace_dir.to_path_buf(),
+                revision: self.revision,
+            }),
+        }
     }
 
     /// Whether `revision` is still the newest announced transition. A
@@ -120,7 +137,8 @@ impl ActiveWorkspace {
 static ACTIVE_WORKSPACE: Lazy<RwLock<ActiveWorkspace>> =
     Lazy::new(|| RwLock::new(ActiveWorkspace::default()));
 
-/// Record `workspace_dir` as the workspace this process is serving.
+/// Record `workspace_dir` as the workspace this process is serving, and
+/// return the revision it is current under.
 ///
 /// Called after a resolution that used the real process environment.
 /// Publishes [`DomainEvent::ActiveWorkspaceChanged`](crate::core::events::DomainEvent)
@@ -128,17 +146,23 @@ static ACTIVE_WORKSPACE: Lazy<RwLock<ActiveWorkspace>> =
 /// about a switch without polling — and so the switch itself becomes a
 /// visible row in the Event Log rather than an invisible reason its contents
 /// changed.
-pub(crate) fn publish_active_workspace(workspace_dir: &Path) {
-    let transition = match ACTIVE_WORKSPACE.write() {
+///
+/// The revision comes back from the same lock acquisition that committed the
+/// workspace. A caller that needs the pair must take it from here rather than
+/// reading the workspace and the revision separately: a switch between two
+/// reads pairs workspace A with B's revision, and a receiver comparing
+/// revisions then ranks a stale A above the B it should yield to.
+pub(crate) fn publish_active_workspace(workspace_dir: &Path) -> u64 {
+    let published = match ACTIVE_WORKSPACE.write() {
         Ok(mut guard) => guard.publish(workspace_dir),
         Err(error) => {
             log::warn!("{LOG_PREFIX} active workspace slot poisoned: {error}");
-            return;
+            return 0;
         }
     };
 
-    let Some(transition) = transition else {
-        return;
+    let Some(transition) = published.transition else {
+        return published.revision;
     };
 
     // Re-checked after the lock was dropped and before the emit: another
@@ -151,12 +175,12 @@ pub(crate) fn publish_active_workspace(workspace_dir: &Path) {
                 transition.workspace_dir.display(),
                 transition.revision
             );
-            return;
+            return published.revision;
         }
         Ok(_) => {}
         Err(error) => {
             log::warn!("{LOG_PREFIX} active workspace slot poisoned: {error}");
-            return;
+            return published.revision;
         }
     }
 
@@ -172,19 +196,7 @@ pub(crate) fn publish_active_workspace(workspace_dir: &Path) {
         workspace_dir: transition.workspace_dir,
         revision: transition.revision,
     });
-}
-
-/// The revision of the newest announced workspace transition.
-///
-/// Goes on the wire beside the handle so a client can tell a stale delivery
-/// from a current one: the connect-time snapshot and the switch broadcast
-/// travel on separate tasks, so a snapshot resolved before a switch can
-/// arrive after it.
-pub fn active_workspace_revision() -> u64 {
-    ACTIVE_WORKSPACE
-        .read()
-        .map(|guard| guard.revision)
-        .unwrap_or(0)
+    published.revision
 }
 
 /// Write-through hook for [`Config::load_or_init`](crate::openhuman::config::Config).

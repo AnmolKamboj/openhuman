@@ -514,18 +514,16 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
                 let socket = socket.clone();
                 let client_id = client_id.clone();
                 tokio::spawn(async move {
-                    match crate::openhuman::config::active_workspace_dir().await {
-                        Ok(dir) => {
+                    match crate::openhuman::config::active_workspace_snapshot().await {
+                        Ok((dir, revision)) => {
                             let handle = crate::openhuman::config::workspace_handle(&dir);
-                            // Read after the resolve, so the revision belongs
-                            // to the workspace being sent. This task and the
-                            // switch bridge are separate, so a snapshot
-                            // resolved before a switch can arrive after its
-                            // broadcast; the client keeps the highest
-                            // revision it has seen and discards this one if
-                            // it lost that race.
-                            let revision =
-                                crate::openhuman::config::active_workspace_revision();
+                            // One snapshot, not two reads: resolved
+                            // separately, a switch between them would pair
+                            // this workspace with the *next* one's revision,
+                            // and the client would rank a stale seed above
+                            // the switch it lost to. This task and the switch
+                            // bridge are separate, so that race is real; the
+                            // client keeps the highest revision it has seen.
                             log::debug!(
                                 "[socketio] emit event=workspace_changed to_client={client_id} workspace={handle} revision={revision}"
                             );

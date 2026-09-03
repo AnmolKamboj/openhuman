@@ -133,12 +133,17 @@ impl NotificationBridgeSubscriber {
     /// broadcast as best effort. Announcing on an unknown workspace would
     /// instead put another account's server name and transport error in front
     /// of whoever is connected, and there is no undoing that.
-    async fn should_announce(&self, event: &DomainEvent) -> bool {
+    async fn should_announce(&self, event: &DomainEvent) -> Announce {
         let Some(event_workspace) = workspace_of(event) else {
-            return true;
+            return Announce::Unbound;
         };
-        let active = match crate::openhuman::config::active_workspace_dir().await {
-            Ok(active) => Some(active),
+        // One snapshot, so the revision stamped on the notification is the
+        // one the comparison below was made against. Resolved separately, a
+        // switch in between would stamp an event from workspace A with B's
+        // newer revision — and a client that had not yet seen the switch
+        // would read that as "I am behind" and accept the stale alert.
+        let snapshot = match crate::openhuman::config::active_workspace_snapshot().await {
+            Ok(snapshot) => Some(snapshot),
             Err(error) => {
                 log::warn!(
                     "{LOG_PREFIX} could not resolve the active workspace ({error}); not announcing {} — it is persisted and will show in the notification centre",
@@ -147,17 +152,38 @@ impl NotificationBridgeSubscriber {
                 None
             }
         };
-        let announces = announces_to(Some(event_workspace), active.as_deref());
+        let active = snapshot.as_ref().map(|(dir, _)| dir.as_path());
+        let announces = announces_to(Some(event_workspace), active);
         if !announces && active.is_some() {
             log::debug!(
                 "{LOG_PREFIX} not announcing {} from an inactive workspace event_ws={} active_ws={}",
                 event.variant_name(),
                 event_workspace.display(),
-                active.as_deref().unwrap_or(std::path::Path::new("?")).display()
+                active.unwrap_or(std::path::Path::new("?")).display()
             );
         }
-        announces
+        match (announces, snapshot) {
+            (true, Some((_, revision))) => Announce::Active(revision),
+            _ => Announce::Suppressed,
+        }
     }
+}
+
+/// The announcement gate's verdict.
+///
+/// Carries the revision the gate compared against so the caller can stamp
+/// exactly that on the payload — a receiver whose own revision is older then
+/// knows it is simply behind on the switch broadcast, rather than looking at
+/// a stale notification (#5966).
+enum Announce {
+    /// Not workspace-bound: announced everywhere, nothing to stamp.
+    Unbound,
+    /// Bound to the active workspace: announced, stamped with the revision
+    /// that workspace was current under when the gate checked.
+    Active(u64),
+    /// Bound to a workspace that is not active, or the active workspace could
+    /// not be resolved (fail closed — see `should_announce`).
+    Suppressed,
 }
 
 /// The announcement rule, as a function of its two inputs.
@@ -484,18 +510,16 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
             }
             // Persisted above under the workspace it belongs to; announced
             // only if that workspace is the one the user is in (#5931).
-            if self.should_announce(event).await {
-                // Stamped here, after the gate passed and before the send, so
-                // the revision names the transition the gate actually checked
-                // against. A receiver whose own revision is older knows it is
-                // simply behind — the switch broadcast has not reached it yet
-                // — rather than looking at a stale notification (#5966).
-                if notification.workspace.is_some() {
-                    notification.workspace_revision =
-                        Some(crate::openhuman::config::active_workspace_revision());
+            match self.should_announce(event).await {
+                Announce::Unbound => {
+                    publish_core_notification(notification);
                 }
-                publish_core_notification(notification);
-            }
+                Announce::Active(revision) => {
+                    notification.workspace_revision = Some(revision);
+                    publish_core_notification(notification);
+                }
+                Announce::Suppressed => {}
+            };
         }
     }
 }
