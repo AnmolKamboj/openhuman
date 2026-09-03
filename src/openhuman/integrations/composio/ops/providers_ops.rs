@@ -503,6 +503,56 @@ pub(crate) async fn run_sync_pass(
         .await
         .map_err(|error| format!("ingesting {toolkit} records failed: {error}"))?;
 
+    // openhuman#6007: ask for the summary tree to be sealed once this pass has
+    // written something.
+    //
+    // Tree ingest writes its L0 chunk rows synchronously, but the Memory Tree
+    // graph and tree-backed recall read *sealed* summaries. A buffer seals on
+    // the 50k-token budget or, failing that, on the seven-day
+    // `DEFAULT_FLUSH_AGE_SECS` force-flush — and nothing on the sync path ever
+    // asked for one. So an incremental run of a handful of messages stayed
+    // under the budget and its memories were invisible for up to a week, while
+    // the source row reported them ingested the entire time.
+    //
+    // `flush_pending` enqueues a flush with `max_age_secs = 0`, so every buffer
+    // is considered rather than only the stale ones. The engine dedupes it on
+    // `date + hour/3`, which is what makes asking once per page affordable:
+    // after the first writing page the rest answer `enqueued: false` and ride
+    // the job already scheduled. That three-hour window is also the residual
+    // latency ceiling, and it is the engine's dedupe key — not something a host
+    // can shorten from here.
+    //
+    // Here rather than at the callers: `run_sync_pass` has three of them (the
+    // budgeted loop in this file, the Slack trigger RPC, and the sync bus), and
+    // one rule spread across call sites is exactly what caused #6007 — two
+    // would have got the flush and the third would have been forgotten.
+    //
+    // Best-effort by construction. The records are committed; an unsealed
+    // buffer is a delay, not a loss, and the scheduled flush still sits behind
+    // it. Nothing here may turn a successful sync into a failed one.
+    if outcome.written > 0 {
+        match binding.provider().as_maintenance() {
+            Some(maintenance) => match maintenance.flush_pending().await {
+                Ok(flush) => tracing::debug!(
+                    toolkit = %toolkit,
+                    enqueued = flush.enqueued,
+                    stale_buffers = flush.stale_buffers,
+                    "[composio] summary-tree flush requested after sync pass"
+                ),
+                Err(error) => tracing::warn!(
+                    toolkit = %toolkit,
+                    error = %error,
+                    "[composio] summary-tree flush could not be enqueued; ingested \
+                     records stay unsealed until the scheduled flush reaches them"
+                ),
+            },
+            None => tracing::debug!(
+                driver = %binding.driver_id(),
+                "[composio] bound driver serves no Maintenance; skipping the post-sync flush"
+            ),
+        }
+    }
+
     if !response.batch.complete {
         // The module keeps its own cursor, so the next call resumes where this
         // one stopped. Saying so is worth a line: a partial run that looked
