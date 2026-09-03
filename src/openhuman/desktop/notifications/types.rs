@@ -43,6 +43,28 @@ pub struct CoreNotificationEvent {
     /// Backward-compatible: old events without this field deserialize to `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actions: Option<Vec<CoreNotificationAction>>,
+    /// Opaque handle for the workspace this notification belongs to, when it
+    /// belongs to one (#5966).
+    ///
+    /// The publish-time gate in `bus::should_announce` already refuses to
+    /// broadcast a notification from a workspace the user has switched away
+    /// from, but that decision and the broadcast are not one atomic step:
+    /// resolving the active workspace and sending are separate, so a switch
+    /// in between can still let one through. Carrying the identity turns a
+    /// boolean taken at an instant into something the receiver can re-check
+    /// whenever it renders, which is what actually closes the window.
+    ///
+    /// A *handle*, never `workspace_dir` itself — the path is under the
+    /// user's home directory and this payload reaches every connected client.
+    /// See [`workspace_handle`](crate::openhuman::config::workspace_handle).
+    ///
+    /// `None` means the notification is not workspace-bound (cron, webhook,
+    /// sub-agent, rejected API key) and applies wherever it lands. Also
+    /// `None` for rows persisted before this field existed, which is why it
+    /// is `default` — a receiver must treat absence as "not bound", not as a
+    /// mismatch, or upgrading would silently hide every stored notification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
 }
 
 /// A single action button attached to a notification.

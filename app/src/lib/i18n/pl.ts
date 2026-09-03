@@ -5001,6 +5001,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Dziennik zdarzeń',
   'settings.developerMenu.eventLog.desc':
     'Kolorowany strumień na żywo wszystkich zdarzeń agenta, narzędzi i systemu',
+  'settings.developerMenu.eventLog.workspaceScope': 'Zakres przestrzeni roboczej',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Ta przestrzeń robocza',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Wszystkie przestrzenie robocze',
   'settings.developerMenu.eventLog.allTypes': 'Wszystkie typy',
   'settings.developerMenu.eventLog.filterAgent': 'Filtruj...',
   'settings.developerMenu.eventLog.download': 'Pobierz',

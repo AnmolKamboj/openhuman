@@ -5055,6 +5055,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Ereignisprotokoll',
   'settings.developerMenu.eventLog.desc':
     'Farbcodierter Live-Stream aller Agenten-, Tool- und Systemereignisse',
+  'settings.developerMenu.eventLog.workspaceScope': 'Arbeitsbereich',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Dieser Arbeitsbereich',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Alle Arbeitsbereiche',
   'settings.developerMenu.eventLog.allTypes': 'Alle Typen',
   'settings.developerMenu.eventLog.filterAgent': 'Filter&#xA0;…',
   'settings.developerMenu.eventLog.download': 'Herunterladen',

@@ -4867,6 +4867,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': '이벤트 로그',
   'settings.developerMenu.eventLog.desc':
     '모든 에이전트, 도구, 시스템 이벤트를 색상으로 구분해 실시간으로 표시합니다.',
+  'settings.developerMenu.eventLog.workspaceScope': '워크스페이스 범위',
+  'settings.developerMenu.eventLog.workspaceScopeActive': '현재 워크스페이스',
+  'settings.developerMenu.eventLog.workspaceScopeAll': '모든 워크스페이스',
   'settings.developerMenu.eventLog.allTypes': '모든 유형',
   'settings.developerMenu.eventLog.filterAgent': '필터...',
   'settings.developerMenu.eventLog.download': '다운로드',

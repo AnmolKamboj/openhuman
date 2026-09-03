@@ -331,6 +331,7 @@ fn publish_flow_gate_notification(
                 payload: Some(base_payload(ApprovalDecision::Deny)),
             },
         ]),
+        workspace: None,
     });
 }
 

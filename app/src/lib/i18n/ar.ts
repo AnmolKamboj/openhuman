@@ -4810,6 +4810,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'الحدث',
   'settings.developerMenu.eventLog.desc':
     'تيار ملون مباشر لجميع العناصر والأدوات والأحداث النظامية',
+  'settings.developerMenu.eventLog.workspaceScope': 'نطاق مساحة العمل',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'مساحة العمل الحالية',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'كل مساحات العمل',
   'settings.developerMenu.eventLog.allTypes': 'جميع الأنواع',
   'settings.developerMenu.eventLog.filterAgent': '(فيلتر)',
   'settings.developerMenu.eventLog.download': 'تحميل',

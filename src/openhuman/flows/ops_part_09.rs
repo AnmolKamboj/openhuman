@@ -537,6 +537,7 @@ fn notify_pending_approval(flow: &Flow, thread_id: &str, pending_approvals: &[St
             label: "Review".to_string(),
             payload: Some(action_payload),
         }]),
+        workspace: None,
     });
 }
 

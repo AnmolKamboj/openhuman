@@ -185,18 +185,16 @@ fn announces_to(
 /// The workspace an event belongs to, for the variants that name one.
 ///
 /// `None` means the event is not bound to a workspace and any subscriber may
-/// act on it. Only the MCP supervisor variants are bound today, because they
-/// are the only ones this bridge handles that one process produces for more
-/// than one workspace (#5931).
+/// act on it.
+///
+/// This used to list the MCP supervisor variants here, which was correct for
+/// what the bridge handled at the time but wrong as a general rule: the
+/// channel and artifact families carry the same field and were not matched,
+/// so a bridge that grew an arm for one of them would have gated it against
+/// nothing. The list now lives on the event itself (#5966), where a new
+/// workspace-bound variant is one arm to add rather than several to find.
 fn workspace_of(event: &DomainEvent) -> Option<&std::path::Path> {
-    match event {
-        DomainEvent::McpServerProbeTimedOut { workspace_dir, .. }
-        | DomainEvent::McpServerTransportDropped { workspace_dir, .. }
-        | DomainEvent::McpServerReconnected { workspace_dir, .. }
-        | DomainEvent::McpServerReconnectFailed { workspace_dir, .. }
-        | DomainEvent::McpServerParked { workspace_dir, .. } => Some(workspace_dir.as_path()),
-        _ => None,
-    }
+    event.workspace_dir()
 }
 
 fn now_ms() -> u64 {
@@ -208,7 +206,26 @@ fn now_ms() -> u64 {
 
 /// Pure translation function — kept free so unit tests can drive it
 /// without spinning up tokio or the broadcast channel.
+///
+/// The workspace handle is stamped here rather than inside [`translate`],
+/// once, from the event's own
+/// [`workspace_dir`](DomainEvent::workspace_dir). Letting each arm decide
+/// would reproduce the shape of the bug #5966 exists to fix: the arms that
+/// happened to be written with a workspace in mind would carry the identity
+/// and the rest would silently not, and which is which would depend on the
+/// order the arms were added.
 pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEvent> {
+    let mut notification = translate(event)?;
+    notification.workspace = event
+        .workspace_dir()
+        .map(crate::openhuman::config::workspace_handle);
+    Some(notification)
+}
+
+/// The per-variant translation. Every arm leaves `workspace: None`; the
+/// identity is applied uniformly by [`event_to_notification`], which is the
+/// only caller.
+fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
     let ts = now_ms();
     match event {
         DomainEvent::CronJobCompleted {
@@ -229,6 +246,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/settings/cron-jobs".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         DomainEvent::WebhookProcessed {
             skill_id,
@@ -256,6 +274,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
                 deep_link: Some("/settings/webhooks-triggers".into()),
                 timestamp_ms: ts,
                 actions: None,
+                workspace: None,
             })
         }
         DomainEvent::SubagentCompleted {
@@ -272,6 +291,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/chat".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         DomainEvent::SubagentFailed {
             parent_session,
@@ -289,6 +309,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/chat".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         DomainEvent::NotificationTriaged {
             id,
@@ -316,6 +337,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
                 deep_link: Some("/notifications".into()),
                 timestamp_ms: ts,
                 actions: None,
+                workspace: None,
             })
         }
         DomainEvent::ProviderApiKeyRejected { provider, message } => Some(CoreNotificationEvent {
@@ -333,6 +355,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=llm".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         // The MCP reconnect supervisor's verdicts (#5931), published by
         // `mcp::registry::supervisor_events`. Only the cases a user can act on
@@ -369,6 +392,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         DomainEvent::McpServerReconnected {
             server_id,
@@ -387,6 +411,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         DomainEvent::McpServerParked {
             server_id,
@@ -405,6 +430,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
             deep_link: Some("/connections?tab=mcp".into()),
             timestamp_ms: ts,
             actions: None,
+            workspace: None,
         }),
         _ => None,
     }

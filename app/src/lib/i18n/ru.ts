@@ -4972,6 +4972,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Журнал событий',
   'settings.developerMenu.eventLog.desc':
     'Живой поток с цветовой кодировкой обо всех событиях агента, инструмента и системы.',
+  'settings.developerMenu.eventLog.workspaceScope': 'Область рабочего пространства',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Текущее рабочее пространство',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Все рабочие пространства',
   'settings.developerMenu.eventLog.allTypes': 'Все типы',
   'settings.developerMenu.eventLog.filterAgent': 'Фильтр...',
   'settings.developerMenu.eventLog.download': 'Скачать',
