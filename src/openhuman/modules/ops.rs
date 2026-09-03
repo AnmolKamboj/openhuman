@@ -298,7 +298,11 @@ fn load_cached(
 
     let mut last_error = String::new();
     for asset in assets {
-        let cache_dir = artifact_dir(install_root, record, asset.host_key);
+        let Some(cache_dir) = artifact_dir(install_root, record, asset.host_key) else {
+            last_error =
+                "the module's cache path could not be built from its registry entry".to_string();
+            continue;
+        };
         let release = tinybus::module::CachedRelease {
             release_url: record.release_url,
             asset_name: asset.archive,
@@ -338,12 +342,51 @@ fn load_cached(
     ))
 }
 
-/// Where one artifact of one module version is cached.
-fn artifact_dir(install_root: &Path, record: &ModuleRecord, host_key: &str) -> PathBuf {
-    install_root
-        .join(record.id)
-        .join(record.version)
-        .join(host_key)
+/// Whether `component` is safe to use as one directory name.
+///
+/// The three values that build a cache path — a module id, its version, and a
+/// host key — are compiled-in `const` data today, so nothing reaches this with
+/// a separator in it. It is checked anyway because of what sits at the end of
+/// the path: [`prune_stale_versions`] calls `remove_dir_all` on what these
+/// build. A registry edit or a future value that carried `..` or a separator
+/// would turn a cache tidy-up into deleting somewhere else entirely, and a
+/// rule that has to hold for a delete is worth stating rather than inferring
+/// from where the data happens to come from today.
+fn is_safe_path_component(component: &str) -> bool {
+    !component.is_empty()
+        && component != "."
+        && component != ".."
+        && !component.contains('/')
+        && !component.contains('\\')
+        && !component.contains('\0')
+        // A leading dot would collide with the `.staging-*` directories a
+        // concurrent download is filling.
+        && !component.starts_with('.')
+}
+
+/// Where one artifact of one module version is cached, when all three
+/// components are usable as directory names.
+///
+/// `None` rather than a sanitised path: a registry entry that cannot name a
+/// directory is a build-time mistake, and quietly rewriting it would hide the
+/// mistake behind a cache that silently never hits.
+fn artifact_dir(install_root: &Path, record: &ModuleRecord, host_key: &str) -> Option<PathBuf> {
+    for component in [record.id, record.version, host_key] {
+        if !is_safe_path_component(component) {
+            log::error!(
+                "[modules] '{}' has a component that cannot name a directory; refusing to build a \
+                 cache path from it",
+                record.id
+            );
+            return None;
+        }
+    }
+    Some(
+        install_root
+            .join(record.id)
+            .join(record.version)
+            .join(host_key),
+    )
 }
 
 /// Remove cached versions of `record` other than the pinned one.
@@ -353,6 +396,16 @@ fn artifact_dir(install_root: &Path, record: &ModuleRecord, host_key: &str) -> P
 /// are left alone — a concurrent process may be filling one — and every
 /// removal is logged, because a cache that empties itself is worth noticing.
 fn prune_stale_versions(install_root: &Path, record: &ModuleRecord) {
+    // Both sides of the comparison below have to be real directory names, or
+    // "everything that is not the pinned version" is not a set this function
+    // should be handing to `remove_dir_all`.
+    if !is_safe_path_component(record.id) || !is_safe_path_component(record.version) {
+        log::error!(
+            "[modules] refusing to prune '{}': its id or version cannot name a directory",
+            record.id
+        );
+        return;
+    }
     let module_root = install_root.join(record.id);
     let Ok(entries) = std::fs::read_dir(&module_root) else {
         return;
@@ -361,7 +414,10 @@ fn prune_stale_versions(install_root: &Path, record: &ModuleRecord) {
         let path = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !path.is_dir() || name == record.version || name.starts_with('.') {
+        // `read_dir` never yields `.` or `..`, and the leading-dot skip covers
+        // the staging directories; the guard is here so the delete depends on
+        // this function's own check rather than on that being remembered.
+        if !path.is_dir() || name == record.version || !is_safe_path_component(&name) {
             continue;
         }
         match std::fs::remove_dir_all(&path) {

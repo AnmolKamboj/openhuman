@@ -248,25 +248,13 @@ async fn a_read_against_a_loading_module_reports_unavailable_within_its_grace() 
     let provider = ModuleMemoryProvider::new(Arc::new(Config::default()))
         .with_loading_grace(std::time::Duration::from_millis(30));
 
-    // Loading is degraded, never down: `Down` is what rebinds the fallback.
+    // Observe first, assert last. An assertion that fired here would leave
+    // MODULE_ID parked in `Loading` for every test that runs after this one in
+    // the same process, turning one failure into a cascade of unrelated ones.
     let health = provider.health().await;
-    assert!(
-        matches!(
-            health,
-            tinymemory_api::health::MemoryHealth::Degraded { .. }
-        ),
-        "a loading module must report Degraded, got {health:?}"
-    );
-
-    // A read gives up after its grace with the retryable class, and does so
-    // promptly rather than at some caller's deadline.
     let started = std::time::Instant::now();
     let outcome = MemoryCore::get(&provider, "ns", "key").await;
-    assert!(
-        matches!(outcome, Err(MemoryError::Unavailable(_))),
-        "expected Unavailable while loading, got {outcome:?}"
-    );
-    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let elapsed = started.elapsed();
 
     table.complete(
         MODULE_ID,
@@ -274,26 +262,93 @@ async fn a_read_against_a_loading_module_reports_unavailable_within_its_grace() 
         sender,
     );
     table.reset_for_test(MODULE_ID);
+
+    // Loading is degraded, never down: `Down` is what rebinds the fallback.
+    assert!(
+        matches!(
+            health,
+            tinymemory_api::health::MemoryHealth::Degraded { .. }
+        ),
+        "a loading module must report Degraded, got {health:?}"
+    );
+    // A read gives up after its grace with the retryable class, and does so
+    // promptly rather than at some caller's deadline.
+    assert!(
+        matches!(outcome, Err(MemoryError::Unavailable(_))),
+        "expected Unavailable while loading, got {outcome:?}"
+    );
+    assert!(elapsed < std::time::Duration::from_secs(5));
 }
 
 #[test]
 fn writes_wait_for_the_module_and_reads_do_not() {
     let provider = provider();
-    for write in ["store", "import_records", "run_source_sync", "shutdown"] {
+    // Every family that mutates, one representative each. A bounded wait here
+    // does not delay the call, it discards it: none of these has a retry above
+    // it, so the archivist's turn, the autosaved message or the operator's
+    // sync would be lost rather than late.
+    for write in [
+        "store",
+        "forget",
+        "import_records",
+        "ingest_document",
+        "ingest_chat",
+        "ingest_email",
+        "ingest_coding_sessions",
+        "typed_ingest_event",
+        "insert_turn",
+        "insert_event",
+        "open_segment",
+        "set_goals",
+        "append",
+        "put_document",
+        "put_relation",
+        "put_tool_rule",
+        "upsert_facet",
+        "delete_facet",
+        "forget_source",
+        "purge_all",
+        "compact",
+        "consolidate",
+        "reembed",
+        "retry_failed",
+        "flush_pending",
+        "cascade",
+        "seal",
+        "summarise",
+        "run_source_sync",
+        "run_connection_sync",
+        "bootstrap_connection",
+        "override_scheduler_gate",
+        "shutdown",
+    ] {
         assert_eq!(
             provider.loading_grace(write),
             None,
-            "{write} must wait it out"
+            "{write} mutates, so it must wait the module out"
         );
     }
-    for read in ["get", "recall", "list", "health", "namespaces"] {
+    for read in [
+        "get",
+        "recall",
+        "list",
+        "health",
+        "namespaces",
+        "export_page",
+    ] {
         assert!(
             provider.loading_grace(read).is_some(),
             "{read} must be bounded"
         );
     }
+    // The default for anything nobody classified is to wait, so a member added
+    // upstream tomorrow cannot start silently dropping writes.
+    assert_eq!(
+        provider.loading_grace("a_member_from_a_future_contract"),
+        None,
+        "an unrecognised operation must wait rather than be treated as a read"
+    );
 }
-
 #[test]
 fn the_capability_list_matches_the_pinned_release() {
     // ARTIFACT_CAPABILITIES describes what ONE specific release of the module

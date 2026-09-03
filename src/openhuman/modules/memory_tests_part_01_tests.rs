@@ -131,3 +131,91 @@ fn scoring_is_advertised_and_has_a_host_accessor() {
         "Scoring is advertised, so the accessor must be wired"
     );
 }
+
+/// Every operation label in the client is classified, and no mutation reached
+/// the read list.
+///
+/// The first version of this classification named the *writes* and let
+/// everything else be a read, which silently bounded two dozen mutations
+/// (#6006 review). Reading the sources keeps the check honest as members are
+/// added: a new `put_*` or `ingest_*` that lands in `BOUNDED_READ_OPERATIONS`
+/// fails here rather than in the field, where the symptom is a lost write on a
+/// cold launch and nothing in the log.
+#[test]
+fn no_mutating_operation_label_is_classified_as_a_read() {
+    // Written the way the call sites are: `self.proxy("x")` directly, or the
+    // operation literal handed to one of the two dispatch macros.
+    let call_site = regex::Regex::new(
+        r#"(?:proxy\(|module_call!\(self, |module_call_slow!\(self, )"([a-z_]+)""#,
+    )
+    .expect("a valid pattern");
+
+    let mut labels: Vec<String> = Vec::new();
+    for part in 1..=4 {
+        let path = format!(
+            "{}/src/openhuman/modules/memory_part_0{part}.rs",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let source = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {path}"));
+        for captured in call_site.captures_iter(&source) {
+            labels.push(captured[1].to_string());
+        }
+    }
+    labels.sort();
+    labels.dedup();
+    assert!(
+        labels.len() > 60,
+        "the scan found only {} labels; the call-site pattern has drifted from the code",
+        labels.len()
+    );
+
+    // A label carrying one of these is a mutation by name. The read list must
+    // not contain one, whatever a future edit believes.
+    const MUTATING: &[&str] = &[
+        "store",
+        "forget",
+        "purge",
+        "delete",
+        "put_",
+        "set_",
+        "insert_",
+        "ingest",
+        "append",
+        "upsert",
+        "import",
+        "reembed",
+        "compact",
+        "consolidate",
+        "cascade",
+        "seal",
+        "flush",
+        "retry_",
+        "run_",
+        "bootstrap_",
+        "override_",
+        "shutdown",
+        "summaris",
+        "open_segment",
+    ];
+    let provider = provider();
+    for label in &labels {
+        // `store_stats` reads; `store` writes. Match the whole word for the
+        // labels that are a prefix of a legitimate read.
+        let mutates = MUTATING.iter().any(|marker| {
+            if marker.ends_with('_') {
+                label.starts_with(marker)
+            } else {
+                label == marker
+                    || label.starts_with(&format!("{marker}_"))
+                    || label.contains(marker)
+            }
+        }) && label != "store_stats";
+        if mutates {
+            assert_eq!(
+                provider.loading_grace(label),
+                None,
+                "{label} names a mutation but is classified as a bounded read"
+            );
+        }
+    }
+}
