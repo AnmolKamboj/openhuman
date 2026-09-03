@@ -178,3 +178,96 @@ fn module_config_hands_the_module_the_hosts_cloud_embedding_defaults() {
     // The user's own model still travels, just not as the cloud fallback.
     assert_eq!(sent["memory"]["embedding_model"], "nomic-embed-text:latest");
 }
+
+#[tokio::test]
+async fn a_bounded_wait_with_nothing_cached_and_downloads_off_fails_rather_than_loading() {
+    // An isolated install directory: this machine's real cache may hold the
+    // module, and a warm hit would turn the terminal refusal into a load.
+    let install = tempfile::tempdir().expect("temp install dir");
+    let mut config = offline_config();
+    config.modules.install_dir = Some(install.path().display().to_string());
+
+    // Nothing to download from, nothing cached: the resolution settles at once,
+    // so a bounded caller gets the terminal reason, never `StillLoading`.
+    let outcome = ops::ensure_loaded_within(
+        &config,
+        "tinydocs",
+        Some(std::time::Duration::from_secs(30)),
+    )
+    .await;
+    match outcome {
+        Err(ops::LoadError::Failed(reason)) => assert!(
+            reason.contains("downloads are disabled")
+                || reason.contains("not available for this platform"),
+            "unhelpful message: {reason}"
+        ),
+        other => panic!("expected a terminal failure, got {other:?}"),
+    }
+
+    // The outcome is remembered as a failure, and reported as one.
+    assert_eq!(ops::state_of("tinydocs"), ModuleState::Failed);
+    let status = list(&config)
+        .into_iter()
+        .find(|status| status.id == "tinydocs")
+        .expect("tinydocs is a registry entry");
+    assert_eq!(status.state, ModuleState::Failed);
+    assert!(status.detail.is_some());
+}
+
+#[test]
+fn each_artifact_of_a_version_has_its_own_cache_directory() {
+    let record = registry::find("tinydocs").expect("tinydocs is a registry entry");
+    let root = std::path::Path::new("/cache/modules");
+    let dir = ops::artifact_dir(root, record, "macos-26-arm64");
+    assert_eq!(
+        dir,
+        root.join("tinydocs")
+            .join(record.version)
+            .join("macos-26-arm64")
+    );
+    assert_ne!(dir, ops::artifact_dir(root, record, "macos-15-arm64"));
+}
+
+#[test]
+fn pruning_keeps_the_pinned_version_and_anything_still_being_staged() {
+    let record = registry::find("tinydocs").expect("tinydocs is a registry entry");
+    let install = tempfile::tempdir().expect("temp install dir");
+    let module_root = install.path().join(record.id);
+    let pinned = module_root.join(record.version);
+    let stale = module_root.join("0.0.1");
+    let staging = module_root.join(".staging-abc123");
+    for dir in [&pinned, &stale, &staging] {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("marker"), b"x").unwrap();
+    }
+    // A stray file beside the version directories is not a version.
+    std::fs::write(module_root.join("notes.txt"), b"x").unwrap();
+
+    ops::prune_stale_versions(install.path(), record);
+
+    assert!(pinned.join("marker").is_file(), "the pinned version stays");
+    assert!(
+        staging.join("marker").is_file(),
+        "an in-progress staging dir stays"
+    );
+    assert!(!stale.exists(), "an unpinned version is removed");
+    assert!(module_root.join("notes.txt").is_file());
+
+    // A module that was never cached has nothing to prune, and says nothing.
+    ops::prune_stale_versions(&install.path().join("never"), record);
+}
+
+#[test]
+fn a_module_nobody_asked_for_is_available_not_loading() {
+    assert_eq!(ops::state_of("never-asked"), ModuleState::Available);
+}
+
+#[test]
+fn load_errors_render_for_callers_that_cannot_wait_again() {
+    assert_eq!(
+        ops::LoadError::Failed("refused".to_string()).into_message(),
+        "refused"
+    );
+    let message = ops::LoadError::StillLoading.into_message();
+    assert!(message.contains("still loading"), "{message}");
+}

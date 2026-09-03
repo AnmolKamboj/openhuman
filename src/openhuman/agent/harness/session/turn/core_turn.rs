@@ -343,12 +343,32 @@ impl Agent {
         // cost). An unrelated message clears the similarity gate to nothing, so
         // no block is injected.
         {
-            let situational =
+            // Bounded: this is the one memory await left on the turn's
+            // critical path, and on a cold launch the memory module may still
+            // be downloading behind it. A turn without a preference block is
+            // an ordinary turn; a turn that waits minutes for one is the
+            // outage this bound exists to prevent. The citation and autosave
+            // work above is already spawned off the path.
+            const SITUATIONAL_RECALL_BUDGET: std::time::Duration =
+                std::time::Duration::from_secs(3);
+            let situational = match tokio::time::timeout(
+                SITUATIONAL_RECALL_BUDGET,
                 crate::openhuman::memory::preferences::recall_situational_preferences_on(
                     &self.memory,
                     user_message,
-                )
-                .await;
+                ),
+            )
+            .await
+            {
+                Ok(situational) => situational,
+                Err(_elapsed) => {
+                    log::warn!(
+                        "[pref_recall] situational recall exceeded {SITUATIONAL_RECALL_BUDGET:?}; \
+                         continuing without a preference block"
+                    );
+                    Vec::new()
+                }
+            };
             if !situational.is_empty() {
                 log::info!(
                     "[pref_recall] situational block injected: {} item(s)",

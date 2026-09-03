@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tinymemory_api::capabilities::{Capabilities, Capability};
 
@@ -131,11 +132,11 @@ use tinymemory_api::chunks::Chunk;
 use tinymemory_api::error::MemoryError;
 use tinymemory_api::goals::GoalsDoc;
 use tinymemory_api::health::MemoryHealth;
-use tinymemory_api::provider::operations::{
-    AnswerRequest, AnswerResponse, MemoryAnswer, MemoryConversationIngest,
-    MemoryDocumentIngest, MemoryEventIngest, MemoryLearningIngest, RawMemoryEvent,
-};
 use tinymemory_api::learning::LearningCandidate;
+use tinymemory_api::provider::operations::{
+    AnswerRequest, AnswerResponse, MemoryAnswer, MemoryConversationIngest, MemoryDocumentIngest,
+    MemoryEventIngest, MemoryLearningIngest, RawMemoryEvent,
+};
 use tinymemory_api::provider::sessions::{
     CodingSessionIngestReport, CodingSessionIngestRequest, CodingSessionSource,
 };
@@ -218,6 +219,56 @@ pub(crate) fn policy() -> Option<&'static Arc<Config>> {
     MODULES_POLICY.get()
 }
 
+/// How long a bounded memory call waits for the module before reporting it as
+/// still loading.
+///
+/// A warm launch maps the cached library in well under a second and the
+/// module's own initialisation is capped at five by tinybus, so this is
+/// comfortably past the whole happy path while staying well inside the
+/// desktop's thirty-second RPC deadline — the caller learns "loading", not
+/// "timed out".
+const MODULE_LOADING_GRACE: Duration = Duration::from_secs(8);
+
+/// Operations that keep waiting while the module loads.
+///
+/// A write that gives up is lost work: the message a chat turn autosaves, a
+/// sync an operator kicked off, the shutdown that releases queue locks. Those
+/// wait for the outcome however long a cold download takes, exactly as every
+/// call did before the wait was bounded. Reads are the other case — a page or
+/// a turn that is better served by "memory is loading" now than by the result
+/// in three minutes — and every operation not named here is treated as one.
+const UNBOUNDED_OPERATIONS: &[&str] = &[
+    "store",
+    "import_records",
+    "ingest_coding_sessions",
+    "run_source_sync",
+    "run_connection_sync",
+    "bootstrap_connection",
+    "forget",
+    "override_scheduler_gate",
+    "shutdown",
+];
+
+/// Install the host-side callbacks the module reaches for while it loads.
+///
+/// Idempotent and process-wide. Both the lazy path ([`ModuleMemoryProvider`]'s
+/// first call) and the eager path (boot) go through here, because a module
+/// admitted before these exist resolves no embedding provider and cannot be
+/// repaired without a restart.
+///
+/// # Errors
+///
+/// Returns a message when the module bus cannot start or the callbacks cannot
+/// be served on it.
+pub async fn install_host_callbacks(config: Arc<Config>) -> Result<(), String> {
+    let runtime = host::runtime()
+        .await
+        .map_err(|error| format!("the module bus is not running: {error}"))?;
+    super::memory_host::install(runtime.connection(), config)
+        .await
+        .map_err(|error| format!("the memory module host callbacks are unavailable: {error}"))
+}
+
 /// A memory driver served by the loaded `tinymemory` module.
 pub struct ModuleMemoryProvider {
     /// The id reported by [`MemoryProvider::driver_id`].
@@ -239,6 +290,10 @@ pub struct ModuleMemoryProvider {
     memory_subdir: Option<String>,
     /// Object path resolved for [`Self::memory_subdir`], once asked for.
     resolved_path: tokio::sync::OnceCell<String>,
+    /// How long a bounded call waits for the module to load — see
+    /// [`MODULE_LOADING_GRACE`]. Overridable so a test can observe the loading
+    /// state without waiting eight seconds for it.
+    loading_grace: Duration,
 }
 
 impl std::fmt::Debug for ModuleMemoryProvider {
@@ -278,6 +333,23 @@ impl ModuleMemoryProvider {
             verified: std::sync::OnceLock::new(),
             memory_subdir: None,
             resolved_path: tokio::sync::OnceCell::new(),
+            loading_grace: MODULE_LOADING_GRACE,
+        }
+    }
+
+    /// Bound how long a read waits for the module to load.
+    #[must_use]
+    pub fn with_loading_grace(mut self, grace: Duration) -> Self {
+        self.loading_grace = grace;
+        self
+    }
+
+    /// How long `operation` may wait for the module: `None` waits it out.
+    fn loading_grace(&self, operation: &str) -> Option<Duration> {
+        if UNBOUNDED_OPERATIONS.contains(&operation) {
+            None
+        } else {
+            Some(self.loading_grace)
         }
     }
 
@@ -334,20 +406,16 @@ impl ModuleMemoryProvider {
                  cannot be loaded; call modules::memory::set_modules_policy during boot"
             ))
         })?;
-        let runtime = host::runtime().await.map_err(|error| {
-            MemoryError::Other(anyhow::anyhow!("the module bus is not running: {error}"))
-        })?;
-        super::memory_host::install(runtime.connection(), Arc::clone(config))
-            .await
-            .map_err(|error| {
-                MemoryError::Other(anyhow::anyhow!(
-                    "the memory module host callbacks are unavailable: {error}"
-                ))
-            })?;
         // TinyMemory resolves its embedding provider while the native library
         // is admitted. Host callbacks must therefore exist before loading,
         // including in tests and explicit-path overrides where no boot policy
         // was available when the shared module runtime first started.
+        install_host_callbacks(Arc::clone(config))
+            .await
+            .map_err(|message| MemoryError::Other(anyhow::anyhow!(message)))?;
+        let runtime = host::runtime().await.map_err(|error| {
+            MemoryError::Other(anyhow::anyhow!("the module bus is not running: {error}"))
+        })?;
         // A load failure is terminal for the process (the loader caches it),
         // so every memory member would otherwise return the loader's raw
         // message — release URLs, digest text, "restart the app" repeated per
@@ -355,15 +423,36 @@ impl ModuleMemoryProvider {
         // user_error broadcast (once per process, metadata only) plus a
         // stable, actionable error for the caller. The raw reason goes to the
         // log, where an operator can act on it.
-        ops::ensure_loaded(config, MODULE_ID).await.map_err(|message| {
-            crate::openhuman::memory::tree::health::user_error::notice_memory_module_unavailable_once(
-                &message,
-            );
-            MemoryError::Backend(
-                "memory is unavailable: the memory module failed to load. Restart the app to                  retry; the reason is in the log."
-                    .to_string(),
-            )
-        })?;
+        //
+        // A load still in progress is different: nothing failed, the caller
+        // simply asked before the download or the initialisation finished. A
+        // read reports that as `Unavailable` — the retryable class — after its
+        // grace instead of hanging into the caller's own deadline; a write
+        // waits it out (see `UNBOUNDED_OPERATIONS`).
+        let grace = self.loading_grace(operation);
+        match ops::ensure_loaded_within(config, MODULE_ID, grace).await {
+            Ok(()) => {}
+            Err(ops::LoadError::StillLoading) => {
+                log::info!(
+                    "[modules:memory] operation={operation} module still loading after {grace:?}; \
+                     answering unavailable"
+                );
+                return Err(MemoryError::Unavailable(
+                    "memory is still starting: the memory module is loading; try again in a moment"
+                        .to_string(),
+                ));
+            }
+            Err(ops::LoadError::Failed(message)) => {
+                crate::openhuman::memory::tree::health::user_error::notice_memory_module_unavailable_once(
+                    &message,
+                );
+                return Err(MemoryError::Backend(
+                    "memory is unavailable: the memory module failed to load. Restart the app to \
+                     retry; the reason is in the log."
+                        .to_string(),
+                ));
+            }
+        }
 
         let record = registry::find(MODULE_ID)
             .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;
@@ -466,11 +555,28 @@ impl MemoryProvider for ModuleMemoryProvider {
         // An unreachable module is a *health* answer, not an error: that is the
         // question this method exists to answer, and returning `Down` is how
         // status output shows an unsupported platform or a refused artifact.
+        //
+        // A module that is still loading is *not* down. `Down` is the signal
+        // that tells the kernel to give up on this driver and rebind the
+        // fallback, and a cold launch on a slow link must not trip it; the
+        // driver is serving, just not yet. Configuration stays authoritative:
+        // a host whose modules are switched off is down whatever the
+        // process-wide table says about a load someone else started.
+        let modules_enabled = self
+            .config
+            .as_ref()
+            .or_else(|| policy())
+            .is_some_and(|config| config.modules.enabled);
+        if modules_enabled && matches!(ops::state_of(MODULE_ID), super::types::ModuleState::Loading)
+        {
+            return MemoryHealth::degraded("the memory module is loading");
+        }
         match self.proxy("health").await {
             Ok(proxy) => proxy
                 .call::<MemoryHealth>("Health", ())
                 .await
                 .unwrap_or_else(|error| MemoryHealth::down(error.to_string())),
+            Err(MemoryError::Unavailable(reason)) => MemoryHealth::degraded(reason),
             Err(error) => MemoryHealth::down(error.to_string()),
         }
     }

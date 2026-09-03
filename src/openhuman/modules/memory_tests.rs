@@ -233,6 +233,67 @@ async fn shutdown_on_an_unused_driver_is_a_no_op() {
     assert!(provider.shutdown().await.is_ok());
 }
 
+#[tokio::test]
+async fn a_read_against_a_loading_module_reports_unavailable_within_its_grace() {
+    use crate::openhuman::modules::resolution::{self, Resolution};
+    use tinymemory_api::provider::mandatory::MemoryCore;
+
+    // Plant an in-flight slot for the memory module. The table is process-wide
+    // and shared with the rest of the suite, so the slot is settled and
+    // removed before this test returns; a parallel caller sees, at worst, a
+    // brief "loading" followed by the terminal failure it would have reached
+    // anyway with downloads off.
+    let table = resolution::table();
+    let sender = table.mark_in_flight_for_test(MODULE_ID);
+    let provider = ModuleMemoryProvider::new(Arc::new(Config::default()))
+        .with_loading_grace(std::time::Duration::from_millis(30));
+
+    // Loading is degraded, never down: `Down` is what rebinds the fallback.
+    let health = provider.health().await;
+    assert!(
+        matches!(
+            health,
+            tinymemory_api::health::MemoryHealth::Degraded { .. }
+        ),
+        "a loading module must report Degraded, got {health:?}"
+    );
+
+    // A read gives up after its grace with the retryable class, and does so
+    // promptly rather than at some caller's deadline.
+    let started = std::time::Instant::now();
+    let outcome = MemoryCore::get(&provider, "ns", "key").await;
+    assert!(
+        matches!(outcome, Err(MemoryError::Unavailable(_))),
+        "expected Unavailable while loading, got {outcome:?}"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+
+    table.complete(
+        MODULE_ID,
+        Resolution::Failed("planted by a test".to_string()),
+        sender,
+    );
+    table.reset_for_test(MODULE_ID);
+}
+
+#[test]
+fn writes_wait_for_the_module_and_reads_do_not() {
+    let provider = provider();
+    for write in ["store", "import_records", "run_source_sync", "shutdown"] {
+        assert_eq!(
+            provider.loading_grace(write),
+            None,
+            "{write} must wait it out"
+        );
+    }
+    for read in ["get", "recall", "list", "health", "namespaces"] {
+        assert!(
+            provider.loading_grace(read).is_some(),
+            "{read} must be bounded"
+        );
+    }
+}
+
 #[test]
 fn the_capability_list_matches_the_pinned_release() {
     // ARTIFACT_CAPABILITIES describes what ONE specific release of the module
