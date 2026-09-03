@@ -74,12 +74,13 @@ async fn trigger_sweep_aggregates_failures_instead_of_laundering_them() {
 
     // Succeeds for ids starting `ok`, refuses everything else the way the
     // incident did.
-    let (triggered, errors) = trigger_enabled_syncs(&sources, |source_id| async move {
-        if source_id.starts_with("ok") {
+    let (triggered, errors) = trigger_enabled_syncs(&sources, |source| async move {
+        if source.id.starts_with("ok") {
             Ok(())
         } else {
             Err(format!(
-                "not found: no memory source registered as {source_id}"
+                "not found: no memory source registered as {}",
+                source.id
             ))
         }
     })
@@ -97,5 +98,68 @@ async fn trigger_sweep_aggregates_failures_instead_of_laundering_them() {
         errors[1].starts_with("src_also_gone: "),
         "got: {}",
         errors[1]
+    );
+}
+
+/// openhuman#6007: the per-row Sync button and the Apply-all sweep must route a
+/// row the same way, so the decision is one function and this is its test.
+///
+/// The bug was not that either call site was wrong in isolation — it was that
+/// there were two of them. Apply-all sent Composio rows through
+/// `MemorySourceSync`, which the driver refuses for exactly that kind, so "sync
+/// everything" failed for every connector source. Asserting the *rule* is what
+/// stops the two drifting again; a test that drove a full sync could not, since
+/// these handlers read the bound driver and are not reachable from a test.
+#[test]
+fn composio_rows_dispatch_to_the_connector_and_everything_else_to_the_driver() {
+    fn composio(id: &str, connection_id: Option<&str>) -> MemorySourceEntry {
+        let mut entry: MemorySourceEntry = serde_json::from_value(serde_json::json!({
+            "id": id,
+            "kind": "composio",
+            "label": "Gmail",
+            "enabled": true,
+            "toolkit": "gmail",
+            "connection_id": connection_id,
+        }))
+        .expect("a valid composio source entry");
+        // Set through the struct rather than the JSON so this test does not
+        // depend on `max_items` being an accepted input field for the kind.
+        entry.max_items = Some(25);
+        entry
+    }
+
+    fn folder(id: &str) -> MemorySourceEntry {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "kind": "folder",
+            "label": "Notes",
+            "enabled": true,
+            "path": ".",
+        }))
+        .expect("a valid folder source entry")
+    }
+
+    assert_eq!(
+        sync_dispatch(&composio("src_gmail", Some("ca_1"))).expect("a connected composio row"),
+        SyncDispatch::Connector {
+            connection_id: "ca_1".to_string(),
+            max_items: Some(25),
+        },
+        "a Composio row must route to the connector, carrying its connection and cap"
+    );
+
+    assert_eq!(
+        sync_dispatch(&folder("src_notes")).expect("a folder row"),
+        SyncDispatch::Driver,
+        "every non-Composio kind stays on the driver's own pipeline"
+    );
+
+    // A connection-less Composio row is malformed, not retryable: the connector
+    // call is addressed by connection, so there is nothing to sync.
+    let error = sync_dispatch(&composio("src_broken", None))
+        .expect_err("a composio row with no connection cannot be dispatched");
+    assert!(
+        error.contains("src_broken") && error.contains("remove and re-add"),
+        "the refusal must name the row and say what to do about it, got: {error}"
     );
 }
