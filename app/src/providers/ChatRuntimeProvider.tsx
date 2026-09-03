@@ -1302,6 +1302,33 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             scope: 'chat',
             sourceDomain: 'chat',
           });
+          // #5868: a session_expired chat error means the Rust core already
+          // published DomainEvent::SessionExpired and set signed_out=true, but
+          // the auth:session_expired socket event may have been suppressed
+          // (isBootstrapping guard) or missed. Dispatch the same window event
+          // socketService emits so CoreStateProvider's runReauth() fires the
+          // clearSession() → login redirect path from this side too. The 10s
+          // debounce in runReauth() ensures a concurrent socket event does not
+          // cause a double-clear.
+          if (event.error_type === 'session_expired') {
+            // `reason: 'unconfirmed'` is load-bearing, not defensive. The core
+            // classifies this error with `is_session_expired_message`, which
+            // matches the LOCAL guards "no backend session token" and
+            // "session jwt required" as well as a real backend expiry
+            // (`core/observability.rs`). Those two fire transiently before the
+            // on-disk auth profile has been read — #2758 is the bug where
+            // treating them as definitive forced a re-login even though the
+            // token had survived the restart. `unconfirmed` routes through
+            // `confirmSessionTokenGone()` in `runReauth`, so a signal raised
+            // while the token is still on disk stops short of the destructive
+            // `clearSession()`. A genuine expiry still corroborates and signs
+            // out; only the false positive is filtered.
+            window.dispatchEvent(
+              new CustomEvent('openhuman:session-expired', {
+                detail: { source: 'chat-error', reason: 'unconfirmed' },
+              })
+            );
+          }
         }
 
         // Parallel (forked) turn error: resolve only its lane, leaving the
