@@ -90,9 +90,12 @@ fn cap_persisted_output(output: &str) -> Option<String> {
 }
 
 /// Cap `arguments` for snapshot persistence. Returns `None` for a null
-/// payload — the observability bridge emits `Value::Null` on the paths where
-/// the child's arguments were never materialised, and a null would otherwise
-/// persist as a meaningless "Input: null" row.
+/// payload, which would otherwise persist as a meaningless "Input: null" row.
+///
+/// A null is not the same as "this call had no input": on the tinyagents path
+/// the *started* event always carries `Value::Null` and the captured arguments
+/// only arrive with `SubagentToolCallCompleted`, so the completion arm
+/// backfills what this returns `None` for at start.
 ///
 /// A payload that serialises within [`MAX_PERSISTED_TOOL_ARGS`] is kept
 /// verbatim, so the rehydrated row renders the same structured input the live

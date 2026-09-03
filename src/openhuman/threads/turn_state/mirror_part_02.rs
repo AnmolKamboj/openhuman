@@ -285,6 +285,7 @@ impl TurnStateMirror {
                 success,
                 output,
                 output_chars,
+                arguments,
                 elapsed_ms,
                 failure,
                 ..
@@ -310,6 +311,19 @@ impl TurnStateMirror {
                             // keeps its explanation across a round-trip (#4459).
                             call.failure = persisted_failure;
                             call.output = cap_persisted_output(output);
+                            // Backfill the input on the tinyagents path, where
+                            // the *started* event carries `Value::Null` and the
+                            // captured arguments only reach us here (see
+                            // `SubagentToolCallCompleted::arguments`). Without
+                            // this the ordinary sub-agent tool — the common
+                            // case — still rehydrates with no input (#5987).
+                            // Only fills a gap: a start event that already
+                            // supplied arguments stays authoritative.
+                            if call.args.is_none() {
+                                if let Some(arguments) = arguments {
+                                    call.args = cap_persisted_args(arguments);
+                                }
+                            }
                         }
                         // Keep the transcript's Tool item in lockstep so the
                         // rehydrated row shows the terminal status + timing.

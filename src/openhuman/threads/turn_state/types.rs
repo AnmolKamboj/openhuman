@@ -199,8 +199,12 @@ pub struct SubagentToolCall {
     /// row shows *what* the sub-agent did and not just which tool it reached
     /// for (#5987). Mirrors the live `subagent_tool_call` event's `args`
     /// verbatim when it fits the cap; an oversized payload degrades to a
-    /// truncated string. `None` when the child's arguments were never
-    /// materialised and on legacy snapshots.
+    /// truncated string. Taken from the started event when it carries the
+    /// arguments, otherwise backfilled from
+    /// [`AgentProgress::SubagentToolCallCompleted::arguments`] — the tinyagents
+    /// path emits `Value::Null` at start and only captures the input on
+    /// completion. `None` when the harness captured no input at all
+    /// (`PayloadCapture::tool_io` off) and on legacy snapshots.
     ///
     /// Deliberately absent from [`SubagentTranscriptItem::Tool`]: like
     /// `output` and `failure`, this is a heavy payload that lives once on the

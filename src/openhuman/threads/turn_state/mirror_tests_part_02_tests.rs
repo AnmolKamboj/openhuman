@@ -261,11 +261,12 @@ fn subagent_tool_call_persists_its_arguments() {
     );
 }
 
-/// The observability bridge emits `Value::Null` on the paths where a child's
-/// arguments were never materialised. Persisting that would render a
-/// meaningless "Input: null" row, so it must serialize away entirely.
+/// A `Value::Null` payload must serialize away rather than persist a
+/// meaningless "Input: null" row. This is the state *at start* on the
+/// tinyagents path; the arguments arrive later and are backfilled by
+/// `tinyagents_path_backfills_arguments_from_the_completion_event`.
 #[test]
-fn null_child_arguments_are_not_persisted() {
+fn null_child_arguments_are_not_persisted_at_start() {
     let (_d, mut m) = fresh("t");
     m.observe(&AgentProgress::SubagentSpawned {
         agent_id: "researcher".into(),
@@ -377,4 +378,111 @@ fn legacy_subagent_tool_call_without_args_deserializes() {
     assert_eq!(call.args, None);
     assert_eq!(call.call_id, "c1");
     assert_eq!(call.output.as_deref(), Some("3 hits"));
+}
+
+/// The ordinary sub-agent tool path — the common case, and the one #5987 was
+/// actually reported against. `observability_part_02.rs` emits
+/// `SubagentToolCallStarted.arguments` as `Value::Null` there and only supplies
+/// the captured input on `SubagentToolCallCompleted.arguments`, so persisting
+/// the start event alone leaves these calls with no input after a reload.
+#[test]
+fn tinyagents_path_backfills_arguments_from_the_completion_event() {
+    let (_d, mut m) = fresh("t");
+    m.observe(&AgentProgress::SubagentSpawned {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        mode: "typed".into(),
+        dedicated_thread: false,
+        prompt_chars: 10,
+        prompt: String::new(),
+        worker_thread_id: None,
+        display_name: Some("Researcher".into()),
+    });
+    // Start carries no arguments — exactly what the tinyagents bridge sends.
+    m.observe(&AgentProgress::SubagentToolCallStarted {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        call_id: "c1".into(),
+        tool_name: "web_search".into(),
+        arguments: serde_json::Value::Null,
+        iteration: 1,
+        display_label: Some("Searching the web".into()),
+        display_detail: None,
+    });
+    m.observe(&AgentProgress::SubagentToolCallCompleted {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        call_id: "c1".into(),
+        tool_name: "web_search".into(),
+        success: true,
+        output_chars: 6,
+        output: "3 hits".into(),
+        arguments: Some(serde_json::json!({ "query": "latest rust release" })),
+        elapsed_ms: 12,
+        iteration: 1,
+        failure: None,
+    });
+
+    let activity = m.snapshot().tool_timeline[0]
+        .subagent
+        .as_ref()
+        .expect("activity")
+        .clone();
+    assert_eq!(
+        activity.tool_calls[0].args,
+        Some(serde_json::json!({ "query": "latest rust release" })),
+        "completion arguments must backfill a call the start event left empty"
+    );
+}
+
+/// The backfill only fills a gap. A start event that already supplied the
+/// arguments stays authoritative, so a completion payload cannot rewrite the
+/// input the row was actually invoked with.
+#[test]
+fn completion_arguments_do_not_overwrite_arguments_captured_at_start() {
+    let (_d, mut m) = fresh("t");
+    m.observe(&AgentProgress::SubagentSpawned {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        mode: "typed".into(),
+        dedicated_thread: false,
+        prompt_chars: 10,
+        prompt: String::new(),
+        worker_thread_id: None,
+        display_name: Some("Researcher".into()),
+    });
+    m.observe(&AgentProgress::SubagentToolCallStarted {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        call_id: "c1".into(),
+        tool_name: "web_search".into(),
+        arguments: serde_json::json!({ "query": "from start" }),
+        iteration: 1,
+        display_label: Some("Searching the web".into()),
+        display_detail: None,
+    });
+    m.observe(&AgentProgress::SubagentToolCallCompleted {
+        agent_id: "researcher".into(),
+        task_id: "sub-1".into(),
+        call_id: "c1".into(),
+        tool_name: "web_search".into(),
+        success: true,
+        output_chars: 6,
+        output: "3 hits".into(),
+        arguments: Some(serde_json::json!({ "query": "from completion" })),
+        elapsed_ms: 12,
+        iteration: 1,
+        failure: None,
+    });
+
+    let activity = m.snapshot().tool_timeline[0]
+        .subagent
+        .as_ref()
+        .expect("activity")
+        .clone();
+    assert_eq!(
+        activity.tool_calls[0].args,
+        Some(serde_json::json!({ "query": "from start" })),
+        "arguments captured at start must not be rewritten on completion"
+    );
 }
