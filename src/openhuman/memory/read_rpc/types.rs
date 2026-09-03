@@ -155,6 +155,32 @@ pub struct FlushNowResponse {
     pub stale_buffers: u32,
 }
 
+/// Response shape for [`backfill_connector_trees_rpc`].
+///
+/// Four counters rather than one, because "did nothing" has three different
+/// causes an operator has to tell apart: the tree already held everything
+/// (`already_present`), nothing could be addressed (`skipped`), or there was
+/// nothing to look at (`scanned == 0`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BackfillConnectorTreesResponse {
+    /// Whether this actually wrote. `false` is the dry-run preview.
+    pub executed: bool,
+    /// Documents examined.
+    pub scanned: u64,
+    /// Documents that produced new memory-tree rows.
+    pub ingested: u64,
+    /// Documents the tree already held — what makes a repeated run readable as
+    /// "nothing left to do" rather than as a failure.
+    pub already_present: u64,
+    /// Documents left alone, never filed under a guess. See `notes`.
+    pub skipped: u64,
+    /// Whether the pass stopped on its limit with documents still unexamined.
+    /// Resume by calling again; the work is idempotent, so there is no cursor.
+    pub more_pending: bool,
+    /// Bounded, human-readable reasons behind `skipped`.
+    pub notes: Vec<String>,
+}
+
 /// Response shape for [`obsidian_vault_status_rpc`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObsidianVaultStatusResponse {

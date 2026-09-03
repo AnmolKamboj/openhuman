@@ -391,6 +391,23 @@ impl MemoryMaintenance for GuardedMaintenance {
         self.family()?.consolidate().await
     }
 
+    /// Writes memory-tree rows for documents already stored, so it takes the
+    /// **write** tier like every other mutating maintenance member. A
+    /// `readonly` operator may inspect a store; re-filing thousands of its
+    /// documents is not inspection.
+    async fn backfill_connector_trees(
+        &self,
+        request: BackfillTreesRequest,
+    ) -> Result<BackfillTreesOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::Maintenance,
+            "maintenance.backfill_connector_trees",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.backfill_connector_trees(request).await
+    }
+
     /// Read-only by contract, so this takes the **read** tier check: a
     /// `readonly` operator must still be able to run `doctor`, which is exactly
     /// the tier where diagnosing without mutating matters most.

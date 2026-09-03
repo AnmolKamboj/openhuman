@@ -151,8 +151,9 @@ use tinymemory_api::provider::sync::{
     SyncRunOutcome,
 };
 use tinymemory_api::provider::types::{
-    ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ExportPage, ExportRecord,
-    FlushOutcome, ForgetOutcome, ForgetSelector, ImportOutcome, IngestItem, IngestOutcome,
+    BackfillTreesOutcome, BackfillTreesRequest, ChunkEntityOccurrence, DiffReport, EntityHit,
+    EntityOccurrence, ExportPage, ExportRecord, FlushOutcome, ForgetOutcome, ForgetSelector,
+    ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, PurgeOutcome, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
     SourceItem, SourceScope, StoreStats,
 };

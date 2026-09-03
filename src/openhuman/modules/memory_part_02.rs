@@ -551,6 +551,22 @@ impl MemoryMaintenance for ModuleMemoryProvider {
     async fn flush_pending(&self) -> Result<FlushOutcome, MemoryError> {
         module_call!(self, "flush_pending", methods::FLUSH_PENDING, ())
     }
+    /// Long-running by nature — a pass reads and re-embeds up to its whole
+    /// limit of documents — so this takes the bulk deadline rather than the
+    /// default 30s one. `AcceptSourceItems` is here for the same reason: a call
+    /// that outruns the deadline while the module goes on working is the
+    /// pathology that made the connector sync retry a finished handoff forever.
+    async fn backfill_connector_trees(
+        &self,
+        request: BackfillTreesRequest,
+    ) -> Result<BackfillTreesOutcome, MemoryError> {
+        module_call_slow!(
+            self,
+            "backfill_connector_trees",
+            methods::BACKFILL_CONNECTOR_TREES,
+            (request,)
+        )
+    }
     async fn reset_derived_index(&self) -> Result<ResetOutcome, MemoryError> {
         module_call!(
             self,
