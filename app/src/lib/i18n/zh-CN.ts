@@ -2465,6 +2465,7 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': '即将推出',
   'memorySources.composioListFailed': '加载 Composio 连接失败。',
   'memorySources.browse': '浏览…',
+  'memorySources.folderPathUnavailable': '无法确定该文件夹的位置。请改为输入其完整路径。',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',

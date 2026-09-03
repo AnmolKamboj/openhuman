@@ -2981,6 +2981,8 @@ const en: TranslationMap = {
   'memorySources.comingSoon': 'Coming soon',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
   'memorySources.browse': 'Browse…',
+  'memorySources.folderPathUnavailable':
+    'Could not determine where that folder is. Type its full path instead.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
