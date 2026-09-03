@@ -81,7 +81,6 @@ import {
   clearRuntimeForThread,
   clearThreadSendPending,
   enqueueFollowup,
-  fetchAndHydrateDerivedTranscript,
   fetchAndHydrateTurnState,
   hydrateThreadUsage,
   markThreadSendPending,
@@ -730,12 +729,6 @@ const Conversations = ({
     if (selectedThreadId) {
       void dispatch(loadThreadMessages(selectedThreadId));
       void dispatch(fetchAndHydrateTurnState(selectedThreadId));
-      // Per-turn history: each past answer's own process trail. Phase C derives
-      // this from the append-only transcript projection
-      // (`threads_transcript_get`), auto-falling back to the legacy
-      // `turn_state_history` hydration when the derived path is off, errors, or
-      // the thread has no persisted transcript (legacy thread).
-      void dispatch(fetchAndHydrateDerivedTranscript(selectedThreadId));
       void threadApi
         .getTaskBoard(selectedThreadId)
         .then(board => {

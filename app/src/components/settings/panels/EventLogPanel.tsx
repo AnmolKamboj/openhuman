@@ -11,6 +11,13 @@ interface EventEntry {
   domain: string;
   event: string;
   agent: string;
+  /**
+   * One already-redacted line the backend attaches to the variants whose
+   * point is a failure reason (`DomainEvent::log_detail`) — an MCP transport
+   * that broke and one that timed out are otherwise the same row. Empty for
+   * every other event, which renders exactly as it did before (#5931).
+   */
+  detail: string;
   timestamp: string;
 }
 
@@ -135,6 +142,7 @@ const EventLogPanel = () => {
                 domain: data.domain || 'unknown',
                 event: data.event || '',
                 agent: data.agent || '',
+                detail: data.detail || '',
                 timestamp: data.timestamp || '',
               };
               setEntries(prev => {
@@ -200,7 +208,12 @@ const EventLogPanel = () => {
     if (filterType && e.domain !== filterType) return false;
     if (filterText) {
       const q = filterText.toLowerCase();
-      if (!e.event.toLowerCase().includes(q) && !e.agent.toLowerCase().includes(q)) return false;
+      if (
+        !e.event.toLowerCase().includes(q) &&
+        !e.agent.toLowerCase().includes(q) &&
+        !e.detail.toLowerCase().includes(q)
+      )
+        return false;
     }
     return true;
   });
@@ -314,7 +327,19 @@ const EventLogPanel = () => {
                     {entry.agent}
                   </span>
                 )}
-                <span className="text-xs text-content truncate">{entry.event}</span>
+                {/* `min-w-0` is load-bearing: a flex item with `truncate` cannot
+                    shrink below min-content without it, so this span would hold its
+                    full width and the detail span beside it (which does set
+                    `min-w-0`) would absorb every pixel of overflow and render as a
+                    few characters — defeating the column it was added for. */}
+                <span className="text-xs text-content truncate min-w-0">{entry.event}</span>
+                {entry.detail && (
+                  <span
+                    className="text-[10px] text-content-muted truncate min-w-0 pt-0.5"
+                    title={entry.detail}>
+                    {entry.detail}
+                  </span>
+                )}
               </div>
             );
           })}

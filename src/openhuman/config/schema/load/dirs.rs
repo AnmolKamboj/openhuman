@@ -298,6 +298,43 @@ pub(crate) async fn resolve_runtime_config_dirs(
         .await
 }
 
+/// The workspace this process is serving *right now*.
+///
+/// Resolved through the same path [`Config::load_or_init`] takes — the
+/// `OPENHUMAN_WORKSPACE` override, then `active_user.toml`, then the
+/// workspace marker, then the pre-login directory — so a caller cannot
+/// disagree with the loader about which workspace is active.
+///
+/// This is deliberately not cached. One process serves more than one
+/// workspace over its life and the switch is a change to an on-disk marker,
+/// so anything a subscriber pinned at boot goes stale exactly when it
+/// matters. The cost is one small marker read, which is why callers should
+/// reach for this per *decision*, not per event: `desktop::notifications`
+/// asks only for the handful of workspace-bound events a supervisor tick
+/// produces, and returns before calling it for everything else.
+pub async fn active_workspace_dir() -> Result<PathBuf> {
+    // An embedding host that supplied its own `Config` is authoritative, and
+    // `config::ops::load_config_with_timeout` already short-circuits on it for
+    // exactly this reason. Resolving from disk/env here instead would answer
+    // with the process-global workspace, which for an embedder is a directory
+    // it never chose — and the one caller of this function compares the answer
+    // against an event's `workspace_dir` to decide whether to announce. A
+    // mismatch there is not a wrong banner, it is *no* banner, permanently,
+    // with only a `debug!` line to say so. See AGENTS.md, "CoreBuilder::config
+    // alone configures boot and nothing else".
+    if let Some(config) = crate::core::runtime::context::CoreContext::current_embedder_config() {
+        return Ok(config.workspace_dir);
+    }
+    let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
+    let (_, workspace_dir, source) =
+        resolve_runtime_config_dirs(&default_openhuman_dir, &default_workspace_dir).await?;
+    tracing::trace!(
+        source = source.as_str(),
+        "active workspace resolved for a workspace-bound decision"
+    );
+    Ok(workspace_dir)
+}
+
 /// Env-injectable variant of [`resolve_runtime_config_dirs`]. Accepts any
 /// [`EnvLookup`] so unit tests can exercise the `OPENHUMAN_WORKSPACE`
 /// override path without mutating the process environment.

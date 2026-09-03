@@ -1619,10 +1619,16 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
         let domain = event.domain().to_string();
         let event_name = event.variant_name();
         let agent = event.agent_hint().unwrap_or("").to_string();
+        // Most variants say everything in their name; the ones whose point is
+        // a failure *reason* would otherwise reach the log with the reason
+        // discarded, so they opt into one already-redacted line (#5931). It is
+        // `null` for every other variant, which renders as no change.
+        let detail = event.log_detail();
         let data = json!({
             "domain": domain,
             "event": event_name,
             "agent": agent,
+            "detail": detail,
             "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
         });
         let data_str = serde_json::to_string(&data).ok()?;
