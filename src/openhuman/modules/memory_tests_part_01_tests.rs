@@ -135,18 +135,32 @@ fn scoring_is_advertised_and_has_a_host_accessor() {
 /// Every operation label in the client is classified, and no mutation reached
 /// the read list.
 ///
-/// The first version of this classification named the *writes* and let
-/// everything else be a read, which silently bounded two dozen mutations
-/// (#6006 review). Reading the sources keeps the check honest as members are
-/// added: a new `put_*` or `ingest_*` that lands in `BOUNDED_READ_OPERATIONS`
-/// fails here rather than in the field, where the symptom is a lost write on a
-/// cold launch and nothing in the log.
+/// The classification has been wrong in both directions, so this checks both.
+///
+/// It first named the *writes* and let everything else be a read, which
+/// silently bounded two dozen mutations (#6006 review) — a cold launch would
+/// answer `Unavailable` to an ingest nobody retries. Inverting it fixed the
+/// lost writes but left the list merely *safe*, not complete: it named 37 of
+/// 141 labels, so `entities`, `relations`, `summary_forest`,
+/// `retrieve_children` and 37 other genuine reads still waited out the entire
+/// module download — the tree, graph and sources panels this change exists to
+/// unblock, still blank on the launch that motivated it.
+///
+/// So the assertion is a partition, not a filter: every label the sources
+/// dispatch must appear in `BOUNDED_READ_OPERATIONS` or in
+/// `UNBOUNDED_WRITE_OPERATIONS` below, and no label may be in both. A new
+/// member fails here rather than in the field, where a misclassified write is
+/// a lost write with nothing in the log and a misclassified read is a panel
+/// that hangs for the length of a download.
 #[test]
-fn no_mutating_operation_label_is_classified_as_a_read() {
+fn every_operation_label_is_classified_and_no_mutation_is_a_read() {
     // Written the way the call sites are: `self.proxy("x")` directly, or the
     // operation literal handed to one of the two dispatch macros.
+    // `\s*` between the macro name and the literal is load-bearing: most call
+    // sites wrap, and a pattern anchored to one line saw 70 of the 141 labels
+    // and reported a pass on the half it could see.
     let call_site = regex::Regex::new(
-        r#"(?:proxy\(|module_call!\(self, |module_call_slow!\(self, )"([a-z_]+)""#,
+        r#"(?:proxy\(\s*|module_call!\(\s*self,\s*|module_call_slow!\(\s*self,\s*)"([a-z_]+)""#,
     )
     .expect("a valid pattern");
 
@@ -187,10 +201,81 @@ fn no_mutating_operation_label_is_classified_as_a_read() {
     labels.sort();
     labels.dedup();
     assert!(
-        labels.len() > 60,
+        labels.len() >= 130,
         "the scan found only {} labels; the call-site pattern has drifted from the code",
         labels.len()
     );
+
+    // The other half of the partition. `BOUNDED_READ_OPERATIONS` names the
+    // reads; this names every label that must keep waiting. Together they have
+    // to cover the scan exactly, which is what turns "no write is a read" into
+    // "every member is classified" — the gap that let 41 genuine reads sit
+    // unlisted and wait out the whole download on a cold launch.
+    const UNBOUNDED_WRITE_OPERATIONS: &[&str] = &[
+        "accept_source_items",
+        "add_handle_alias",
+        "append",
+        "append_turn",
+        "bootstrap_connection",
+        "capture_snapshot",
+        "cascade",
+        "clear_namespace",
+        "close_segment",
+        "compact",
+        "consolidate",
+        "create_segment",
+        "delete_document",
+        "delete_facet",
+        "delete_facet_by_id",
+        "delete_tool_rule",
+        "drop_facets_below",
+        "flush_pending",
+        "flush_source_tree",
+        "forget",
+        "forget_matching",
+        "forget_source",
+        "import_records",
+        "ingest_chat",
+        "ingest_coding_sessions",
+        "ingest_document",
+        "ingest_email",
+        "insert_event",
+        "insert_turn",
+        "kv_delete",
+        "kv_put",
+        "open_segment",
+        "override_scheduler_gate",
+        "purge_all",
+        "put_document",
+        "put_relation",
+        "put_tool_rule",
+        "rebuild_from_raw_archive",
+        "record_interaction",
+        "reembed",
+        "reset_derived_index",
+        "retry_failed",
+        "run_connection_sync",
+        "run_source_sync",
+        "runtime_buffer_write",
+        "runtime_rebuild",
+        "runtime_summarize",
+        "seal",
+        "seed_from_address_book",
+        "set_facet_user_state",
+        "set_goals",
+        "set_segment_summary",
+        "shutdown",
+        "store",
+        "summarise",
+        "touch_entities",
+        "typed_ingest_conversation",
+        "typed_ingest_document",
+        "typed_ingest_event",
+        "typed_ingest_learning",
+        "upsert_facet",
+        "upsert_provider_facet",
+        "upsert_segment_embedding",
+    ];
 
     // A label carrying one of these is a mutation by name. The read list must
     // not contain one, whatever a future edit believes.
@@ -220,10 +305,17 @@ fn no_mutating_operation_label_is_classified_as_a_read() {
         "summaris",
         "open_segment",
     ];
+    // Reads whose names carry a mutation marker anyway: `store_stats` reads
+    // where `store` writes, and `source_ingest_status` reports on ingestion
+    // rather than performing it. Named here so the marker list above can stay
+    // blunt — a marker that has to dodge every compound name stops catching
+    // the mutations it is for.
+    const READS_DESPITE_A_MUTATING_MARKER: &[&str] = &["source_ingest_status", "store_stats"];
+
     let provider = provider();
     for label in &labels {
-        // `store_stats` reads; `store` writes. Match the whole word for the
-        // labels that are a prefix of a legitimate read.
+        // Match the whole word for the labels that are a prefix of a
+        // legitimate read.
         let mutates = MUTATING.iter().any(|marker| {
             if marker.ends_with('_') {
                 label.starts_with(marker)
@@ -232,7 +324,7 @@ fn no_mutating_operation_label_is_classified_as_a_read() {
                     || label.starts_with(&format!("{marker}_"))
                     || label.contains(marker)
             }
-        }) && label != "store_stats";
+        }) && !READS_DESPITE_A_MUTATING_MARKER.contains(&label.as_str());
         if mutates {
             assert_eq!(
                 provider.loading_grace(label),
@@ -240,5 +332,33 @@ fn no_mutating_operation_label_is_classified_as_a_read() {
                 "{label} names a mutation but is classified as a bounded read"
             );
         }
+    }
+
+    // Every discovered label lands in exactly one half.
+    let unclassified: Vec<&str> = labels
+        .iter()
+        .map(String::as_str)
+        .filter(|label| {
+            provider.loading_grace(label).is_none() && !UNBOUNDED_WRITE_OPERATIONS.contains(label)
+        })
+        .collect();
+    assert!(
+        unclassified.is_empty(),
+        "these dispatch labels are classified as neither a bounded read nor a \
+         write that must wait: {unclassified:?} — add each to \
+         BOUNDED_READ_OPERATIONS if it cannot mutate, or to \
+         UNBOUNDED_WRITE_OPERATIONS if it can"
+    );
+
+    for label in UNBOUNDED_WRITE_OPERATIONS {
+        assert_eq!(
+            provider.loading_grace(label),
+            None,
+            "{label} is listed as a write that must wait but is classified as a bounded read"
+        );
+        assert!(
+            labels.iter().any(|found| found == label),
+            "{label} is listed as a write but no call site dispatches it; the list has gone stale"
+        );
     }
 }

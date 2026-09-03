@@ -251,39 +251,91 @@ const MODULE_LOADING_GRACE: Duration = Duration::from_secs(8);
 /// the module, which costs a slow first call on a cold launch and loses
 /// nothing. Add a read here only when it genuinely cannot mutate — when in
 /// doubt, leave it out and it waits.
+///
+/// # The list is total, and that is checked
+///
+/// Naming the reads is only safe from lost writes; it is not automatically
+/// *complete*. The first pass named thirty-seven of the hundred and forty-one
+/// members, so `entities`, `relations`, `summary_forest`, `retrieve_children`
+/// and thirty-seven other genuine reads still waited out the whole download —
+/// the tree, graph and sources panels this change exists to unblock. The
+/// guard test partitions every dispatch label in the sources into this list
+/// or its counterpart, so a new member fails the build until someone
+/// classifies it.
 const BOUNDED_READ_OPERATIONS: &[&str] = &[
     "answer",
+    "backfill_in_progress",
     "chunk_detail",
+    "chunk_embeddings",
+    "chunk_entities",
     "chunk_score",
+    "coding_session_status",
     "count_chunks",
     "cover_window",
     "degraded_state",
     "diagnose",
+    "diff",
     "doctor",
+    "drill_down",
     "embed_text",
     "embedder_slug",
+    "entities",
+    "entity_chunk_ids",
+    "entity_edges",
+    "estimate_sync_cost_usd",
     "export_page",
+    "extract_entities",
+    "facets_by_type",
+    "fast_retrieve",
     "flavour_profile",
     "get",
     "get_chunk",
+    "get_document",
     "get_facet",
     "get_person",
     "goals",
     "health",
+    "is_toolkit_syncable",
+    "kv_get",
+    "kv_list",
+    "latest_queue_failure",
     "list",
     "list_active_facets",
     "list_all_facets",
+    "list_chunk_details",
     "list_chunks",
+    "list_documents",
     "list_namespaces",
     "list_people",
     "namespaces",
+    "query_documents",
+    "query_source",
     "queue_stats",
+    "raw_archive_coverage",
     "recall",
+    "recall_documents",
+    "recall_namespace_recent",
+    "recall_namespace_scored",
+    "recent_leaves",
+    "relations",
+    "resolve_handle",
+    "retrieve_children",
+    "retrieve_leaves",
+    "retrieve_source",
+    "root_summaries_with_caps",
+    "runtime_read_children",
+    "runtime_read_node",
+    "runtime_tree_status",
     "score_person",
+    "search_entities",
     "session_turns",
     "snapshots",
+    "source_ingest_status",
+    "source_sync_state",
+    "source_totals",
     "storage_kinds",
     "store_stats",
+    "summary_forest",
     "sync_audit_log",
     "sync_statuses",
     "tool_rules",
@@ -563,7 +615,6 @@ fn from_bus(error: &tinybus::Error) -> MemoryError {
     wire::from_wire(error.wire_name(), &error.to_string())
 }
 
-
 macro_rules! module_call {
     ($self:expr, $operation:literal, $method:expr, $args:expr) => {
         $self
@@ -594,4 +645,3 @@ macro_rules! module_call_slow {
             .map_err(|error| from_bus(&error))
     };
 }
-
