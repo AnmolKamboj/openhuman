@@ -514,7 +514,9 @@ pub(super) fn lookup(function: &str) -> Option<ControllerSchema> {
                 FieldSchema {
                     name: "executed",
                     ty: TypeSchema::Bool,
-                    comment: "False for a dry-run preview.",
+                    comment: "Which mode ran: false is the dry-run preview, true a \
+                              real pass. The mode, not \"did anything change\" — \
+                              `ingested` answers that.",
                     required: true,
                 },
                 FieldSchema {

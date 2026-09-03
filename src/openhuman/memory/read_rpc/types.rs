@@ -163,7 +163,12 @@ pub struct FlushNowResponse {
 /// nothing to look at (`scanned == 0`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BackfillConnectorTreesResponse {
-    /// Whether this actually wrote. `false` is the dry-run preview.
+    /// Which mode ran: `false` is the dry-run preview, `true` a real pass.
+    ///
+    /// Deliberately the mode and not "did anything change" — `ingested` already
+    /// answers that, and folding the two would make a real pass that found
+    /// nothing left to do indistinguishable from a preview, which is the one
+    /// distinction this field exists for (review finding).
     pub executed: bool,
     /// Documents examined.
     pub scanned: u64,
