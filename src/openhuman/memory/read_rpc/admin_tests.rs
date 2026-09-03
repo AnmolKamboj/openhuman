@@ -156,3 +156,64 @@ async fn delete_source_never_logs_the_raw_source_id() {
         outcome.logs[0]
     );
 }
+
+/// openhuman#6012. Same distinction the wipes above turn on: a backfill the
+/// driver cannot perform must not read as `scanned: 0` success. A caller seeing
+/// that concludes their stored records are already treed and stops looking —
+/// which is exactly the wrong conclusion, because "invisible memories" is the
+/// symptom this RPC exists to clear.
+#[tokio::test]
+async fn backfill_connector_trees_refuses_a_driver_that_serves_no_maintenance() {
+    let (_tmp, cfg) = test_config();
+    install_null_driver(&cfg);
+
+    let err = super::backfill_connector_trees_rpc(&cfg, None, true)
+        .await
+        .expect_err("a driver with no Maintenance family cannot re-file anything");
+    assert!(
+        err.contains("does not serve Maintenance"),
+        "the refusal must name the family: {err}"
+    );
+    assert!(
+        err.contains(tinymemory_api::null::NULL_DRIVER_ID),
+        "and the driver, so an operator can tell which one refused: {err}"
+    );
+}
+
+/// `executed` reports the **mode**, not the effect.
+///
+/// A real pass that finds everything already treed still ran, and that is the
+/// expected second run — folding it into "did anything change" would make it
+/// indistinguishable from a preview. `ingested` is what answers the effect, and
+/// the host must pass the driver's number through rather than infer one.
+#[tokio::test]
+async fn backfill_connector_trees_reports_the_mode_and_passes_the_counters_through() {
+    let (_tmp, cfg) = test_config();
+    binding::install_for_test(
+        &cfg.workspace_dir,
+        &cfg.subsystems.memory,
+        Arc::new(binding::FixedDiagnostics::new(
+            Default::default(),
+            Default::default(),
+        )) as Arc<dyn MemoryProvider>,
+    );
+
+    let preview = super::backfill_connector_trees_rpc(&cfg, None, true)
+        .await
+        .expect("a dry run is answerable")
+        .value;
+    assert!(!preview.executed, "a dry run is the preview mode");
+
+    let real = super::backfill_connector_trees_rpc(&cfg, Some(10), false)
+        .await
+        .expect("an executing pass is answerable")
+        .value;
+    assert!(
+        real.executed,
+        "a real pass reports the mode even when it finds nothing left to do"
+    );
+    assert_eq!(
+        real.ingested, 0,
+        "the driver reported no writes, and the host must not invent any"
+    );
+}
