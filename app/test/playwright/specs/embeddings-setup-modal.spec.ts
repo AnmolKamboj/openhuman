@@ -78,10 +78,14 @@ test.describe('Embeddings setup — Test connection for a custom endpoint', () =
     // and no unavailable-reason text is shown for a non-custom provider.
     await openEmbeddingsTab(page, 'pw-embed-openai');
 
+    // Scoped to an exact label descendant, not `hasText: /OpenAI/`: the radios
+    // carry a label AND a description, so a substring match also hits
+    // "Custom (OpenAI-compatible)" and `.first()` then depends on catalog
+    // order — the test would silently assert against the custom provider,
+    // which is the very case the sibling test covers.
     await page
       .getByRole('radio')
-      .filter({ hasText: /OpenAI/ })
-      .first()
+      .filter({ has: page.getByText('OpenAI', { exact: true }) })
       .click();
 
     const testButton = page.getByRole('button', { name: TEST_CONNECTION });

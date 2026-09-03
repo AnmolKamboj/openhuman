@@ -241,6 +241,8 @@ function normalizeSnapshot(
       backendName: 'os',
     },
     runtime: { localAi: result.runtime?.localAi ?? null, service: result.runtime?.service ?? null },
+    currentUserStale: result.currentUserStale ?? false,
+    currentUserStaleSeconds: result.currentUserStaleSeconds ?? null,
   };
 }
 
@@ -252,6 +254,10 @@ function toSignedOutSnapshot(snapshot: CoreAppSnapshot): CoreAppSnapshot {
     currentUser: null,
     onboardingCompleted: false,
     chatOnboardingCompleted: false,
+    // Signed out there is no backend-backed user for the stored snapshot to be
+    // stale relative to.
+    currentUserStale: false,
+    currentUserStaleSeconds: null,
   };
 }
 
@@ -741,6 +747,9 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const lastReauthReasonRef = useRef<AuthExpiredReason | null>(null);
   const reauthAttemptIdRef = useRef(0);
   const suppressReauthUntilRef = useRef(0);
+  // Set to true when a `confirmed` session-expiry event fires while isBootstrapping
+  // is still true. The bootstrap-completion effect below replays it.
+  const pendingConfirmedReauthRef = useRef(false);
 
   // Listen for deep-link auth suppression signals so that an in-flight
   // `auth_store_session` call (OAuth deep link) does not race with the
@@ -776,11 +785,44 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     // here either — the signed-out UI doesn't render user-scoped slices,
     // and a same-user re-login should not pay a "rehydrate from disk"
     // cost (slices are still in memory). See [#900].
-    await tauriLogout();
+    // Wrap tauriLogout separately so a failure (e.g. the Rust-side
+    // SessionExpiredSubscriber already cleared the session first) does not
+    // prevent the subsequent refresh() — which is what actually flips the
+    // router to the login screen.
+    await tauriLogout().catch(err => {
+      log('tauriLogout failed in clearSession — proceeding with refresh: %O', sanitizeError(err));
+    });
     await refresh().catch(err => {
       log('refresh failed after clearSession: %O', sanitizeError(err));
     });
   }, [commitState, refresh]);
+
+  // When a confirmed session-expiry event arrives while the core is still
+  // bootstrapping, runReauth() sets pendingConfirmedReauthRef instead of
+  // dropping it. Once isBootstrapping flips to false (first successful
+  // snapshot) this effect replays it so the router reaches the login screen.
+  //
+  // We re-dispatch through openhuman:session-expired (rather than calling
+  // clearSession() directly) so the guarded runReauth() path applies: the
+  // isLocalSession check and suppressReauthUntilRef window are both
+  // re-evaluated against the now-current session state. Without this a
+  // session installed by an OAuth callback *during* bootstrap would be
+  // destructively logged out by the stale queued event.
+  useEffect(() => {
+    if (!state.isBootstrapping && pendingConfirmedReauthRef.current) {
+      pendingConfirmedReauthRef.current = false;
+      log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
+      window.dispatchEvent(
+        // Explicit rather than relying on the default: what is being replayed
+        // was already established as a confirmed expiry before it was queued,
+        // and saying so here keeps the replay correct if the default above is
+        // ever made stricter.
+        new CustomEvent('openhuman:session-expired', {
+          detail: { source: 'bootstrap-replay', reason: 'confirmed' },
+        })
+      );
+    }
+  }, [state.isBootstrapping]);
 
   // Listen for two flavours of session expiry, both routed through the
   // same debounced `clearSession`:
@@ -811,7 +853,19 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         return;
       }
       if (getCoreStateSnapshot().isBootstrapping) {
-        log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        if (reason === 'confirmed') {
+          // Queue so the bootstrap-completion effect can replay it once the first
+          // snapshot lands. Without this the event is lost: signed_out=true prevents
+          // re-publication, leaving the user stuck in the chat shell forever.
+          pendingConfirmedReauthRef.current = true;
+          log(
+            'auth-expired queued for post-bootstrap replay (method=%s source=%s)',
+            method,
+            source
+          );
+        } else {
+          log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        }
         return;
       }
       const now = Date.now();
@@ -902,8 +956,22 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         typeof (event.detail as { source?: unknown }).source === 'string'
           ? (event.detail as { source: string }).source
           : 'unknown';
-      // The socket `auth:session_expired` push is an explicit backend expiry → confirmed.
-      void runReauth('socket.session_expired', source, 'confirmed');
+      // The socket `auth:session_expired` push is an explicit backend expiry, and
+      // `socketService` sends no `reason` — so the default stays `confirmed`
+      // and that path is unchanged. A dispatcher that KNOWS its signal is
+      // merely suggestive says so, and is corroborated instead of trusted:
+      // `ChatRuntimeProvider`'s chat-error dispatch sends `unconfirmed`,
+      // because the core classifies local token-absent guards under the same
+      // `session_expired` error type as a real expiry.
+      const reason: AuthExpiredReason =
+        event instanceof CustomEvent &&
+        event.detail &&
+        typeof event.detail === 'object' &&
+        'reason' in event.detail &&
+        (event.detail as { reason?: unknown }).reason === 'unconfirmed'
+          ? 'unconfirmed'
+          : 'confirmed';
+      void runReauth('socket.session_expired', source, reason);
     };
 
     window.addEventListener('core-rpc-auth-expired', onRpcExpired as EventListener);

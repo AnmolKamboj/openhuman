@@ -86,6 +86,6 @@ pub use store::{
     ConversationStore,
 };
 pub use types::{
-    ConversationMessage, ConversationMessagePatch, ConversationThread, CreateConversationThread,
-    CrossThreadHit,
+    is_deterministic_message_id, run_reply_message_id, ConversationMessage,
+    ConversationMessagePatch, ConversationThread, CreateConversationThread, CrossThreadHit,
 };

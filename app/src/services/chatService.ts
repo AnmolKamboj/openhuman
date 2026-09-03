@@ -89,6 +89,14 @@ export interface TurnUsageWire {
 export interface ChatDoneEvent {
   thread_id: string;
   request_id?: string;
+  /**
+   * Socket.IO client that owns the turn. `"system"` marks a turn the core ran
+   * on its own behalf (autonomous task sessions, background sub-agent result
+   * delivery, cron/flow agents); such turns are broadcast to every client.
+   * Always on the wire (`WebChannelEvent.client_id`); declared here for the
+   * consumers that key off it.
+   */
+  client_id?: string;
   /** Per-request monotonic ordering key stamped by the core progress bridge. */
   seq?: number;
   full_response: string;
@@ -165,6 +173,14 @@ export interface ChatInterimEvent {
 export interface ChatErrorEvent {
   thread_id: string;
   request_id?: string;
+  /**
+   * Socket.IO client that owns the turn. `"system"` marks a turn the core ran
+   * on its own behalf (autonomous task sessions, background sub-agent result
+   * delivery, cron/flow agents); such turns are broadcast to every client.
+   * Always on the wire (`WebChannelEvent.client_id`); declared here for the
+   * consumers that key off it.
+   */
+  client_id?: string;
   message: string;
   error_type:
     | 'network'
