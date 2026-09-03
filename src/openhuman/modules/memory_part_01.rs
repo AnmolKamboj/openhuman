@@ -7,7 +7,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.14.0";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.14.1";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -73,11 +73,11 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // and embedder identification, served by the module's engine and forwarded
     // by `MemoryScoring for ModuleMemoryProvider` below.
     Capability::Scoring,
-    // Re-read at tag `v1.14.0` (tinymemory#136, openhuman#6012): adds
-    // `BackfillConnectorTrees`, which re-files connector documents stored before
-    // the routing fix. A member of the existing `Maintenance` family, not a new
-    // family — `git diff v1.13.8..v1.14.0 -- crates/tinymemory-api/src/capabilities.rs`
-    // returns empty, so the list below is unchanged and only the pin moves.
+    // Re-read at tag `v1.14.1` (tinymemory#136 + #137, openhuman#6012). It adds a bus
+    // *member*, `BackfillConnectorTrees`, and no capability: `Capability` is the
+    // family enum, and the member is a method inside `Maintenance`, which this
+    // build already advertises. `git diff v1.13.8..v1.14.0 --
+    // crates/tinymemory-bus/src/capabilities.rs` is empty, so nothing below moves.
     //
     // Re-read at tag `v1.13.8` (tinymemory#134, openhuman#6007): the connector
     // sync path now routes its items into the memory-tree ingest funnel, and
@@ -734,17 +734,4 @@ macro_rules! module_call_slow {
             .await
             .map_err(|error| from_bus(&error))
     };
-}
-
-#[async_trait]
-impl MemoryIngest for ModuleMemoryProvider {
-    async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_document", methods::INGEST_DOCUMENT, (item,))
-    }
-    async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call_slow!(self, "ingest_chat", methods::INGEST_CHAT, (messages,))
-    }
-    async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call_slow!(self, "ingest_email", methods::INGEST_EMAIL, (messages,))
-    }
 }
