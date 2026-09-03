@@ -471,8 +471,8 @@ impl ModuleMemoryProvider {
         // A load still in progress is different: nothing failed, the caller
         // simply asked before the download or the initialisation finished. A
         // read reports that as `Unavailable` — the retryable class — after its
-        // grace instead of hanging into the caller's own deadline; a write
-        // waits it out (see `UNBOUNDED_OPERATIONS`).
+        // grace instead of hanging into the caller's own deadline; everything
+        // else waits it out (see `BOUNDED_READ_OPERATIONS`).
         let grace = self.loading_grace(operation);
         match ops::ensure_loaded_within(config, MODULE_ID, grace).await {
             Ok(()) => {}
