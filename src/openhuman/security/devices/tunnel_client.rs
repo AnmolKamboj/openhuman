@@ -25,9 +25,18 @@ pub struct TunnelRegisterPayload {
 
 /// Response from the `tunnel:register` ACK callback.
 ///
-/// Accepts both camelCase (historic backend shape) and snake_case (backend
-/// PR #709 shape) field names via `alias` so the client is forward- and
-/// backward-compatible without a coordinated deploy.
+/// The backend sends **camelCase**: backend PR #709 introduced
+/// `TunnelRegisterAck { channelId, pairingToken, pairingExpiresAt: number }`
+/// (`socketHandlers/tunnel/types.ts`) and `main` still emits exactly that. The
+/// `alias` entries are additive compatibility for a snake_case shape nothing
+/// currently sends — kept so a future rename needs no coordinated deploy, not
+/// because a rename has happened.
+///
+/// An earlier version of this comment had the history backwards, describing
+/// #709 as the move *to* snake_case. It is recorded here because the two real
+/// defects in this path — a numeric `pairingExpiresAt` decoded as a string, and
+/// a `{ ok: false }` refusal parsed as the success shape — were both missed
+/// while the field names were the suspect.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TunnelRegisterResponse {
     #[serde(rename = "channelId", alias = "channel_id")]
