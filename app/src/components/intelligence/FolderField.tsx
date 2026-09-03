@@ -26,6 +26,7 @@ import { useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import { pickDirectoryNatively } from '../../utils/tauriCommands/directoryPicker';
+import Button from '../ui/Button';
 import TextField from '../ui/TextField';
 
 const log = debug('intelligence:folder-field');
@@ -70,16 +71,15 @@ export function FolderField({ label, value, onChange }: FolderFieldProps) {
           }}
           placeholder={t('memorySources.folderPathPlaceholder')}
         />
-        <button
+        <Button
           type="button"
-          onClick={handleBrowse}
-          className="shrink-0 cursor-pointer rounded-md border border-line-strong bg-surface px-3 py-2
-                     text-xs font-medium text-content-secondary transition-colors
-                     hover:border-primary-400 hover:text-primary-600
-                     dark:bg-surface-muted dark:text-content-secondary
-                     dark:hover:border-primary-500 dark:hover:text-primary-400">
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          analyticsId="brain-sources-folder-browse"
+          onClick={handleBrowse}>
           {t('memorySources.browse')}
-        </button>
+        </Button>
       </div>
       {pickError && (
         <p role="alert" className="mt-1 text-xs leading-5 text-red-600 dark:text-red-300">

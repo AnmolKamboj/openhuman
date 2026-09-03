@@ -140,4 +140,14 @@ describe('FolderField (folder memory source)', () => {
     expect(container.querySelector('input[type="file"]')).toBeNull();
     expect(container.querySelector('[webkitdirectory]')).toBeNull();
   });
+
+  it('gives Browse a stable analytics id rather than a DOM-order fallback', () => {
+    mockPick.mockResolvedValue({ ok: false, reason: 'cancelled' });
+    renderFolderFields();
+
+    expect(screen.getByRole('button', { name: /browse/i })).toHaveAttribute(
+      'data-analytics-id',
+      'brain-sources-folder-browse'
+    );
+  });
 });
