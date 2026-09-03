@@ -24,7 +24,7 @@ use super::*;
 /// ```text
 /// TINYMEMORY_TEST_MODULE=/path/to/libtinymemory_module.dylib \
 ///   cargo test --lib -- --ignored --exact --test-threads=1 \
-///   openhuman::modules::memory::tests::the_runtime_tree_doors_round_trip_through_a_real_module
+///   openhuman::modules::memory::tests::part_01_tests::the_runtime_tree_doors_round_trip_through_a_real_module
 /// ```
 #[tokio::test]
 #[ignore = "needs a built tinymemory module (TINYMEMORY_TEST_MODULE) and its own process: \
