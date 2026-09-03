@@ -235,6 +235,7 @@ impl TurnStateMirror {
                 task_id,
                 call_id,
                 tool_name,
+                arguments,
                 iteration,
                 display_label,
                 display_detail,
@@ -251,6 +252,10 @@ impl TurnStateMirror {
                             output_chars: None,
                             display_name: display_label.clone(),
                             detail: display_detail.clone(),
+                            // The live socket event already carries these; the
+                            // snapshot has to as well or a reloaded child row
+                            // comes back without its input (#5987).
+                            args: cap_persisted_args(arguments),
                             failure: None,
                             output: None,
                         });

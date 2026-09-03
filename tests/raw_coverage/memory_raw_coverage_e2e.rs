@@ -632,6 +632,7 @@ fn threads_turn_state_store_skips_corrupt_entries_and_marks_interrupted() {
                 display_name: None,
                 output: None,
                 detail: None,
+                args: None,
                 failure: None,
             }],
             transcript: vec![],

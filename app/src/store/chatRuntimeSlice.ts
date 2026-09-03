@@ -810,6 +810,10 @@ function subagentToolCallFromPersisted(call: PersistedSubagentToolCall): Subagen
     outputChars: call.outputChars,
     displayName: call.displayName,
     detail: call.detail,
+    // Carry the persisted arguments so a rehydrated child row keeps its input
+    // block, and a degraded generic `tool` name can still derive its search
+    // label from `query` (#5987).
+    args: call.args,
     // Carry the persisted failure explanation across the round-trip (#4459).
     failure: parseToolFailure(call.failure),
     // Carry the persisted (capped) result text so a rehydrated child row can

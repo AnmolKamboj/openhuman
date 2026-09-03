@@ -3388,6 +3388,7 @@ fn turn_state_store_persists_lists_marks_and_clears_snapshots() {
                 display_name: None,
                 output: None,
                 detail: None,
+                args: None,
                 failure: None,
             }],
             transcript: vec![],
