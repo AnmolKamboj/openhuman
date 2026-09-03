@@ -270,3 +270,42 @@ fn segment_for_delivery_single_short_returns_one() {
     let r = segment_for_delivery("Quick.");
     assert_eq!(r.len(), 1);
 }
+
+#[test]
+fn single_bubble_delivery_emits_one_unsegmented_chat_done_without_reaction() {
+    let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+    // Prose `deliver_response` WOULD split into several `chat_segment` bubbles
+    // (long, multi-paragraph, no fences) — the shape a background delivery turn
+    // produces. A core-persisted single row must be announced as one bubble.
+    let text = "Same three meetings as before, and nothing on the calendar moved since the last check.\n\n\
+        The product standup is still at noon and the design review still follows it at two.\n\n\
+        Nothing needs input from you right now, so I have not rescheduled anything on your behalf.";
+    assert!(
+        segment_for_delivery(text).len() > 1,
+        "fixture must be one the conversational path would segment"
+    );
+    let request_id = format!("single-bubble-{}", uuid::Uuid::new_v4());
+
+    deliver_response_single_bubble("system", "thread-1", &request_id, text, None);
+
+    // Other tests publish on the same process-global bus; keep only ours.
+    let mut mine = Vec::new();
+    loop {
+        match rx.try_recv() {
+            Ok(event) if event.request_id == request_id => mine.push(event),
+            Ok(_) => continue,
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(_) => break,
+        }
+    }
+    assert_eq!(mine.len(), 1, "exactly one terminal event, no chat_segment");
+    let done = &mine[0];
+    assert_eq!(done.event, "chat_done");
+    assert_eq!(done.client_id, "system");
+    assert_eq!(done.thread_id, "thread-1");
+    assert_eq!(done.full_response.as_deref(), Some(text));
+    assert_eq!(done.segment_total, None);
+    assert_eq!(done.segment_index, None);
+    assert_eq!(done.reaction_emoji, None);
+    assert!(done.usage.is_none());
+}

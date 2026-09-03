@@ -6,13 +6,13 @@
 use std::fs;
 
 use super::super::types::{
-    ConversationMessage, ConversationMessagePatch, ConversationThread, CreateConversationThread,
-    CrossThreadHit,
+    is_deterministic_message_id, ConversationMessage, ConversationMessagePatch, ConversationThread,
+    CreateConversationThread, CrossThreadHit,
 };
 use super::{
-    append_jsonl, normalize_labels, read_jsonl, rewrite_jsonl, ConversationPurgeStats,
-    ConversationStore, ThreadLogEntry, CONVERSATION_INDEX_CACHE, CONVERSATION_STORE_LOCK,
-    THREADS_FILENAME,
+    append_jsonl, find_message_by_id, normalize_labels, read_jsonl, rewrite_jsonl,
+    ConversationPurgeStats, ConversationStore, ThreadLogEntry, CONVERSATION_INDEX_CACHE,
+    CONVERSATION_STORE_LOCK, THREADS_FILENAME,
 };
 
 impl ConversationStore {
@@ -115,6 +115,22 @@ impl ConversationStore {
     /// row, then a compact `MessageAppended` stat entry. Thread reads reconcile
     /// that stat trail against the message file, repairing a crash between the
     /// two appends.
+    ///
+    /// Idempotent for the ids the core mints deterministically
+    /// ([`is_deterministic_message_id`]): when the thread already holds a row
+    /// with that id, nothing is written (no message row, no stat bump, no index
+    /// insert) and the stored row is returned exactly as a fresh append would
+    /// return its input. Two writers can legitimately persist the same reply —
+    /// an autonomous run's `task_session::append_final` and the client that
+    /// also persists the `chat_done` it announced (#5933) — and a thread must
+    /// never carry two messages under one id (the frontend keys React and
+    /// assistant-ui resources by it).
+    ///
+    /// The lookup is deliberately narrow. Every other id in the store is
+    /// UUID-fresh by construction and cannot be re-presented, so it must not
+    /// pay to have that verified: a lookup on *every* append would put a scan
+    /// of the thread's transcript on the hot write path, under the
+    /// process-wide store lock, and make growing a thread quadratic.
     pub fn append_message(
         &self,
         thread_id: &str,
@@ -125,6 +141,11 @@ impl ConversationStore {
             return Err(format!("thread {} not found", thread_id));
         }
         let path = self.thread_messages_path(thread_id);
+        if is_deterministic_message_id(&message.id) {
+            if let Some(existing) = find_message_by_id(&path, &message.id)? {
+                return Ok(existing);
+            }
+        }
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("create conversation dir {}: {e}", parent.display()))?;

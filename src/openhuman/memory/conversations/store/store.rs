@@ -275,6 +275,36 @@ where
     Ok(items)
 }
 
+/// Find one message in a thread's JSONL log by id, without materializing the
+/// whole transcript.
+///
+/// Only the lines whose raw text carries the quoted id are deserialized, so a
+/// lookup costs one parse rather than one per stored message; a line that
+/// merely quotes the id inside its own content is rejected by the `id` check.
+/// Mirrors [`read_jsonl`]'s tolerance of blank and corrupt lines.
+pub(super) fn find_message_by_id(
+    path: &Path,
+    id: &str,
+) -> Result<Option<ConversationMessage>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let needle = serde_json::to_string(id).map_err(|e| format!("encode message id {id}: {e}"))?;
+    let file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    for (line_no, line) in BufReader::new(file).lines().enumerate() {
+        let line =
+            line.map_err(|e| format!("read {} line {}: {e}", path.display(), line_no + 1))?;
+        if !line.contains(&needle) {
+            continue;
+        }
+        match serde_json::from_str::<ConversationMessage>(&line) {
+            Ok(message) if message.id == id => return Ok(Some(message)),
+            _ => continue,
+        }
+    }
+    Ok(None)
+}
+
 /// Append one serialized value as a JSONL line, fsync'd before returning.
 pub(super) fn append_jsonl<T>(path: &Path, value: &T) -> Result<(), String>
 where

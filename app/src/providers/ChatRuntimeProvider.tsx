@@ -219,6 +219,26 @@ function chatDoneExtraMetadata(event: ChatDoneEvent): Record<string, unknown> | 
 }
 
 /**
+ * Message id for a reply the CORE already persisted before announcing it.
+ *
+ * Core-initiated turns (`client_id === 'system'`: autonomous task sessions and
+ * background sub-agent result delivery via `run_system_turn_on_thread`) write
+ * their own closing message — `task_session::append_final`, keyed
+ * `agent:<run_id>` — and only then emit `chat_done` / `chat_error` with that
+ * run id as `request_id`. Reusing the same id here makes our own
+ * `addInferenceResponse` append collapse onto the core's row (the conversation
+ * store is idempotent by message id) instead of persisting a second copy that
+ * rendered as a duplicate reply under the answer (#5933). Interactive turns
+ * keep their generated ids: nothing else has persisted them.
+ */
+function corePersistedMessageId(event: {
+  client_id?: string;
+  request_id?: string;
+}): string | undefined {
+  return event.client_id === 'system' && event.request_id ? `agent:${event.request_id}` : undefined;
+}
+
+/**
  * Map a `chat_done` event's holistic usage onto the `recordChatTurnUsage`
  * payload. Prefers the structured `usage` object (tokens + cost + context window
  * + per-sub-agent breakdown); falls back to the deprecated flat token fields for
@@ -1175,6 +1195,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
                 addInferenceResponse({
                   content: event.full_response,
                   threadId: event.thread_id,
+                  messageId: corePersistedMessageId(event),
                   extraMetadata: chatDoneExtraMetadata(event),
                 })
               ).unwrap();
@@ -1210,6 +1231,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
                 addInferenceResponse({
                   content: event.full_response,
                   threadId: event.thread_id,
+                  messageId: corePersistedMessageId(event),
                   extraMetadata: chatDoneExtraMetadata(event),
                 })
               ).unwrap();
@@ -1333,9 +1355,23 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           // surfacing it tells the user *why* the turn failed instead of a blanket apology.
           // The hardcoded constant is only a last-resort fallback for an empty/missing message.
           const errorContent = event.message || USER_FACING_AGENT_ERROR_MESSAGE;
-          if (!(lastMsg?.sender === 'agent' && lastMsg?.content === errorContent)) {
+          // A core-owned failure carries a deterministic id, so dedupe on that
+          // rather than on the text. Two runs can fail with byte-identical
+          // content — the same upstream provider message, or the generic
+          // fallback above — and a text check would then read the previous
+          // run's row as this one and drop the current failure from the cache.
+          // Interactive turns have no pre-persisted id and keep the text check.
+          const errorMessageId = corePersistedMessageId(event);
+          const alreadyPresent = errorMessageId
+            ? threadMessages.some(message => message.id === errorMessageId)
+            : lastMsg?.sender === 'agent' && lastMsg?.content === errorContent;
+          if (!alreadyPresent) {
             void dispatch(
-              addInferenceResponse({ content: errorContent, threadId: event.thread_id })
+              addInferenceResponse({
+                content: errorContent,
+                threadId: event.thread_id,
+                messageId: errorMessageId,
+              })
             );
           }
 
