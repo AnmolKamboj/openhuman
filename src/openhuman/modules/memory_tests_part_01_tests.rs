@@ -151,12 +151,35 @@ fn no_mutating_operation_label_is_classified_as_a_read() {
     .expect("a valid pattern");
 
     let mut labels: Vec<String> = Vec::new();
-    for part in 1..=4 {
-        let path = format!(
-            "{}/src/openhuman/modules/memory_part_0{part}.rs",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let source = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {path}"));
+    // Discovered, not enumerated. A hard-coded `memory_part_01..04` would keep
+    // passing after the file is split differently — scanning fewer sources,
+    // finding fewer labels, and quietly checking less than it claims to.
+    let modules_dir = format!("{}/src/openhuman/modules", env!("CARGO_MANIFEST_DIR"));
+    let mut parts: Vec<std::path::PathBuf> = std::fs::read_dir(&modules_dir)
+        .unwrap_or_else(|error| panic!("read {modules_dir}: {error}"))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with("memory_part_")
+                        && name.ends_with(".rs")
+                        && !name.contains("_tests")
+                })
+        })
+        .collect();
+    parts.sort();
+    assert!(
+        parts.len() >= 4,
+        "expected the memory client to be split across at least four parts, found {:?} — if the \
+         split changed, this scan is looking in the wrong place",
+        parts
+    );
+
+    for path in &parts {
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
         for captured in call_site.captures_iter(&source) {
             labels.push(captured[1].to_string());
         }
