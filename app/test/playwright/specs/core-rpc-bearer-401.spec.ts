@@ -99,7 +99,6 @@ test.describe('Core RPC bearer 401 — recovery, not logout', () => {
     expect(seenAuth[1]).toContain(ROTATED);
     expect(seenAuth[1]).not.toEqual(seenAuth[0]);
 
-
     // (3) The session survives. Without #5876 `clearSession()` wipes the auth
     // profile and the app falls back to the signed-out surface. Assert the
     // embeddings panel actually rendered rather than merely that the hash is
