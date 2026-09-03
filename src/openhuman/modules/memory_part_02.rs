@@ -1,17 +1,4 @@
 #[async_trait]
-impl MemoryIngest for ModuleMemoryProvider {
-    async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
-        module_call!(self, "ingest_document", methods::INGEST_DOCUMENT, (item,))
-    }
-    async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call_slow!(self, "ingest_chat", methods::INGEST_CHAT, (messages,))
-    }
-    async fn ingest_email(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
-        module_call_slow!(self, "ingest_email", methods::INGEST_EMAIL, (messages,))
-    }
-}
-
-#[async_trait]
 impl MemoryDocuments for ModuleMemoryProvider {
     async fn put_document(&self, input: NamespaceDocumentInput) -> Result<String, MemoryError> {
         module_call!(self, "put_document", methods::PUT_DOCUMENT, (input,))
