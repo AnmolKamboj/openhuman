@@ -2614,6 +2614,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'শীঘ্রই আসছে',
   'memorySources.composioListFailed': 'Xqxqx সংযোগ লোড করতে ব্যর্থ।',
   'memorySources.browse': 'ব্রাউজ করুন...',
+  'memorySources.folderPathUnavailable':
+    'সেই ফোল্ডারটি কোথায় আছে তা নির্ধারণ করা যায়নি। এর পরিবর্তে এর সম্পূর্ণ পাথ টাইপ করুন।',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '*ড্যাম',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
