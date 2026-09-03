@@ -200,6 +200,12 @@ pub fn write_active_user_id(default_openhuman_dir: &Path, user_id: &str) -> Resu
     }
 
     sync_directory(default_openhuman_dir)?;
+    // Again, now that the marker actually says the new user. The pre-write
+    // clear is not enough on its own: a resolver racing this call can read the
+    // *old* marker after that clear and refill the cache with the workspace
+    // being switched away from, which would then read as current after a
+    // successful switch.
+    crate::openhuman::config::schema::invalidate_active_workspace();
     tracing::debug!(user_id = %user_id, path = %path.display(), "active user written");
     Ok(())
 }
@@ -217,6 +223,9 @@ pub fn clear_active_user(default_openhuman_dir: &Path) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(&path)
             .with_context(|| format!("Failed to remove active user state: {}", path.display()))?;
+        // Again, now that the marker is actually gone — see the note in
+        // `write_active_user_id` for the race the pre-clear alone leaves open.
+        crate::openhuman::config::schema::invalidate_active_workspace();
         tracing::debug!(path = %path.display(), "active user cleared");
     }
     Ok(())

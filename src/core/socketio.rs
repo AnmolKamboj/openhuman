@@ -517,10 +517,20 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
                     match crate::openhuman::config::active_workspace_dir().await {
                         Ok(dir) => {
                             let handle = crate::openhuman::config::workspace_handle(&dir);
+                            // Read after the resolve, so the revision belongs
+                            // to the workspace being sent. This task and the
+                            // switch bridge are separate, so a snapshot
+                            // resolved before a switch can arrive after its
+                            // broadcast; the client keeps the highest
+                            // revision it has seen and discards this one if
+                            // it lost that race.
+                            let revision =
+                                crate::openhuman::config::active_workspace_revision();
                             log::debug!(
-                                "[socketio] emit event=workspace_changed to_client={client_id} workspace={handle}"
+                                "[socketio] emit event=workspace_changed to_client={client_id} workspace={handle} revision={revision}"
                             );
-                            let payload = json!({ "workspace": handle });
+                            let payload =
+                                json!({ "workspace": handle, "revision": revision });
                             let _ = socket.emit("workspace_changed", &payload);
                             let _ = socket.emit("workspace:changed", &payload);
                         }
@@ -918,12 +928,16 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let Some(event) = rx.recv().await else {
                 break;
             };
-            if let crate::core::events::DomainEvent::ActiveWorkspaceChanged { workspace_dir } =
-                event
+            if let crate::core::events::DomainEvent::ActiveWorkspaceChanged {
+                workspace_dir,
+                revision,
+            } = event
             {
                 let handle = crate::openhuman::config::workspace_handle(&workspace_dir);
-                log::info!("[socketio] broadcast workspace_changed workspace={handle}");
-                let payload = serde_json::json!({ "workspace": handle });
+                log::info!(
+                    "[socketio] broadcast workspace_changed workspace={handle} revision={revision}"
+                );
+                let payload = serde_json::json!({ "workspace": handle, "revision": revision });
                 let _ = io_workspace.emit("workspace_changed", &payload);
                 let _ = io_workspace.emit("workspace:changed", &payload);
             }

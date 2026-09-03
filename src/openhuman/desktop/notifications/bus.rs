@@ -247,6 +247,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::WebhookProcessed {
             skill_id,
@@ -275,6 +276,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
                 timestamp_ms: ts,
                 actions: None,
                 workspace: None,
+                workspace_revision: None,
             })
         }
         DomainEvent::SubagentCompleted {
@@ -292,6 +294,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::SubagentFailed {
             parent_session,
@@ -310,6 +313,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::NotificationTriaged {
             id,
@@ -338,6 +342,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
                 timestamp_ms: ts,
                 actions: None,
                 workspace: None,
+                workspace_revision: None,
             })
         }
         DomainEvent::ProviderApiKeyRejected { provider, message } => Some(CoreNotificationEvent {
@@ -356,6 +361,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         // The MCP reconnect supervisor's verdicts (#5931), published by
         // `mcp::registry::supervisor_events`. Only the cases a user can act on
@@ -393,6 +399,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::McpServerReconnected {
             server_id,
@@ -412,6 +419,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         DomainEvent::McpServerParked {
             server_id,
@@ -431,6 +439,7 @@ fn translate(event: &DomainEvent) -> Option<CoreNotificationEvent> {
             timestamp_ms: ts,
             actions: None,
             workspace: None,
+            workspace_revision: None,
         }),
         _ => None,
     }
@@ -448,7 +457,7 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
     // correctness boundary.
 
     async fn handle(&self, event: &DomainEvent) {
-        if let Some(notification) = event_to_notification(event) {
+        if let Some(mut notification) = event_to_notification(event) {
             // #3805: persist BEFORE broadcasting so the event is durable even
             // when no client is currently subscribed (app closed / minimised /
             // disconnected) — otherwise the broadcast send finds zero
@@ -476,6 +485,15 @@ impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
             // Persisted above under the workspace it belongs to; announced
             // only if that workspace is the one the user is in (#5931).
             if self.should_announce(event).await {
+                // Stamped here, after the gate passed and before the send, so
+                // the revision names the transition the gate actually checked
+                // against. A receiver whose own revision is older knows it is
+                // simply behind — the switch broadcast has not reached it yet
+                // — rather than looking at a stale notification (#5966).
+                if notification.workspace.is_some() {
+                    notification.workspace_revision =
+                        Some(crate::openhuman::config::active_workspace_revision());
+                }
                 publish_core_notification(notification);
             }
         }

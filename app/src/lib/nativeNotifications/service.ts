@@ -32,6 +32,17 @@ let disconnectListener: ((...args: unknown[]) => void) | null = null;
  */
 let activeWorkspace: string | null = null;
 
+/**
+ * Revision of the workspace transition `activeWorkspace` came from.
+ *
+ * The core seeds each client on connect from one task and broadcasts switches
+ * from another, so a snapshot resolved before a switch can be delivered after
+ * its broadcast. Keeping the highest revision seen and discarding anything
+ * older stops a late snapshot talking this client back into the previous
+ * workspace.
+ */
+let activeWorkspaceRevision = 0;
+
 interface ChatDonePayload {
   thread_id?: string;
   request_id?: string;
@@ -59,10 +70,14 @@ interface CoreNotificationPayload {
   // Opaque handle of the workspace this notification belongs to, absent when
   // it is not workspace-bound (issue #5966). See `isForActiveWorkspace`.
   workspace?: string | null;
+  // Workspace revision the core's announcement gate checked against, set only
+  // when `workspace` is. See `isForActiveWorkspace`.
+  workspace_revision?: number;
 }
 
 interface WorkspaceChangedPayload {
   workspace?: string | null;
+  revision?: number;
 }
 
 /**
@@ -86,10 +101,32 @@ interface WorkspaceChangedPayload {
  * Failing open here is the opposite of the core's fail-closed gate, and
  * deliberately so: the core is the one deciding whether to *send*, this is a
  * second check on something already sent past that gate.
+ *
+ * The revision separates the two ways a handle can mismatch. This event and
+ * `workspace_changed` are broadcast by separate tasks, so a notification for
+ * the workspace the user just switched *to* can arrive before the switch that
+ * announces it. A payload stamped with a revision newer than this client's
+ * means the client is simply behind: the core verified that workspace was
+ * active, so accept it and catch up rather than dropping a valid alert. Only a
+ * mismatch at a revision this client has already caught up to is the stale
+ * case the check exists for.
  */
 function isForActiveWorkspace(payload: CoreNotificationPayload): boolean {
   if (!payload.workspace || !activeWorkspace) return true;
-  return payload.workspace === activeWorkspace;
+  if (payload.workspace === activeWorkspace) return true;
+  const revision = payload.workspace_revision;
+  if (typeof revision === 'number' && revision > activeWorkspaceRevision) {
+    log(
+      '[socket] core_notification is ahead of this client (rev=%d > %d); adopting %s',
+      revision,
+      activeWorkspaceRevision,
+      payload.workspace
+    );
+    activeWorkspace = payload.workspace;
+    activeWorkspaceRevision = revision;
+    return true;
+  }
+  return false;
 }
 
 function windowIsFocused(): boolean {
@@ -212,8 +249,21 @@ export function startNativeNotificationsService(): void {
       log('[socket] workspace_changed without a handle ignored');
       return;
     }
+    // A payload without a revision is treated as revision 0 and therefore
+    // only accepted before anything else has been seen — an old core cannot
+    // overwrite a newer switch from a current one.
+    const revision = typeof p.revision === 'number' ? p.revision : 0;
+    if (activeWorkspace !== null && revision < activeWorkspaceRevision) {
+      log(
+        '[socket] workspace_changed rev=%d discarded, already at rev=%d',
+        revision,
+        activeWorkspaceRevision
+      );
+      return;
+    }
+    activeWorkspaceRevision = revision;
     if (activeWorkspace === p.workspace) return;
-    log('[socket] workspace_changed %s -> %s', activeWorkspace, p.workspace);
+    log('[socket] workspace_changed %s -> %s (rev=%d)', activeWorkspace, p.workspace, revision);
     activeWorkspace = p.workspace;
   };
 
@@ -257,6 +307,13 @@ export function stopNativeNotificationsService(): void {
     socketService.off('workspace_changed', workspaceChangedListener);
     workspaceChangedListener = null;
   }
+  // Forget which workspace was active. The core seeds a client when its
+  // *socket* connects, not when this service starts, so a stop → workspace
+  // switch → restart over one live socket would otherwise resume holding the
+  // pre-switch handle and drop every notification for the workspace the user
+  // is now in.
+  activeWorkspace = null;
+  activeWorkspaceRevision = 0;
   if (disconnectListener) {
     socketService.off('disconnect', disconnectListener);
     disconnectListener = null;
@@ -299,8 +356,9 @@ export function __handleCoreNotificationForTests(payload: CoreNotificationPayloa
  * Exposed for tests — set the workspace this client believes is active, as if
  * a `workspace_changed` had arrived.
  */
-export function __setActiveWorkspaceForTests(workspace: string | null): void {
+export function __setActiveWorkspaceForTests(workspace: string | null, revision = 0): void {
   activeWorkspace = workspace;
+  activeWorkspaceRevision = revision;
 }
 
 /** Exposed for tests — resets module singletons between runs. */

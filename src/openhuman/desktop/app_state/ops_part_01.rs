@@ -661,7 +661,24 @@ async fn activate_revalidated_user_dir(user_id: &str) -> Result<Config, String> 
         }
     }
 
-    Config::load_from_default_paths().await.map_err(|error| {
+    let config = Config::load_from_default_paths().await.map_err(|error| {
         format!("failed to reload config after pending session user activation: {error}")
-    })
+    })?;
+
+    // The marker write above cleared the cached active workspace, and
+    // `load_from_default_paths` deliberately bypasses the runtime resolver, so
+    // nothing has refilled it. Resolve once through the authoritative path,
+    // which republishes the cache and announces the switch — otherwise a
+    // connected Event Log or notification client keeps the previous
+    // workspace's handle until some unrelated later config load happens
+    // (#5966). Publishing from `load_from_default_paths` itself would be
+    // wrong: it ignores `OPENHUMAN_WORKSPACE`, so under that override it does
+    // not know the runtime answer.
+    if let Err(error) = crate::openhuman::config::active_workspace_dir().await {
+        warn!(
+            "{LOG_PREFIX} could not refresh the active workspace after pending session activation: {error}"
+        );
+    }
+
+    Ok(config)
 }

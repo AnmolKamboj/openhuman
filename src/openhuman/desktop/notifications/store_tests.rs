@@ -292,6 +292,7 @@ fn sample_core_event(id: &str, ts: u64) -> CoreNotificationEvent {
         timestamp_ms: ts,
         actions: None,
         workspace: None,
+        workspace_revision: None,
     }
 }
 

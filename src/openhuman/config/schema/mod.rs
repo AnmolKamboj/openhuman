@@ -34,9 +34,9 @@ mod learning;
 mod load;
 pub use load::{
     action_dir_env_override, active_user_marker_path, active_workspace_dir,
-    active_workspace_dir_cached, clear_active_user, default_action_dir, default_projects_dir,
-    default_root_openhuman_dir, pre_login_user_dir, read_active_user_id, resolve_action_dir,
-    user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
+    active_workspace_dir_cached, active_workspace_revision, clear_active_user, default_action_dir,
+    default_projects_dir, default_root_openhuman_dir, pre_login_user_dir, read_active_user_id,
+    resolve_action_dir, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
 // Crate-internal: the invalidation half of the cached active workspace. The
 // marker writers in `load_user_state` call it from outside `load`; the

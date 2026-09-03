@@ -30,7 +30,10 @@ fn starts_unknown_rather_than_guessing() {
 #[test]
 fn a_first_publish_is_readable_and_announces() {
     let mut state = ActiveWorkspace::default();
-    assert!(state.publish(&ws("a")), "the first resolve is news");
+    assert!(
+        state.publish(&ws("a")).is_some(),
+        "the first resolve is news"
+    );
     assert_eq!(state.current, Some(ws("a")));
 }
 
@@ -38,7 +41,10 @@ fn a_first_publish_is_readable_and_announces() {
 fn a_later_publish_replaces_the_previous_workspace_and_announces() {
     let mut state = ActiveWorkspace::default();
     state.publish(&ws("a"));
-    assert!(state.publish(&ws("b")), "a different workspace is a switch");
+    assert!(
+        state.publish(&ws("b")).is_some(),
+        "a different workspace is a switch"
+    );
     assert_eq!(state.current, Some(ws("b")));
 }
 
@@ -48,9 +54,9 @@ fn a_later_publish_replaces_the_previous_workspace_and_announces() {
 #[test]
 fn republishing_the_same_workspace_announces_once() {
     let mut state = ActiveWorkspace::default();
-    assert!(state.publish(&ws("a")));
-    assert!(!state.publish(&ws("a")));
-    assert!(!state.publish(&ws("a")));
+    assert!(state.publish(&ws("a")).is_some());
+    assert!(state.publish(&ws("a")).is_none());
+    assert!(state.publish(&ws("a")).is_none());
     assert_eq!(state.current, Some(ws("a")));
 }
 
@@ -86,7 +92,7 @@ fn re_resolving_the_same_workspace_after_invalidation_does_not_re_announce() {
     state.invalidate();
 
     assert!(
-        !state.publish(&ws("a")),
+        state.publish(&ws("a")).is_none(),
         "the workspace never actually changed"
     );
     assert_eq!(state.current, Some(ws("a")));
@@ -101,7 +107,7 @@ fn a_different_workspace_after_invalidation_is_announced() {
     state.publish(&ws("a"));
     state.invalidate();
 
-    assert!(state.publish(&ws("b")));
+    assert!(state.publish(&ws("b")).is_some());
     assert_eq!(state.current, Some(ws("b")));
 }
 
@@ -125,4 +131,57 @@ fn the_global_publish_survives_an_uninitialised_bus() {
     // No assertion on the readable value: other tests in this binary load
     // configs concurrently and publish into the same slot. The contract under
     // test is only that this path does not panic without a bus.
+}
+
+/// The interleaving CodeRabbit flagged. The bus publish happens outside the
+/// lock, so two resolvers can commit in one order and reach the emit in the
+/// other. Without a revision, the stale emit wins and — because `announced`
+/// already holds the newer workspace — no later resolution ever corrects it,
+/// leaving every client on the workspace the user left.
+#[test]
+fn a_superseded_transition_is_not_announced() {
+    let mut state = ActiveWorkspace::default();
+
+    let first = state.publish(&ws("a")).expect("first resolve announces");
+    let second = state.publish(&ws("b")).expect("a switch announces");
+
+    // B committed after A, so only B may reach the bus.
+    assert!(!state.is_current(first.revision), "A's emit is superseded");
+    assert!(
+        state.is_current(second.revision),
+        "B's emit is the live one"
+    );
+}
+
+#[test]
+fn revisions_increase_only_for_announced_transitions() {
+    let mut state = ActiveWorkspace::default();
+
+    let first = state.publish(&ws("a")).expect("announces");
+    assert!(
+        state.publish(&ws("a")).is_none(),
+        "same workspace is silent"
+    );
+    let second = state.publish(&ws("b")).expect("announces");
+
+    assert!(
+        second.revision > first.revision,
+        "a real switch must outrank the one before it"
+    );
+    assert_eq!(
+        state.revision, second.revision,
+        "a suppressed republish must not consume a revision"
+    );
+}
+
+/// Invalidation is not a transition — it says the answer is unknown, not that
+/// it changed. Bumping the revision there would make every marker write look
+/// newer than a switch that had already been announced.
+#[test]
+fn invalidation_does_not_consume_a_revision() {
+    let mut state = ActiveWorkspace::default();
+    let announced = state.publish(&ws("a")).expect("announces");
+    state.invalidate();
+    assert_eq!(state.revision, announced.revision);
+    assert!(state.is_current(announced.revision));
 }

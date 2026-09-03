@@ -332,6 +332,7 @@ fn publish_flow_gate_notification(
             },
         ]),
         workspace: None,
+        workspace_revision: None,
     });
 }
 

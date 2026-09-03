@@ -1038,6 +1038,7 @@ fn an_empty_artifact_workspace_reads_as_unbound_not_as_a_workspace() {
 fn the_workspace_switch_announcement_is_not_itself_workspace_bound() {
     let event = DomainEvent::ActiveWorkspaceChanged {
         workspace_dir: other_workspace(),
+        revision: 1,
     };
     assert_eq!(event.workspace_dir(), None);
     assert_eq!(event.variant_name(), "ActiveWorkspaceChanged");

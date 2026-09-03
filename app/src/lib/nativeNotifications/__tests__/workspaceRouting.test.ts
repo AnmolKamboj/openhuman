@@ -26,6 +26,8 @@ import {
   __setActiveWorkspaceForTests,
 } from '../service';
 
+const WS_C = 'ws_3333333333333333';
+
 vi.mock('../tauriBridge', () => ({ showNativeNotification: vi.fn() }));
 
 vi.mock('../../../services/socketService', () => ({
@@ -35,7 +37,7 @@ vi.mock('../../../services/socketService', () => ({
 const WS_A = 'ws_1111111111111111';
 const WS_B = 'ws_2222222222222222';
 
-function notify(overrides: { id: string; workspace?: string | null }) {
+function notify(overrides: { id: string; workspace?: string | null; workspace_revision?: number }) {
   __handleCoreNotificationForTests({
     id: overrides.id,
     category: 'system',
@@ -43,6 +45,7 @@ function notify(overrides: { id: string; workspace?: string | null }) {
     body: 'ac.inference.sh/mcp is not being retried.',
     timestamp_ms: 1,
     workspace: overrides.workspace,
+    workspace_revision: overrides.workspace_revision,
   });
 }
 
@@ -121,5 +124,62 @@ describe('core notification workspace routing', () => {
     notify({ id: 'mcp:b', workspace: WS_B });
     expect(items()).toHaveLength(2);
     expect(items().some(item => item.id === 'mcp:b')).toBe(true);
+  });
+});
+
+describe('core notification routing when the client is behind', () => {
+  beforeEach(() => {
+    __resetForTests();
+    vi.clearAllMocks();
+    store.dispatch({ type: 'notifications/clearAll' });
+    store.dispatch(setPreference({ category: 'system', enabled: true }));
+  });
+
+  /**
+   * `workspace_changed` and `core_notification` are broadcast by separate
+   * tasks, so a notification for the workspace the user just switched *to* can
+   * arrive before the switch that announces it. The core already verified that
+   * workspace was active; dropping it here would lose a valid alert.
+   */
+  it('accepts a notification stamped newer than what the client knows', () => {
+    __setActiveWorkspaceForTests(WS_A, 4);
+    notify({ id: 'mcp:ahead', workspace: WS_B, workspace_revision: 5 });
+    expect(items()).toHaveLength(1);
+  });
+
+  /** Having caught up, the client must route to the workspace it adopted. */
+  it('adopts the newer workspace so later notifications route to it', () => {
+    __setActiveWorkspaceForTests(WS_A, 4);
+    notify({ id: 'mcp:ahead', workspace: WS_B, workspace_revision: 5 });
+
+    notify({ id: 'mcp:b-again', workspace: WS_B });
+    expect(items()).toHaveLength(2);
+
+    notify({ id: 'mcp:stale-a', workspace: WS_A });
+    expect(items()).toHaveLength(2);
+  });
+
+  /**
+   * The case the check exists for. At a revision the client has already caught
+   * up to, a mismatched handle is genuinely stale — it would put another
+   * account's server name and transport error in front of this one.
+   */
+  it('drops a mismatch at a revision it has already caught up to', () => {
+    __setActiveWorkspaceForTests(WS_B, 5);
+    notify({ id: 'mcp:stale', workspace: WS_A, workspace_revision: 5 });
+    expect(items()).toHaveLength(0);
+  });
+
+  it('drops a mismatch stamped older than what the client knows', () => {
+    __setActiveWorkspaceForTests(WS_C, 9);
+    notify({ id: 'mcp:older', workspace: WS_A, workspace_revision: 2 });
+    expect(items()).toHaveLength(0);
+  });
+
+  /** An unstamped mismatch cannot be shown to be a catch-up, so it drops. */
+  it('drops a mismatch with no revision at all', () => {
+    __setActiveWorkspaceForTests(WS_A, 4);
+    notify({ id: 'mcp:unstamped', workspace: WS_B });
+    expect(items()).toHaveLength(0);
   });
 });

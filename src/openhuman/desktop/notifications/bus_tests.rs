@@ -208,6 +208,7 @@ fn publish_and_subscribe_deliver_event() {
         timestamp_ms: 0,
         actions: None,
         workspace: None,
+        workspace_revision: None,
     };
 
     let sent = publish_core_notification(evt.clone());
@@ -245,6 +246,7 @@ fn publish_with_no_subscribers_does_not_panic() {
         timestamp_ms: 42,
         actions: None,
         workspace: None,
+        workspace_revision: None,
     });
     // count is 0 when no subscribers, but the call itself must not panic.
     let _ = count;

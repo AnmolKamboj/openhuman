@@ -205,6 +205,9 @@ pub(crate) async fn persist_active_workspace_config_dir(config_dir: &Path) -> Re
                     state_path.display()
                 )
             })?;
+            // Again, now that the marker is actually gone — same race as the
+            // write branch below.
+            super::active_workspace::invalidate_active_workspace();
         }
         return Ok(());
     }
@@ -244,6 +247,11 @@ pub(crate) async fn persist_active_workspace_config_dir(config_dir: &Path) -> Re
     }
 
     super::sync_directory(&default_config_dir).await?;
+    // Again, now that the marker on disk actually says the new workspace. The
+    // pre-write clear alone leaves a window in which a racing resolver reads
+    // the *old* marker and refills the cache with the workspace being switched
+    // away from.
+    super::active_workspace::invalidate_active_workspace();
     Ok(())
 }
 

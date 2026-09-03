@@ -1273,7 +1273,17 @@ pub enum DomainEvent {
     /// client sends
     /// [`workspace_handle`](crate::openhuman::config::workspace_handle)
     /// instead, since the path is under the user's home directory.
-    ActiveWorkspaceChanged { workspace_dir: std::path::PathBuf },
+    ActiveWorkspaceChanged {
+        workspace_dir: std::path::PathBuf,
+        /// Monotonic revision of this transition.
+        ///
+        /// The connect-time snapshot a client is seeded with and this
+        /// broadcast travel on separate tasks, so a snapshot resolved before
+        /// a switch can be delivered after it. Carrying the revision lets a
+        /// client keep the highest it has seen and discard anything older,
+        /// rather than being talked back into the previous workspace.
+        revision: u64,
+    },
     /// A component's health status changed.
     HealthChanged {
         component: String,
