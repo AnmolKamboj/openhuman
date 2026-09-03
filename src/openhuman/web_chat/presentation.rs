@@ -44,12 +44,12 @@ fn usage_payload(usage: Option<&LastTurnUsage>) -> Option<TurnUsagePayload> {
     })
 }
 
-/// Deliver an agent response to the frontend, applying local-model
-/// presentation (segmentation + reaction) when the model is available.
+/// Deliver one unmodified agent response to the frontend.
 ///
-/// Always emits at least one `chat_done` event. When the response is
-/// segmented, emits one `chat_segment` per bubble first, then a final
-/// `chat_done` with the full text for deduplication.
+/// Desktop/web chat owns Markdown layout inside one assistant message. Splitting
+/// paragraphs into `chat_segment` messages duplicates tool/reasoning parts and
+/// turns one answer into several bubbles, so this path always emits exactly one
+/// `chat_done` with the model's original text.
 pub(crate) async fn deliver_response(
     client_id: &str,
     thread_id: &str,
@@ -66,8 +66,10 @@ pub(crate) async fn deliver_response(
     let user_msg_owned = user_message.to_string();
     let reaction_handle = tokio::spawn(async move { try_reaction(&user_msg_owned).await });
 
-    // Segmentation is pure CPU work, runs immediately.
-    let segments = segment_for_delivery(full_response);
+    // Keep the response byte-for-byte in one assistant message. The legacy
+    // segmentation helpers remain available to channel-specific callers/tests,
+    // but the interactive web surface must not cut or reformat model output.
+    let segments = [full_response.to_string()];
 
     // Await the reaction result (should already be done or nearly done).
     let reaction_emoji = reaction_handle.await.unwrap_or(None);

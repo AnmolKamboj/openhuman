@@ -679,33 +679,55 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     [refresh]
   );
 
+  // The core switches credentials before the refreshed app snapshot reaches
+  // React. Keep the token being installed visible to the expiry handler during
+  // that gap; otherwise a late 401 from the previous/cloud surface can clear a
+  // newly stored local session even though the core correctly ignores it.
+  const sessionTokenBeingStoredRef = useRef<string | null>(null);
+
   const storeSessionToken = useCallback(
     async (token: string, user?: object) => {
       logoutGuardUntilRef.current = 0;
-      await storeSession(token, user ?? {});
+      sessionTokenBeingStoredRef.current = token;
       try {
-        await syncMemoryClientToken(token);
-        memoryTokenRef.current = token;
-      } catch (error) {
-        console.warn('[core-state] memory client sync failed after session store:', error);
-      }
-      // refresh() drives refreshCore, which now owns identity-flip detection
-      // and dispatches handleIdentityFlip when both prev and next are
-      // authenticated and identities differ. The previous standalone
-      // restartApp call here was redundant and skipped the persist purge,
-      // letting redux-persist rehydrate the prior user's slices on launch
-      // (#900). Restart now happens inside handleIdentityFlip after purge.
-      // Swallow refresh failures here so a cold-boot `app_state_snapshot`
-      // timeout post-login doesn't surface as an unhandled rejection
-      // (OPENHUMAN-REACT-Z/Y) — the polling loop reconciles within
-      // `POLL_MS`.
-      await refresh().catch(err => {
-        log('refresh failed after session store: %O', sanitizeError(err));
-      });
-      if (!isLocalSessionToken(token)) {
-        await refreshTeams().catch(err => {
-          log('refreshTeams failed after session store: %O', sanitizeError(err));
+        await storeSession(token, user ?? {});
+        try {
+          await syncMemoryClientToken(token);
+          memoryTokenRef.current = token;
+        } catch (error) {
+          console.warn('[core-state] memory client sync failed after session store:', error);
+        }
+        // refresh() drives refreshCore, which now owns identity-flip detection
+        // and dispatches handleIdentityFlip when both prev and next are
+        // authenticated and identities differ. The previous standalone
+        // restartApp call here was redundant and skipped the persist purge,
+        // letting redux-persist rehydrate the prior user's slices on launch
+        // (#900). Restart now happens inside handleIdentityFlip after purge.
+        // Swallow refresh failures here so a cold-boot `app_state_snapshot`
+        // timeout post-login doesn't surface as an unhandled rejection
+        // (OPENHUMAN-REACT-Z/Y) — the polling loop reconciles within
+        // `POLL_MS`.
+        // `refresh()` dedupes onto any poll already in flight. A poll that
+        // began before `storeSession` resolved answers with the pre-store
+        // snapshot; awaiting that one here would commit stale cloud identity,
+        // then the `finally` below would drop the local-token marker on it and
+        // a late confirmed 401 could clear the session just stored. Wait the
+        // stale poll out, then require a refresh that began after the store.
+        if (refreshInFlightRef.current) {
+          await refreshInFlightRef.current.catch(() => undefined);
+        }
+        await refresh().catch(err => {
+          log('refresh failed after session store: %O', sanitizeError(err));
         });
+        if (!isLocalSessionToken(token)) {
+          await refreshTeams().catch(err => {
+            log('refreshTeams failed after session store: %O', sanitizeError(err));
+          });
+        }
+      } finally {
+        if (sessionTokenBeingStoredRef.current === token) {
+          sessionTokenBeingStoredRef.current = null;
+        }
       }
     },
     [refresh, refreshTeams]
@@ -782,7 +804,9 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   // so re-registers are rare.
   useEffect(() => {
     const runReauth = async (method: string, source: string, reason: AuthExpiredReason) => {
-      if (isLocalSessionToken(getCoreStateSnapshot().snapshot.sessionToken)) {
+      const effectiveToken =
+        sessionTokenBeingStoredRef.current ?? getCoreStateSnapshot().snapshot.sessionToken;
+      if (isLocalSessionToken(effectiveToken)) {
         log('auth-expired ignored for local session (method=%s source=%s)', method, source);
         return;
       }

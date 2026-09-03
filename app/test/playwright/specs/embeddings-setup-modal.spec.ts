@@ -78,7 +78,11 @@ test.describe('Embeddings setup — Test connection for a custom endpoint', () =
     // and no unavailable-reason text is shown for a non-custom provider.
     await openEmbeddingsTab(page, 'pw-embed-openai');
 
-    await page.getByRole('radio').filter({ hasText: /OpenAI/ }).first().click();
+    await page
+      .getByRole('radio')
+      .filter({ hasText: /OpenAI/ })
+      .first()
+      .click();
 
     const testButton = page.getByRole('button', { name: TEST_CONNECTION });
     await expect(testButton).toBeVisible({ timeout: 15_000 });

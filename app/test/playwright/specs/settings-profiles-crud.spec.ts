@@ -248,11 +248,7 @@ test.describe('Agent profiles — a failing action shows the reason', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: body.id,
-            error: { code: -32000, message },
-          }),
+          body: JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32000, message } }),
         });
         return;
       }

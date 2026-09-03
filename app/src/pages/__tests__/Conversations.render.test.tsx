@@ -25,7 +25,6 @@ import chatRuntimeReducer, {
   setInferenceStatusForThread,
   setStreamingAssistantForThread,
   setToolTimelineForThread,
-  setTurnTimelinesForThread,
 } from '../../store/chatRuntimeSlice';
 import layoutReducer from '../../store/layoutSlice';
 import socketReducer from '../../store/socketSlice';
@@ -76,6 +75,15 @@ vi.mock('../../services/api/threadApi', () => ({
     getThreadMessages: mockGetThreadMessages,
     getTurnState: vi.fn().mockResolvedValue(null),
     getTurnStateHistory: vi.fn().mockResolvedValue([]),
+    getDerivedTranscript: vi
+      .fn()
+      .mockResolvedValue({
+        threadId: 'none',
+        items: [],
+        total: 0,
+        hasMore: false,
+        hasTranscript: false,
+      }),
     getTaskBoard: vi
       .fn()
       .mockResolvedValue({ threadId: 't-1', cards: [], updatedAt: '2026-05-04T10:00:00Z' }),
@@ -623,6 +631,15 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       'Long agent output with enough structure to prefer a text view.'
     );
     expect(screen.getByText('Can you summarize this?')).toBeInTheDocument();
+    // Message rows must retain their measured layout/paint while off-screen.
+    // `content-visibility:auto` plus a guessed intrinsic height makes WebKit
+    // reveal/re-size rows as they cross the viewport, producing scroll flicker.
+    const assistantRoot = screen.getByTestId('agent-message');
+    const userRoot = document.querySelector('[data-slot="aui_user-message-root"]');
+    expect(assistantRoot.className).not.toContain('content-visibility');
+    expect(userRoot?.className).not.toContain('content-visibility');
+    expect(assistantRoot.className).not.toContain('contain-intrinsic-size');
+    expect(userRoot?.className).not.toContain('contain-intrinsic-size');
   });
 
   it("renders a past turn's process trail above the answer it produced (Phase 5)", async () => {
@@ -666,9 +683,18 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
     mockGetThreadMessages.mockResolvedValue({ messages, count: messages.length });
 
-    let store: ReturnType<typeof buildStore> | undefined;
+    vi.mocked(threadApi.getDerivedTranscript).mockResolvedValueOnce({
+      threadId: thread.id,
+      items: [
+        { kind: 'toolCall', callId: 'tc-1', name: 'read_file', status: 'success' },
+        { kind: 'turnBoundary', requestId: 'req-1' },
+      ],
+      total: 2,
+      hasMore: false,
+      hasTranscript: true,
+    });
     await act(async () => {
-      store = await renderConversations({
+      await renderConversations({
         thread: {
           ...selectedThreadState(thread),
           messagesByThreadId: { [thread.id]: messages },
@@ -678,24 +704,8 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       });
     });
 
-    // No past-turn tool call before hydration.
-    expect(screen.queryByText(/read_file/)).not.toBeInTheDocument();
-
-    // Hydrate the older turn's timeline (as fetchAndHydrateTurnHistory would).
-    await act(async () => {
-      store!.dispatch(
-        setTurnTimelinesForThread({
-          threadId: thread.id,
-          timelines: {
-            'req-1': [{ id: 'tc-1', name: 'read_file', round: 0, seq: 0, status: 'success' }],
-          },
-        })
-      );
-    });
-
-    // The past turn's tool call is projected into assistant-ui exactly once.
-    fireEvent.click(await screen.findByRole('button', { name: /1 tool call/ }));
-    expect(await screen.findByText('read_file')).toBeInTheDocument();
+    // The past turn's core transcript is projected into assistant-ui exactly once.
+    expect(await screen.findByTestId('assistant-ui-tool-call')).toHaveTextContent('Read File');
   });
 
   it('keeps assistant message copy available through assistant-ui', async () => {
@@ -980,7 +990,13 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     // The send cleared the composer; with an empty composer mid-send the Send
     // button morphs into the Stop button, so there is no Send affordance left
     // to fire a duplicate send.
-    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
+    const stopButton = screen.getByRole('button', { name: 'Stop generating' });
+    expect(stopButton).toBeInTheDocument();
+    expect(stopButton).toHaveClass(
+      'bg-primary-500',
+      'text-content-inverted',
+      'hover:bg-primary-600'
+    );
     expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
     resolveSend?.();
   });

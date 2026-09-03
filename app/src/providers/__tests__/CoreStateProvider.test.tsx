@@ -536,6 +536,96 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
     expect(vi.mocked(tauriCommands.logout)).not.toHaveBeenCalled();
   });
 
+  it('does not clear a local session while its refreshed snapshot is still pending', async () => {
+    const localToken = `eyJhbGciOiJub25lIn0.${window.btoa(JSON.stringify({ sub: 'local' }))}.local`;
+    const stored = deferred<void>();
+    fetchSnapshot.mockResolvedValue(makeSnapshot({ userId: 'cloud-user', sessionToken: 'old' }));
+    listTeams.mockResolvedValue([]);
+    vi.mocked(tauriCommands.storeSession).mockReset();
+    vi.mocked(tauriCommands.storeSession).mockReturnValue(stored.promise as never);
+    vi.mocked(tauriCommands.logout).mockReset();
+    vi.mocked(tauriCommands.logout).mockResolvedValue(undefined as never);
+
+    let ctx: CoreStateContextValue | undefined;
+    render(
+      <CoreStateProvider>
+        <Consumer captureCtx={next => (ctx = next)} />
+      </CoreStateProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+
+    let storing!: Promise<void>;
+    await act(async () => {
+      storing = ctx!.storeSessionToken(localToken, { id: 'local' });
+      await Promise.resolve();
+      window.dispatchEvent(
+        new CustomEvent('core-rpc-auth-expired', {
+          detail: {
+            method: 'openhuman.announcements_get_latest',
+            source: 'rpc',
+            reason: 'confirmed',
+          },
+        })
+      );
+      // Drain past the microtask queue: the handler may `await` before it can
+      // reach `logout`, and a single `Promise.resolve()` tick would let this
+      // assertion pass without that path having had a chance to run.
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(vi.mocked(tauriCommands.logout)).not.toHaveBeenCalled();
+    stored.resolve();
+    await act(async () => storing);
+  });
+
+  it('keeps a stored local session when a pre-store poll settles after the store', async () => {
+    const localToken = `eyJhbGciOiJub25lIn0.${window.btoa(JSON.stringify({ sub: 'local' }))}.local`;
+    const prestorePoll = deferred<Snapshot>();
+    // Bootstrap answers with the cloud identity, the poll started *before* the
+    // store is held open, and every poll after the store sees the local session.
+    fetchSnapshot
+      .mockResolvedValueOnce(makeSnapshot({ userId: 'cloud-user', sessionToken: 'old' }))
+      .mockReturnValueOnce(prestorePoll.promise as never)
+      .mockResolvedValue(makeSnapshot({ userId: 'local', sessionToken: localToken }));
+    listTeams.mockResolvedValue([]);
+    vi.mocked(tauriCommands.storeSession).mockReset();
+    vi.mocked(tauriCommands.storeSession).mockResolvedValue(undefined as never);
+    vi.mocked(tauriCommands.logout).mockReset();
+    vi.mocked(tauriCommands.logout).mockResolvedValue(undefined as never);
+
+    let ctx: CoreStateContextValue | undefined;
+    render(
+      <CoreStateProvider>
+        <Consumer captureCtx={next => (ctx = next)} />
+      </CoreStateProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('ready').textContent).toBe('ready'));
+
+    let storing!: Promise<void>;
+    await act(async () => {
+      // A poll is already in flight when the local session is stored...
+      void ctx!.refresh();
+      storing = ctx!.storeSessionToken(localToken, { id: 'local' });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // ...and it settles with the stale cloud snapshot only after the store.
+      prestorePoll.resolve(makeSnapshot({ userId: 'cloud-user', sessionToken: 'old' }));
+      await storing;
+    });
+
+    expect(getCoreStateSnapshot().snapshot.sessionToken).toBe(localToken);
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('core-rpc-auth-expired', {
+          detail: { method: 'openhuman.team_get_usage', source: 'rpc', reason: 'confirmed' },
+        })
+      );
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    expect(vi.mocked(tauriCommands.logout)).not.toHaveBeenCalled();
+  });
+
   it('dispatching core-rpc-auth-expired triggers clearSession (and debounces repeated fires within 10s)', async () => {
     fetchSnapshot.mockResolvedValue(makeSnapshot({ userId: 'u1', sessionToken: 'tok1' }));
     listTeams.mockResolvedValue([]);

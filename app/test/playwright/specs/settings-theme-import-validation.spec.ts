@@ -90,11 +90,7 @@ test.describe('Theme Studio — import validation', () => {
   }
 
   test('still accepts a theme carrying a single colour token', async ({ page }) => {
-    const valid = JSON.stringify({
-      name: 'Minimal',
-      isDark: false,
-      colors: { surface: '1 2 3' },
-    });
+    const valid = JSON.stringify({ name: 'Minimal', isDark: false, colors: { surface: '1 2 3' } });
 
     await attemptImport(page, valid);
 
