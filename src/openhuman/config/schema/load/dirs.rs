@@ -190,6 +190,13 @@ pub(crate) async fn persist_active_workspace_config_dir(config_dir: &Path) -> Re
     let default_config_dir = default_config_dir()?;
     let state_path = active_workspace_state_path(&default_config_dir);
 
+    // Before the write, not after: this marker is one of the inputs the
+    // resolver reads, so from here until the next resolve the cached answer
+    // is no longer known to be current — including if the write below fails
+    // partway. Clearing early costs one resolve; clearing late leaves a
+    // window in which a stale workspace reads as active.
+    super::active_workspace::invalidate_active_workspace();
+
     if config_dir == default_config_dir {
         if state_path.exists() {
             fs::remove_file(&state_path).await.with_context(|| {
@@ -305,13 +312,21 @@ pub(crate) async fn resolve_runtime_config_dirs(
 /// workspace marker, then the pre-login directory — so a caller cannot
 /// disagree with the loader about which workspace is active.
 ///
-/// This is deliberately not cached. One process serves more than one
+/// The answer is never pinned at boot. One process serves more than one
 /// workspace over its life and the switch is a change to an on-disk marker,
-/// so anything a subscriber pinned at boot goes stale exactly when it
+/// so anything a subscriber captured once goes stale exactly when it
 /// matters. The cost is one small marker read, which is why callers should
 /// reach for this per *decision*, not per event: `desktop::notifications`
 /// asks only for the handful of workspace-bound events a supervisor tick
 /// produces, and returns before calling it for everything else.
+///
+/// A caller that cannot afford even that — the Event Log stamps every domain
+/// event the process publishes, from a synchronous stream closure — reads
+/// [`active_workspace_dir_cached`](super::active_workspace::active_workspace_dir_cached)
+/// instead. Both arms below refill that cache, so the two cannot disagree
+/// about a workspace either of them has seen, and the embedder arm is
+/// included deliberately: an embedding host's chosen workspace is the
+/// authoritative answer for its process too.
 pub async fn active_workspace_dir() -> Result<PathBuf> {
     // An embedding host that supplied its own `Config` is authoritative, and
     // `config::ops::load_config_with_timeout` already short-circuits on it for
@@ -323,6 +338,7 @@ pub async fn active_workspace_dir() -> Result<PathBuf> {
     // with only a `debug!` line to say so. See AGENTS.md, "CoreBuilder::config
     // alone configures boot and nothing else".
     if let Some(config) = crate::core::runtime::context::CoreContext::current_embedder_config() {
+        super::active_workspace::publish_active_workspace(&config.workspace_dir);
         return Ok(config.workspace_dir);
     }
     let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
@@ -332,6 +348,7 @@ pub async fn active_workspace_dir() -> Result<PathBuf> {
         source = source.as_str(),
         "active workspace resolved for a workspace-bound decision"
     );
+    super::active_workspace::publish_active_workspace(&workspace_dir);
     Ok(workspace_dir)
 }
 

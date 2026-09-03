@@ -148,7 +148,14 @@ pub fn read_active_user_id(default_openhuman_dir: &Path) -> Option<String> {
 }
 
 /// Writes the active user id to `{default_openhuman_dir}/active_user.toml`.
+///
+/// This marker outranks the workspace marker in the resolver, so writing it
+/// changes which workspace is active. The cached answer is dropped up front,
+/// before the write rather than after, so a failure partway through cannot
+/// leave a stale workspace reading as current — see
+/// `load::active_workspace` for the rest of that reasoning (#5966).
 pub fn write_active_user_id(default_openhuman_dir: &Path, user_id: &str) -> Result<()> {
+    crate::openhuman::config::schema::invalidate_active_workspace();
     std::fs::create_dir_all(default_openhuman_dir).with_context(|| {
         format!(
             "Failed to create active user state directory: {}",
@@ -199,7 +206,13 @@ pub fn write_active_user_id(default_openhuman_dir: &Path, user_id: &str) -> Resu
 
 /// Removes the active user marker.  After this, the next config load will
 /// use the default (unauthenticated) openhuman directory.
+///
+/// Sign-out is a workspace switch like any other, so the cached active
+/// workspace is dropped here too — unconditionally, not only when the file
+/// turned out to exist, because a caller reaching for this has already
+/// decided the previous answer should stop applying.
 pub fn clear_active_user(default_openhuman_dir: &Path) -> Result<()> {
+    crate::openhuman::config::schema::invalidate_active_workspace();
     let path = active_user_marker_path(default_openhuman_dir);
     if path.exists() {
         std::fs::remove_file(&path)

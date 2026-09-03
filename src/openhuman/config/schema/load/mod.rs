@@ -1,5 +1,6 @@
 //! Config load/save and environment variable overrides.
 
+mod active_workspace;
 mod dirs;
 mod env;
 mod env_overlay;
@@ -7,6 +8,8 @@ mod impl_load;
 mod migrate;
 mod secrets;
 
+pub use active_workspace::active_workspace_dir_cached;
+pub(crate) use active_workspace::invalidate_active_workspace;
 pub use dirs::{
     action_dir_env_override, active_user_marker_path, active_workspace_dir, clear_active_user,
     default_action_dir, default_projects_dir, default_root_openhuman_dir, pre_login_user_dir,

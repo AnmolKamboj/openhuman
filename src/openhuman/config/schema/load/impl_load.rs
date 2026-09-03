@@ -261,12 +261,24 @@ async fn describe_config_ownership(_path: &Path) -> String {
 impl Config {
     pub async fn load_or_init() -> Result<Self> {
         let (default_openhuman_dir, default_workspace_dir) = default_config_and_workspace_dirs()?;
-        Self::load_or_init_with_env_lookup(
+        let config = Self::load_or_init_with_env_lookup(
             &default_openhuman_dir,
             &default_workspace_dir,
             &ProcessEnv,
         )
-        .await
+        .await?;
+        // Write-through for the cached active workspace (#5966). This is the
+        // process's real load path, so it is also the earliest and most
+        // frequent moment the answer is known — the Event Log's synchronous
+        // stream can then stamp events without resolving anything itself.
+        //
+        // Deliberately here rather than inside `load_or_init_with_env_lookup`:
+        // that one takes an injected `EnvLookup` so tests can drive the
+        // `OPENHUMAN_WORKSPACE` branch against a fixture, and publishing from
+        // it would make one test's temp directory the whole binary's idea of
+        // the active workspace.
+        super::active_workspace::publish_active_workspace(&config.workspace_dir);
+        Ok(config)
     }
 
     pub(crate) async fn load_or_init_with_env_lookup(

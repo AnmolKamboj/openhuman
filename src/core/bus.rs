@@ -60,7 +60,8 @@ pub const EVENTS_INTERFACE: &str = "ai.tinyhumans.openhuman.Events";
 /// both numbers rather than as a decode failure later.
 ///
 /// `1.1.0` added the MCP reconnect-supervisor variants (#5931).
-pub const EVENTS_VERSION: Version = Version::new(1, 1, 0);
+/// `1.2.0` added `ActiveWorkspaceChanged` (#5966).
+pub const EVENTS_VERSION: Version = Version::new(1, 2, 0);
 
 /// The bus. Initialised once by [`init`]; safe to touch before that.
 pub static BUS: OnceBus<DomainEvent> = OnceBus::new();
