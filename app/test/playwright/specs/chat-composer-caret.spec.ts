@@ -222,7 +222,8 @@ test.describe('Chat composer — caret on mid-string edits', () => {
     await page.keyboard.type('B');
     await page.waitForTimeout(300);
 
-    // Both characters land consecutively mid-string.
+    // Both characters land consecutively mid-string, caret after the second.
+    expect(await caretOffset(input)).toBe(7);
     expect(await composerText(input)).toBe('helloAB world');
   });
 
