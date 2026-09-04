@@ -94,14 +94,17 @@ pub(crate) async fn deliver_response(
             // work that has no business holding a runtime worker while a turn
             // is settling. Hand it to the blocking pool and await the handle,
             // which keeps the ordering this whole change rests on.
-            let (dir, thread, request, reply) = (
+            let (dir, thread, request, reply, cites) = (
                 dir.to_path_buf(),
                 thread_id.to_string(),
                 request_id.to_string(),
                 full_response.to_string(),
+                citations.to_vec(),
             );
             let persisted = tokio::task::spawn_blocking(move || {
-                super::reply_persistence::persist_delivered_reply(&dir, &thread, &request, &reply)
+                super::reply_persistence::persist_delivered_reply(
+                    &dir, &thread, &request, &reply, &cites,
+                )
             })
             .await;
             match persisted {

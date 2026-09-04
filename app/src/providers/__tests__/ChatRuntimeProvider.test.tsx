@@ -45,7 +45,9 @@ vi.mock('../../services/api/threadApi', () => ({
   },
 }));
 
-vi.mock('../../services/socketService', () => ({ socketService: { subscribeThread: vi.fn() } }));
+vi.mock('../../services/socketService', () => ({
+  socketService: { subscribeThread: vi.fn(() => Promise.resolve(true)) },
+}));
 
 vi.mock('../../hooks/usageRefresh', () => ({ requestUsageRefresh: vi.fn() }));
 
@@ -634,6 +636,34 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       expect(persisted.sender).toBe('agent');
     });
 
+    it('surfaces a user-visible error when neither writer stored the reply (#6034)', async () => {
+      vi.mocked(threadApi.appendMessage).mockRejectedValueOnce(new Error('rpc timeout'));
+      // The refetch succeeds but the row is genuinely not there — the case
+      // where the core write failed too. A console line is not enough here:
+      // the user is looking at a finished turn with no answer.
+      vi.mocked(threadApi.getThreadMessages).mockResolvedValueOnce({
+        messages: [],
+      } as unknown as Awaited<ReturnType<typeof threadApi.getThreadMessages>>);
+
+      const listeners = renderProvider();
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-gone',
+          request_id: 'r-gone',
+          full_response: 'an answer nobody stored',
+          rounds_used: 1,
+        });
+      });
+
+      await waitFor(() =>
+        expect(
+          Object.values(store.getState().userErrors.byId).some(
+            e => e.kind === 'reply_delivery_failed'
+          )
+        ).toBe(true)
+      );
+    });
+
     it('keeps a generated id for a segmented chat_done (the core left those rows to us)', async () => {
       const listeners = renderProvider();
 
@@ -1177,6 +1207,40 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       // the gap is not invisible until the thread is reselected.
       await waitFor(() => expect(socketService.subscribeThread).toHaveBeenCalledWith('t-away'));
       await waitFor(() => expect(threadApi.getThreadMessages).toHaveBeenCalledWith('t-away'));
+    });
+
+    it('retries a thread whose room join never emitted, on the next connection', async () => {
+      vi.mocked(threadApi.getThreadMessages).mockResolvedValue({
+        messages: [],
+      } as unknown as Awaited<ReturnType<typeof threadApi.getThreadMessages>>);
+      // The socket dropped again between `connected` and this effect, so the
+      // emit never went out. Forgetting the thread here would strand it until
+      // the user reselected it.
+      vi.mocked(socketService.subscribeThread).mockResolvedValueOnce(false);
+
+      renderProvider();
+      act(() => {
+        store.dispatch(setActiveThread('t-flaky'));
+      });
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'disconnected' }));
+      });
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'connected' }));
+      });
+      await waitFor(() => expect(socketService.subscribeThread).toHaveBeenCalledWith('t-flaky'));
+
+      vi.mocked(socketService.subscribeThread).mockClear();
+      vi.mocked(socketService.subscribeThread).mockResolvedValue(true);
+
+      // Second reconnect: the thread is still pending, so it is retried.
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'disconnected' }));
+      });
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'connected' }));
+      });
+      await waitFor(() => expect(socketService.subscribeThread).toHaveBeenCalledWith('t-flaky'));
     });
 
     it('does nothing on a connect with no interrupted threads', async () => {

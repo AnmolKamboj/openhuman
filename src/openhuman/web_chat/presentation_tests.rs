@@ -331,13 +331,21 @@ async fn delivery_stores_the_reply_before_announcing_it() {
     )
     .expect("thread created");
 
+    let citation = crate::openhuman::memory::agent::memory_loader::MemoryCitation {
+        id: "mem-deliver".to_string(),
+        key: "summary-source".to_string(),
+        namespace: None,
+        score: Some(0.8),
+        timestamp: "2026-09-04T00:00:00Z".to_string(),
+        snippet: "source snippet".to_string(),
+    };
     test_support::deliver_response_in_workspace_for_test(
         "client-1",
         "t-deliver",
         "req-deliver",
         "Here is the summary you asked for.",
         "summarise this",
-        &[],
+        &[citation],
         Some(ws.as_path()),
     )
     .await;
@@ -351,6 +359,12 @@ async fn delivery_stores_the_reply_before_announcing_it() {
     assert_eq!(messages[0].id, "agent:req-deliver");
     assert_eq!(messages[0].content, "Here is the summary you asked for.");
     assert_eq!(messages[0].sender, "agent");
+    // The client's append is deduped onto this row, so the citations it would
+    // have written must already be here or the chips render empty.
+    assert_eq!(
+        messages[0].extra_metadata["citations"][0]["id"],
+        "mem-deliver"
+    );
 }
 
 #[tokio::test]

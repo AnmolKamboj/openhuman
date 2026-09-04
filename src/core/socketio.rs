@@ -12,7 +12,7 @@ use serde_json::Value;
 #[cfg(feature = "http-server")]
 use serde_json::json;
 #[cfg(feature = "http-server")]
-use socketioxide::extract::{Data, SocketRef, TryData};
+use socketioxide::extract::{AckSender, Data, SocketRef, TryData};
 #[cfg(feature = "http-server")]
 use socketioxide::SocketIo;
 
@@ -428,6 +428,13 @@ struct ThreadSubscribePayload {
     thread_id: String,
 }
 
+/// Reply to `thread:subscribe`, so a client can order a read after the join.
+#[cfg(feature = "http-server")]
+#[derive(Debug, Serialize)]
+struct ThreadSubscribeAck {
+    joined: bool,
+}
+
 /// Attaches the Socket.IO layer to the Axum router and sets up event handlers.
 ///
 /// It configures:
@@ -668,19 +675,32 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
             // frontend emits this on connect/reconnect for the active thread, so
             // the new socket re-joins the thread room and keeps receiving the
             // stream. Membership is dropped automatically on disconnect.
+            //
+            // The join is acknowledged so a client can *order* work against it.
+            // A reconnecting client re-reads the thread to pick up a reply that
+            // landed while it was away (#6034); firing that read before the join
+            // is processed leaves a window where the read misses the row and the
+            // turn's `chat_done` is emitted to a room this socket has not joined
+            // yet, so the reply stays invisible until a manual reload. The ack
+            // closes it. Clients that ignore the ack are unaffected — an unused
+            // acknowledgement is inert.
             socket.on(
                 "thread:subscribe",
-                |socket: SocketRef, Data(payload): Data<ThreadSubscribePayload>| async move {
+                |socket: SocketRef, Data(payload): Data<ThreadSubscribePayload>, ack: AckSender| async move {
                     if !socket_is_authed(&socket) {
                         drop_unauthed(&socket, "thread:subscribe from unauthenticated socket");
                         return;
                     }
                     let thread_id = payload.thread_id.trim();
                     if thread_id.is_empty() {
+                        // Still acknowledge: a client awaiting this must not be
+                        // left hanging on its own malformed payload.
+                        ack.send(&ThreadSubscribeAck { joined: false }).ok();
                         return;
                     }
                     let room = format!("thread:{thread_id}");
                     join_room_logged(&socket, &room, &socket.id.to_string());
+                    ack.send(&ThreadSubscribeAck { joined: true }).ok();
                 },
             );
         },

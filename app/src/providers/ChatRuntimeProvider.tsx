@@ -7,6 +7,7 @@ import {
   createSkillToolChainLatencyTracker,
   SKILL_TOOL_CHAIN_TARGET_MS,
 } from '../lib/ai/skillToolChainLatency';
+import { classifyReplyDeliveryFailure } from '../lib/userErrors/classify';
 import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
 import { maybeParseWorkflowProposalTool } from '../lib/workflows/workflowProposal';
 import {
@@ -79,6 +80,7 @@ import {
   setActiveThread,
   setSelectedThread,
 } from '../store/threadSlice';
+import { reportUserError } from '../store/userErrorsSlice';
 import { IS_PROD } from '../utils/config';
 import { AssistantUiRuntimeProvider } from './AssistantUiRuntimeProvider';
 import { isProactiveConversationSurface, proactiveThreadPins } from './proactiveThreadPins';
@@ -502,6 +504,20 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     /**
+     * Tell the user a finished reply could not be shown.
+     *
+     * The turn ran and was paid for, and by this point neither writer left a
+     * row — so a console line is the wrong place for it. An in-thread message
+     * is not an option either: writing one needs the very append that just
+     * failed. The shell's notice panel is the surface that does not depend on
+     * the thread store.
+     */
+    const reportLostReply = (threadId: string) => {
+      const descriptor = classifyReplyDeliveryFailure(threadId);
+      if (descriptor) dispatch(reportUserError({ descriptor, at: Date.now() }));
+    };
+
+    /**
      * Put a delivered reply back on screen after our own append failed.
      *
      * Since #6034 the core stores an unsegmented reply before it announces it,
@@ -529,6 +545,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
               refetchError instanceof Error ? refetchError.message : String(refetchError),
           }
         );
+        reportLostReply(event.thread_id);
         return;
       }
       const recovered = expectedId
@@ -548,6 +565,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         requestId: event.request_id,
         appendError: cause instanceof Error ? cause.message : String(cause),
       });
+      reportLostReply(event.thread_id);
     };
 
     const finishChatDoneTurn = async (event: ChatDoneEvent, path: string) => {
@@ -1602,11 +1620,22 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     if (socketStatus !== 'connected') return;
     const interrupted = interruptedThreadsRef.current;
     if (interrupted.size === 0) return;
-    interruptedThreadsRef.current = new Set();
     rtLog('socket_reconnect_heal', { threads: interrupted.size });
-    for (const threadId of interrupted) {
-      socketService.subscribeThread(threadId);
-      void dispatch(loadThreadMessages(threadId));
+    for (const threadId of [...interrupted]) {
+      // Read only after the room join is acknowledged. Firing both at once
+      // leaves a window where the read misses a reply that lands a moment
+      // later and the turn's `chat_done` goes to a room we have not joined
+      // yet — the reply would then stay invisible until a manual reload.
+      // `subscribeThread` resolves `false` on its own timeout, or immediately
+      // if the socket has already dropped again, so the read is never skipped.
+      void socketService.subscribeThread(threadId).then(joined => {
+        // Forget the thread only once it is provably back in its room. A
+        // socket that dropped again between `connected` and this effect never
+        // emitted, and dropping the id here would strand that thread until the
+        // user reselected it; keeping it means the next connection retries.
+        if (joined) interruptedThreadsRef.current.delete(threadId);
+        return dispatch(loadThreadMessages(threadId));
+      });
     }
   }, [socketStatus, dispatch]);
 
