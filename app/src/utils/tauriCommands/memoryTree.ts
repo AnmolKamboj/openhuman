@@ -925,6 +925,25 @@ export interface MemoryTreePipelineStatus {
   /** Convenience flag: scheduler-gate mode is `off`. */
   is_paused: boolean;
   /**
+   * The scheduler gate's live verdict (openhuman#6025 review): `true` while
+   * its policy is `paused` whichever mode is configured — in `auto` that is
+   * on battery with `require_ac_power`, under CPU pressure, or signed out —
+   * so every LLM-bound worker, the embed backfill included, is blocked right
+   * now. `is_paused` stays the configured `off` mode (the panel's toggle).
+   * Absent from a core that predates the field.
+   */
+  gate_paused?: boolean;
+  /** Why the gate is paused: `user_disabled` | `on_battery` | `cpu_pressure` | `signed_out` | `unknown`. */
+  gate_pause_reason?: string | null;
+  /**
+   * The #5324 stall verdict as a flag: eligible queue work has waited at
+   * least six hours without any job settling. `status` reads `degraded` for
+   * it; the flag tells that stall apart from the other degradations, because
+   * a stalled `reembed_backfill` row still keeps the backfill snapshot
+   * `in_progress` (openhuman#6025 review). Absent from an older core.
+   */
+  queue_stalled?: boolean;
+  /**
    * #002 (FR-002/FR-005): degradation snapshot. Optional for back-compat with
    * older cores that don't emit it (the Rust field is `#[serde(default)]`);
    * absent ⇒ treat as not degraded.

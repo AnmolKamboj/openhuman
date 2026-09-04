@@ -3449,6 +3449,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'échoué',
   'conversations.subagent.statusAwaitingUser': "en attente de l'utilisateur",
   'conversations.subagent.statusCancelled': 'annulé',
+  'conversations.subagent.awaitingTitle': 'En attente de votre réponse',
+  'conversations.subagent.answerPlaceholder': 'Saisissez votre réponse',
+  'conversations.subagent.answerSend': 'Envoyer la réponse',
+  'conversations.subagent.answerSent': 'Réponse envoyée',
   'conversations.agentTaskInsights.title': "Aperçu des tâches de l'agent",
   'conversations.agentTaskInsights.response': 'Réponse',
   'conversations.agentTaskInsights.processSourceTitle': "Source du processus de l'agent",
@@ -6804,6 +6808,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Ingéré uniquement',
   'sync.pipeline.storedWithoutVectors':
     'Enregistré sans vecteurs. Recherche sémantique indisponible.',
+  'sync.pipeline.vectorsPending':
+    'Segments en attente de vecteurs : {count}. La recherche sémantique les couvrira sous peu.',
   'sync.pipeline.signInToEnable': 'Connectez-vous pour activer',
   'sync.pipeline.extractionFailed':
     "Échec de l'extraction de la structure mémoire. Le wiki peut être incomplet.",

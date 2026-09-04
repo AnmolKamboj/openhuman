@@ -3407,6 +3407,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'niepowodzenie',
   'conversations.subagent.statusAwaitingUser': 'oczekiwanie na użytkownika',
   'conversations.subagent.statusCancelled': 'anulowano',
+  'conversations.subagent.awaitingTitle': 'Czeka na Twoją odpowiedź',
+  'conversations.subagent.answerPlaceholder': 'Wpisz swoją odpowiedź',
+  'conversations.subagent.answerSend': 'Wyślij odpowiedź',
+  'conversations.subagent.answerSent': 'Odpowiedź wysłana',
   'conversations.agentTaskInsights.title': 'Wgląd w zadania agenta',
   'conversations.agentTaskInsights.response': 'Odpowiedź',
   'conversations.agentTaskInsights.processSourceTitle': 'Źródło procesu agenta',
@@ -6735,6 +6739,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Tylko pobrano',
   'sync.pipeline.storedWithoutVectors':
     'Zapisano bez wektorów. Wyszukiwanie semantyczne niedostępne.',
+  'sync.pipeline.vectorsPending':
+    'Fragmenty oczekujące na wektory: {count}. Wyszukiwanie semantyczne wkrótce je obejmie.',
   'sync.pipeline.signInToEnable': 'Zaloguj się, aby włączyć',
   'sync.pipeline.extractionFailed':
     'Ekstrakcja struktury pamięci nie powiodła się. Wiki może być niekompletne.',

@@ -2952,6 +2952,8 @@ const en: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690) — raw sync ≠ retrieval-ready
   'sync.pipeline.ingestedOnly': 'Ingested only',
   'sync.pipeline.storedWithoutVectors': 'Stored without vectors. Semantic search unavailable.',
+  'sync.pipeline.vectorsPending':
+    'Chunks waiting for vectors: {count}. Semantic search will cover them shortly.',
   'sync.pipeline.signInToEnable': 'Sign in to enable',
   'sync.pipeline.extractionFailed': 'Memory structure extraction failed. Wiki may be incomplete.',
   'sync.pipeline.treeDegraded': 'Memory tree degraded. Retrieval may return stale results.',
@@ -3878,6 +3880,10 @@ const en: TranslationMap = {
   'conversations.subagent.statusFailed': 'failed',
   'conversations.subagent.statusAwaitingUser': 'awaiting user',
   'conversations.subagent.statusCancelled': 'cancelled',
+  'conversations.subagent.awaitingTitle': 'Waiting for your answer',
+  'conversations.subagent.answerPlaceholder': 'Type your answer',
+  'conversations.subagent.answerSend': 'Send answer',
+  'conversations.subagent.answerSent': 'Answer sent',
   'conversations.agentTaskInsights.title': 'Agentic task insights',
   'conversations.agentTaskInsights.response': 'Response',
   'conversations.agentTaskInsights.processSourceTitle': 'Agent Process Source',

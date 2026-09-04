@@ -692,13 +692,15 @@ fn next_pass_budget_slices_and_exhausts_the_configured_cap() {
     // Unlimited: every pass gets the ceiling.
     assert_eq!(next_pass_budget(None, 0), Some(SYNC_PASS_MAX_ITEMS));
     assert_eq!(next_pass_budget(None, 1_000_000), Some(SYNC_PASS_MAX_ITEMS));
-    // A cap below the ceiling is one exact slice, then exhaustion.
-    assert_eq!(next_pass_budget(Some(200), 0), Some(200));
-    assert_eq!(next_pass_budget(Some(200), 200), None);
-    // A cap above the ceiling slices page by page and ends on the remainder.
-    assert_eq!(next_pass_budget(Some(1_200), 0), Some(SYNC_PASS_MAX_ITEMS));
-    assert_eq!(next_pass_budget(Some(1_200), 1_000), Some(200));
-    assert_eq!(next_pass_budget(Some(1_200), 1_200), None);
+    // A cap below the ceiling (200 since openhuman#6025) is one exact slice,
+    // then exhaustion.
+    assert_eq!(next_pass_budget(Some(50), 0), Some(50));
+    assert_eq!(next_pass_budget(Some(50), 50), None);
+    // A cap above the ceiling slices pass by pass and ends on the remainder —
+    // a remainder smaller than the ceiling, so the two cannot be confused.
+    assert_eq!(next_pass_budget(Some(1_100), 0), Some(SYNC_PASS_MAX_ITEMS));
+    assert_eq!(next_pass_budget(Some(1_100), 1_000), Some(100));
+    assert_eq!(next_pass_budget(Some(1_100), 1_100), None);
     // Over-written past the cap (dedupe drift) still ends, never underflows.
     assert_eq!(next_pass_budget(Some(100), 150), None);
 }

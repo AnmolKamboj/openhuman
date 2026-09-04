@@ -3362,6 +3362,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'ব্যর্থ',
   'conversations.subagent.statusAwaitingUser': 'ব্যবহারকারীর অপেক্ষায়',
   'conversations.subagent.statusCancelled': 'বাতিল হয়েছে',
+  'conversations.subagent.awaitingTitle': 'আপনার উত্তরের অপেক্ষায়',
+  'conversations.subagent.answerPlaceholder': 'আপনার উত্তর লিখুন',
+  'conversations.subagent.answerSend': 'উত্তর পাঠান',
+  'conversations.subagent.answerSent': 'উত্তর পাঠানো হয়েছে',
   'conversations.agentTaskInsights.title': 'এজেন্ট টাস্ক অন্তর্দৃষ্টি',
   'conversations.agentTaskInsights.response': 'প্রতিক্রিয়া',
   'conversations.agentTaskInsights.processSourceTitle': 'এজেন্ট প্রক্রিয়া উৎস',
@@ -6631,6 +6635,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'শুধু গৃহীত',
   'sync.pipeline.storedWithoutVectors': 'ভেক্টর ছাড়াই সংরক্ষিত। শব্দার্থিক অনুসন্ধান অনুপলব্ধ।',
+  'sync.pipeline.vectorsPending':
+    'ভেক্টরের জন্য অপেক্ষমাণ চাংক: {count}। শব্দার্থিক অনুসন্ধান শীঘ্রই সেগুলি অন্তর্ভুক্ত করবে।',
   'sync.pipeline.signInToEnable': 'সক্রিয় করতে সাইন ইন করুন',
   'sync.pipeline.extractionFailed': 'মেমরি কাঠামো নিষ্কাশন ব্যর্থ হয়েছে। উইকি অসম্পূর্ণ হতে পারে।',
   'sync.pipeline.treeDegraded': 'মেমরি ট্রি অবনমিত। পুনরুদ্ধার পুরনো ফলাফল দিতে পারে।',

@@ -3378,6 +3378,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'gagal',
   'conversations.subagent.statusAwaitingUser': 'menunggu pengguna',
   'conversations.subagent.statusCancelled': 'dibatalkan',
+  'conversations.subagent.awaitingTitle': 'Menunggu jawaban Anda',
+  'conversations.subagent.answerPlaceholder': 'Ketik jawaban Anda',
+  'conversations.subagent.answerSend': 'Kirim jawaban',
+  'conversations.subagent.answerSent': 'Jawaban terkirim',
   'conversations.agentTaskInsights.title': 'Wawasan tugas agen',
   'conversations.agentTaskInsights.response': 'Respons',
   'conversations.agentTaskInsights.processSourceTitle': 'Sumber proses agen',
@@ -6666,6 +6670,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Hanya diserap',
   'sync.pipeline.storedWithoutVectors': 'Disimpan tanpa vektor. Pencarian semantik tidak tersedia.',
+  'sync.pipeline.vectorsPending':
+    'Chunk yang menunggu vektor: {count}. Pencarian semantik akan segera mencakupnya.',
   'sync.pipeline.signInToEnable': 'Masuk untuk mengaktifkan',
   'sync.pipeline.extractionFailed': 'Ekstraksi struktur memori gagal. Wiki mungkin tidak lengkap.',
   'sync.pipeline.treeDegraded':

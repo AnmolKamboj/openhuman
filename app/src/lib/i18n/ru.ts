@@ -3391,6 +3391,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'ошибка',
   'conversations.subagent.statusAwaitingUser': 'ожидание пользователя',
   'conversations.subagent.statusCancelled': 'отменено',
+  'conversations.subagent.awaitingTitle': 'Ожидание вашего ответа',
+  'conversations.subagent.answerPlaceholder': 'Введите ваш ответ',
+  'conversations.subagent.answerSend': 'Отправить ответ',
+  'conversations.subagent.answerSent': 'Ответ отправлен',
   'conversations.agentTaskInsights.title': 'Сведения о задачах агента',
   'conversations.agentTaskInsights.response': 'Ответ',
   'conversations.agentTaskInsights.processSourceTitle': 'Источник процесса агента',
@@ -6706,6 +6710,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Только загружено',
   'sync.pipeline.storedWithoutVectors': 'Сохранено без векторов. Семантический поиск недоступен.',
+  'sync.pipeline.vectorsPending':
+    'Блоков в ожидании векторов: {count}. Семантический поиск скоро охватит их.',
   'sync.pipeline.signInToEnable': 'Войдите, чтобы включить',
   'sync.pipeline.extractionFailed':
     'Не удалось извлечь структуру памяти. Вики может быть неполной.',

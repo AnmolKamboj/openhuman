@@ -715,6 +715,22 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         );
       },
       onSubagentSpawned: event => {
+        // Event-seen guard, matching `onToolCall`/`onToolResult`. This socket
+        // reconnects and redelivers freely (13+ times in one measured
+        // session), and a replayed `subagent_spawned` that lands AFTER
+        // `subagent_awaiting_user` looks exactly like `continue_subagent`
+        // resuming the child — the reducer would clear the pause and the
+        // question would vanish while the child was still blocked. `seq` is
+        // the core's own answer to this: `(request_id, seq)` is stamped per
+        // emission (`publish_seq_stamped`), so a redelivery repeats the pair
+        // and a real resume never does. The reducer keeps its own durable
+        // check for the case this bounded cache has already evicted.
+        const eventKey = `subagent_spawned:${event.thread_id}:${event.request_id ?? 'none'}:${event.seq ?? `${event.round}:${event.skill_id}:${event.tool_name}`}`;
+        if (
+          !markChatEventSeen(eventKey, { threadId: event.thread_id, requestId: event.request_id })
+        ) {
+          return;
+        }
         const prev = store.getState().chatRuntime.inferenceStatusByThread[event.thread_id];
         dispatch(
           setInferenceStatusForThread({
@@ -740,14 +756,29 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             workerThreadId: event.subagent?.worker_thread_id,
             mode: event.subagent?.mode,
             dedicatedThread: event.subagent?.dedicated_thread,
+            // Identity of THIS emission, carried into the reducer so it can
+            // tell a resume from a replay without depending on the cache above.
+            spawnEventId: `${event.request_id ?? 'none'}:${event.seq ?? 'noseq'}`,
           })
         );
       },
       onSubagentAwaitingUser: (event: ChatSubagentDoneEvent) => {
+        // Same guard, mirrored: a replayed `subagent_awaiting_user` arriving
+        // after the child has resumed would re-park a running row.
+        const eventKey = `subagent_awaiting_user:${event.thread_id}:${event.request_id ?? 'none'}:${event.seq ?? `${event.round}:${event.skill_id}:${event.tool_name}`}`;
+        if (
+          !markChatEventSeen(eventKey, { threadId: event.thread_id, requestId: event.request_id })
+        ) {
+          return;
+        }
         dispatch(
           subagentAwaitingUser({
             threadId: event.thread_id,
             rowId: `${event.thread_id}:subagent:${event.skill_id}:${event.tool_name}`,
+            // The core puts the child's `ask_user_clarification` question in
+            // `message` (progress_bridge.rs:1055). It is the only copy of the
+            // question the frontend ever receives.
+            question: event.message,
           })
         );
       },

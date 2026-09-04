@@ -3421,6 +3421,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'non riuscito',
   'conversations.subagent.statusAwaitingUser': "in attesa dell'utente",
   'conversations.subagent.statusCancelled': 'annullato',
+  'conversations.subagent.awaitingTitle': 'In attesa della tua risposta',
+  'conversations.subagent.answerPlaceholder': 'Scrivi la tua risposta',
+  'conversations.subagent.answerSend': 'Invia risposta',
+  'conversations.subagent.answerSent': 'Risposta inviata',
   'conversations.agentTaskInsights.title': 'Approfondimenti attività agente',
   'conversations.agentTaskInsights.response': 'Risposta',
   'conversations.agentTaskInsights.processSourceTitle': "Origine del processo dell'agente",
@@ -6759,6 +6763,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Solo acquisito',
   'sync.pipeline.storedWithoutVectors':
     'Memorizzato senza vettori. Ricerca semantica non disponibile.',
+  'sync.pipeline.vectorsPending':
+    'Chunk in attesa dei vettori: {count}. La ricerca semantica li coprirà a breve.',
   'sync.pipeline.signInToEnable': 'Accedi per attivare',
   'sync.pipeline.extractionFailed':
     'Estrazione della struttura della memoria non riuscita. Il wiki potrebbe essere incompleto.',

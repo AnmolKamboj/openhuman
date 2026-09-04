@@ -36,11 +36,12 @@ const SOURCE_KIND: &str = "composio";
 
 /// Per-pass item budget handed to the connector's `Sync` member.
 ///
-/// One pass is one budgeted slice of the account; the pass loop in
-/// `composio_sync_for_source` multiplies this by its `MAX_PASSES` bound into a
-/// worst case of 25k items per click, instead of "whatever the module decides
-/// a call means".
-pub const SYNC_PASS_MAX_ITEMS: usize = 500;
+/// One pass is one budgeted slice of the account; the pass loop multiplies it
+/// by `MAX_PASSES` into a worst case of 10k items per click. 200, not 500: a
+/// pass reaches the memory module as ONE `AcceptSourceItems` call that embeds
+/// each document in turn (~1.7 s each), and 500 ran ~14 min into the host's
+/// 15-minute deadline, logging a false `initial sync failed` (openhuman#6025).
+pub const SYNC_PASS_MAX_ITEMS: usize = 200;
 
 /// The next pass's item budget, or `None` when the configured per-run cap is
 /// spent and the run should end.
@@ -267,7 +268,7 @@ pub async fn composio_sync_for_source(
 
 /// [`composio_sync_for_source`] with the source's configured per-run ingest
 /// cap. `None` preserves unlimited: the loop still slices the account into
-/// 500-item passes, but stops only when the connector reports the end.
+/// 200-item passes, but stops only when the connector reports the end.
 pub async fn composio_sync_budgeted(
     config: &Config,
     connection_id: &str,
@@ -328,7 +329,7 @@ pub async fn composio_sync_budgeted(
     // `completed` with pages unfetched cleared the row while records remained
     // (review finding on this PR) — so loop passes until the connector reports
     // the end, bounded so an upstream that never completes cannot pin this
-    // task forever. The bound is generous: 50 pages ≈ 5,000 records per click.
+    // task forever. The bound is generous: 50 passes ≈ 10,000 records per click.
     const MAX_PASSES: usize = 50;
 
     // Published before the spawn: the row's "running" exists before the RPC
@@ -454,8 +455,8 @@ pub async fn composio_sync_budgeted(
 
 /// What one [`run_sync_pass`] call did.
 ///
-/// A superset of the `usize` the caller inside this file needs, so
-/// `memory::sync::composio::providers::slack::rpc` — the other caller — can
+/// A superset of the `usize` the caller inside this file needs, so the
+/// single-call entry points behind `pass_budget::run_sync_within_budget` can
 /// build a [`SyncOutcome`] without a second round trip through the module.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SyncPassOutcome {
@@ -484,11 +485,11 @@ pub(crate) struct SyncPassOutcome {
 /// stands, and re-deciding that here would give the run two opinions about
 /// what has been read.
 ///
-/// `pub(crate)` — also called from
-/// `memory::sync::composio::providers::slack::rpc`, which needs the same
-/// tinyconnectors-mediated sync pass `composio_sync` runs here, but awaited
-/// synchronously rather than fired into a background task (its RPC contract
-/// is "return the outcome", not "return that a run started").
+/// `pub(crate)` — also driven by `pass_budget::run_sync_within_budget` for
+/// the entry points that sync once per invocation (periodic tick, manual
+/// provider sync, `connection_created`, the Slack ingest RPC), which repeat
+/// this pass within one call's item budget and await it synchronously rather
+/// than firing it into a background task.
 pub(crate) async fn run_sync_pass(
     config: &Config,
     toolkit: &str,

@@ -3177,6 +3177,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': '失败',
   'conversations.subagent.statusAwaitingUser': '等待用户',
   'conversations.subagent.statusCancelled': '已取消',
+  'conversations.subagent.awaitingTitle': '等待你的回答',
+  'conversations.subagent.answerPlaceholder': '输入你的回答',
+  'conversations.subagent.answerSend': '发送回答',
+  'conversations.subagent.answerSent': '回答已发送',
   'conversations.agentTaskInsights.title': '智能体任务洞察',
   'conversations.agentTaskInsights.response': '回复',
   'conversations.agentTaskInsights.processSourceTitle': '智能体处理来源',
@@ -6265,6 +6269,7 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': '仅已导入',
   'sync.pipeline.storedWithoutVectors': '已存储但无向量。语义搜索不可用。',
+  'sync.pipeline.vectorsPending': '等待向量的片段：{count} 个。语义搜索很快会覆盖它们。',
   'sync.pipeline.signInToEnable': '登录以启用',
   'sync.pipeline.extractionFailed': '记忆结构提取失败。维基可能不完整。',
   'sync.pipeline.treeDegraded': '记忆树已降级。检索可能返回过时的结果。',

@@ -29,7 +29,9 @@ import type {
 } from '../../types/intelligence';
 import {
   type BackfillConnectorTreesResponse,
+  type BackfillStatus,
   memoryTreeBackfillConnectorTrees,
+  memoryTreeBackfillStatus,
   memoryTreeFlushSource,
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
@@ -79,6 +81,10 @@ export function MemorySourcesRegistry({
   // ingested but failed embeddings/extraction/tree-build shows a warning rather
   // than a clean synced badge. `null` until the first poll resolves.
   const [pipeline, setPipeline] = useState<MemoryTreePipelineStatus | null>(null);
+  // Global embed-backfill snapshot (openhuman#6025): whether a re-embed chain
+  // still has rows to process. Rows use it to tell a backlog that is being
+  // drained (neutral note) from one nothing is working on (amber warning).
+  const [backfill, setBackfill] = useState<BackfillStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   // The live sync state — which rows are syncing, their bar, their last
@@ -166,7 +172,7 @@ export function MemorySourcesRegistry({
 
   const refresh = useCallback(async () => {
     try {
-      const [list, stats, health] = await Promise.all([
+      const [list, stats, health, backfillStatus] = await Promise.all([
         listMemorySources().catch(err => {
           console.warn('[ui-flow][memory-sources] list failed', err);
           return [] as MemorySourceEntry[];
@@ -182,10 +188,17 @@ export function MemorySourcesRegistry({
           console.warn('[ui-flow][memory-sources] pipeline_status failed', err);
           return null;
         }),
+        // openhuman#6025: embed work in flight. Best-effort like the pipeline
+        // snapshot — `null` makes rows fall back to their own freshness.
+        memoryTreeBackfillStatus().catch(err => {
+          console.warn('[ui-flow][memory-sources] backfill_status failed', err);
+          return null;
+        }),
       ]);
       setSources(list);
       setStatuses(stats);
       setPipeline(health);
+      setBackfill(backfillStatus);
       // The core's own account of what is in flight (`sync_stage`,
       // openhuman#6019): seeds the bar for a run this page never saw start —
       // a cold mount, an app reload mid-sync — and takes down a bar whose
@@ -537,6 +550,7 @@ export function MemorySourcesRegistry({
               source={source}
               status={statusById.get(source.id) ?? null}
               pipeline={pipeline}
+              backfill={backfill}
               isAuthenticated={isAuthenticated}
               isSyncing={syncingIds.has(source.id) || syncProgress.has(source.id)}
               isBuilding={buildingId === source.id}

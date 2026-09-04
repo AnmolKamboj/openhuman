@@ -61,6 +61,7 @@ vi.mock('../../analytics', () => ({
 
 vi.mock('../../../utils/tauriCommands/memoryTree', () => ({
   memoryTreeBackfillConnectorTrees: vi.fn(),
+  memoryTreeBackfillStatus: vi.fn().mockResolvedValue({ in_progress: false, pending_jobs: 0 }),
   memoryTreeFlushSource: vi.fn().mockResolvedValue({ seals_fired: 0 }),
   memoryTreePipelineStatus: vi
     .fn()

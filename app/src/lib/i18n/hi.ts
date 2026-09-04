@@ -3365,6 +3365,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'विफल',
   'conversations.subagent.statusAwaitingUser': 'उपयोगकर्ता की प्रतीक्षा',
   'conversations.subagent.statusCancelled': 'रद्द किया गया',
+  'conversations.subagent.awaitingTitle': 'आपके उत्तर की प्रतीक्षा',
+  'conversations.subagent.answerPlaceholder': 'अपना उत्तर लिखें',
+  'conversations.subagent.answerSend': 'उत्तर भेजें',
+  'conversations.subagent.answerSent': 'उत्तर भेजा गया',
   'conversations.agentTaskInsights.title': 'एजेंट कार्य अंतर्दृष्टि',
   'conversations.agentTaskInsights.response': 'प्रतिक्रिया',
   'conversations.agentTaskInsights.processSourceTitle': 'एजेंट प्रक्रिया स्रोत',
@@ -6630,6 +6634,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'केवल अंतर्ग्रहीत',
   'sync.pipeline.storedWithoutVectors': 'वेक्टर के बिना संग्रहीत। सिमेंटिक खोज अनुपलब्ध।',
+  'sync.pipeline.vectorsPending':
+    'वेक्टर की प्रतीक्षा में चंक्स: {count}। सिमेंटिक खोज जल्द ही उन्हें शामिल करेगी।',
   'sync.pipeline.signInToEnable': 'सक्षम करने के लिए साइन इन करें',
   'sync.pipeline.extractionFailed': 'मेमोरी संरचना निष्कर्षण विफल रहा। विकी अपूर्ण हो सकता है।',
   'sync.pipeline.treeDegraded': 'मेमोरी ट्री अवक्रमित। पुनर्प्राप्ति पुराने परिणाम दे सकती है।',

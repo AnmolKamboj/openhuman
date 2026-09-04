@@ -3330,6 +3330,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': '실패',
   'conversations.subagent.statusAwaitingUser': '사용자 대기 중',
   'conversations.subagent.statusCancelled': '취소됨',
+  'conversations.subagent.awaitingTitle': '답변을 기다리는 중',
+  'conversations.subagent.answerPlaceholder': '답변을 입력하세요',
+  'conversations.subagent.answerSend': '답변 보내기',
+  'conversations.subagent.answerSent': '답변을 보냈습니다',
   'conversations.agentTaskInsights.title': '에이전트 작업 인사이트',
   'conversations.agentTaskInsights.response': '응답',
   'conversations.agentTaskInsights.processSourceTitle': '에이전트 프로세스 소스',
@@ -6556,6 +6560,7 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': '수집만 완료',
   'sync.pipeline.storedWithoutVectors': '벡터 없이 저장됨. 의미 검색을 사용할 수 없습니다.',
+  'sync.pipeline.vectorsPending': '벡터를 기다리는 청크: {count}개. 곧 시맨틱 검색에 포함됩니다.',
   'sync.pipeline.signInToEnable': '사용하려면 로그인하세요',
   'sync.pipeline.extractionFailed': '메모리 구조 추출에 실패했습니다. 위키가 불완전할 수 있습니다.',
   'sync.pipeline.treeDegraded':

@@ -3420,6 +3420,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'falhou',
   'conversations.subagent.statusAwaitingUser': 'aguardando usuário',
   'conversations.subagent.statusCancelled': 'cancelado',
+  'conversations.subagent.awaitingTitle': 'Aguardando sua resposta',
+  'conversations.subagent.answerPlaceholder': 'Digite sua resposta',
+  'conversations.subagent.answerSend': 'Enviar resposta',
+  'conversations.subagent.answerSent': 'Resposta enviada',
   'conversations.agentTaskInsights.title': 'Insights de tarefas do agente',
   'conversations.agentTaskInsights.response': 'Resposta',
   'conversations.agentTaskInsights.processSourceTitle': 'Fonte do processo do agente',
@@ -6745,6 +6749,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Apenas ingerido',
   'sync.pipeline.storedWithoutVectors': 'Armazenado sem vetores. Pesquisa semântica indisponível.',
+  'sync.pipeline.vectorsPending':
+    'Blocos a aguardar vetores: {count}. A pesquisa semântica irá abrangê-los em breve.',
   'sync.pipeline.signInToEnable': 'Inicie sessão para ativar',
   'sync.pipeline.extractionFailed':
     'Falha na extração da estrutura de memória. O wiki pode estar incompleto.',

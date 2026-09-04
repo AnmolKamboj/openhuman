@@ -3286,6 +3286,10 @@ const messages: TranslationMap = {
   'conversations.subagent.statusFailed': 'فشل',
   'conversations.subagent.statusAwaitingUser': 'في انتظار المستخدم',
   'conversations.subagent.statusCancelled': 'أُلغيت',
+  'conversations.subagent.awaitingTitle': 'في انتظار إجابتك',
+  'conversations.subagent.answerPlaceholder': 'اكتب إجابتك',
+  'conversations.subagent.answerSend': 'إرسال الإجابة',
+  'conversations.subagent.answerSent': 'تم إرسال الإجابة',
   'conversations.agentTaskInsights.title': 'رؤى مهام الوكيل',
   'conversations.agentTaskInsights.response': 'الرد',
   'conversations.agentTaskInsights.processSourceTitle': 'مصدر عملية الوكيل',
@@ -6479,6 +6483,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'تم الاستيعاب فقط',
   'sync.pipeline.storedWithoutVectors': 'مخزَّن بدون متجهات. البحث الدلالي غير متاح.',
+  'sync.pipeline.vectorsPending':
+    'أجزاء في انتظار المتجهات: {count}. سيشملها البحث الدلالي قريبًا.',
   'sync.pipeline.signInToEnable': 'سجّل الدخول للتفعيل',
   'sync.pipeline.extractionFailed': 'فشل استخراج بنية الذاكرة. قد يكون الويكي غير مكتمل.',
   'sync.pipeline.treeDegraded': 'شجرة الذاكرة متدهورة. قد يُرجع الاسترجاع نتائج قديمة.',
