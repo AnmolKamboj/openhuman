@@ -6632,7 +6632,7 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'শুধু গৃহীত',
   'sync.pipeline.storedWithoutVectors': 'ভেক্টর ছাড়াই সংরক্ষিত। শব্দার্থিক অনুসন্ধান অনুপলব্ধ।',
   'sync.pipeline.vectorsPending':
-    '{count}টি চাংক ভেক্টরের জন্য অপেক্ষা করছে। শব্দার্থিক অনুসন্ধান শীঘ্রই সেগুলি অন্তর্ভুক্ত করবে।',
+    'ভেক্টরের জন্য অপেক্ষমাণ চাংক: {count}। শব্দার্থিক অনুসন্ধান শীঘ্রই সেগুলি অন্তর্ভুক্ত করবে।',
   'sync.pipeline.signInToEnable': 'সক্রিয় করতে সাইন ইন করুন',
   'sync.pipeline.extractionFailed': 'মেমরি কাঠামো নিষ্কাশন ব্যর্থ হয়েছে। উইকি অসম্পূর্ণ হতে পারে।',
   'sync.pipeline.treeDegraded': 'মেমরি ট্রি অবনমিত। পুনরুদ্ধার পুরনো ফলাফল দিতে পারে।',

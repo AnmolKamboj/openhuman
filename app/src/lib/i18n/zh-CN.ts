@@ -6265,7 +6265,7 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': '仅已导入',
   'sync.pipeline.storedWithoutVectors': '已存储但无向量。语义搜索不可用。',
-  'sync.pipeline.vectorsPending': '{count} 个片段正在等待向量。语义搜索很快会覆盖它们。',
+  'sync.pipeline.vectorsPending': '等待向量的片段：{count} 个。语义搜索很快会覆盖它们。',
   'sync.pipeline.signInToEnable': '登录以启用',
   'sync.pipeline.extractionFailed': '记忆结构提取失败。维基可能不完整。',
   'sync.pipeline.treeDegraded': '记忆树已降级。检索可能返回过时的结果。',

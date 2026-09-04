@@ -127,6 +127,13 @@ export function deriveSourcePipelineHealth(
   //   chain with rows to process, OR this source's newest chunk landed inside
   //   the core's own `recent` window (≤ 5 min: ingest is still writing and
   //   the chain is queued behind it). A backlog with neither is stuck: hard.
+  //
+  // `backfill.in_progress` is process-wide on purpose, not a per-source
+  // signal to be narrowed: the chain it reports is signature-wide — each
+  // batch takes any chunk lacking a vector at the active signature, whoever
+  // ingested it — so a running chain is draining THIS source's backlog too.
+  // (A chunk the chain skipped for good is tombstoned and no longer counts as
+  // pending, so it cannot hide behind the flag.)
   const pending = status?.chunks_pending ?? 0;
   const recallLatched = degraded?.semantic_recall === true;
   const embeddingsBlocked = causeCode !== null && EMBEDDINGS_BLOCKING_CAUSES.has(causeCode);

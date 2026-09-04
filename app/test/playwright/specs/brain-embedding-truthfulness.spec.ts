@@ -283,10 +283,24 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       // the truthful state is "waiting", and the row must say so rather than
       // show a clean freshness pill and nothing else (openhuman#6025). It must
       // equally not cry failure over work that is in flight.
-      await expect(row.getByTestId(`memory-source-vectors-pending-${id}`)).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(row).toContainText('waiting for vectors');
+      //
+      // The backlog can finish draining between the RPC read above and the
+      // row's next 5 s poll, so the expectation is decided at the assertion
+      // point from the core's own count: while chunks are still pending the
+      // note must be showing; once the count reaches zero the row is clean
+      // and the note is correctly gone. Only "pending but no note" is a
+      // failure, and it is polled past because the row refreshes on a timer.
+      const note = row.getByTestId(`memory-source-vectors-pending-${id}`);
+      await expect
+        .poll(
+          async () => {
+            const pendingNow = (await statusFor(id))?.chunks_pending ?? 0;
+            if (pendingNow === 0) return 'drained';
+            return (await note.isVisible()) ? 'pending-shown' : 'pending-hidden';
+          },
+          { timeout: 30_000, message: 'chunks are pending but the row shows no waiting note' }
+        )
+        .not.toBe('pending-hidden');
       await expect(row).not.toContainText('Stored without vectors');
     }
   });

@@ -455,8 +455,8 @@ pub async fn composio_sync_budgeted(
 
 /// What one [`run_sync_pass`] call did.
 ///
-/// A superset of the `usize` the caller inside this file needs, so
-/// `memory::sync::composio::providers::slack::rpc` — the other caller — can
+/// A superset of the `usize` the caller inside this file needs, so the
+/// single-call entry points behind `pass_budget::run_sync_within_budget` can
 /// build a [`SyncOutcome`] without a second round trip through the module.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SyncPassOutcome {
@@ -485,11 +485,11 @@ pub(crate) struct SyncPassOutcome {
 /// stands, and re-deciding that here would give the run two opinions about
 /// what has been read.
 ///
-/// `pub(crate)` — also called from
-/// `memory::sync::composio::providers::slack::rpc`, which needs the same
-/// tinyconnectors-mediated sync pass `composio_sync` runs here, but awaited
-/// synchronously rather than fired into a background task (its RPC contract
-/// is "return the outcome", not "return that a run started").
+/// `pub(crate)` — also driven by `pass_budget::run_sync_within_budget` for
+/// the entry points that sync once per invocation (periodic tick, manual
+/// provider sync, `connection_created`, the Slack ingest RPC), which repeat
+/// this pass within one call's item budget and await it synchronously rather
+/// than firing it into a background task.
 pub(crate) async fn run_sync_pass(
     config: &Config,
     toolkit: &str,

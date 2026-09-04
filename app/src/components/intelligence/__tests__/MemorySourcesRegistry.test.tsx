@@ -175,7 +175,7 @@ describe('MemorySourcesRegistry', () => {
     renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
 
     const note = await screen.findByTestId('memory-source-vectors-pending-src_1');
-    expect(note).toHaveTextContent('4 chunks waiting for vectors');
+    expect(note).toHaveTextContent('Chunks waiting for vectors: 4');
     expect(screen.queryByTestId('memory-source-pipeline-warning-src_1')).not.toBeInTheDocument();
     expect(mockedBackfill).toHaveBeenCalled();
   });

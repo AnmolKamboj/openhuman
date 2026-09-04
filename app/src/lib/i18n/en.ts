@@ -2953,7 +2953,7 @@ const en: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Ingested only',
   'sync.pipeline.storedWithoutVectors': 'Stored without vectors. Semantic search unavailable.',
   'sync.pipeline.vectorsPending':
-    '{count} chunks waiting for vectors. Semantic search will cover them shortly.',
+    'Chunks waiting for vectors: {count}. Semantic search will cover them shortly.',
   'sync.pipeline.signInToEnable': 'Sign in to enable',
   'sync.pipeline.extractionFailed': 'Memory structure extraction failed. Wiki may be incomplete.',
   'sync.pipeline.treeDegraded': 'Memory tree degraded. Retrieval may return stale results.',

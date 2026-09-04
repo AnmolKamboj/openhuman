@@ -30,7 +30,7 @@ import { MemorySourceRow } from './MemorySourceRow';
 vi.mock('../../lib/i18n/I18nContext', () => ({
   useT: () => ({
     t: (k: string) =>
-      k === 'sync.pipeline.vectorsPending' ? '{count} chunks waiting for vectors' : k,
+      k === 'sync.pipeline.vectorsPending' ? 'Chunks waiting for vectors: {count}' : k,
   }),
 }));
 
@@ -226,7 +226,7 @@ describe('MemorySourceRow — a backlog that is still draining is pending, not f
     expect(warning()).not.toBeInTheDocument();
     const note = pendingNote();
     expect(note).toBeInTheDocument();
-    expect(note).toHaveTextContent('322 chunks waiting for vectors');
+    expect(note).toHaveTextContent('Chunks waiting for vectors: 322');
     // The freshness pill stays; the amber "Ingested only" pill does not appear.
     expect(screen.getByText('sync.idle')).toBeInTheDocument();
     expect(
