@@ -33,14 +33,18 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
     // before the generic provider-429 branch — otherwise users see
     // a confusing "your AI provider is rate-limiting you" message
     // for limits OpenHuman itself enforced (issue #2364).
-    let classified = if crate::openhuman::inference::provider::is_openai_oauth_session_expired_message(err) {
+    // Codex-specific sentinel emitted by `openai_oauth::store` on refresh
+    // failure. Checked before `is_session_expired_message` because the sentinel
+    // contains "authentication token is expired", which would also match the
+    // broader "session expired" substring test and route to the wrong sign-in
+    // flow. We require "codex" in the message so generic provider errors that
+    // happen to contain "token_expired" or "please try signing in again" are
+    // not misclassified as Codex OAuth failures. (#5869)
+    const CODEX_SENTINEL: &str = "codex authentication token is expired";
+    let classified = if err.to_ascii_lowercase().contains(CODEX_SENTINEL) {
         // The Codex OAuth token has expired and the refresh failed. This is a
         // provider-specific re-auth — the user must reconnect Codex in
-        // Settings → Integrations, NOT sign into OpenHuman. Checked BEFORE
-        // `is_session_expired_message` because our error string contains
-        // "authentication token is expired" which would also match the broader
-        // "session expired" substring test and route to the wrong sign-in flow.
-        // (#5869)
+        // Settings → Integrations, NOT sign into OpenHuman.
         ClassifiedError {
             error_type: "provider_error",
             message: "Your Codex session has expired. Please reconnect it in \
