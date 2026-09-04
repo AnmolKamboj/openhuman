@@ -3,7 +3,7 @@ import debug from 'debug';
 
 import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
 import { threadApi } from '../services/api/threadApi';
-import type { DerivedDisplayItem, DerivedTranscriptPage } from '../types/derivedTranscript';
+import type { DerivedTranscriptPage } from '../types/derivedTranscript';
 import type { ThreadMessage } from '../types/thread';
 import type {
   AgentRun,
@@ -810,6 +810,10 @@ function subagentToolCallFromPersisted(call: PersistedSubagentToolCall): Subagen
     outputChars: call.outputChars,
     displayName: call.displayName,
     detail: call.detail,
+    // Carry the persisted arguments so a rehydrated child row keeps its input
+    // block, and a degraded generic `tool` name can still derive its search
+    // label from `query` (#5987).
+    args: call.args,
     // Carry the persisted failure explanation across the round-trip (#4459).
     failure: parseToolFailure(call.failure),
     // Carry the persisted (capped) result text so a rehydrated child row can
@@ -870,6 +874,29 @@ function subagentTranscriptItemFromPersisted(
 }
 
 function subagentActivityFromPersisted(activity: PersistedSubagentActivity): SubagentActivity {
+  const toolCalls = activity.toolCalls.map(subagentToolCallFromPersisted);
+  const transcript =
+    activity.transcript && activity.transcript.length > 0
+      ? activity.transcript.map(item => {
+          const mapped = subagentTranscriptItemFromPersisted(item);
+          if (mapped.kind !== 'tool') return mapped;
+          const call = toolCalls.find(candidate => candidate.callId === mapped.callId);
+          return call
+            ? { ...mapped, args: call.args, result: call.result, failure: call.failure }
+            : mapped;
+        })
+      : toolCalls.map(call => ({
+          kind: 'tool' as const,
+          iteration: call.iteration,
+          callId: call.callId,
+          toolName: call.toolName,
+          status: call.status,
+          elapsedMs: call.elapsedMs,
+          outputChars: call.outputChars,
+          args: call.args,
+          result: call.result,
+          failure: call.failure,
+        }));
   return {
     taskId: activity.taskId,
     agentId: activity.agentId,
@@ -882,23 +909,12 @@ function subagentActivityFromPersisted(activity: PersistedSubagentActivity): Sub
     iterations: activity.iterations,
     elapsedMs: activity.elapsedMs,
     outputChars: activity.outputChars,
-    toolCalls: activity.toolCalls.map(subagentToolCallFromPersisted),
+    toolCalls,
     // Prefer the persisted prose transcript (reasoning/narration interleaved
     // with tools) so a settled / reloaded run replays its thoughts. Fall back
     // to a tool-only rebuild for snapshots written before sub-agent prose was
     // persisted (the `transcript` field is absent there).
-    transcript:
-      activity.transcript && activity.transcript.length > 0
-        ? activity.transcript.map(subagentTranscriptItemFromPersisted)
-        : activity.toolCalls.map(call => ({
-            kind: 'tool' as const,
-            iteration: call.iteration,
-            callId: call.callId,
-            toolName: call.toolName,
-            status: call.status,
-            elapsedMs: call.elapsedMs,
-            outputChars: call.outputChars,
-          })),
+    transcript,
   };
 }
 
@@ -2383,6 +2399,34 @@ export const fetchAndHydrateTurnState = createAsyncThunk(
 );
 
 /**
+ * Wait briefly for the progress bridge to flush its terminal snapshot, then
+ * hydrate it. `chat_done` is delivered by the response presenter while the
+ * bridge may still be consuming the final `TurnCompleted` event; reading once
+ * at that boundary can otherwise install an intermediate, last-round-only
+ * transcript over the just-settled UI.
+ */
+export const fetchAndHydrateCompletedTurnState = createAsyncThunk(
+  'chatRuntime/fetchAndHydrateCompletedTurnState',
+  async (threadId: string, { dispatch }) => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const snapshot = await threadApi.getTurnState(threadId);
+        if (snapshot?.lifecycle === 'completed') {
+          dispatch(hydrateRuntimeFromSnapshot({ snapshot }));
+          return snapshot;
+        }
+      } catch (error) {
+        turnStateLog('completed snapshot fetch failed thread=%s err=%O', threadId, error);
+        return null;
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+    }
+    turnStateLog('completed snapshot did not arrive thread=%s', threadId);
+    return null;
+  }
+);
+
+/**
  * Fetch the per-turn history for a thread and populate
  * {@link ChatRuntimeState.turnTimelinesByThread} so each *past* answer renders
  * its own process trail (Phase 5). Only settled turns (completed / interrupted)
@@ -2466,31 +2510,14 @@ function readChatRuntimeState(state: unknown): ChatRuntimeState | undefined {
 }
 
 /**
- * The request ids whose derived trail must NOT be hydrated: the newest turn
- * (rendered as the live "agent insights" anchor from `toolTimelineByThread` /
- * the socket stream, or the `turn_state` snapshot via
- * {@link fetchAndHydrateTurnState}) and any turn currently streaming. Mirrors
- * `fetchAndHydrateTurnHistory`'s `history.slice(1)` newest-turn skip.
+ * The request ids whose derived trail must NOT be hydrated: only turns that
+ * are provably active in this renderer. Do not infer "live" from whichever
+ * request happens to be newest in one transcript file: detached/background
+ * delivery runs in a separate session, so the root file's newest request can
+ * already be historical and must remain visible.
  */
-function liveRequestIdsToSkip(
-  state: unknown,
-  threadId: string,
-  items: DerivedDisplayItem[]
-): Set<string> {
+function liveRequestIdsToSkip(state: unknown, threadId: string): Set<string> {
   const skip = new Set<string>();
-  // Newest turn = first request id encountered walking newest-first.
-  for (const item of items) {
-    const rid =
-      item.kind === 'turnBoundary'
-        ? item.requestId
-        : 'requestId' in item
-          ? item.requestId
-          : undefined;
-    if (rid) {
-      skip.add(rid);
-      break;
-    }
-  }
   const runtime = readChatRuntimeState(state);
   const streamingRid = runtime?.streamingAssistantByThread[threadId]?.requestId;
   if (streamingRid) skip.add(streamingRid);
@@ -2536,7 +2563,7 @@ export const fetchAndHydrateDerivedTranscript = createAsyncThunk(
       await dispatch(fetchAndHydrateTurnHistory(threadId));
       return null;
     }
-    const skipRequestIds = liveRequestIdsToSkip(getState(), threadId, page.items);
+    const skipRequestIds = liveRequestIdsToSkip(getState(), threadId);
     const { timelines, transcripts } = mapDisplayItems(page.items, { skipRequestIds });
     derivedLog(
       'hydrated thread=%s items=%d timelines=%d transcripts=%d skip=%d hasMore=%s',

@@ -47,8 +47,8 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
         // `auth_error`.
         ClassifiedError {
             error_type: "session_expired",
-            message: "Your OpenHuman session expired while the app was idle. \
-                 Please sign in again to resume."
+            message: "Your OpenHuman session has expired. \
+                 Please sign in again to continue."
                 .to_string(),
             source: "auth",
             retryable: false,

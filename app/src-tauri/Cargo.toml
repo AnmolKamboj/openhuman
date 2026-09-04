@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.19"
+version = "0.63.21"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -79,6 +79,47 @@ hex = "0.4"
 # the ring provider at startup in `lib.rs::run()`.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 log = "0.4"
+
+# Native directory chooser for the folder memory-source (#5831). A directory
+# picked in the renderer carries no filesystem path — `File.path` is an
+# Electron extension that neither Wry's WKWebView/WebView2/WebKitGTK nor
+# plain Chromium implements — so the only way to learn where a chosen folder
+# lives is to ask the OS from the host process.
+#
+# `default-features = false` is what makes this a different proposition from
+# the `rfd` that `artifact_commands` shed in #5541. That removal counted 13
+# packages: `ashpd`, `zbus`, and the `async-io`/`polling` executor stack.
+# Every one of those arrives through `rfd`'s **default** `xdg-portal` feature
+# (`xdg-portal = ["ashpd", "urlencoding", "pollster"]`), which is not enabled
+# here. `gtk3` binds the GTK that Wry already links on Linux instead —
+# `gtk-sys` is in that graph via `tray-icon` -> `tauri` whether or not this
+# entry exists — and on macOS/Windows `rfd` compiles against `objc2-app-kit`
+# / `windows-sys`, both already present. The marginal cost is `rfd` itself.
+#
+# `Cargo.lock` will nonetheless gain `ashpd` and a wayland cluster, and that
+# is expected: the lockfile records the **maximal** resolution graph,
+# including optional and target-gated edges nothing enables. Read the real
+# graph, not the lock —
+#
+#     cargo tree --target x86_64-unknown-linux-gnu -e normal -i ashpd
+#     # -> warning: nothing to print.
+#
+# Prefer this over `tauri-plugin-dialog`: that plugin depends on the same
+# `rfd` AND drags `tauri-plugin-fs` in behind it, for one command that needs
+# no filesystem permission surface at all.
+#
+# The feature list is `tauri-plugin-dialog`'s own, verbatim — that plugin is
+# the reference integration of `rfd` into a Tauri app, and each of the three
+# matters here. `gtk3` is the right Linux backend precisely *because* the host
+# is GTK-based (rfd steers non-GTK apps to the portal instead), `tokio` drives
+# the async dialog on the runtime a `#[tauri::command]` already runs on, and
+# `common-controls-v6` mirrors the feature `tauri` itself enables above, so
+# the Windows dialog matches the rest of the app's chrome.
+rfd = { version = "0.15", default-features = false, features = [
+    "gtk3",
+    "tokio",
+    "common-controls-v6",
+] }
 
 # Sentry for the Tauri shell (desktop host) process — separate Sentry project
 # from the React frontend and the Rust core sidecar. DSN is baked at compile

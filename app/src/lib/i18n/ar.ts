@@ -2552,6 +2552,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'قريباً',
   'memorySources.composioListFailed': 'فشل في تحميل الأتصالات Xqx0x.',
   'memorySources.browse': '(بروز)...',
+  'memorySources.folderPathUnavailable':
+    'تعذر تحديد موقع هذا المجلد. اكتب مساره الكامل بدلاً من ذلك.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2574,6 +2576,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'عناصر تمت مزامنتها',
   'memorySources.sync.upToDate': 'محدّث',
   'memorySources.sync.failedLabel': 'فشل',
+  'memorySources.sync.morePending': 'يوجد المزيد للمزامنة. انقر على «مزامنة» مرة أخرى',
+  'memorySources.sync.budgetSpent': 'استُنفدت ميزانية الطلبات لليوم. حاول مرة أخرى غدًا',
   'time.justNow': 'للتو',
   'time.secondsAgoSuffix': 'ثانية مضت',
   'time.minutesAgoSuffix': 'دقيقة مضت',
@@ -2615,6 +2619,17 @@ const messages: TranslationMap = {
   'memorySources.allIn.failed': 'تعذّر تطبيق خيار الكل. يرجى المحاولة مرة أخرى.',
   'memorySources.allIn.allFailed': 'تعذّر بدء أي مزامنة. تحقق من كل مصدر لمعرفة السبب.',
   'memorySources.allIn.partial': 'المزامنات التي بدأت: {triggered}. التي تعذّر بدؤها: {failed}.',
+  'memorySources.repair.button': 'إصلاح الذكريات الأقدم',
+  'memorySources.repair.title': 'إصلاح الذكريات الأقدم؟',
+  'memorySources.repair.message':
+    'حُفظ ما يصل إلى {scanned} مستندًا متزامنًا قبل إصلاح الأرشفة في شجرة الذاكرة، وهي غير مرئية في رسم الذاكرة البياني. تستهلك أرشفتها رصيد التضمين. تُتخطى المستندات الموجودة أصلًا في الشجرة.',
+  'memorySources.repair.confirm': 'إصلاح',
+  'memorySources.repair.cancel': 'ليس الآن',
+  'memorySources.repair.nothing': 'لا شيء لإصلاحه. لا توجد مستندات متزامنة بانتظار الأرشفة.',
+  'memorySources.repair.success':
+    'تمت أرشفة {ingested} في شجرة الذاكرة ({already} موجودة مسبقًا، {skipped} تم تخطيها).',
+  'memorySources.repair.morePending': 'بقي المزيد. انقر على «إصلاح الذكريات الأقدم» مرة أخرى.',
+  'memorySources.repair.failed': 'تعذّر إصلاح الذكريات الأقدم.',
   'memorySources.settings.button': 'الإعدادات',
   'memorySources.settings.title': 'إعدادات المزامنة',
   'memorySources.settings.maxPrs': 'أقصى عدد لطلبات السحب',
@@ -2628,7 +2643,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'غير محدود',
   'memorySources.settings.unlimitedTooltip':
     'لقد اخترت مزامنة الحد الأقصى لـ {toolkit}. يمكنك تغيير الحدود من هنا.',
-  'memorySources.settings.maxed': 'مكتمل',
   'memorySources.settings.save': 'حفظ',
   'memorySources.settings.saving': 'جارٍ الحفظ…',
   'memorySources.settings.saved': 'تم حفظ الإعدادات',
@@ -4810,6 +4824,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'الحدث',
   'settings.developerMenu.eventLog.desc':
     'تيار ملون مباشر لجميع العناصر والأدوات والأحداث النظامية',
+  'settings.developerMenu.eventLog.workspaceScope': 'نطاق مساحة العمل',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'مساحة العمل الحالية',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'كل مساحات العمل',
   'settings.developerMenu.eventLog.allTypes': 'جميع الأنواع',
   'settings.developerMenu.eventLog.filterAgent': '(فيلتر)',
   'settings.developerMenu.eventLog.download': 'تحميل',

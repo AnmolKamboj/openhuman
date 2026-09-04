@@ -43,15 +43,6 @@ const CURRENT_USER_REFRESH_TTL: Duration = Duration::from_secs(5);
 // the agent harness runs on — the agent's turns stalled 50-100s between model
 // calls even though inference itself was idle).
 const RUNTIME_SNAPSHOT_TTL: Duration = Duration::from_secs(10);
-const AUTH_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
-/// First backoff step after the backend fails to answer `auth_get_me`.
-///
-/// Deliberately larger than both [`AUTH_FETCH_TIMEOUT`] and the frontend's
-/// ~5s `app_state_snapshot` poll. That relationship is the whole point of the
-/// backoff: with a shorter step, the next poll would find the window already
-/// expired and pay the full timeout again, which is exactly the treadmill this
-/// exists to stop (#5624 — 51 timeouts in one session, ~5s each).
-const CURRENT_USER_BACKOFF_BASE: Duration = Duration::from_secs(10);
 /// Ceiling on that backoff. Modest on purpose: this window is time during which
 /// a recovered backend still will not be noticed, so it trades a bounded amount
 /// of staleness for not stalling every poll. At the cap a 5s poll loop attempts
@@ -65,7 +56,7 @@ static APP_STATE_FILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static CURRENT_USER_CACHE: Lazy<Mutex<Option<CachedCurrentUser>>> = Lazy::new(|| Mutex::new(None));
 /// Negative counterpart to [`CURRENT_USER_CACHE`]: the last *availability*
 /// failure against `auth_get_me`, so a client whose backend is unreachable stops
-/// re-paying [`AUTH_FETCH_TIMEOUT`] on every snapshot poll.
+/// re-paying [`auth_fetch_timeout`] on every snapshot poll.
 ///
 /// Kept separate from the positive cache rather than folded into it because the
 /// two have different lifetimes and different readers —
@@ -128,6 +119,24 @@ enum CurrentUserFetchError {
     Rejected(String),
     TransientResponse(String),
     FetchFailed(String),
+    /// A recorded availability failure replayed from the backoff window
+    /// instead of going to the network (see
+    /// [`suppressed_current_user_failure`]).
+    ///
+    /// Carries the original error so callers that only want the message behave
+    /// exactly as before, plus the two numbers that distinguish "the backend
+    /// just failed" from "we did not ask the backend". Without this the
+    /// snapshot caller logs a replay — which costs microseconds and makes no
+    /// request — with the same `WARN … refresh failed` wording as a real 5s
+    /// timeout, so a healthy backoff reads in the logs like a hammering loop.
+    /// That misreading is what #5930 was filed on.
+    Suppressed {
+        inner: Box<CurrentUserFetchError>,
+        /// Length of the failure run that opened the window.
+        consecutive: u32,
+        /// How long until the next live attempt is allowed.
+        retry_in: Duration,
+    },
 }
 
 impl CurrentUserFetchError {
@@ -136,6 +145,7 @@ impl CurrentUserFetchError {
             CurrentUserFetchError::Rejected(message)
             | CurrentUserFetchError::TransientResponse(message)
             | CurrentUserFetchError::FetchFailed(message) => message,
+            CurrentUserFetchError::Suppressed { inner, .. } => inner.message(),
         }
     }
 }
@@ -155,6 +165,11 @@ impl CurrentUserFetchError {
                 true
             }
             CurrentUserFetchError::Rejected(_) => false,
+            // Defensive: a replay is not a new observation, and recording it
+            // would extend the window on evidence the backend never supplied.
+            // `fetch_current_user_cached` returns this variant before it can
+            // reach the recorder, so this arm should never actually run.
+            CurrentUserFetchError::Suppressed { .. } => false,
         }
     }
 }
@@ -176,12 +191,12 @@ struct CurrentUserFailure {
 
 /// How long a run of `consecutive` failures suppresses the next live attempt.
 ///
-/// Doubles from [`CURRENT_USER_BACKOFF_BASE`] and saturates at
+/// Doubles from [`current_user_backoff_base`] and saturates at
 /// [`CURRENT_USER_BACKOFF_MAX`]. `consecutive` is 1-based; 0 is treated as 1 so
 /// the function has no surprising zero-length window.
 fn current_user_backoff(consecutive: u32) -> Duration {
     let steps = consecutive.saturating_sub(1).min(16);
-    CURRENT_USER_BACKOFF_BASE
+    current_user_backoff_base()
         .saturating_mul(2u32.saturating_pow(steps))
         .min(CURRENT_USER_BACKOFF_MAX)
 }
@@ -250,7 +265,7 @@ fn note_current_user_timeout(config: &Config, token: &str) {
         token,
         CurrentUserFetchError::FetchFailed(format!(
             "request timed out after {}s",
-            AUTH_FETCH_TIMEOUT.as_secs()
+            auth_fetch_timeout().as_secs()
         )),
     );
 }
@@ -322,6 +337,21 @@ pub struct AppStateSnapshot {
     /// healed; the frontend raises a one-shot "settings were reset" notice
     /// (#5167). Serialized as `configRecovered`.
     pub config_recovered: bool,
+    /// `true` when `current_user` came from the stored snapshot because the
+    /// backend could not be refreshed — the plan tier, credit balance and
+    /// feature flags in it may be out of date (#5930).
+    ///
+    /// The frontend can warn on this; the core deliberately does not decide
+    /// what "significantly out of date" means, because that threshold belongs
+    /// to whatever surface is presenting the number.
+    pub current_user_stale: bool,
+    /// Seconds since the backend last answered `auth_get_me` in this process.
+    ///
+    /// Absent when it never has — the stored snapshot then came off disk and
+    /// its real age is not knowable here, which is a different statement from
+    /// "zero seconds old" and is why this is an `Option`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_user_stale_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -661,7 +691,24 @@ async fn activate_revalidated_user_dir(user_id: &str) -> Result<Config, String> 
         }
     }
 
-    Config::load_from_default_paths().await.map_err(|error| {
+    let config = Config::load_from_default_paths().await.map_err(|error| {
         format!("failed to reload config after pending session user activation: {error}")
-    })
+    })?;
+
+    // The marker write above cleared the cached active workspace, and
+    // `load_from_default_paths` deliberately bypasses the runtime resolver, so
+    // nothing has refilled it. Resolve once through the authoritative path,
+    // which republishes the cache and announces the switch — otherwise a
+    // connected Event Log or notification client keeps the previous
+    // workspace's handle until some unrelated later config load happens
+    // (#5966). Publishing from `load_from_default_paths` itself would be
+    // wrong: it ignores `OPENHUMAN_WORKSPACE`, so under that override it does
+    // not know the runtime answer.
+    if let Err(error) = crate::openhuman::config::active_workspace_dir().await {
+        warn!(
+            "{LOG_PREFIX} could not refresh the active workspace after pending session activation: {error}"
+        );
+    }
+
+    Ok(config)
 }

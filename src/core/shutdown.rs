@@ -52,6 +52,27 @@ async fn run_hooks() {
     }
 }
 
+/// Run every registered hook now, once, without waiting for a signal.
+///
+/// For the embedded server, whose graceful path is a cancellation token rather
+/// than SIGTERM: [`signal`] never resolves there, so the hooks it would have
+/// run — the memory engine releasing its queue leases, above all — never ran
+/// on a normal quit. Drains the registry, so a later call, or a signal landing
+/// mid-teardown, finds nothing to run twice.
+///
+/// Side by side, unlike the signal path. The caller runs this under a
+/// deadline, and in sequence one hook that never answers would keep every hook
+/// registered after it — the lease release among them — from so much as
+/// starting before the deadline dropped the lot. Run together, a hanging hook
+/// costs only itself.
+pub async fn run_hooks_now() {
+    let hooks: Vec<ShutdownHook> = {
+        let mut guard = HOOKS.lock().expect("shutdown hooks poisoned");
+        std::mem::take(&mut *guard)
+    };
+    futures::future::join_all(hooks.iter().map(|hook| hook())).await;
+}
+
 /// Returns a future that resolves when the process receives a termination
 /// signal (SIGINT on all platforms, plus SIGTERM on Unix), then runs all
 /// registered shutdown hooks.

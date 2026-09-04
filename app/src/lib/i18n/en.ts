@@ -2981,6 +2981,8 @@ const en: TranslationMap = {
   'memorySources.comingSoon': 'Coming soon',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
   'memorySources.browse': 'Browse…',
+  'memorySources.folderPathUnavailable':
+    'Could not determine where that folder is. Type its full path instead.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -3003,6 +3005,8 @@ const en: TranslationMap = {
   'memorySources.sync.itemsSynced': 'items synced',
   'memorySources.sync.upToDate': 'Up to date',
   'memorySources.sync.failedLabel': 'Failed',
+  'memorySources.sync.morePending': 'More to sync. Click Sync again',
+  'memorySources.sync.budgetSpent': "Today's request budget is spent. Try again tomorrow",
   'time.justNow': 'just now',
   'time.secondsAgoSuffix': 's ago',
   'time.minutesAgoSuffix': 'm ago',
@@ -3044,6 +3048,17 @@ const en: TranslationMap = {
   'memorySources.allIn.failed': 'Could not apply All In. Please try again.',
   'memorySources.allIn.allFailed': 'No sync could start. Check each source for the reason.',
   'memorySources.allIn.partial': 'Syncs started: {triggered}. Could not start: {failed}.',
+  'memorySources.repair.button': 'Repair older memories',
+  'memorySources.repair.title': 'Repair older memories?',
+  'memorySources.repair.message':
+    'Up to {scanned} synced documents were stored before memory-tree filing was fixed and are invisible to the memory graph. Filing them uses embedding credits. Documents already in the tree are skipped.',
+  'memorySources.repair.confirm': 'Repair',
+  'memorySources.repair.cancel': 'Not now',
+  'memorySources.repair.nothing': 'Nothing to repair. No synced documents are waiting to be filed.',
+  'memorySources.repair.success':
+    'Filed {ingested} into the memory tree ({already} already there, {skipped} skipped).',
+  'memorySources.repair.morePending': 'More remain. Click Repair older memories again.',
+  'memorySources.repair.failed': 'Could not repair older memories.',
   'memorySources.settings.button': 'Settings',
   'memorySources.settings.title': 'Sync settings',
   'memorySources.settings.maxPrs': 'Max pull requests',
@@ -3057,7 +3072,6 @@ const en: TranslationMap = {
   'memorySources.settings.unlimited': 'Unlimited',
   'memorySources.settings.unlimitedTooltip':
     "You've opted in to sync the maximum for {toolkit}. You can change the caps here.",
-  'memorySources.settings.maxed': 'Maxed',
   'memorySources.settings.save': 'Save',
   'memorySources.settings.saving': 'Saving…',
   'memorySources.settings.saved': 'Settings saved',
@@ -5624,6 +5638,9 @@ const en: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Event Log',
   'settings.developerMenu.eventLog.desc':
     'Live colour-coded stream of all agent, tool, and system events',
+  'settings.developerMenu.eventLog.workspaceScope': 'Workspace scope',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'This workspace',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'All workspaces',
   'settings.developerMenu.eventLog.allTypes': 'All types',
   'settings.developerMenu.eventLog.filterAgent': 'Filter...',
   'settings.developerMenu.eventLog.download': 'Download',

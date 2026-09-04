@@ -2689,6 +2689,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Demnächst',
   'memorySources.composioListFailed': 'Fehler beim Laden der Composio-Verbindungen.',
   'memorySources.browse': 'Durchsuchen…',
+  'memorySources.folderPathUnavailable':
+    'Der Speicherort dieses Ordners konnte nicht ermittelt werden. Geben Sie stattdessen den vollständigen Pfad ein.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': 'Md. ',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2711,6 +2713,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'Elemente synchronisiert',
   'memorySources.sync.upToDate': 'Aktuell',
   'memorySources.sync.failedLabel': 'Fehlgeschlagen',
+  'memorySources.sync.morePending': 'Mehr zu synchronisieren. Erneut auf Synchronisieren klicken',
+  'memorySources.sync.budgetSpent':
+    'Das heutige Anfragebudget ist aufgebraucht. Morgen erneut versuchen',
   'time.justNow': 'gerade eben',
   'time.secondsAgoSuffix': 'vor {count} Sek.',
   'time.minutesAgoSuffix': 'vor {count} Min.',
@@ -2754,6 +2759,19 @@ const messages: TranslationMap = {
     'Keine Synchronisierung konnte gestartet werden. Prüfe jede Quelle, um den Grund zu sehen.',
   'memorySources.allIn.partial':
     'Gestartete Synchronisierungen: {triggered}. Nicht startbar: {failed}.',
+  'memorySources.repair.button': 'Ältere Erinnerungen reparieren',
+  'memorySources.repair.title': 'Ältere Erinnerungen reparieren?',
+  'memorySources.repair.message':
+    'Bis zu {scanned} synchronisierte Dokumente wurden gespeichert, bevor die Ablage im Gedächtnisbaum korrigiert wurde, und sind im Gedächtnisgraphen unsichtbar. Das Ablegen verbraucht Embedding-Guthaben. Bereits abgelegte Dokumente werden übersprungen.',
+  'memorySources.repair.confirm': 'Reparieren',
+  'memorySources.repair.cancel': 'Nicht jetzt',
+  'memorySources.repair.nothing':
+    'Nichts zu reparieren. Keine synchronisierten Dokumente warten auf die Ablage.',
+  'memorySources.repair.success':
+    '{ingested} im Gedächtnisbaum abgelegt ({already} bereits vorhanden, {skipped} übersprungen).',
+  'memorySources.repair.morePending':
+    'Es sind noch weitere übrig. Erneut auf „Ältere Erinnerungen reparieren“ klicken.',
+  'memorySources.repair.failed': 'Ältere Erinnerungen konnten nicht repariert werden.',
   'memorySources.settings.button': 'Einstellungen',
   'memorySources.settings.title': 'Synchronisierungseinstellungen',
   'memorySources.settings.maxPrs': 'Maximale Pull-Requests',
@@ -2767,7 +2785,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Unbegrenzt',
   'memorySources.settings.unlimitedTooltip':
     'Du hast dich entschieden, das Maximum für {toolkit} zu synchronisieren. Du kannst die Limits hier ändern.',
-  'memorySources.settings.maxed': 'Voll',
   'memorySources.settings.save': 'Speichern',
   'memorySources.settings.saving': 'Speichern…',
   'memorySources.settings.saved': 'Einstellungen gespeichert',
@@ -5055,6 +5072,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Ereignisprotokoll',
   'settings.developerMenu.eventLog.desc':
     'Farbcodierter Live-Stream aller Agenten-, Tool- und Systemereignisse',
+  'settings.developerMenu.eventLog.workspaceScope': 'Arbeitsbereich',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Dieser Arbeitsbereich',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Alle Arbeitsbereiche',
   'settings.developerMenu.eventLog.allTypes': 'Alle Typen',
   'settings.developerMenu.eventLog.filterAgent': 'Filter&#xA0;…',
   'settings.developerMenu.eventLog.download': 'Herunterladen',

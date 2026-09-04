@@ -2614,6 +2614,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'जल्द आ रहा है',
   'memorySources.composioListFailed': 'Composio कनेक्शन लोड करने में विफल रहा।',
   'memorySources.browse': 'ब्राउज़ करें',
+  'memorySources.folderPathUnavailable':
+    'यह पता नहीं लगाया जा सका कि वह फ़ोल्डर कहाँ है। इसके बजाय उसका पूरा पथ टाइप करें।',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2636,6 +2638,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'आइटम सिंक हुए',
   'memorySources.sync.upToDate': 'अद्यतित',
   'memorySources.sync.failedLabel': 'विफल',
+  'memorySources.sync.morePending': 'और सिंक बाकी है। फिर से Sync पर क्लिक करें',
+  'memorySources.sync.budgetSpent': 'आज का अनुरोध बजट खत्म हो गया है। कल फिर कोशिश करें',
   'time.justNow': 'अभी',
   'time.secondsAgoSuffix': 'सेकंड पहले',
   'time.minutesAgoSuffix': 'मिनट पहले',
@@ -2678,6 +2682,18 @@ const messages: TranslationMap = {
   'memorySources.allIn.allFailed':
     'कोई भी सिंक शुरू नहीं हो सका। कारण जानने के लिए हर स्रोत को जाँचें।',
   'memorySources.allIn.partial': 'शुरू हुए सिंक: {triggered}। शुरू नहीं हो सके: {failed}।',
+  'memorySources.repair.button': 'पुरानी यादें सुधारें',
+  'memorySources.repair.title': 'पुरानी यादें सुधारें?',
+  'memorySources.repair.message':
+    'मेमोरी ट्री में फाइलिंग ठीक होने से पहले सहेजे गए अधिकतम {scanned} सिंक किए गए दस्तावेज़ मेमोरी ग्राफ़ में दिखाई नहीं देते। उन्हें फाइल करने में एम्बेडिंग क्रेडिट लगते हैं। जो दस्तावेज़ पहले से ट्री में हैं, उन्हें छोड़ दिया जाता है।',
+  'memorySources.repair.confirm': 'सुधारें',
+  'memorySources.repair.cancel': 'अभी नहीं',
+  'memorySources.repair.nothing':
+    'सुधारने के लिए कुछ नहीं। कोई सिंक किया गया दस्तावेज़ फाइल होने की प्रतीक्षा में नहीं है।',
+  'memorySources.repair.success':
+    '{ingested} मेमोरी ट्री में फाइल किए गए ({already} पहले से थे, {skipped} छोड़े गए)।',
+  'memorySources.repair.morePending': 'और बाकी हैं। पुरानी यादें सुधारें पर फिर से क्लिक करें।',
+  'memorySources.repair.failed': 'पुरानी यादें सुधारी नहीं जा सकीं।',
   'memorySources.settings.button': 'सेटिंग',
   'memorySources.settings.title': 'सिंक सेटिंग',
   'memorySources.settings.maxPrs': 'अधिकतम पुल रिक्वेस्ट',
@@ -2691,7 +2707,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'असीमित',
   'memorySources.settings.unlimitedTooltip':
     'आपने {toolkit} के लिए अधिकतम सिंक करना चुना है। आप यहाँ सीमाएँ बदल सकते हैं।',
-  'memorySources.settings.maxed': 'पूर्ण',
   'memorySources.settings.save': 'सहेजें',
   'memorySources.settings.saving': 'सहेजा जा रहा है…',
   'memorySources.settings.saved': 'सेटिंग सहेजी गई',
@@ -4924,6 +4939,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'घटना लॉग',
   'settings.developerMenu.eventLog.desc':
     'सभी एजेंट, टूल और सिस्टम इवेंट्स की लाइव कलर-कोडेड स्ट्रीम',
+  'settings.developerMenu.eventLog.workspaceScope': 'वर्कस्पेस का दायरा',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'यह वर्कस्पेस',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'सभी वर्कस्पेस',
   'settings.developerMenu.eventLog.allTypes': 'सभी प्रकार',
   'settings.developerMenu.eventLog.filterAgent': 'फ़िल्टर...',
   'settings.developerMenu.eventLog.download': 'डाउनलोड',

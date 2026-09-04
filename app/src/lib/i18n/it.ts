@@ -2664,6 +2664,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Prossimamente',
   'memorySources.composioListFailed': 'Impossibile caricare le connessioni Composio.',
   'memorySources.browse': 'Sfoglia…',
+  'memorySources.folderPathUnavailable':
+    'Impossibile determinare dove si trova quella cartella. Digita invece il suo percorso completo.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2686,6 +2688,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'elementi sincronizzati',
   'memorySources.sync.upToDate': 'Aggiornato',
   'memorySources.sync.failedLabel': 'Non riuscito',
+  'memorySources.sync.morePending': 'Altro da sincronizzare. Fai di nuovo clic su Sincronizza',
+  'memorySources.sync.budgetSpent': 'Il budget di richieste di oggi è esaurito. Riprova domani',
   'time.justNow': 'proprio ora',
   'time.secondsAgoSuffix': 's fa',
   'time.minutesAgoSuffix': 'min fa',
@@ -2729,6 +2733,19 @@ const messages: TranslationMap = {
   'memorySources.allIn.allFailed':
     'Nessuna sincronizzazione è potuta partire. Controlla ogni fonte per vedere il motivo.',
   'memorySources.allIn.partial': 'Sincronizzazioni avviate: {triggered}. Non avviabili: {failed}.',
+  'memorySources.repair.button': 'Ripara i ricordi meno recenti',
+  'memorySources.repair.title': 'Riparare i ricordi meno recenti?',
+  'memorySources.repair.message':
+    "Fino a {scanned} documenti sincronizzati sono stati salvati prima della correzione dell'archiviazione nell'albero della memoria e non compaiono nel grafo della memoria. Archiviarli consuma crediti di embedding. I documenti già nell'albero vengono saltati.",
+  'memorySources.repair.confirm': 'Ripara',
+  'memorySources.repair.cancel': 'Non ora',
+  'memorySources.repair.nothing':
+    'Niente da riparare. Nessun documento sincronizzato è in attesa di archiviazione.',
+  'memorySources.repair.success':
+    "{ingested} archiviati nell'albero della memoria ({already} già presenti, {skipped} saltati).",
+  'memorySources.repair.morePending':
+    'Ne restano altri. Fai di nuovo clic su Ripara i ricordi meno recenti.',
+  'memorySources.repair.failed': 'Impossibile riparare i ricordi meno recenti.',
   'memorySources.settings.button': 'Impostazioni',
   'memorySources.settings.title': 'Impostazioni di sincronizzazione',
   'memorySources.settings.maxPrs': 'Numero massimo di pull request',
@@ -2742,7 +2759,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Illimitato',
   'memorySources.settings.unlimitedTooltip':
     'Hai scelto di sincronizzare il massimo per {toolkit}. Puoi modificare i limiti qui.',
-  'memorySources.settings.maxed': 'Pieno',
   'memorySources.settings.save': 'Salva',
   'memorySources.settings.saving': 'Salvataggio…',
   'memorySources.settings.saved': 'Impostazioni salvate',
@@ -5001,6 +5017,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Registro eventi',
   'settings.developerMenu.eventLog.desc':
     'Flusso in diretta codificato a colori di tutti gli eventi di agenti, strumenti e sistemi',
+  'settings.developerMenu.eventLog.workspaceScope': 'Ambito dello spazio di lavoro',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Questo spazio di lavoro',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Tutti gli spazi di lavoro',
   'settings.developerMenu.eventLog.allTypes': 'Tutti i tipi',
   'settings.developerMenu.eventLog.filterAgent': 'Filtro...',
   'settings.developerMenu.eventLog.download': 'Scarica',

@@ -2662,6 +2662,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Em breve',
   'memorySources.composioListFailed': 'Falha ao carregar as conexões Composio.',
   'memorySources.browse': 'Navegar…',
+  'memorySources.folderPathUnavailable':
+    'Não foi possível determinar onde essa pasta está. Digite o caminho completo dela.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2684,6 +2686,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'itens sincronizados',
   'memorySources.sync.upToDate': 'Atualizado',
   'memorySources.sync.failedLabel': 'Falhou',
+  'memorySources.sync.morePending': 'Há mais para sincronizar. Clique em Sincronizar novamente',
+  'memorySources.sync.budgetSpent':
+    'O orçamento de solicitações de hoje acabou. Tente novamente amanhã',
   'time.justNow': 'agora mesmo',
   'time.secondsAgoSuffix': 's atrás',
   'time.minutesAgoSuffix': 'min atrás',
@@ -2727,6 +2732,19 @@ const messages: TranslationMap = {
     'Nenhuma sincronização pôde começar. Verifique cada fonte para ver o motivo.',
   'memorySources.allIn.partial':
     'Sincronizações iniciadas: {triggered}. Não foi possível iniciar: {failed}.',
+  'memorySources.repair.button': 'Reparar memórias antigas',
+  'memorySources.repair.title': 'Reparar memórias antigas?',
+  'memorySources.repair.message':
+    'Até {scanned} documentos sincronizados foram salvos antes da correção do arquivamento na árvore de memória e não aparecem no grafo de memória. Arquivá-los consome créditos de embedding. Documentos já na árvore são ignorados.',
+  'memorySources.repair.confirm': 'Reparar',
+  'memorySources.repair.cancel': 'Agora não',
+  'memorySources.repair.nothing':
+    'Nada a reparar. Nenhum documento sincronizado aguarda arquivamento.',
+  'memorySources.repair.success':
+    '{ingested} arquivados na árvore de memória ({already} já existentes, {skipped} ignorados).',
+  'memorySources.repair.morePending':
+    'Ainda restam mais. Clique em Reparar memórias antigas novamente.',
+  'memorySources.repair.failed': 'Não foi possível reparar as memórias antigas.',
   'memorySources.settings.button': 'Configurações',
   'memorySources.settings.title': 'Configurações de sincronização',
   'memorySources.settings.maxPrs': 'Máximo de pull requests',
@@ -2740,7 +2758,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Ilimitado',
   'memorySources.settings.unlimitedTooltip':
     'Você optou por sincronizar o máximo para {toolkit}. Você pode alterar os limites aqui.',
-  'memorySources.settings.maxed': 'Cheio',
   'memorySources.settings.save': 'Salvar',
   'memorySources.settings.saving': 'Salvando…',
   'memorySources.settings.saved': 'Configurações salvas',
@@ -4995,6 +5012,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Registro de Eventos',
   'settings.developerMenu.eventLog.desc':
     'Transmissão ao vivo com cores codificadas de todos os eventos de agentes, ferramentas e sistemas',
+  'settings.developerMenu.eventLog.workspaceScope': 'Âmbito do espaço de trabalho',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Este espaço de trabalho',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Todos os espaços de trabalho',
   'settings.developerMenu.eventLog.allTypes': 'Todos os tipos',
   'settings.developerMenu.eventLog.filterAgent': 'Filtrar...',
   'settings.developerMenu.eventLog.download': 'Baixar',

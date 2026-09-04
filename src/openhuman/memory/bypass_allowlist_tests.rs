@@ -261,6 +261,21 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
     ),
+    // ── Engine-internal backfill reader (tinymemory#136, openhuman#6012) ──
+    //
+    // `backfill_connector_trees` re-files connector documents that were stored
+    // before the openhuman#6007 routing fix into the memory tree. It reads each
+    // stored document back through the engine's own read-one escape hatch and
+    // hands the body to the same ingest funnel the sync path writes through.
+    // Engine code beneath the module contract: the host reaches it only via
+    // `MemoryMaintenance::backfill_connector_trees`, which the kernel guard
+    // already tiers (dry-run as a read, a real pass as a write), so there is no
+    // host-side guard left for this read to route through.
+    (
+        "vendor/tinymemory/crates/tinymemory-core/src/backfill.rs",
+        ".get_document(",
+        "engine-internal read-back of stored connector documents for the tree backfill; beneath the contract, reached by the host only through the guarded Maintenance member",
+    ),
 ];
 
 /// True for source files the lint deliberately does not scan.

@@ -970,6 +970,43 @@ always-on kernel surface, so `features = ["modules"]` there puts a loader plus
 one — 305 → 308 packages, which the kernel-floor ratchet caught. It is forwarded
 from this crate's own `modules` feature instead.
 
+#### Release cache, boot preload, and the loading state
+
+**Every module load goes through a persistent, verified cache.** `ops::resolve`
+loads the pinned release with tinybus's `load_github_release_cached`, which
+keeps the archive, its extraction and the manifest digest under
+`install_dir(config)/<id>/<version>/<host_key>/` (`~/Library/Caches/openhuman/modules`
+on macOS, `~/.cache/openhuman/modules` on Linux). A warm launch re-hashes the
+archive against the registry pin and maps the library without the network; a
+cold launch downloads into a staging sibling and commits with one rename, and
+the versions no longer pinned are pruned afterwards. Before this existed every
+launch downloaded every module — five on the desktop — serialised behind one
+lock, and tinybus's default HTTP client had no connect timeout, so a single
+black-holed CDN address cost the OS SYN timeout (75 s on macOS, ~2 min on
+Linux) per module while every memory call and the chat turn waited behind it.
+
+Three host-side rules ride on it:
+
+- **`LoadPolicy::Eager` runs at boot now.** `start_bootstrap_jobs` spawns
+  `modules::boot::load_declared_modules` behind `ServiceSet::memory_queue`; it
+  installs the memory host callbacks first (a module admitted without them
+  resolves no embedder) and then resolves TinyMemory off the request path. The
+  function had no product caller from the day it landed.
+- **Resolution is per module, and the wait is bounded.** `modules::resolution`
+  gives each module a slot: the first caller runs the load as a
+  process-lifetime task on the module runtime and everyone else waits on a
+  watch channel, so a caller that gives up cancels nothing and two modules
+  never queue behind each other. `ensure_loaded_within` bounds the wait.
+  `ModuleMemoryProvider::proxy` uses an 8 s grace for reads and answers
+  `MemoryError::Unavailable` ("memory is still starting") instead of hanging
+  into the UI's 30 s RPC deadline; writes (`store`, the syncs, `shutdown`, …)
+  wait it out because a dropped write is lost work. `modules.list` reports
+  `Loading`, and `health()` answers `Degraded` — never `Down`, which is the
+  signal that rebinds the fallback driver — while a load is in flight.
+- **The chat turn's one inline memory await is bounded** — 3 s around
+  `recall_situational_preferences_on` in `core_turn.rs`; citations and autosave
+  were already spawned off the path.
+
 #### The memory seam — one contract, two live paths (#5560)
 
 Memory is the second module consumer, and it is **half migrated**. Read this
@@ -1180,7 +1217,7 @@ Domains: `agent`, `memory`, `channel`, `cron`, `skill`, `tool`, `webhook`, `syst
 
 Each domain owns `bus.rs` with handlers. Convention: `<Purpose>Subscriber`, `name()` → `"<domain>::<purpose>"`.
 
-**Adding events:** add to `DomainEvent`, extend `domain()` match, create `<domain>/bus.rs`, register at startup, publish via `publish_global`.
+**Adding events:** add to `DomainEvent`, extend `domain()` match, create `<domain>/bus.rs`, register at startup, publish via `publish_global`, and bump `EVENTS_VERSION` in [`src/core/bus.rs`](src/core/bus.rs) — minor for an added variant or field, major (plus a new interface name) for anything an older subscriber cannot parse. Peers exchange that version through the manifest, so skipping the bump turns a version skew into a decode failure later instead of a startup warning.
 
 **Adding native handlers:** define req/resp types (`Send + 'static`, not `Serialize`), register at startup keyed by `"<domain>.<verb>"`, dispatch via `request_native_global`.
 

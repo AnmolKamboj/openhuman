@@ -39,7 +39,7 @@ import {
   clearProcessingForThread,
   clearStreamingAssistantForThread,
   endInferenceTurn,
-  fetchAndHydrateDerivedTranscript,
+  fetchAndHydrateCompletedTurnState,
   markInferenceTurnStreaming,
   parseToolFailure,
   recordChatTurnUsage,
@@ -77,7 +77,7 @@ import {
   setActiveThread,
   setSelectedThread,
 } from '../store/threadSlice';
-import { DERIVED_TRANSCRIPT_ENABLED, IS_PROD } from '../utils/config';
+import { IS_PROD } from '../utils/config';
 import { AssistantUiRuntimeProvider } from './AssistantUiRuntimeProvider';
 import { isProactiveConversationSurface, proactiveThreadPins } from './proactiveThreadPins';
 
@@ -216,6 +216,26 @@ function chatDoneExtraMetadata(event: ChatDoneEvent): Record<string, unknown> | 
   if (event.citations?.length) meta.citations = event.citations;
   if (event.request_id) meta.requestId = event.request_id;
   return Object.keys(meta).length > 0 ? meta : undefined;
+}
+
+/**
+ * Message id for a reply the CORE already persisted before announcing it.
+ *
+ * Core-initiated turns (`client_id === 'system'`: autonomous task sessions and
+ * background sub-agent result delivery via `run_system_turn_on_thread`) write
+ * their own closing message — `task_session::append_final`, keyed
+ * `agent:<run_id>` — and only then emit `chat_done` / `chat_error` with that
+ * run id as `request_id`. Reusing the same id here makes our own
+ * `addInferenceResponse` append collapse onto the core's row (the conversation
+ * store is idempotent by message id) instead of persisting a second copy that
+ * rendered as a duplicate reply under the answer (#5933). Interactive turns
+ * keep their generated ids: nothing else has persisted them.
+ */
+function corePersistedMessageId(event: {
+  client_id?: string;
+  request_id?: string;
+}): string | undefined {
+  return event.client_id === 'system' && event.request_id ? `agent:${event.request_id}` : undefined;
 }
 
 /**
@@ -473,14 +493,13 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       await flushQueuedFollowups(event.thread_id);
       dispatch(endInferenceTurn({ threadId: event.thread_id }));
       dispatch(clearThreadInferenceActive(event.thread_id));
-      // Live-turn seam: the turn just settled and its line was appended to the
-      // append-only transcript. Invalidate/refresh the thread's derived
-      // settled-turn trails so the next reopen is fresh. The just-finished turn
-      // is the newest, so the derived hydration skips it — this never fights the
-      // live anchor, and it does not touch any socket delta handler.
-      if (DERIVED_TRANSCRIPT_ENABLED) {
-        void dispatch(fetchAndHydrateDerivedTranscript(event.thread_id));
-      }
+      // Socket reducers keep only the current iteration's prose in the live
+      // buffer. Once the turn settles, replace that partial projection with
+      // the core's completed snapshot, whose ordered transcript contains every
+      // parent and sub-agent event from the whole turn. Doing this here (after
+      // ending the live lifecycle) matters: `hydrateRuntimeFromSnapshot`
+      // intentionally refuses to overwrite an actively streaming turn.
+      await dispatch(fetchAndHydrateCompletedTurnState(event.thread_id));
     };
 
     rtLog('subscribe_chat_events', { socket: socketStatus });
@@ -1176,6 +1195,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
                 addInferenceResponse({
                   content: event.full_response,
                   threadId: event.thread_id,
+                  messageId: corePersistedMessageId(event),
                   extraMetadata: chatDoneExtraMetadata(event),
                 })
               ).unwrap();
@@ -1211,6 +1231,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
                 addInferenceResponse({
                   content: event.full_response,
                   threadId: event.thread_id,
+                  messageId: corePersistedMessageId(event),
                   extraMetadata: chatDoneExtraMetadata(event),
                 })
               ).unwrap();
@@ -1281,6 +1302,33 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             scope: 'chat',
             sourceDomain: 'chat',
           });
+          // #5868: a session_expired chat error means the Rust core already
+          // published DomainEvent::SessionExpired and set signed_out=true, but
+          // the auth:session_expired socket event may have been suppressed
+          // (isBootstrapping guard) or missed. Dispatch the same window event
+          // socketService emits so CoreStateProvider's runReauth() fires the
+          // clearSession() → login redirect path from this side too. The 10s
+          // debounce in runReauth() ensures a concurrent socket event does not
+          // cause a double-clear.
+          if (event.error_type === 'session_expired') {
+            // `reason: 'unconfirmed'` is load-bearing, not defensive. The core
+            // classifies this error with `is_session_expired_message`, which
+            // matches the LOCAL guards "no backend session token" and
+            // "session jwt required" as well as a real backend expiry
+            // (`core/observability.rs`). Those two fire transiently before the
+            // on-disk auth profile has been read — #2758 is the bug where
+            // treating them as definitive forced a re-login even though the
+            // token had survived the restart. `unconfirmed` routes through
+            // `confirmSessionTokenGone()` in `runReauth`, so a signal raised
+            // while the token is still on disk stops short of the destructive
+            // `clearSession()`. A genuine expiry still corroborates and signs
+            // out; only the false positive is filtered.
+            window.dispatchEvent(
+              new CustomEvent('openhuman:session-expired', {
+                detail: { source: 'chat-error', reason: 'unconfirmed' },
+              })
+            );
+          }
         }
 
         // Parallel (forked) turn error: resolve only its lane, leaving the
@@ -1334,9 +1382,23 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           // surfacing it tells the user *why* the turn failed instead of a blanket apology.
           // The hardcoded constant is only a last-resort fallback for an empty/missing message.
           const errorContent = event.message || USER_FACING_AGENT_ERROR_MESSAGE;
-          if (!(lastMsg?.sender === 'agent' && lastMsg?.content === errorContent)) {
+          // A core-owned failure carries a deterministic id, so dedupe on that
+          // rather than on the text. Two runs can fail with byte-identical
+          // content — the same upstream provider message, or the generic
+          // fallback above — and a text check would then read the previous
+          // run's row as this one and drop the current failure from the cache.
+          // Interactive turns have no pre-persisted id and keep the text check.
+          const errorMessageId = corePersistedMessageId(event);
+          const alreadyPresent = errorMessageId
+            ? threadMessages.some(message => message.id === errorMessageId)
+            : lastMsg?.sender === 'agent' && lastMsg?.content === errorContent;
+          if (!alreadyPresent) {
             void dispatch(
-              addInferenceResponse({ content: errorContent, threadId: event.thread_id })
+              addInferenceResponse({
+                content: errorContent,
+                threadId: event.thread_id,
+                messageId: errorMessageId,
+              })
             );
           }
 

@@ -2688,6 +2688,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Bientôt disponible',
   'memorySources.composioListFailed': 'Échec du chargement des connexions Composio.',
   'memorySources.browse': 'Parcourir…',
+  'memorySources.folderPathUnavailable':
+    'Impossible de déterminer où se trouve ce dossier. Saisissez plutôt son chemin complet.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2710,6 +2712,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'éléments synchronisés',
   'memorySources.sync.upToDate': 'À jour',
   'memorySources.sync.failedLabel': 'Échec',
+  'memorySources.sync.morePending':
+    'Il reste des éléments à synchroniser. Cliquez à nouveau sur Synchroniser',
+  'memorySources.sync.budgetSpent': 'Le budget de requêtes du jour est épuisé. Réessayez demain',
   'time.justNow': "à l'instant",
   'time.secondsAgoSuffix': 's',
   'time.minutesAgoSuffix': 'min',
@@ -2754,6 +2759,19 @@ const messages: TranslationMap = {
     'Aucune synchronisation n’a pu démarrer. Vérifiez chaque source pour connaître la raison.',
   'memorySources.allIn.partial':
     'Synchronisations lancées : {triggered}. Impossibles à lancer : {failed}.',
+  'memorySources.repair.button': 'Réparer les souvenirs anciens',
+  'memorySources.repair.title': 'Réparer les souvenirs anciens ?',
+  'memorySources.repair.message':
+    "Jusqu'à {scanned} documents synchronisés ont été enregistrés avant la correction du classement dans l'arbre de mémoire et sont invisibles dans le graphe de mémoire. Les classer consomme des crédits d'embedding. Les documents déjà dans l'arbre sont ignorés.",
+  'memorySources.repair.confirm': 'Réparer',
+  'memorySources.repair.cancel': 'Pas maintenant',
+  'memorySources.repair.nothing':
+    "Rien à réparer. Aucun document synchronisé n'attend d'être classé.",
+  'memorySources.repair.success':
+    "{ingested} classés dans l'arbre de mémoire ({already} déjà présents, {skipped} ignorés).",
+  'memorySources.repair.morePending':
+    'Il en reste. Cliquez à nouveau sur Réparer les souvenirs anciens.',
+  'memorySources.repair.failed': 'Impossible de réparer les souvenirs anciens.',
   'memorySources.settings.title': 'Paramètres de synchronisation',
   'memorySources.settings.maxPrs': 'Nombre maximal de pull requests',
   'memorySources.settings.maxIssues': "Nombre maximal d'issues",
@@ -2766,7 +2784,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Illimité',
   'memorySources.settings.unlimitedTooltip':
     'Vous avez choisi de synchroniser le maximum pour {toolkit}. Vous pouvez modifier les limites ici.',
-  'memorySources.settings.maxed': 'Plein',
   'memorySources.settings.save': 'Enregistrer',
   'memorySources.settings.saving': 'Enregistrement…',
   'memorySources.settings.saved': 'Paramètres enregistrés',
@@ -5037,6 +5054,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Journal des événements',
   'settings.developerMenu.eventLog.desc':
     'Flux en direct codé par couleur de tous les événements des agents, outils et systèmes',
+  'settings.developerMenu.eventLog.workspaceScope': 'Portée de l’espace de travail',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Cet espace de travail',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Tous les espaces de travail',
   'settings.developerMenu.eventLog.allTypes': 'Tous les types',
   'settings.developerMenu.eventLog.filterAgent': 'Filtrer...',
   'settings.developerMenu.eventLog.download': 'Télécharger',

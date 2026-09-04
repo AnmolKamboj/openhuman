@@ -2633,6 +2633,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Скоро',
   'memorySources.composioListFailed': 'Не удалось загрузить соединения Composio.',
   'memorySources.browse': 'Просматривать…',
+  'memorySources.folderPathUnavailable':
+    'Не удалось определить, где находится эта папка. Введите полный путь к ней.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
@@ -2655,6 +2657,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'элементов синхронизировано',
   'memorySources.sync.upToDate': 'Актуально',
   'memorySources.sync.failedLabel': 'Не удалось',
+  'memorySources.sync.morePending': 'Есть что синхронизировать. Нажмите «Синхронизировать» ещё раз',
+  'memorySources.sync.budgetSpent': 'Дневной лимит запросов исчерпан. Попробуйте завтра',
   'time.justNow': 'только что',
   'time.secondsAgoSuffix': 'с назад',
   'time.minutesAgoSuffix': 'мин назад',
@@ -2700,6 +2704,19 @@ const messages: TranslationMap = {
     'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
   'memorySources.allIn.partial':
     'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
+  'memorySources.repair.button': 'Восстановить старые воспоминания',
+  'memorySources.repair.title': 'Восстановить старые воспоминания?',
+  'memorySources.repair.message':
+    'До {scanned} синхронизированных документов были сохранены до исправления размещения в дереве памяти и не видны в графе памяти. Их размещение расходует кредиты на эмбеддинги. Документы, уже находящиеся в дереве, пропускаются.',
+  'memorySources.repair.confirm': 'Восстановить',
+  'memorySources.repair.cancel': 'Не сейчас',
+  'memorySources.repair.nothing':
+    'Нечего восстанавливать. Нет синхронизированных документов, ожидающих размещения.',
+  'memorySources.repair.success':
+    'Размещено в дереве памяти: {ingested} ({already} уже было, {skipped} пропущено).',
+  'memorySources.repair.morePending':
+    'Остались ещё. Нажмите «Восстановить старые воспоминания» снова.',
+  'memorySources.repair.failed': 'Не удалось восстановить старые воспоминания.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',
   'memorySources.settings.maxPrs': 'Максимум pull request',
@@ -2713,7 +2730,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Без лимита',
   'memorySources.settings.unlimitedTooltip':
     'Вы выбрали синхронизацию максимума для {toolkit}. Лимиты можно изменить здесь.',
-  'memorySources.settings.maxed': 'Заполнено',
   'memorySources.settings.save': 'Сохранить',
   'memorySources.settings.saving': 'Сохранение…',
   'memorySources.settings.saved': 'Настройки сохранены',
@@ -4972,6 +4988,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.title': 'Журнал событий',
   'settings.developerMenu.eventLog.desc':
     'Живой поток с цветовой кодировкой обо всех событиях агента, инструмента и системы.',
+  'settings.developerMenu.eventLog.workspaceScope': 'Область рабочего пространства',
+  'settings.developerMenu.eventLog.workspaceScopeActive': 'Текущее рабочее пространство',
+  'settings.developerMenu.eventLog.workspaceScopeAll': 'Все рабочие пространства',
   'settings.developerMenu.eventLog.allTypes': 'Все типы',
   'settings.developerMenu.eventLog.filterAgent': 'Фильтр...',
   'settings.developerMenu.eventLog.download': 'Скачать',

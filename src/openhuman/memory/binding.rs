@@ -467,6 +467,46 @@ pub(crate) fn bind_provider_for_test(
 type BindingCacheKey = (PathBuf, String, MemorySubsystemConfig);
 static BINDINGS: OnceLock<RwLock<HashMap<BindingCacheKey, Arc<MemoryBinding>>>> = OnceLock::new();
 
+/// Every binding this process has built so far, for the exit path.
+///
+/// A snapshot rather than a handle to the map: exit runs while other tasks may
+/// still be resolving bindings, and holding the lock across a driver's
+/// `shutdown` would queue them behind it.
+pub(crate) fn cached_bindings() -> Vec<Arc<MemoryBinding>> {
+    let Some(cache) = BINDINGS.get() else {
+        return Vec::new();
+    };
+    match cache.read() {
+        Ok(map) => map.values().cloned().collect(),
+        Err(poisoned) => poisoned.into_inner().values().cloned().collect(),
+    }
+}
+
+/// Drop `shut_down` from the cache, so a server that starts again in this
+/// process binds fresh drivers instead of the ones exit has already torn down.
+///
+/// The shell restarts the embedded server in place (a permission refresh, an
+/// app update), and exit runs every cached driver's `shutdown` on the way out.
+/// Left in the cache, those drivers would be handed straight back to the next
+/// server — their workers stopped and their hooks already drained — and memory
+/// would stay dark until the whole desktop process restarted. Matched by
+/// identity, not by key: only what exit actually asked to shut down leaves.
+/// With the exit gate up nothing else can be in the cache by then; without it
+/// (a bare call, in tests) a binding built beside the exit stays.
+pub(crate) fn evict_bindings(shut_down: &[Arc<MemoryBinding>]) {
+    if shut_down.is_empty() {
+        return;
+    }
+    let Some(cache) = BINDINGS.get() else {
+        return;
+    };
+    let mut map = match cache.write() {
+        Ok(map) => map,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    map.retain(|_, binding| !shut_down.iter().any(|gone| Arc::ptr_eq(gone, binding)));
+}
+
 /// The bound memory driver for `workspace_dir`, constructing it on first use.
 ///
 /// The same workspace always resolves to the same cached `Arc` (so
@@ -527,6 +567,13 @@ pub(crate) struct FixedDiagnostics {
     /// between them — nothing ready, nothing running, backfill unfinished —
     /// has to set the two independently.
     backfill: bool,
+    /// What [`MemoryMaintenance::backfill_connector_trees`] answers, when a test
+    /// sets it.
+    ///
+    /// Distinct from [`Self::backfill`], which is the unrelated
+    /// `backfill_in_progress` flag — one is "is a re-embed running", the other
+    /// is the connector-tree pass's counters.
+    backfill_trees: crate::openhuman::memory::api::provider::types::BackfillTreesOutcome,
     /// What [`MemoryMaintenance::flush_pending`] answers, when a test sets it.
     flush: crate::openhuman::memory::api::provider::types::FlushOutcome,
     /// What [`MemoryMaintenance::reset_derived_index`] answers, likewise.
@@ -659,6 +706,16 @@ pub fn for_subtree(
     let mut guard = cache
         .write()
         .map_err(|e| format!("[memory:binding] cache write lock poisoned: {e}"))?;
+    // Under the same lock the exit snapshot is taken under: once memory is on
+    // its way out, a driver bound now would never be asked to shut down, so
+    // it is not bound at all. The check sits inside the lock on purpose — a
+    // builder that passed it inserted before the snapshot, and one that did
+    // not is refused; there is no third case (memory/exit.rs).
+    if crate::openhuman::memory::exit::exiting() {
+        return Err(
+            "[memory:binding] memory is shutting down; not binding a new driver".to_string(),
+        );
+    }
     // Re-check under the write lock: a racing caller may have bound the same
     // workspace while we were building. Reuse theirs so one workspace never has
     // two live drivers (kernel.md §3.1) and `capabilities()` stays asked once.
