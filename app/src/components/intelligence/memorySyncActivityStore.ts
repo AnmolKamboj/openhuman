@@ -24,6 +24,7 @@ import { useSyncExternalStore } from 'react';
 import type { SourceStatus } from '../../services/memorySourcesService';
 import {
   STAGE_FALLBACK_PERCENT,
+  type SyncNote,
   type SyncProgress,
   type SyncResult,
 } from './memorySourcesSyncTypes';
@@ -63,6 +64,23 @@ export function parseIngestedCount(detail: string | null): number | null {
   if (!detail) return null;
   const match = detail.match(/ingested\s+(\d+)\s+item/i);
   if (match) return parseInt(match[1], 10);
+  return null;
+}
+
+/**
+ * Why a completed run stopped short, from the remainder the core writes after
+ * the count: `", more pending — Sync again to continue"` when the per-run cap
+ * left more to read, `"; today's provider request budget is spent"` when the
+ * day's budget did. The number alone made both read as a finished sync, and a
+ * spent budget with zero new items read as "Up to date" — the opposite of what
+ * happened. The budget wins when both appear: it is the reason nothing more
+ * will arrive today.
+ */
+export function parseSyncNote(detail: string | null): SyncNote | null {
+  if (!detail) return null;
+  const lower = detail.toLowerCase();
+  if (lower.includes('budget')) return 'budget_spent';
+  if (lower.includes('more pending')) return 'more_pending';
   return null;
 }
 
@@ -170,12 +188,18 @@ export function applyStageEvent(data: SyncStageEventDetail | null | undefined): 
   );
 
   if (stage === 'completed' || stage === 'failed') {
-    // Success: the item count parsed from the detail ("ingested N item(s)");
-    // 0 new items → "up to date" (#3295). Failure: the reason, verbatim.
+    // Success: the item count parsed from the detail ("ingested N item(s)")
+    // and why the run stopped short, if it did; 0 new items → "up to date"
+    // (#3295). Failure: the reason, verbatim.
     const result: SyncResult =
       stage === 'completed'
-        ? { kind: 'success', items: parseIngestedCount(detail), reason: null }
-        : { kind: 'failed', items: null, reason: detail };
+        ? {
+            kind: 'success',
+            items: parseIngestedCount(detail),
+            reason: null,
+            note: parseSyncNote(detail),
+          }
+        : { kind: 'failed', items: null, reason: detail, note: null };
     const progress = new Map(state.progress);
     progress.delete(rowId);
     liveSince.delete(rowId);
@@ -224,7 +248,7 @@ export function noteSyncRejected(rowId: string, reason: string): void {
   progress.delete(rowId);
   liveSince.delete(rowId);
   const results = new Map(state.results);
-  results.set(rowId, { kind: 'failed', items: null, reason });
+  results.set(rowId, { kind: 'failed', items: null, reason, note: null });
   commit({ syncingIds, progress, results });
 }
 
@@ -249,7 +273,9 @@ export function reconcileWithStatuses(statuses: SourceStatus[], now = Date.now()
     const live = status.sync_stage;
     const knownLive = progress.has(rowId) || syncingIds.has(rowId);
     if (live) {
-      if (knownLive) continue;
+      // A row the button lit optimistically has no bar yet; if its first
+      // stage event was missed, the poll is what carries the stage.
+      if (progress.has(rowId)) continue;
       const detail = status.sync_detail ?? null;
       progress.set(rowId, { stage: live, detail, percent: parseSyncProgress(detail, live) });
       liveSince.set(rowId, now);

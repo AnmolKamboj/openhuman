@@ -2638,6 +2638,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'আইটেম সিঙ্ক হয়েছে',
   'memorySources.sync.upToDate': 'হালনাগাদ আছে',
   'memorySources.sync.failedLabel': 'ব্যর্থ',
+  'memorySources.sync.morePending': 'আরও সিঙ্ক বাকি আছে। আবার Sync-এ ক্লিক করুন',
+  'memorySources.sync.budgetSpent': 'আজকের অনুরোধের বাজেট শেষ। আগামীকাল আবার চেষ্টা করুন',
   'time.justNow': 'এইমাত্র',
   'time.secondsAgoSuffix': 'সেকেন্ড আগে',
   'time.minutesAgoSuffix': 'মিনিট আগে',
@@ -2679,6 +2681,18 @@ const messages: TranslationMap = {
   'memorySources.allIn.failed': 'সব চালু করা সম্ভব হয়নি। আবার চেষ্টা করুন।',
   'memorySources.allIn.allFailed': 'কোনো সিঙ্ক শুরু করা যায়নি। কারণ জানতে প্রতিটি উৎস দেখুন।',
   'memorySources.allIn.partial': 'শুরু হওয়া সিঙ্ক: {triggered}। শুরু করা যায়নি: {failed}।',
+  'memorySources.repair.button': 'পুরোনো স্মৃতি মেরামত করুন',
+  'memorySources.repair.title': 'পুরোনো স্মৃতি মেরামত করবেন?',
+  'memorySources.repair.message':
+    'মেমোরি ট্রিতে ফাইলিং ঠিক করার আগে সংরক্ষিত সর্বোচ্চ {scanned}টি সিঙ্ক করা নথি মেমোরি গ্রাফে দেখা যায় না। সেগুলি ফাইল করতে এমবেডিং ক্রেডিট খরচ হয়। যেসব নথি ইতিমধ্যে ট্রিতে আছে সেগুলি বাদ দেওয়া হয়।',
+  'memorySources.repair.confirm': 'মেরামত করুন',
+  'memorySources.repair.cancel': 'এখন নয়',
+  'memorySources.repair.nothing':
+    'মেরামতের কিছু নেই। কোনো সিঙ্ক করা নথি ফাইল হওয়ার অপেক্ষায় নেই।',
+  'memorySources.repair.success':
+    '{ingested}টি মেমোরি ট্রিতে ফাইল করা হয়েছে ({already}টি আগে থেকেই ছিল, {skipped}টি বাদ দেওয়া হয়েছে)।',
+  'memorySources.repair.morePending': 'আরও বাকি আছে। আবার পুরোনো স্মৃতি মেরামত করুন-এ ক্লিক করুন।',
+  'memorySources.repair.failed': 'পুরোনো স্মৃতি মেরামত করা যায়নি।',
   'memorySources.settings.button': 'সেটিংস',
   'memorySources.settings.title': 'সিঙ্ক সেটিংস',
   'memorySources.settings.maxPrs': 'সর্বোচ্চ পুল রিকোয়েস্ট',
@@ -2692,7 +2706,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'সীমাহীন',
   'memorySources.settings.unlimitedTooltip':
     'আপনি {toolkit}-এর জন্য সর্বাধিক সিঙ্ক করার অপশন বেছে নিয়েছেন। আপনি এখানে সীমা পরিবর্তন করতে পারেন।',
-  'memorySources.settings.maxed': 'পূর্ণ',
   'memorySources.settings.save': 'সংরক্ষণ',
   'memorySources.settings.saving': 'সংরক্ষণ হচ্ছে…',
   'memorySources.settings.saved': 'সেটিংস সংরক্ষিত হয়েছে',

@@ -42,12 +42,12 @@ describe('memorySyncActivityStore', () => {
     s = getMemorySyncActivity();
     expect(s.progress.has('src-a')).toBe(false);
     expect(s.syncingIds.has('src-a')).toBe(false);
-    expect(s.results.get('src-a')).toEqual({ kind: 'success', items: 7, reason: null });
+    expect(s.results.get('src-a')).toEqual({ kind: 'success', items: 7, reason: null, note: null });
     expect(ended).toHaveBeenCalledWith(
       expect.objectContaining({
         rowId: 'src-a',
         stage: 'completed',
-        result: { kind: 'success', items: 7, reason: null },
+        result: { kind: 'success', items: 7, reason: null, note: null },
       })
     );
     unsubscribe();
@@ -82,6 +82,7 @@ describe('memorySyncActivityStore', () => {
       kind: 'failed',
       items: null,
       reason: 'transport down',
+      note: null,
     });
   });
 
@@ -104,6 +105,16 @@ describe('memorySyncActivityStore', () => {
     );
     expect(getMemorySyncActivity().progress.has('src-e')).toBe(false);
     expect(getMemorySyncActivity().syncingIds.has('src-e')).toBe(false);
+  });
+
+  it('seeds the bar for a row the button lit when the poll reports it live', () => {
+    // The optimistic flag has no stage; if the first socket event was missed,
+    // the poll carries it.
+    noteSyncRequested('src-g');
+    reconcileWithStatuses([status('src-g', { sync_stage: 'running', sync_detail: null })]);
+    const s = getMemorySyncActivity();
+    expect(s.progress.get('src-g')).toEqual({ stage: 'running', detail: null, percent: null });
+    expect(s.syncingIds.has('src-g')).toBe(true);
   });
 
   it('changes nothing for a core that does not report the field', () => {

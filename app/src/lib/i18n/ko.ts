@@ -2605,6 +2605,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': '항목 동기화됨',
   'memorySources.sync.upToDate': '최신 상태',
   'memorySources.sync.failedLabel': '실패',
+  'memorySources.sync.morePending': '동기화할 항목이 더 있습니다. 동기화를 다시 클릭하세요',
+  'memorySources.sync.budgetSpent': '오늘의 요청 한도를 모두 사용했습니다. 내일 다시 시도하세요',
   'time.justNow': '방금 전',
   'time.secondsAgoSuffix': '초 전',
   'time.minutesAgoSuffix': '분 전',
@@ -2647,6 +2649,18 @@ const messages: TranslationMap = {
   'memorySources.allIn.allFailed':
     '동기화를 하나도 시작할 수 없습니다. 각 소스에서 원인을 확인하세요.',
   'memorySources.allIn.partial': '시작된 동기화: {triggered}. 시작하지 못함: {failed}.',
+  'memorySources.repair.button': '이전 기억 복구',
+  'memorySources.repair.title': '이전 기억을 복구할까요?',
+  'memorySources.repair.message':
+    '최대 {scanned}개의 동기화된 문서가 메모리 트리 정리 수정 이전에 저장되어 메모리 그래프에 표시되지 않습니다. 정리하려면 임베딩 크레딧이 사용됩니다. 이미 트리에 있는 문서는 건너뜁니다.',
+  'memorySources.repair.confirm': '복구',
+  'memorySources.repair.cancel': '나중에',
+  'memorySources.repair.nothing':
+    '복구할 항목이 없습니다. 정리를 기다리는 동기화된 문서가 없습니다.',
+  'memorySources.repair.success':
+    '{ingested}개를 메모리 트리에 정리했습니다 ({already}개 이미 있음, {skipped}개 건너뜀).',
+  'memorySources.repair.morePending': '남은 항목이 있습니다. 이전 기억 복구를 다시 클릭하세요.',
+  'memorySources.repair.failed': '이전 기억을 복구하지 못했습니다.',
   'memorySources.settings.button': '설정',
   'memorySources.settings.title': '동기화 설정',
   'memorySources.settings.maxPrs': '최대 풀 리퀘스트 수',
@@ -2660,7 +2674,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': '무제한',
   'memorySources.settings.unlimitedTooltip':
     '{toolkit}에 대해 최대로 동기화하도록 선택했습니다. 여기에서 한도를 변경할 수 있습니다.',
-  'memorySources.settings.maxed': '최대',
   'memorySources.settings.save': '저장',
   'memorySources.settings.saving': '저장 중…',
   'memorySources.settings.saved': '설정이 저장되었습니다',

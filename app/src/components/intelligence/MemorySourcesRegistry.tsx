@@ -28,10 +28,13 @@ import type {
   ToastNotification,
 } from '../../types/intelligence';
 import {
+  type BackfillConnectorTreesResponse,
+  memoryTreeBackfillConnectorTrees,
   memoryTreeFlushSource,
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
 } from '../../utils/tauriCommands/memoryTree';
+import { trackAnalyticsEvent } from '../analytics';
 import { Card } from '../ui';
 import Button from '../ui/Button';
 import { AddMemorySourceDialog } from './AddMemorySourceDialog';
@@ -50,7 +53,7 @@ import { MemorySyncSchedule } from './MemorySyncSchedule';
 
 // The parsers moved to the store with the state they feed (openhuman#6019);
 // re-exported so their tests and any other reader keep one import path.
-export { parseIngestedCount, parseSyncProgress } from './memorySyncActivityStore';
+export { parseIngestedCount, parseSyncNote, parseSyncProgress } from './memorySyncActivityStore';
 
 interface MemorySourcesRegistryProps {
   onToast?: (toast: Omit<ToastNotification, 'id'>) => void;
@@ -89,6 +92,14 @@ export function MemorySourcesRegistry({
   const [allInModalOpen, setAllInModalOpen] = useState(false);
   const [applyingAllIn, setApplyingAllIn] = useState(false);
   const allInInFlightRef = useRef(false);
+  // "Repair older memories" (openhuman#6012): the backfill RPC has no other
+  // entry point in the app. Two steps — a dry run that only counts, then the
+  // real pass behind a confirmation — because the real pass embeds every
+  // document it files, and that spends credits.
+  const [repairModalOpen, setRepairModalOpen] = useState(false);
+  const [repairPreview, setRepairPreview] = useState<BackfillConnectorTreesResponse | null>(null);
+  const [repairing, setRepairing] = useState(false);
+  const repairInFlightRef = useRef(false);
   const [expandedSettingsId, setExpandedSettingsId] = useState<string | null>(null);
 
   // Refs let the (intentionally dep-free) sync-stage listener fire accurate
@@ -112,16 +123,33 @@ export function MemorySourcesRegistry({
         const tt = tRef.current;
         const label = sourcesRef.current.find(s => s.id === rowId)?.label ?? rowId;
         if (stage === 'completed') {
-          // The item count parsed from the detail ("ingested N item(s)");
-          // 0 new items → "up to date" (#3295).
-          const items = result.items;
+          // The item count parsed from the detail ("ingested N item(s)") and
+          // why the run stopped short, both already on the result. A zero
+          // count is not "up to date" when the run stopped short: the reason
+          // it stopped is the whole message then, not a suffix (#3295).
+          const { items, note } = result;
+          const hasItems = Boolean(items && items > 0);
+          const counted = hasItems
+            ? `${items} ${tt('memorySources.sync.itemsSynced')}`
+            : note === 'budget_spent'
+              ? tt('memorySources.sync.budgetSpent')
+              : note === 'more_pending'
+                ? tt('memorySources.sync.morePending')
+                : tt('memorySources.sync.upToDate');
+          // Beside a count, the note says why the run stopped short — the
+          // budget as much as the cap. A pass that filed some mail and then
+          // ran out for the day is the common partial case this exists to
+          // explain; "N items synced" alone would read as a finished sync.
+          const noteKey =
+            note === 'budget_spent'
+              ? 'memorySources.sync.budgetSpent'
+              : note === 'more_pending'
+                ? 'memorySources.sync.morePending'
+                : null;
           onToastRef.current?.({
-            type: 'success',
+            type: note === 'budget_spent' ? 'warning' : 'success',
             title: `${tt('memorySources.sync.completeTitle')} ${label}`,
-            message:
-              items && items > 0
-                ? `${items} ${tt('memorySources.sync.itemsSynced')}`
-                : tt('memorySources.sync.upToDate'),
+            message: hasItems && noteKey ? `${counted} — ${tt(noteKey)}` : counted,
           });
         } else {
           // The core already reported internal bugs to Sentry via
@@ -350,6 +378,73 @@ export function MemorySourcesRegistry({
     }
   }, [onToast, t]);
 
+  const handleRepairClick = useCallback(async () => {
+    if (repairInFlightRef.current) return;
+    repairInFlightRef.current = true;
+    setRepairing(true);
+    try {
+      // Preview first: the dry run counts what a pass would examine and
+      // writes nothing, so the confirmation can name a number before any
+      // credit is spent.
+      const preview = await memoryTreeBackfillConnectorTrees({ dryRun: true });
+      setRepairPreview(preview);
+      if (preview.scanned === 0) {
+        onToast?.({ type: 'success', title: t('memorySources.repair.nothing') });
+        return;
+      }
+      setRepairModalOpen(true);
+    } catch (err) {
+      onToast?.({
+        type: 'error',
+        title: t('memorySources.repair.failed'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      repairInFlightRef.current = false;
+      setRepairing(false);
+    }
+  }, [onToast, t]);
+
+  const handleConfirmRepair = useCallback(async () => {
+    if (repairInFlightRef.current) return;
+    repairInFlightRef.current = true;
+    setRepairing(true);
+    setRepairModalOpen(false);
+    try {
+      const result = await memoryTreeBackfillConnectorTrees({ dryRun: false });
+      // The successful domain outcome, not the click: a privacy-safe count
+      // only — no ids, no user text.
+      trackAnalyticsEvent('memory_repair_succeeded', { count: result.ingested });
+      const summary = t('memorySources.repair.success')
+        .replace('{ingested}', String(result.ingested))
+        .replace('{already}', String(result.already_present))
+        .replace('{skipped}', String(result.skipped));
+      // The driver files up to its per-call limit and says when documents
+      // remain; the pass is idempotent, so "run it again" is the whole
+      // resume story.
+      if (result.more_pending) {
+        onToast?.({
+          type: 'warning',
+          title: summary,
+          message: t('memorySources.repair.morePending'),
+        });
+      } else {
+        onToast?.({ type: 'success', title: summary });
+      }
+      void refresh();
+    } catch (err) {
+      onToast?.({
+        type: 'error',
+        title: t('memorySources.repair.failed'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      repairInFlightRef.current = false;
+      setRepairing(false);
+      setRepairPreview(null);
+    }
+  }, [onToast, refresh, t]);
+
   const handleSettingsSaved = useCallback((updated: MemorySourceEntry) => {
     setSources(prev => prev.map(s => (s.id === updated.id ? updated : s)));
   }, []);
@@ -373,11 +468,40 @@ export function MemorySourcesRegistry({
     },
   };
 
+  const repairModal: ConfirmationModalType = {
+    isOpen: repairModalOpen,
+    title: t('memorySources.repair.title'),
+    message: t('memorySources.repair.message').replace(
+      '{scanned}',
+      String(repairPreview?.scanned ?? 0)
+    ),
+    confirmText: t('memorySources.repair.confirm'),
+    cancelText: t('memorySources.repair.cancel'),
+    destructive: false,
+    onConfirm: () => {
+      void handleConfirmRepair();
+    },
+    onCancel: () => {
+      setRepairModalOpen(false);
+      setRepairPreview(null);
+    },
+  };
+
   return (
     <Card padded divided={false} data-testid="memory-sources">
       <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-content-secondary">{t('memorySources.title')}</h3>
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleRepairClick()}
+            disabled={repairing}
+            analyticsId="memory-sources-repair"
+            data-testid="repair-memories-button"
+            title={t('memorySources.repair.title')}>
+            {t('memorySources.repair.button')}
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -449,6 +573,16 @@ export function MemorySourcesRegistry({
 
       {allInModalOpen && (
         <ConfirmationModal modal={allInModal} onClose={() => setAllInModalOpen(false)} />
+      )}
+
+      {repairModalOpen && (
+        <ConfirmationModal
+          modal={repairModal}
+          onClose={() => {
+            setRepairModalOpen(false);
+            setRepairPreview(null);
+          }}
+        />
       )}
     </Card>
   );
