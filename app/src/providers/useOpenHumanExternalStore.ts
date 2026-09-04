@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
 import { threadApi } from '../services/api/threadApi';
+import type { InferenceStatus, ToolTimelineEntry } from '../store/chatRuntimeSlice';
 import { useAppSelector } from '../store/hooks';
 import type { DerivedDisplayItem } from '../types/derivedTranscript';
 import type { ThreadMessage } from '../types/thread';
@@ -22,6 +23,46 @@ const DERIVED_TRANSCRIPT_PAGE_LIMIT = 500;
  * the transcript RPC, not here.
  */
 const DERIVED_TRANSCRIPT_MAX_PAGES = 20;
+
+/**
+ * Everything the assistant-ui surface needs about the *currently running* turn
+ * that is not a message, a tool part or a stream delta.
+ *
+ * assistant-ui derives its own running state from `thread.isRunning` alone, so
+ * without this channel a long turn is a bare spinner: no phase, no round
+ * counter, no active tool. The socket handlers already maintain all three in
+ * `chatRuntime.inferenceStatusByThread` (`onInferenceStart`, `onIterationStart`,
+ * `onToolCall`); this projects that slice onto the runtime the surface reads.
+ *
+ * It travels on the adapter's `extras` channel rather than being read from
+ * Redux by the renderer so it stays scoped to *this runtime's* thread — the
+ * Workflow Copilot mounts a second runtime on a thread that is deliberately not
+ * `selectedThreadId`, and a renderer-side Redux read would paint the home
+ * chat's progress inside it.
+ */
+export type OpenHumanThreadExtras = {
+  /** Live phase/round/active-tool for the running turn, or `null` when idle. */
+  inferenceStatus: InferenceStatus | null;
+  /** Newest running non-subagent row, used to title the `tool_use` phase. */
+  activeToolEntry?: ToolTimelineEntry | undefined;
+  /** Running subagent row, used to title the `subagent` phase. */
+  activeSubagentEntry?: ToolTimelineEntry | undefined;
+};
+
+const EMPTY_EXTRAS: OpenHumanThreadExtras = { inferenceStatus: null };
+
+/**
+ * Narrow assistant-ui's untyped `thread.extras` back to our own shape.
+ *
+ * `extras` is `unknown` by contract, and a surface can be mounted on a runtime
+ * that is not ours (or on none at all), so this returns `null` rather than
+ * asserting.
+ */
+export function readOpenHumanThreadExtras(extras: unknown): OpenHumanThreadExtras | null {
+  if (typeof extras !== 'object' || extras === null) return null;
+  if (!('inferenceStatus' in extras)) return null;
+  return extras as OpenHumanThreadExtras;
+}
 
 type CoreTranscriptProjection = {
   threadId: string | null;
@@ -148,6 +189,11 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       ? (state.chatRuntime.processingByThread?.[threadId] ?? EMPTY_TRANSCRIPT)
       : EMPTY_TRANSCRIPT
   );
+  // Progress status for the running turn. Cleared by the socket layer on turn
+  // end/error/cancel, so its presence is itself the "still working" signal.
+  const inferenceStatus = useAppSelector(state =>
+    threadId ? (state.chatRuntime.inferenceStatusByThread?.[threadId] ?? null) : null
+  );
   const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content?.length ?? 0}:${lifecycle ?? ''}`;
   const coreTranscript = useCoreTranscriptProjection(
     threadId,
@@ -175,6 +221,23 @@ export function useOpenHumanExternalStore(threadId: string | null) {
     [messages, streaming, isRunning, liveTimeline, liveTranscript, coreTranscript]
   );
 
+  // The status line titles its `tool_use` / `subagent` phases from the matching
+  // running timeline row (the same rows the surface renders as tool parts), so
+  // "Running command: npm test..." reads like the row rather than the raw tool
+  // id. Resolved here so the renderer stays a pure projection of `extras`.
+  const extras = useMemo<OpenHumanThreadExtras>(() => {
+    if (!inferenceStatus) return EMPTY_EXTRAS;
+    return {
+      inferenceStatus,
+      activeToolEntry: [...liveTimeline]
+        .reverse()
+        .find(entry => entry.status === 'running' && !entry.name.startsWith('subagent:')),
+      activeSubagentEntry: liveTimeline.find(
+        entry => entry.status === 'running' && entry.name.startsWith('subagent:')
+      ),
+    };
+  }, [inferenceStatus, liveTimeline]);
+
   const onNew = useCallback(
     async (message: AppendMessage) => {
       const surface = getChatSurface(threadId);
@@ -198,11 +261,12 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       messages: runtimeMessages,
       isRunning,
       isLoading,
+      extras,
       // Already `ThreadMessageLike`; the runtime's converter is the identity.
       convertMessage: (m: (typeof runtimeMessages)[number]) => m,
       onNew,
       onCancel,
     }),
-    [runtimeMessages, isRunning, isLoading, onNew, onCancel]
+    [runtimeMessages, isRunning, isLoading, extras, onNew, onCancel]
   );
 }

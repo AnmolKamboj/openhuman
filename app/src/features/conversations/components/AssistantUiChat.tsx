@@ -14,6 +14,7 @@ import { emptySessionTokenUsage } from '../../../store/chatRuntimeSlice';
 import { useAppSelector } from '../../../store/hooks';
 import { DEFAULT_MASCOT_COLOR } from '../../../store/mascotSlice';
 import { MascotChipAvatar } from '../../human/Mascot/MascotChipAvatar';
+import { AssistantUiInferenceStatus } from './AssistantUiInferenceStatus';
 import { ChatToolFallback, ChatToolGroup } from './ChatToolParts';
 import { contextUsageFromTokenUsage, ContextWindowPill } from './composer/ContextWindowPill';
 import {
@@ -232,6 +233,9 @@ export function AssistantUiChat({
       ComposerExtras,
       ComposerHeader,
       ComposerIdleAction,
+      // Phase / reasoning round / active tool for the turn in flight. Reads the
+      // runtime's `extras`, so it needs no props and no dependency here.
+      RunningStatus: AssistantUiInferenceStatus,
       onSwitchToMicCloud,
       ...(attachmentsEnabled
         ? {

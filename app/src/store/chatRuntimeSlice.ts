@@ -39,7 +39,8 @@ export type ToolTimelineEntryStatus =
   | 'awaiting_user'
   | 'cancelled';
 
-interface InferenceStatus {
+/** Live progress of the running turn, as the socket handlers maintain it. */
+export interface InferenceStatus {
   phase: 'thinking' | 'tool_use' | 'subagent';
   iteration: number;
   maxIterations: number;
