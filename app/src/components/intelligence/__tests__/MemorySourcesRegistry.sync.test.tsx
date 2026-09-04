@@ -53,6 +53,11 @@ vi.mock('../../../services/memorySourcesService', () => ({
 // ── tauriCommands mock ────────────────────────────────────────────────────────
 // memoryTreePipelineStatus is polled for downstream pipeline health (GH-4690);
 // default to a healthy running snapshot so rows keep their clean synced state.
+const mockTrackAnalyticsEvent = vi.fn();
+vi.mock('../../analytics', () => ({
+  trackAnalyticsEvent: (...args: unknown[]) => mockTrackAnalyticsEvent(...args),
+}));
+
 vi.mock('../../../utils/tauriCommands/memoryTree', () => ({
   memoryTreeBackfillConnectorTrees: vi.fn(),
   memoryTreeFlushSource: vi.fn().mockResolvedValue({ seals_fired: 0 }),
@@ -546,6 +551,37 @@ describe('MemorySourcesRegistry', () => {
     );
   });
 
+  it('keeps the budget note beside a nonzero count in the toast', async () => {
+    // A pass that filed some mail and then ran out for the day is the common
+    // partial case; "N items synced" alone read as a finished sync.
+    const sources = [makeSource('src-partial')];
+    listMemorySources.mockResolvedValue(sources);
+    memorySourcesStatusList.mockResolvedValue([]);
+    const onToast = vi.fn();
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} onToast={onToast} />);
+    await waitFor(() => expect(screen.getByText('Source src-partial')).toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({
+          stage: 'completed',
+          source_id: 'src-partial',
+          detail: "ingested 3 item(s); today's provider request budget is spent",
+        })
+      );
+    });
+
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'warning',
+          message: '3 memorySources.sync.itemsSynced — memorySources.sync.budgetSpent',
+        })
+      )
+    );
+  });
+
   it('shows the "more to sync" note beside a count when the run stopped at its cap', async () => {
     const sources = [makeSource('src-more')];
     listMemorySources.mockResolvedValue(sources);
@@ -616,6 +652,10 @@ describe('MemorySourcesRegistry', () => {
 
     fireEvent.click(screen.getByText('memorySources.repair.confirm'));
     await waitFor(() => expect(backfill).toHaveBeenCalledWith({ dryRun: false }));
+    // The successful domain outcome is tracked with the privacy-safe count only.
+    await waitFor(() =>
+      expect(mockTrackAnalyticsEvent).toHaveBeenCalledWith('memory_repair_succeeded', { count: 40 })
+    );
     // The i18n mock returns keys, so the placeholders in the summary are
     // not substituted here; the counts are covered by the wrapper's tests.
     await waitFor(() =>

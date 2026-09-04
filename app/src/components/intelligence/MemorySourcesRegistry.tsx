@@ -34,6 +34,7 @@ import {
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
 } from '../../utils/tauriCommands/memoryTree';
+import { trackAnalyticsEvent } from '../analytics';
 import { Card } from '../ui';
 import Button from '../ui/Button';
 import { AddMemorySourceDialog } from './AddMemorySourceDialog';
@@ -221,13 +222,20 @@ export function MemorySourcesRegistry({
               : note === 'more_pending'
                 ? tt('memorySources.sync.morePending')
                 : tt('memorySources.sync.upToDate');
+          // Beside a count, the note says why the run stopped short — the
+          // budget as much as the cap. A pass that filed some mail and then
+          // ran out for the day is the common partial case this exists to
+          // explain; "N items synced" alone would read as a finished sync.
+          const noteKey =
+            note === 'budget_spent'
+              ? 'memorySources.sync.budgetSpent'
+              : note === 'more_pending'
+                ? 'memorySources.sync.morePending'
+                : null;
           onToastRef.current?.({
             type: note === 'budget_spent' ? 'warning' : 'success',
             title: `${tt('memorySources.sync.completeTitle')} ${label}`,
-            message:
-              hasItems && note === 'more_pending'
-                ? `${counted} — ${tt('memorySources.sync.morePending')}`
-                : counted,
+            message: hasItems && noteKey ? `${counted} — ${tt(noteKey)}` : counted,
           });
         } else {
           // Failure: surface the reason on the row + a toast. The core already
@@ -546,6 +554,9 @@ export function MemorySourcesRegistry({
     setRepairModalOpen(false);
     try {
       const result = await memoryTreeBackfillConnectorTrees({ dryRun: false });
+      // The successful domain outcome, not the click: a privacy-safe count
+      // only — no ids, no user text.
+      trackAnalyticsEvent('memory_repair_succeeded', { count: result.ingested });
       const summary = t('memorySources.repair.success')
         .replace('{ingested}', String(result.ingested))
         .replace('{already}', String(result.already_present))
@@ -628,6 +639,7 @@ export function MemorySourcesRegistry({
             size="sm"
             onClick={() => void handleRepairClick()}
             disabled={repairing}
+            analyticsId="memory-sources-repair"
             data-testid="repair-memories-button"
             title={t('memorySources.repair.title')}>
             {t('memorySources.repair.button')}

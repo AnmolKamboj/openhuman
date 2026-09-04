@@ -482,6 +482,31 @@ pub(crate) fn cached_bindings() -> Vec<Arc<MemoryBinding>> {
     }
 }
 
+/// Drop `shut_down` from the cache, so a server that starts again in this
+/// process binds fresh drivers instead of the ones exit has already torn down.
+///
+/// The shell restarts the embedded server in place (a permission refresh, an
+/// app update), and exit runs every cached driver's `shutdown` on the way out.
+/// Left in the cache, those drivers would be handed straight back to the next
+/// server — their workers stopped and their hooks already drained — and memory
+/// would stay dark until the whole desktop process restarted. Matched by
+/// identity, not by key: only what exit actually asked to shut down leaves.
+/// With the exit gate up nothing else can be in the cache by then; without it
+/// (a bare call, in tests) a binding built beside the exit stays.
+pub(crate) fn evict_bindings(shut_down: &[Arc<MemoryBinding>]) {
+    if shut_down.is_empty() {
+        return;
+    }
+    let Some(cache) = BINDINGS.get() else {
+        return;
+    };
+    let mut map = match cache.write() {
+        Ok(map) => map,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    map.retain(|_, binding| !shut_down.iter().any(|gone| Arc::ptr_eq(gone, binding)));
+}
+
 /// The bound memory driver for `workspace_dir`, constructing it on first use.
 ///
 /// The same workspace always resolves to the same cached `Arc` (so

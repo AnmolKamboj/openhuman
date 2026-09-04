@@ -83,7 +83,9 @@ pub(crate) fn reset_gate_for_tests() {
 /// appear after the snapshot. Both halves are idempotent — a provider's second
 /// `shutdown` is a no-op and the registry drains — so a signal landing
 /// mid-teardown, or the app-update restart path calling this twice, repeats
-/// nothing.
+/// nothing. The drivers it shut down leave the cache afterwards, so the
+/// server the shell starts next in this same process binds anew instead of
+/// reusing a driver whose workers are stopped.
 pub async fn shutdown_for_exit() {
     if SERVING.load(Ordering::SeqCst) {
         EXITING.store(true, Ordering::SeqCst);
@@ -107,6 +109,12 @@ pub async fn shutdown_for_exit() {
                  proceeding with exit"
             );
         }
+        // Out of the cache either way — answered or timed out, these drivers
+        // have been told to stop. The shell restarts the embedded server in
+        // place; a server starting again in this process must bind fresh
+        // drivers, never be handed back ones whose workers exit already
+        // stopped.
+        crate::openhuman::memory::binding::evict_bindings(&bindings);
     }
 
     let hooks_deadline = deadline.max(Instant::now() + HOOKS_FLOOR);

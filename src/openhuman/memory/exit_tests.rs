@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::binding::{cached_bindings, for_subtree};
 use super::exit::{exiting, reset_gate_for_tests, server_starting, shutdown_for_exit, EXIT_BUDGET};
+use crate::openhuman::config::schema::MemorySubsystemConfig;
 
 /// The hook registry is process-global, so the two tests below must not see
 /// each other's hooks: each registers and drains under this lock.
@@ -76,4 +78,43 @@ async fn exit_is_bounded_even_when_a_hook_hangs() {
         "exit took {:?}; the hanging hook held it past the budget",
         started.elapsed()
     );
+}
+
+/// The shell restarts the embedded server in place (a permission refresh, an
+/// app update). Exit shuts every cached driver down, so the server that starts
+/// next must not be handed those drivers back: exit evicts them, and the next
+/// bind builds anew.
+#[tokio::test]
+async fn exit_evicts_the_drivers_it_shut_down() {
+    let _serial = REGISTRY.lock().await;
+    reset_gate_for_tests();
+    let workspace = tempfile::tempdir().expect("tempdir");
+    let cfg = MemorySubsystemConfig {
+        driver: "null".into(),
+        ..Default::default()
+    };
+    let before = for_subtree(workspace.path(), "memory", &cfg).expect("binds the null driver");
+    assert!(
+        cached_bindings()
+            .iter()
+            .any(|cached| Arc::ptr_eq(cached, &before)),
+        "the binding is cached before exit"
+    );
+
+    server_starting();
+    shutdown_for_exit().await;
+    assert!(
+        !cached_bindings()
+            .iter()
+            .any(|cached| Arc::ptr_eq(cached, &before)),
+        "exit must drop the driver it shut down"
+    );
+
+    server_starting();
+    let after = for_subtree(workspace.path(), "memory", &cfg).expect("binds again after a restart");
+    assert!(
+        !Arc::ptr_eq(&before, &after),
+        "a restarted server must not be handed back a driver exit already stopped"
+    );
+    reset_gate_for_tests();
 }

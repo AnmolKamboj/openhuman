@@ -489,7 +489,7 @@ pub(crate) async fn run_sync_pass(
     // the module now turns it into Gmail's own `after:` search term, so a
     // bounded first sync costs one page of recent mail rather than a walk
     // through the years. `None` reads unbounded, as every earlier release did.
-    let depth_days = source_sync_depth_days(toolkit, connection_id).await;
+    let depth_days = source_sync_depth_days(config, toolkit, connection_id);
 
     let response = connectors::call_slow::<_, ConnectorSyncResponse>(
         config,
@@ -641,22 +641,22 @@ pub(crate) async fn run_sync_pass(
 }
 
 /// The per-source "Sync depth (days)" cap for one connection, from the
-/// memory-sources registry.
+/// memory-sources registry the pass's own `config` names.
 ///
 /// Resolved here rather than threaded through every caller because there are
 /// five of them (the row button, All In, the periodic loop, the connection
 /// bootstrap, Slack's own RPC), and `max_items` already showed what happens
 /// when each open-codes the same rule: two of the five disagreed
-/// (openhuman#6007). `None` when the row is missing, carries no cap, or the
-/// registry cannot be read — each means "no lower bound", which is what every
-/// release before the field existed did, so a registry hiccup degrades to the
-/// old behaviour rather than to a failed sync.
-async fn source_sync_depth_days(toolkit: &str, connection_id: &str) -> Option<u32> {
-    let sources = match crate::openhuman::memory::sources::registry::list_enabled_by_kind(
-        crate::openhuman::memory::sources::SourceKind::Composio,
-    )
-    .await
-    {
+/// (openhuman#6007). Read through `config`, not the process environment: a
+/// pass is bound to one workspace, and the global registry path would answer a
+/// caller bound to workspace B with workspace A's rows — the cross-workspace
+/// leak the registry's `_in` variants exist to prevent. `None` when the row is
+/// missing, carries no cap, or the registry cannot be read — each means "no
+/// lower bound", which is what every release before the field existed did, so
+/// a registry hiccup degrades to the old behaviour rather than to a failed
+/// sync.
+fn source_sync_depth_days(config: &Config, toolkit: &str, connection_id: &str) -> Option<u32> {
+    let sources = match crate::openhuman::memory::sources::registry::list_sources_in(config) {
         Ok(sources) => sources,
         Err(error) => {
             tracing::warn!(
@@ -670,13 +670,16 @@ async fn source_sync_depth_days(toolkit: &str, connection_id: &str) -> Option<u3
         }
     };
     pick_source_sync_depth_days(
-        sources.iter().map(|source| {
-            (
-                source.toolkit.as_deref(),
-                source.connection_id.as_deref(),
-                source.sync_depth_days,
-            )
-        }),
+        sources
+            .iter()
+            .filter(|source| source.kind == crate::openhuman::memory::sources::SourceKind::Composio)
+            .map(|source| {
+                (
+                    source.toolkit.as_deref(),
+                    source.connection_id.as_deref(),
+                    source.sync_depth_days,
+                )
+            }),
         toolkit,
         connection_id,
     )
