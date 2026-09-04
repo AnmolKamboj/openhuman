@@ -2,14 +2,17 @@ import type {
   ThreadAssistantMessagePart,
   ThreadMessageLike,
   ThreadUserMessagePart,
+  ToolApprovalOption,
 } from '@assistant-ui/react';
 
 import { parseMessageImages } from '../lib/attachments';
 import { unwrapToolCallEnvelope } from '../lib/chat/toolCallEnvelope';
-import type {
-  ProcessingTranscriptItem,
-  StreamingAssistantState,
-  ToolTimelineEntry,
+import {
+  isActiveTimelineStatus,
+  type PendingApproval,
+  type ProcessingTranscriptItem,
+  type StreamingAssistantState,
+  type ToolTimelineEntry,
 } from '../store/chatRuntimeSlice';
 import type { ThreadMessage } from '../types/thread';
 
@@ -103,7 +106,7 @@ function toolResultPayload(entry: ToolTimelineEntry): unknown {
 }
 
 function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
-  const running = entry.status === 'running' || entry.status === 'awaiting_user';
+  const running = isActiveTimelineStatus(entry.status);
   const isSubagent = entry.name.startsWith('subagent:') || entry.subagent !== undefined;
   const args = isSubagent
     ? jsonObject({
@@ -127,6 +130,78 @@ function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
         }
       : {}),
   };
+}
+
+/**
+ * The decision set offered for a parked tool call.
+ *
+ * Each `id` is verbatim the `decision` literal `openhuman.approval_decide`
+ * takes, so the runtime hands the adapter an option id it can forward to the
+ * RPC without a translation table — see `useOpenHumanExternalStore`. The
+ * `kind`s are what assistant-ui resolves to the boolean `approved` it reports
+ * alongside the id, and what a renderer keys its default labels off.
+ *
+ * `reject-always` is deliberately absent: the core has no "never allow this
+ * tool" decision, and offering one that silently degrades to a one-off deny
+ * would be a lie about what the click did.
+ */
+export const APPROVAL_DECISION_OPTIONS: readonly ToolApprovalOption[] = [
+  { id: 'approve_once', kind: 'allow-once' },
+  { id: 'approve_always_for_tool', kind: 'allow-always' },
+  { id: 'deny', kind: 'reject-once' },
+];
+
+/**
+ * `toolCallId` prefix for the part synthesised when a parked approval cannot be
+ * matched to a live timeline row. Namespaced so it can never collide with a
+ * core-issued tool-call id (the duplicate-id invariant above is a hard one).
+ */
+const APPROVAL_PART_ID_PREFIX = '__openhuman_approval__:';
+
+/** The part the parked call is asking about, when no timeline row carries it. */
+function syntheticApprovalPart(approval: PendingApproval): ThreadAssistantMessagePart {
+  // `command` is the redacted command/path/url the gate extracted for display;
+  // rendering it as the call's args is what makes the prompt answerable.
+  const args = approval.command ? { command: approval.command } : {};
+  return {
+    type: 'tool-call',
+    toolCallId: `${APPROVAL_PART_ID_PREFIX}${approval.requestId}`,
+    toolName: approval.toolName,
+    args: args as Record<string, never>,
+    argsText: JSON.stringify(args, null, 2),
+    approval: { id: approval.requestId, options: APPROVAL_DECISION_OPTIONS },
+  };
+}
+
+/**
+ * Hang a parked approval off the tool part it is gating.
+ *
+ * The `approval_request` socket event carries no `tool_call_id` (see
+ * `ChatApprovalRequestEvent`), so the row is matched by name against the
+ * newest still-unsettled call — a `result` means the call already ran and
+ * cannot be the one parked. When nothing matches (the progress channel is
+ * bounded and can drop the `tool_call` frame, and the gate can park before the
+ * frame lands at all) a part is synthesised rather than dropped: a prompt in
+ * the wrong visual slot is recoverable, a turn that parks with no prompt at all
+ * is the bug this exists to close.
+ */
+function withApproval(
+  parts: ThreadAssistantMessagePart[],
+  approval: PendingApproval
+): ThreadAssistantMessagePart[] {
+  const index = parts.reduce(
+    (best, part, at) =>
+      part.type === 'tool-call' && part.toolName === approval.toolName && part.result === undefined
+        ? at
+        : best,
+    -1
+  );
+  if (index < 0) return [...parts, syntheticApprovalPart(approval)];
+  return parts.map((part, at) =>
+    at === index
+      ? { ...part, approval: { id: approval.requestId, options: APPROVAL_DECISION_OPTIONS } }
+      : part
+  );
 }
 
 /**
@@ -401,21 +476,27 @@ export function toThreadMessageLike(
 export function streamingTailMessage(
   streaming: StreamingAssistantState | null,
   timeline: readonly ToolTimelineEntry[] = EMPTY_TIMELINE,
-  transcript: readonly ProcessingTranscriptItem[] = EMPTY_TRANSCRIPT
+  transcript: readonly ProcessingTranscriptItem[] = EMPTY_TRANSCRIPT,
+  approval: PendingApproval | null = null
 ): ThreadMessageLike | null {
-  if (!streaming && timeline.length === 0 && transcript.length === 0) return null;
+  if (!approval && !streaming && timeline.length === 0 && transcript.length === 0) return null;
   const text = streaming?.content ?? '';
-  const parts = assistantParts(text, timeline, transcript);
+  let parts = assistantParts(text, timeline, transcript);
   if (streaming?.thinking.trim()) {
     const hasTranscriptThinking = transcript.some(item => item.kind === 'thinking');
     if (!hasTranscriptThinking) parts.unshift({ type: 'reasoning', text: streaming.thinking });
   }
+  if (approval) parts = withApproval(parts, approval);
   if (parts.length === 0) return null;
   return {
     id: STREAMING_TAIL_ID,
     role: 'assistant',
     content: parts,
-    status: { type: 'running' },
+    // A parked gate is not a running turn: it is a turn stopped on the user.
+    // `requires-action` is what gives the gated tool part its own
+    // `requires-action` status (a tool part with no result inherits the
+    // message's), which is the state assistant-ui renders a decision on.
+    status: approval ? { type: 'requires-action', reason: 'interrupt' } : { type: 'running' },
     metadata: { custom: { requestId: streaming?.requestId, streaming: true } },
   };
 }
@@ -423,6 +504,12 @@ export function streamingTailMessage(
 export type AssistantUiProjection = {
   /** Whether the synthetic live tail has an active core turn driving it. */
   isRunning?: boolean;
+  /**
+   * The thread's parked ApprovalGate request, if any. Present means the turn is
+   * blocked on the user, and the tail is minted even when nothing else would
+   * mint one — a parked gate with no prompt is the failure mode this closes.
+   */
+  pendingApproval?: PendingApproval | null;
   liveTimeline?: readonly ToolTimelineEntry[];
   liveTranscript?: readonly ProcessingTranscriptItem[];
   turnTimelines?: Readonly<Record<string, readonly ToolTimelineEntry[]>>;
@@ -442,6 +529,10 @@ export function buildRuntimeMessages(
   streaming: StreamingAssistantState | null,
   projection: AssistantUiProjection = {}
 ): ThreadMessageLike[] {
+  // A parked approval outranks the lifecycle: `chat_done` has not fired (the
+  // turn is stopped, not finished), but a snapshot race that reports the turn
+  // settled must not swallow the only surface that can unblock it.
+  const pendingApproval = projection.pendingApproval ?? null;
   const coalescedMessages = coalesceAssistantSegments(messages);
   const out: ThreadMessageLike[] = [];
   const claimedRequestIds = new Set(
@@ -497,8 +588,12 @@ export function buildRuntimeMessages(
     // indexed into the request maps. Keep the just-settled tools/reasoning on
     // the final assistant message during that handoff; never mint a running
     // synthetic tail for them.
+    // Not while a gate is parked: the tail below is minted unconditionally in
+    // that case and would emit the same rows a second time, and a repeated
+    // `toolCallId` throws inside assistant-ui rather than dropping a row.
     const useSettledLiveFallback =
       projection.isRunning === false &&
+      !pendingApproval &&
       msg.id === lastVisibleAgentId &&
       !persistedTimeline &&
       !persistedTranscript;
@@ -515,12 +610,13 @@ export function buildRuntimeMessages(
     );
   }
   const tail =
-    projection.isRunning === false
+    projection.isRunning === false && !pendingApproval
       ? null
       : streamingTailMessage(
           streaming,
           projection.liveTimeline ?? EMPTY_TIMELINE,
-          projection.liveTranscript ?? EMPTY_TRANSCRIPT
+          projection.liveTranscript ?? EMPTY_TRANSCRIPT,
+          pendingApproval
         );
   if (tail) out.push(tail);
   return out;

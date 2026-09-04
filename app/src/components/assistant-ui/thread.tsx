@@ -100,6 +100,17 @@ export type ThreadComponents = {
   ComposerExtras?: ComponentType | undefined;
   /** Full-width host content immediately above the composer shell. */
   ComposerHeader?: ComponentType | undefined;
+  /**
+   * Host-owned progress line for the turn in flight, rendered under the last
+   * message while `thread.isRunning`.
+   *
+   * A seam rather than a fixed widget because `isRunning` is all this file
+   * knows: what the model is actually doing right now — reasoning round, active
+   * tool, delegated sub-agent — lives in the host's own transport state, and
+   * without somewhere to put it a long turn is an unlabelled spinner. The host
+   * component returns `null` when it has nothing to say.
+   */
+  RunningStatus?: ComponentType | undefined;
   /** Host-owned attachment previews rendered above the editor. */
   ComposerAttachments?: ComponentType | undefined;
   /** Host-owned attachment picker rendered in the action row. */
@@ -248,6 +259,7 @@ const ThreadRoot: FC<{
 
           <div data-slot="aui_message-group" className="mb-14 flex flex-col gap-y-6 empty:hidden">
             <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+            <RunningStatusSlot />
           </div>
 
           <ThreadPrimitive.ViewportFooter
@@ -265,6 +277,22 @@ const ThreadRoot: FC<{
         </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+};
+
+/**
+ * The host's `RunningStatus`, gated on the thread actually running.
+ *
+ * Kept inside the message group so the line sits under the last message —
+ * where the answer is about to appear — rather than pinned to the composer.
+ */
+const RunningStatusSlot: FC = () => {
+  const { RunningStatus } = useContext(ThreadComponentsContext);
+  if (!RunningStatus) return null;
+  return (
+    <AuiIf condition={s => s.thread.isRunning}>
+      <RunningStatus />
+    </AuiIf>
   );
 };
 
