@@ -1,4 +1,8 @@
-import { type ToolCallMessagePartComponent, useAui } from '@assistant-ui/react';
+import {
+  type ToolCallMessagePart,
+  type ToolCallMessagePartComponent,
+  useAui,
+} from '@assistant-ui/react';
 import { type FC, type PropsWithChildren, useCallback } from 'react';
 
 import type { ThreadGroupPart } from '../../../components/assistant-ui/thread';
@@ -7,9 +11,10 @@ import {
   ToolGroupRoot,
   ToolGroupTrigger,
 } from '../../../components/assistant-ui/tool-group';
+import ApprovalRequestCard from '../../../components/chat/ApprovalRequestCard';
 import IntegrationConnectCard from '../../../components/chat/IntegrationConnectCard';
 import { useAuiThreadId } from '../../../providers/AssistantUiRuntimeProvider';
-import type { SubagentActivity } from '../../../store/chatRuntimeSlice';
+import type { PendingApproval, SubagentActivity } from '../../../store/chatRuntimeSlice';
 import { useAppSelector } from '../../../store/hooks';
 import { AssistantUiSubagentCall, isActiveSubagentStatus } from './AssistantUiSubagentCall';
 import { isApprovalPending, OpenHumanToolCall } from './AssistantUiToolCall';
@@ -77,6 +82,28 @@ export const SubagentCall: ToolCallMessagePartComponent = ({ args, result }) => 
   );
 };
 
+/**
+ * Resolve the store's parked request for this part, or `null` when the part is
+ * not the one the gate is holding.
+ *
+ * The part carries only the request id and the decision options — everything a
+ * human needs to *read* before deciding (`message`, the extracted `command`)
+ * lives on `PendingApproval` in Redux, because assistant-ui's `approval` type
+ * has nowhere to put a request summary: its `reason` field is the reason a
+ * decision was given, not the reason one is being asked for.
+ */
+function useGatedApproval(
+  approval: ToolCallMessagePart['approval']
+): { threadId: string; request: PendingApproval } | null {
+  const threadId = useAuiThreadId();
+  const request = useAppSelector(state =>
+    threadId ? (state.chatRuntime.pendingApprovalByThread?.[threadId] ?? null) : null
+  );
+  if (!threadId || !request) return null;
+  if (request.requestId !== approval?.id) return null;
+  return { threadId, request };
+}
+
 /** The tool that parks on the ApprovalGate but needs OAuth, not approve/deny. */
 const COMPOSIO_CONNECT_TOOL = 'composio_connect';
 
@@ -96,29 +123,74 @@ const COMPOSIO_CONNECT_TOOL = 'composio_connect';
  * integration to connect and lives in Redux, not on the part.
  */
 const ComposioConnectCall: ToolCallMessagePartComponent = props => {
-  const threadId = useAuiThreadId();
-  const approval = useAppSelector(state =>
-    threadId ? (state.chatRuntime.pendingApprovalByThread?.[threadId] ?? null) : null
-  );
-  const gated =
-    isApprovalPending(props.approval) &&
-    approval != null &&
-    approval.requestId === props.approval?.id;
-  if (!gated || !threadId || !approval) return <OpenHumanToolCall {...props} />;
+  const gate = useGatedApproval(props.approval);
+  if (!gate) return <OpenHumanToolCall {...props} />;
   return (
     <div data-testid="assistant-ui-integration-connect">
       {/* Keyed by request id so a second parked connect remounts the card with
           fresh phase / field / poll state, matching the legacy placement. */}
-      <IntegrationConnectCard key={approval.requestId} threadId={threadId} approval={approval} />
+      <IntegrationConnectCard
+        key={gate.request.requestId}
+        threadId={gate.threadId}
+        approval={gate.request}
+      />
     </div>
   );
 };
 
-/** Route every call through an assistant-ui-native rich renderer. */
+/**
+ * A parked tool call, with the decision attached to the call it gates.
+ *
+ * The controls are `ApprovalRequestCard` — the surface AGENTS.md designates for
+ * the approval gate — rather than a bar of our own. That is the whole point: the
+ * card renders the core's `Run <tool> — <summary>` explanation and the exact
+ * command above its buttons, so the summary and the decision cannot come apart.
+ * A bespoke bar had already drifted from the card once, showing "Always allow"
+ * for a `shell` call whose command the user could not read — and
+ * `approve_always_for_tool` writes the auto-approve allowlist, so that blind
+ * decision would have been a durable one.
+ *
+ * The card resolves the gate itself, so the runtime's `respondToApproval` has
+ * no caller here. `onRespondToToolApproval` on the external-store adapter is
+ * still required and must not be deleted as dead: the part declares a pending
+ * approval, so any assistant-ui renderer mounted on this runtime can answer it
+ * — including the kit's own `ToolFallback`, which `thread.tsx` falls back to
+ * whenever no override is supplied — and that call throws without it.
+ */
+const GatedToolCall: ToolCallMessagePartComponent = props => {
+  const gate = useGatedApproval(props.approval);
+  if (!gate) return <OpenHumanToolCall {...props} />;
+  return (
+    <OpenHumanToolCall
+      {...props}
+      approvalCard={
+        <div className="px-3 pb-3">
+          {/* Keyed by request id so a second parked request remounts the card
+              with fresh decision/error state, matching the legacy placement. */}
+          <ApprovalRequestCard
+            key={gate.request.requestId}
+            threadId={gate.threadId}
+            approval={gate.request}
+          />
+        </div>
+      }
+    />
+  );
+};
+
+/**
+ * Route every call through an assistant-ui-native rich renderer.
+ *
+ * The gated branches are chosen on the part's own `approval` field, before any
+ * component that reads Redux is mounted. An ordinary tool call therefore never
+ * subscribes to the store — and, less obviously, still renders on a surface
+ * that has no store at all, which is how most of the tool-card tests mount it.
+ */
 export const ChatToolFallback: ToolCallMessagePartComponent = props => {
   if (props.toolName === 'task') return <SubagentCall {...props} />;
+  if (!isApprovalPending(props.approval)) return <OpenHumanToolCall {...props} />;
   if (props.toolName === COMPOSIO_CONNECT_TOOL) return <ComposioConnectCall {...props} />;
-  return <OpenHumanToolCall {...props} />;
+  return <GatedToolCall {...props} />;
 };
 
 /** Keep the assistant-ui tool cards visible; each card owns its detail collapse. */
