@@ -146,7 +146,20 @@ export function AssistantUiChat({
     ),
     [contextUsage, threadGoal]
   );
-  const ComposerHeader = useCallback(() => <>{composerHeader}</>, [composerHeader]);
+  // Stable component identity, latest node read through a ref.
+  //
+  // `<ComposerHeader />` is rendered by type (`thread.tsx:385`), so a callback
+  // that closes over `composerHeader` gives React a NEW type on every host
+  // render — the whole header subtree unmounts and remounts. That was invisible
+  // while the header only held an error string and the queued-followup strip,
+  // but the turn-gate cards it now carries (`PlanReviewCard`,
+  // `WorkflowProposalCard`) own local state: half-typed plan feedback and an
+  // in-flight "Save & enable" would be wiped by any unrelated re-render, e.g.
+  // a keystroke in the composer. Nothing in `thread.tsx` is memoized, so this
+  // subtree re-renders with its host and the ref is always current.
+  const composerHeaderRef = useRef(composerHeader);
+  composerHeaderRef.current = composerHeader;
+  const ComposerHeader = useCallback(() => <>{composerHeaderRef.current}</>, []);
   const ComposerAttachments = useCallback(
     () => (
       <AttachmentPreview

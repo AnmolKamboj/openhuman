@@ -1945,6 +1945,51 @@ const Conversations = ({
     />
   );
 
+  // The two turn-gate cards that must render on BOTH main panels.
+  //
+  // They used to live inline in `legacyMainPanel`, which `/chat` never mounts:
+  // `mainPanel` below is an either/or — assistant-ui for text, legacy for
+  // mic-cloud voice — so a parked plan review and a drafted workflow were
+  // invisible on the surface every user actually sees. The plan gate hung the
+  // turn with nothing to decide, and `propose_workflow`'s only route to
+  // `flows_create` was unreachable. Hoisted to a shared fragment so the
+  // assistant-ui composer header can render the same cards without voice mode
+  // losing them; the two panels are mutually exclusive, so nothing doubles up.
+  const agentGateCards = (
+    <>
+      {/* Plan-mode review: the orchestrator parked the live turn on a
+          thread-scoped plan (request_plan_review gate). Surface it for the
+          user to Approve / Reject / send feedback on before anything executes;
+          the card resolves the parked turn via plan_review_decide. */}
+      {selectedThreadId && pendingPlanReview && (
+        // Key by request id so a re-parked (revised) plan — or a thread switch —
+        // remounts the card and resets its local decision/feedback state,
+        // matching the ApprovalRequestCard pattern above.
+        <PlanReviewCard
+          key={pendingPlanReview.requestId}
+          threadId={selectedThreadId}
+          review={pendingPlanReview}
+        />
+      )}
+
+      {/* Agent-first Workflow authoring (issue B4): the agent drafted a
+          candidate automation via `propose_workflow`. The tool only
+          validates — it never creates the flow — so this card is the ONLY
+          path from proposal to saved automation via "Save & enable"
+          (`flows_create`), or the user can Dismiss it outright. */}
+      {selectedThreadId && pendingWorkflowProposal && (
+        // Keyed by name so a second proposal in the same thread (before the
+        // first is resolved) remounts the card and resets its local
+        // saving/error state, matching the PlanReviewCard pattern above.
+        <WorkflowProposalCard
+          key={pendingWorkflowProposal.name}
+          threadId={selectedThreadId}
+          proposal={pendingWorkflowProposal}
+        />
+      )}
+    </>
+  );
+
   // Main chat area (right pane): header, message list, composer.
   const legacyMainPanel = (
     <div
@@ -2178,41 +2223,12 @@ const Conversations = ({
           );
         })()}
 
+        {agentGateCards}
+
         {/* Thread-scoped todo list the agent maintains as it works — read-only,
             pinned above the composer. Distinct from the Intelligence-tab kanban
             (global `user-tasks`). Renders nothing when the thread has no active
             cards. */}
-        {/* Plan-mode review: the orchestrator parked the live turn on a
-            thread-scoped plan (request_plan_review gate). Surface it for the
-            user to Approve / Reject / send feedback on before anything executes;
-            the card resolves the parked turn via plan_review_decide. */}
-        {selectedThreadId && pendingPlanReview && (
-          // Key by request id so a re-parked (revised) plan — or a thread switch —
-          // remounts the card and resets its local decision/feedback state,
-          // matching the ApprovalRequestCard pattern above.
-          <PlanReviewCard
-            key={pendingPlanReview.requestId}
-            threadId={selectedThreadId}
-            review={pendingPlanReview}
-          />
-        )}
-
-        {/* Agent-first Workflow authoring (issue B4): the agent drafted a
-            candidate automation via `propose_workflow`. The tool only
-            validates — it never creates the flow — so this card is the ONLY
-            path from proposal to saved automation via "Save & enable"
-            (`flows_create`), or the user can Dismiss it outright. */}
-        {selectedThreadId && pendingWorkflowProposal && (
-          // Keyed by name so a second proposal in the same thread (before the
-          // first is resolved) remounts the card and resets its local
-          // saving/error state, matching the PlanReviewCard pattern above.
-          <WorkflowProposalCard
-            key={pendingWorkflowProposal.name}
-            threadId={selectedThreadId}
-            proposal={pendingWorkflowProposal}
-          />
-        )}
-
         {selectedThreadId && (
           <ThreadTodoStrip
             board={selectedTaskBoard}
@@ -2476,6 +2492,13 @@ const Conversations = ({
 
   const assistantComposerHeader = (
     <>
+      {/* Turn gates first: a parked plan review and a drafted workflow both
+          block progress until the user decides, so they sit above the transient
+          attach error and the queued-followup strip. `ComposerHeader` is the
+          only host slot assistant-ui threads arbitrary React through
+          (`thread.tsx:385`), and it renders directly above the input — the same
+          place `legacyMainPanel` put these cards. */}
+      {agentGateCards}
       {attachError && (
         <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2">
           <p className="text-xs text-coral-500" data-chat-send-error-code={attachError.code}>
