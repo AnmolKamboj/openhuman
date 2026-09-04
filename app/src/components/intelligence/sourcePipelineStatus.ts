@@ -130,6 +130,10 @@ export function deriveSourcePipelineHealth(
   //   may still be writing, but no worker will embed anything until the gate
   //   lifts, so "shortly" would be a promise nobody is keeping. Pending
   //   chunks are hard until then;
+  // - a stalled queue (`queue_stalled`: eligible work waiting six hours with
+  //   nothing settling, the #5324 verdict): a stalled `reembed_backfill` row
+  //   still keeps the snapshot `in_progress`, but the core has ruled that
+  //   nothing is draining. Hard;
   // - otherwise the engine's own word decides: pending chunks are soft while
   //   `backfill.in_progress` reports a re-embed chain with rows to process,
   //   and hard when that snapshot says no chain is queued. Only when the
@@ -151,8 +155,10 @@ export function deriveSourcePipelineHealth(
   const embeddingsBlocked = causeCode !== null && EMBEDDINGS_BLOCKING_CAUSES.has(causeCode);
   const paused =
     pipeline?.is_paused === true || pipeline?.status === 'paused' || pipeline?.gate_paused === true;
+  const stalled = pipeline?.queue_stalled === true;
   const draining =
     !paused &&
+    !stalled &&
     (backfill
       ? backfill.in_progress === true
       : status?.freshness === 'active' || status?.freshness === 'recent');

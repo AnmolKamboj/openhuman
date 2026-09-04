@@ -207,6 +207,14 @@ pub struct PipelineStatusResponse {
     /// `scheduler_policy` spells them the same way. `None` while running.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gate_pause_reason: Option<String>,
+    /// The #5324 stall verdict as a flag: eligible work has waited at least
+    /// six hours without any job settling. `status` already reads `degraded`
+    /// for it, but a stalled `reembed_backfill` row still keeps the backfill
+    /// snapshot `in_progress`, and a row must not promise vectors "shortly"
+    /// while the queue is provably not draining (openhuman#6025 review).
+    /// Additive: `#[serde(default)]` keeps older clients deserialising.
+    #[serde(default)]
+    pub queue_stalled: bool,
     /// #002 (FR-002/FR-004): "the pipeline ran but output quality is reduced"
     /// — `semantic_recall` true when embeddings were skipped (no usable
     /// provider, so recall falls back to recency), `structure` true when
@@ -367,6 +375,7 @@ pub async fn pipeline_status_rpc(
     };
     let failed_unrecoverable = queue.failed_unrecoverable;
     let queue_idle_ms = queue_idle_ms(&queue, now_ms);
+    let queue_stalled = queue_is_stalled(queue_idle_ms);
 
     // Disk size — best-effort. Permission errors etc. degrade to 0 with a
     // warn log rather than failing the whole RPC. Scoped to the `wiki/`
@@ -484,6 +493,7 @@ pub async fn pipeline_status_rpc(
         is_paused,
         gate_paused,
         gate_pause_reason,
+        queue_stalled,
         degraded,
         first_blocking_cause,
         extraction_coverage,

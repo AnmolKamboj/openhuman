@@ -50,6 +50,7 @@ interface PipelineStatus {
   status?: string;
   is_paused?: boolean;
   gate_paused?: boolean;
+  queue_stalled?: boolean;
   degraded?: { semantic_recall?: boolean } | null;
   first_blocking_cause?: { code?: string } | null;
 }
@@ -298,8 +299,9 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
     // the RIGHT text. The expectation is decided at the assertion point from
     // the core's own account, through the same inputs and precedence as
     // `deriveSourcePipelineHealth`: the recall latch, an embeddings-family
-    // blocking cause, a paused scheduler gate (configured or live), or pending
-    // chunks with no re-embed chain queued mean the amber warning; pending
+    // blocking cause, a paused scheduler gate (configured or live), a stalled
+    // queue, or pending chunks with no re-embed chain queued mean the amber
+    // warning; pending
     // chunks the engine is draining mean the neutral note (openhuman#6025);
     // a count of zero means a clean row. The backlog can drain, or the gate
     // can pause, between one poll and the next, so only a row that
@@ -324,7 +326,10 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
           const hard =
             pipeline.degraded?.semantic_recall === true ||
             (pending > 0 &&
-              (embeddingsBlocked || schedulerPaused(pipeline) || !backfill.in_progress));
+              (embeddingsBlocked ||
+                schedulerPaused(pipeline) ||
+                pipeline.queue_stalled === true ||
+                !backfill.in_progress));
           verdict.expected = hard ? 'warning' : pending > 0 ? 'note' : 'clean';
           const shown = (await warning.isVisible())
             ? 'warning'

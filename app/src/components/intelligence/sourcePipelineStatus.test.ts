@@ -330,6 +330,21 @@ describe('deriveSourcePipelineHealth — vectors pending vs stored without vecto
     }
   );
 
+  it('reads a stalled queue as stuck even while the backfill snapshot says in progress', () => {
+    // The #5324 verdict: eligible work waiting six hours with nothing
+    // settling. A stalled `reembed_backfill` row still keeps `in_progress`
+    // up, but the core has ruled that nothing is draining, so the row must
+    // not promise "shortly" beside a degraded status.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'active' }),
+      makePipeline({ status: 'degraded', reason: 'queue stalled for 7h', queue_stalled: true }),
+      makeBackfill({ in_progress: true, pending_jobs: 1 })
+    );
+    expect(h.state).toBe('ingested_only');
+    expect(h.issues).toEqual(['stored_without_vectors']);
+    expect(h.vectorsPending).toBe(false);
+  });
+
   it('stays retrieval_ready when a backfill runs but this source has nothing pending', () => {
     const h = deriveSourcePipelineHealth(
       makeStatus({ chunks_pending: 0 }),

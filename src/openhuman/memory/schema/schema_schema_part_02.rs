@@ -151,6 +151,15 @@ pub(super) fn lookup(function: &str) -> Option<ControllerSchema> {
                     required: false,
                 },
                 FieldSchema {
+                    name: "queue_stalled",
+                    ty: TypeSchema::Bool,
+                    comment: "True when eligible queue work has waited at least six \
+                              hours without any job settling (#5324). `status` reads \
+                              `degraded` for it; the flag lets a client tell that stall \
+                              from the other degradations (openhuman#6025).",
+                    required: true,
+                },
+                FieldSchema {
                     name: "degraded",
                     ty: TypeSchema::Json,
                     comment: "#002 (FR-002/FR-004): object `{ semantic_recall: bool, \
