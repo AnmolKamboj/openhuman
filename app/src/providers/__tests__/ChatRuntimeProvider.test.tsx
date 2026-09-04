@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as chatService from '../../services/chatService';
 import { threadApi } from '../../services/api/threadApi';
+import { socketService } from '../../services/socketService';
 import { store } from '../../store';
 import {
   clearAllChatRuntime,
@@ -15,7 +16,12 @@ import {
   setPendingPlanReviewForThread,
 } from '../../store/chatRuntimeSlice';
 import { setStatusForUser } from '../../store/socketSlice';
-import { clearAllThreads, loadThreads, setSelectedThread } from '../../store/threadSlice';
+import {
+  clearAllThreads,
+  loadThreads,
+  setActiveThread,
+  setSelectedThread,
+} from '../../store/threadSlice';
 import ChatRuntimeProvider from '../ChatRuntimeProvider';
 import { clearAllProactiveThreadPins } from '../proactiveThreadPins';
 
@@ -38,6 +44,8 @@ vi.mock('../../services/api/threadApi', () => ({
     putTaskBoard: vi.fn(),
   },
 }));
+
+vi.mock('../../services/socketService', () => ({ socketService: { subscribeThread: vi.fn() } }));
 
 vi.mock('../../hooks/usageRefresh', () => ({ requestUsageRefresh: vi.fn() }));
 
@@ -605,7 +613,7 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       expect(threadApi.appendMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps a generated id for an interactive chat_done (nothing else persisted it)', async () => {
+    it('mirrors the core id on an interactive chat_done so the two writers collapse (#6034)', async () => {
       const listeners = renderProvider();
 
       act(() => {
@@ -617,10 +625,73 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
         });
       });
 
+      // The core stores an unsegmented reply before announcing it, so this
+      // append must carry the same `agent:<request_id>` id — otherwise the
+      // thread ends up with the core's row AND ours, which is #5933 again.
       await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
       const [, persisted] = vi.mocked(threadApi.appendMessage).mock.calls[0];
-      expect(persisted.id).not.toBe('agent:r-user');
+      expect(persisted.id).toBe('agent:r-user');
       expect(persisted.sender).toBe('agent');
+    });
+
+    it('keeps a generated id for a segmented chat_done (the core left those rows to us)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-seg',
+          request_id: 'r-seg',
+          full_response: 'one two',
+          segment_total: 2,
+          rounds_used: 1,
+        });
+      });
+
+      // Segments are the client's rows to write, several of them under one
+      // request id, so a shared deterministic id would make them collapse onto
+      // each other and lose all but the first.
+      await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
+      const [, persisted] = vi.mocked(threadApi.appendMessage).mock.calls[0];
+      expect(persisted.id).not.toBe('agent:r-seg');
+    });
+
+    it('re-reads the thread when the append fails, so the core row still renders (#6034)', async () => {
+      vi.mocked(threadApi.appendMessage).mockRejectedValueOnce(new Error('rpc timeout'));
+      vi.mocked(threadApi.getThreadMessages).mockResolvedValueOnce({
+        messages: [
+          {
+            id: 'agent:r-lost',
+            content: 'the answer the core stored',
+            type: 'text',
+            sender: 'agent',
+            createdAt: new Date().toISOString(),
+            extraMetadata: {},
+          },
+        ],
+      } as unknown as Awaited<ReturnType<typeof threadApi.getThreadMessages>>);
+
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-lost',
+          request_id: 'r-lost',
+          full_response: 'the answer the core stored',
+          rounds_used: 1,
+        });
+      });
+
+      // The failed append used to end the story with a debug log and no
+      // assistant row. Re-reading the thread is what brings the core's copy
+      // into the cache without the user having to ask again.
+      await waitFor(() => expect(threadApi.getThreadMessages).toHaveBeenCalledWith('t-lost'));
+      await waitFor(() =>
+        expect(
+          (store.getState().thread.messagesByThreadId['t-lost'] ?? []).some(
+            m => m.id === 'agent:r-lost'
+          )
+        ).toBe(true)
+      );
     });
 
     it('stores a parked plan review from the plan_review_request event', () => {
@@ -1071,6 +1142,57 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
 
       await waitFor(() => expect(threadApi.createNewThread).toHaveBeenCalledTimes(1));
       expect(threadApi.appendMessage).toHaveBeenCalledWith('voice-thread-2', expect.anything());
+    });
+  });
+
+  describe('socket reconnect recovery (#6034)', () => {
+    it('rejoins the rooms of interrupted threads and re-reads them once the socket returns', async () => {
+      vi.mocked(threadApi.getThreadMessages).mockResolvedValue({
+        messages: [],
+      } as unknown as Awaited<ReturnType<typeof threadApi.getThreadMessages>>);
+
+      renderProvider();
+
+      // A turn is in flight on a thread the user is not looking at.
+      act(() => {
+        store.dispatch(setActiveThread('t-away'));
+      });
+      vi.mocked(threadApi.getThreadMessages).mockClear();
+      vi.mocked(socketService.subscribeThread).mockClear();
+
+      // The socket drops. The provider clears every active marker so the
+      // composer unlocks, which is also what erases the list the reconnect
+      // handler would have re-subscribed from.
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'disconnected' }));
+      });
+      expect(store.getState().thread.activeThreadIds).toEqual({});
+
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'connected' }));
+      });
+
+      // Rejoin the room, so a turn still running can still reach us under the
+      // new client_id, and re-read the thread, so a turn that finished during
+      // the gap is not invisible until the thread is reselected.
+      await waitFor(() => expect(socketService.subscribeThread).toHaveBeenCalledWith('t-away'));
+      await waitFor(() => expect(threadApi.getThreadMessages).toHaveBeenCalledWith('t-away'));
+    });
+
+    it('does nothing on a connect with no interrupted threads', async () => {
+      renderProvider();
+      vi.mocked(socketService.subscribeThread).mockClear();
+
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'disconnected' }));
+      });
+      act(() => {
+        store.dispatch(setStatusForUser({ userId: '__pending__', status: 'connected' }));
+      });
+
+      // A blip with nothing in flight must not re-read every thread the user
+      // has ever opened.
+      expect(socketService.subscribeThread).not.toHaveBeenCalled();
     });
   });
 

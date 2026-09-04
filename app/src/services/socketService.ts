@@ -476,6 +476,25 @@ class SocketService {
   }
 
   /**
+   * Join one thread's event room.
+   *
+   * The reconnect handler re-subscribes from `activeThreadIds`, which the chat
+   * runtime clears when the socket drops — so a turn left in flight on a thread
+   * the user had navigated away from has no room to be delivered into once a new
+   * `client_id` is issued, and its `chat_done` reaches nobody. `ChatRuntimeProvider`
+   * calls this for the threads it remembers across that gap (#6034).
+   *
+   * Emitting the room join directly rather than through {@link emit} keeps a
+   * disconnected call quiet: re-subscription is what the `connect` handler
+   * already does, so a warning here would only be noise.
+   */
+  subscribeThread(threadId: string): void {
+    if (!threadId || !this.socket?.connected) return;
+    socketLog('Subscribing to thread room', { threadId });
+    this.socket.emit('thread:subscribe', { thread_id: threadId });
+  }
+
+  /**
    * Listen to an event from the server
    */
   on(event: string, callback: (...args: unknown[]) => void): void {
