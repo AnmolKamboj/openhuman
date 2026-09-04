@@ -54,6 +54,13 @@ EXCLUDE_PATTERNS=(
   'libxcb-dri3.so.*'
   'libxcb-glx.so.*'
   'libxcb-present.so.*'
+  # OpenSSL: strip the bundled libssl/libcrypto so the AppImage uses the host's
+  # OpenSSL. The Rust binary uses rustls and never links libssl directly, but
+  # CEF/webkit2gtk objects bundled by linuxdeploy require OPENSSL_3.2.0+ symbols
+  # that the Ubuntu-24.04 build exposes only up to 3.0.x, causing dlopen failures
+  # on rolling distros (Fedora, Arch). (#3716)
+  'libssl.so.*'
+  'libcrypto.so.*'
 )
 
 # Default to a pinned release tag rather than the mutable `continuous` asset so
