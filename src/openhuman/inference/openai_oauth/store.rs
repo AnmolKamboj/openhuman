@@ -335,13 +335,15 @@ pub fn lookup_openai_oauth_credentials(
                     // If the token has already passed its expiry there is no
                     // point proceeding — the next inference call will hit 401
                     // and the user sees a generic error with no remedy.
-                    // Surface it as a session-expired error so the classifier
-                    // routes the user to sign in again rather than showing
-                    // "Something went wrong". (#5869)
+                    // Return a string that `is_openai_oauth_session_expired_message`
+                    // recognises ("authentication token is expired") so
+                    // `classify_inference_error` routes to the Codex reconnect
+                    // message (Settings → Integrations), not the OpenHuman
+                    // app-session sign-in flow. (#5869)
                     if token_set.is_expiring_within(std::time::Duration::ZERO) {
                         return Err(format!(
-                            "Codex session expired — token refresh failed: {e}. \
-                             Please sign in to Codex again in Settings → Integrations."
+                            "Codex authentication token is expired — refresh failed: {e}. \
+                             Please reconnect Codex in Settings → Integrations."
                         ));
                     }
                 }

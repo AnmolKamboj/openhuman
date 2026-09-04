@@ -58,8 +58,9 @@ fn lookup_openai_bearer_token_returns_session_expired_error_when_refresh_fails_o
     let result = lookup_openai_bearer_token(&config);
     let err = result.expect_err("expected Err for expired token with failed refresh");
     assert!(
-        err.to_lowercase().contains("session expired"),
-        "error message should contain 'session expired' to trigger the classifier, got: {err:?}"
+        err.to_lowercase().contains("authentication token is expired"),
+        "error message should contain 'authentication token is expired' to trigger \
+         is_openai_oauth_session_expired_message (not the app-session classifier), got: {err:?}"
     );
 }
 

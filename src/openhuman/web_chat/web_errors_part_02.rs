@@ -33,12 +33,33 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
     // before the generic provider-429 branch — otherwise users see
     // a confusing "your AI provider is rate-limiting you" message
     // for limits OpenHuman itself enforced (issue #2364).
-    let classified = if crate::core::observability::is_session_expired_message(err) {
+    let classified = if crate::openhuman::inference::provider::is_openai_oauth_session_expired_message(err) {
+        // The Codex OAuth token has expired and the refresh failed. This is a
+        // provider-specific re-auth — the user must reconnect Codex in
+        // Settings → Integrations, NOT sign into OpenHuman. Checked BEFORE
+        // `is_session_expired_message` because our error string contains
+        // "authentication token is expired" which would also match the broader
+        // "session expired" substring test and route to the wrong sign-in flow.
+        // (#5869)
+        ClassifiedError {
+            error_type: "provider_error",
+            message: "Your Codex session has expired. Please reconnect it in \
+                 Settings → Integrations."
+                .to_string(),
+            source: "auth",
+            retryable: false,
+            retry_after_ms: None,
+            provider: Some("openai_codex".to_string()),
+            fallback_available: None,
+        }
+    } else if crate::core::observability::is_session_expired_message(err) {
         // The OpenHuman app-session JWT expired (or the scheduler gate flagged
         // signed-out / `SESSION_EXPIRED` sentinel). There is NO client-side
         // refresh — recovery is an interactive re-auth only — so this is
-        // non-retryable and must route the user to sign-in. Checked FIRST so the
-        // `auth_error` arm below can't claim the backend's `401 "Invalid token"`
+        // non-retryable and must route the user to sign-in. Checked after the
+        // Codex OAuth arm because "authentication token is expired" would also
+        // match `is_session_expired_message`'s broad "session expired" substring.
+        // The `auth_error` arm below can't claim the backend's `401 "Invalid token"`
         // envelope (it contains "401") and mislead managed-backend users with
         // "check your API key". `is_session_expired_message` is conjunctively
         // scoped to the OpenHuman/Embedding "Invalid token" envelopes + the
