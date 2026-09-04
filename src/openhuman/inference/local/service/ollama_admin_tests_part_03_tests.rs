@@ -463,17 +463,27 @@ async fn diagnostics_degraded_ollama_stays_running_and_lists_models() {
 
     let _guard = crate::openhuman::inference::inference_test_guard();
 
-    // Same slow-first-call mock, but returns a real model so we can prove that
-    // model discovery still succeeds under the degraded (8s) timeout — the
-    // whole point of #6032: a slow-but-alive daemon must keep its models
-    // selectable rather than collapsing to an empty catalog.
+    // Stateful mock reproducing a busy daemon AND keeping the *model-discovery*
+    // request slow, so this test actually exercises the widened 8s discovery
+    // timeout — not just the health probe. `diagnostics()` issues /api/tags in
+    // this order:
+    //   #0 health fast probe (2s)  — must time out to reach Degraded
+    //   #1 health retry      (8s)  — must be fast so we classify Degraded
+    //   #2 runner probe      (3s)  — reachability check
+    //   #3 model discovery   (8s)  — MUST stay slow: reverting it to the 5s
+    //                                default would time out here and empty the
+    //                                catalog, hiding local models (the #6032 bug)
+    // So every call EXCEPT the health retry (#1) sleeps 6s — above the 2s fast
+    // probe and the 5s default, below the 8s degraded budget. Keying off "not
+    // the retry" rather than a fixed index keeps this correct even if the number
+    // of pre-discovery /api/tags calls changes.
     let tags_calls: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     let app = Router::new()
         .route(
             "/api/tags",
             get(|State(calls): State<Arc<AtomicUsize>>| async move {
-                if calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(3000)).await;
+                if calls.fetch_add(1, Ordering::SeqCst) != 1 {
+                    tokio::time::sleep(std::time::Duration::from_millis(6000)).await;
                 }
                 Json(json!({
                     "models": [
