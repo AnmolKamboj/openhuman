@@ -266,7 +266,7 @@ function SubagentAwaitingUser({
                   submit();
                 }
               }}
-              className="min-h-[28px] flex-1 resize-y rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-content-primary outline-none focus:border-primary-500"
+              className="min-h-[28px] flex-1 resize-y rounded-md border border-line bg-surface px-2 py-1 text-[12px] text-content outline-none focus:border-primary-500"
             />
             <Button
               type="button"
