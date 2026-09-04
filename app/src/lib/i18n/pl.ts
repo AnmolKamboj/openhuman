@@ -2669,8 +2669,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'zsynchronizowanych elementów',
   'memorySources.sync.upToDate': 'Aktualne',
   'memorySources.sync.failedLabel': 'Niepowodzenie',
-  'memorySources.sync.morePending': 'Jest więcej do synchronizacji — kliknij Synchronizuj ponownie',
-  'memorySources.sync.budgetSpent': 'Dzisiejszy limit zapytań został wyczerpany — spróbuj jutro',
+  'memorySources.sync.morePending': 'Jest więcej do synchronizacji. Kliknij Synchronizuj ponownie',
+  'memorySources.sync.budgetSpent': 'Dzisiejszy limit zapytań został wyczerpany. Spróbuj jutro',
   'time.justNow': 'przed chwilą',
   'time.secondsAgoSuffix': 's temu',
   'time.minutesAgoSuffix': 'min temu',
@@ -2722,11 +2722,11 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'Napraw',
   'memorySources.repair.cancel': 'Nie teraz',
   'memorySources.repair.nothing':
-    'Nie ma nic do naprawy — żadne zsynchronizowane dokumenty nie czekają na skatalogowanie.',
+    'Nie ma nic do naprawy. Żadne zsynchronizowane dokumenty nie czekają na skatalogowanie.',
   'memorySources.repair.success':
     'Skatalogowano {ingested} w drzewie pamięci ({already} już było, {skipped} pominięto).',
   'memorySources.repair.morePending':
-    'Zostało więcej — kliknij ponownie Napraw starsze wspomnienia.',
+    'Zostało więcej. Kliknij ponownie Napraw starsze wspomnienia.',
   'memorySources.repair.failed': 'Nie udało się naprawić starszych wspomnień.',
   'memorySources.settings.button': 'Ustawienia',
   'memorySources.settings.title': 'Ustawienia synchronizacji',

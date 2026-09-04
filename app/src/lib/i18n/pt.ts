@@ -2686,9 +2686,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'itens sincronizados',
   'memorySources.sync.upToDate': 'Atualizado',
   'memorySources.sync.failedLabel': 'Falhou',
-  'memorySources.sync.morePending': 'Há mais para sincronizar — clique em Sincronizar novamente',
+  'memorySources.sync.morePending': 'Há mais para sincronizar. Clique em Sincronizar novamente',
   'memorySources.sync.budgetSpent':
-    'O orçamento de solicitações de hoje acabou — tente novamente amanhã',
+    'O orçamento de solicitações de hoje acabou. Tente novamente amanhã',
   'time.justNow': 'agora mesmo',
   'time.secondsAgoSuffix': 's atrás',
   'time.minutesAgoSuffix': 'min atrás',
@@ -2739,11 +2739,11 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'Reparar',
   'memorySources.repair.cancel': 'Agora não',
   'memorySources.repair.nothing':
-    'Nada a reparar — nenhum documento sincronizado aguarda arquivamento.',
+    'Nada a reparar. Nenhum documento sincronizado aguarda arquivamento.',
   'memorySources.repair.success':
     '{ingested} arquivados na árvore de memória ({already} já existentes, {skipped} ignorados).',
   'memorySources.repair.morePending':
-    'Ainda restam mais — clique em Reparar memórias antigas novamente.',
+    'Ainda restam mais. Clique em Reparar memórias antigas novamente.',
   'memorySources.repair.failed': 'Não foi possível reparar as memórias antigas.',
   'memorySources.settings.button': 'Configurações',
   'memorySources.settings.title': 'Configurações de sincronização',

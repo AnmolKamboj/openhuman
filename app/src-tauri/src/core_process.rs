@@ -701,19 +701,27 @@ impl CoreProcessHandle {
 
     /// Wait a bounded moment for the server task to finish on its own after
     /// its token was cancelled, so the teardown inside it runs.
+    ///
+    /// The moment is sized from what that teardown is allowed to take, so the
+    /// abort below never lands in the middle of it: the memory exit budget
+    /// (`EXIT_BUDGET`, every driver and the hook registry on one deadline),
+    /// the ollama cleanup after it in `serve_http` (2 s), and half a second
+    /// for the drain itself. Typical quits finish in milliseconds; the budget
+    /// is only what a wedged store or daemon may cost.
     async fn drain_task_briefly(&self) {
-        const BUDGET: Duration = Duration::from_millis(2_500);
+        const AFTER_MEMORY: Duration = Duration::from_millis(2_500);
+        let budget = openhuman_core::openhuman::memory::exit::EXIT_BUDGET + AFTER_MEMORY;
         let mut task_guard = self.task.lock().await;
         let Some(task) = task_guard.as_mut() else {
             return;
         };
-        match timeout(BUDGET, task).await {
+        match timeout(budget, task).await {
             Ok(_) => {
                 task_guard.take();
                 log::info!("[core] embedded core server task drained on app shutdown");
             }
             Err(_) => log::warn!(
-                "[core] embedded core server task did not drain within {BUDGET:?}; aborting"
+                "[core] embedded core server task did not drain within {budget:?}; aborting"
             ),
         }
     }

@@ -2657,9 +2657,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'элементов синхронизировано',
   'memorySources.sync.upToDate': 'Актуально',
   'memorySources.sync.failedLabel': 'Не удалось',
-  'memorySources.sync.morePending':
-    'Есть что синхронизировать — нажмите «Синхронизировать» ещё раз',
-  'memorySources.sync.budgetSpent': 'Дневной лимит запросов исчерпан — попробуйте завтра',
+  'memorySources.sync.morePending': 'Есть что синхронизировать. Нажмите «Синхронизировать» ещё раз',
+  'memorySources.sync.budgetSpent': 'Дневной лимит запросов исчерпан. Попробуйте завтра',
   'time.justNow': 'только что',
   'time.secondsAgoSuffix': 'с назад',
   'time.minutesAgoSuffix': 'мин назад',
@@ -2712,11 +2711,11 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'Восстановить',
   'memorySources.repair.cancel': 'Не сейчас',
   'memorySources.repair.nothing':
-    'Нечего восстанавливать — нет синхронизированных документов, ожидающих размещения.',
+    'Нечего восстанавливать. Нет синхронизированных документов, ожидающих размещения.',
   'memorySources.repair.success':
     'Размещено в дереве памяти: {ingested} ({already} уже было, {skipped} пропущено).',
   'memorySources.repair.morePending':
-    'Остались ещё — нажмите «Восстановить старые воспоминания» снова.',
+    'Остались ещё. Нажмите «Восстановить старые воспоминания» снова.',
   'memorySources.repair.failed': 'Не удалось восстановить старые воспоминания.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',

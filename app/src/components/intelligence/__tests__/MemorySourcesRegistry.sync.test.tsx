@@ -654,4 +654,32 @@ describe('MemorySourcesRegistry', () => {
     expect(screen.queryByText('memorySources.repair.confirm')).not.toBeInTheDocument();
     expect(backfill).toHaveBeenCalledTimes(1);
   });
+  it('says "more to sync" — not "Up to date" — when zero items arrived because the run stopped at its cap', async () => {
+    // A capped run can write nothing (everything on the page was already
+    // ingested) and still have more to read. Zero + more-pending used to
+    // render as "Up to date" beside a "more to sync" note — contradictory.
+    const sources = [makeSource('src-zero-more')];
+    listMemorySources.mockResolvedValue(sources);
+    memorySourcesStatusList.mockResolvedValue([]);
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() => expect(screen.getByText('Source src-zero-more')).toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({
+          stage: 'completed',
+          source_id: 'src-zero-more',
+          detail: 'ingested 0 item(s), more pending — Sync again to continue',
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const chip = screen.getByTestId('memory-source-result-src-zero-more');
+      expect(chip).toHaveTextContent('memorySources.sync.morePending');
+      expect(chip).not.toHaveTextContent('memorySources.sync.upToDate');
+    });
+    expect(screen.queryByTestId('memory-source-note-src-zero-more')).not.toBeInTheDocument();
+  });
 });

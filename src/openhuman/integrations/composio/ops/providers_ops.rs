@@ -341,8 +341,9 @@ pub async fn composio_sync_budgeted(
         let mut passes = 0usize;
         let mut more_pending = false;
         // The module's own account of a pass that stopped short (the day's
-        // request budget, typically). The last one wins: it describes the
-        // state the run ended in.
+        // request budget, typically). The last pass's word wins, present or
+        // absent: it describes the state the run ended in, and a pass that
+        // completes cleanly must not inherit the note of an earlier one.
         let mut stop_note: Option<String> = None;
         let outcome = loop {
             passes += 1;
@@ -365,14 +366,12 @@ pub async fn composio_sync_budgeted(
                 Ok(pass) => {
                     total_written = total_written.saturating_add(u64::from(pass.written));
                     more_pending = pass.more_pending;
-                    if let Some(message) = pass
+                    stop_note = pass
                         .message
                         .as_deref()
                         .map(str::trim)
                         .filter(|message| !message.is_empty())
-                    {
-                        stop_note = Some(message.to_string());
-                    }
+                        .map(str::to_string);
                     tracing::info!(
                         toolkit = %toolkit_for_log,
                         connection_id = %connection_for_log,

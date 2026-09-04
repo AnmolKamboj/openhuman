@@ -2650,8 +2650,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'item tersinkron',
   'memorySources.sync.upToDate': 'Sudah terbaru',
   'memorySources.sync.failedLabel': 'Gagal',
-  'memorySources.sync.morePending': 'Masih ada yang perlu disinkronkan — klik Sinkronkan lagi',
-  'memorySources.sync.budgetSpent': 'Anggaran permintaan hari ini sudah habis — coba lagi besok',
+  'memorySources.sync.morePending': 'Masih ada yang perlu disinkronkan. Klik Sinkronkan lagi',
+  'memorySources.sync.budgetSpent': 'Anggaran permintaan hari ini sudah habis. Coba lagi besok',
   'time.justNow': 'baru saja',
   'time.secondsAgoSuffix': 'd lalu',
   'time.minutesAgoSuffix': 'm lalu',
@@ -2701,10 +2701,10 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'Perbaiki',
   'memorySources.repair.cancel': 'Nanti saja',
   'memorySources.repair.nothing':
-    'Tidak ada yang perlu diperbaiki — tidak ada dokumen tersinkron yang menunggu diarsipkan.',
+    'Tidak ada yang perlu diperbaiki. Tidak ada dokumen tersinkron yang menunggu diarsipkan.',
   'memorySources.repair.success':
     '{ingested} diarsipkan ke pohon memori ({already} sudah ada, {skipped} dilewati).',
-  'memorySources.repair.morePending': 'Masih ada sisa — klik Perbaiki memori lama lagi.',
+  'memorySources.repair.morePending': 'Masih ada sisa. Klik Perbaiki memori lama lagi.',
   'memorySources.repair.failed': 'Tidak dapat memperbaiki memori lama.',
   'memorySources.settings.button': 'Pengaturan',
   'memorySources.settings.title': 'Pengaturan sinkronisasi',

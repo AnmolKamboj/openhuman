@@ -2605,8 +2605,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': '항목 동기화됨',
   'memorySources.sync.upToDate': '최신 상태',
   'memorySources.sync.failedLabel': '실패',
-  'memorySources.sync.morePending': '동기화할 항목이 더 있습니다 — 동기화를 다시 클릭하세요',
-  'memorySources.sync.budgetSpent': '오늘의 요청 한도를 모두 사용했습니다 — 내일 다시 시도하세요',
+  'memorySources.sync.morePending': '동기화할 항목이 더 있습니다. 동기화를 다시 클릭하세요',
+  'memorySources.sync.budgetSpent': '오늘의 요청 한도를 모두 사용했습니다. 내일 다시 시도하세요',
   'time.justNow': '방금 전',
   'time.secondsAgoSuffix': '초 전',
   'time.minutesAgoSuffix': '분 전',
@@ -2656,10 +2656,10 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': '복구',
   'memorySources.repair.cancel': '나중에',
   'memorySources.repair.nothing':
-    '복구할 항목이 없습니다 — 정리를 기다리는 동기화된 문서가 없습니다.',
+    '복구할 항목이 없습니다. 정리를 기다리는 동기화된 문서가 없습니다.',
   'memorySources.repair.success':
     '{ingested}개를 메모리 트리에 정리했습니다 ({already}개 이미 있음, {skipped}개 건너뜀).',
-  'memorySources.repair.morePending': '남은 항목이 있습니다 — 이전 기억 복구를 다시 클릭하세요.',
+  'memorySources.repair.morePending': '남은 항목이 있습니다. 이전 기억 복구를 다시 클릭하세요.',
   'memorySources.repair.failed': '이전 기억을 복구하지 못했습니다.',
   'memorySources.settings.button': '설정',
   'memorySources.settings.title': '동기화 설정',

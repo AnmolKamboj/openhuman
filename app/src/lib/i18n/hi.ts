@@ -2638,8 +2638,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'आइटम सिंक हुए',
   'memorySources.sync.upToDate': 'अद्यतित',
   'memorySources.sync.failedLabel': 'विफल',
-  'memorySources.sync.morePending': 'और सिंक बाकी है — फिर से Sync पर क्लिक करें',
-  'memorySources.sync.budgetSpent': 'आज का अनुरोध बजट खत्म हो गया है — कल फिर कोशिश करें',
+  'memorySources.sync.morePending': 'और सिंक बाकी है। फिर से Sync पर क्लिक करें',
+  'memorySources.sync.budgetSpent': 'आज का अनुरोध बजट खत्म हो गया है। कल फिर कोशिश करें',
   'time.justNow': 'अभी',
   'time.secondsAgoSuffix': 'सेकंड पहले',
   'time.minutesAgoSuffix': 'मिनट पहले',
@@ -2689,10 +2689,10 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'सुधारें',
   'memorySources.repair.cancel': 'अभी नहीं',
   'memorySources.repair.nothing':
-    'सुधारने के लिए कुछ नहीं — कोई सिंक किया गया दस्तावेज़ फाइल होने की प्रतीक्षा में नहीं है।',
+    'सुधारने के लिए कुछ नहीं। कोई सिंक किया गया दस्तावेज़ फाइल होने की प्रतीक्षा में नहीं है।',
   'memorySources.repair.success':
     '{ingested} मेमोरी ट्री में फाइल किए गए ({already} पहले से थे, {skipped} छोड़े गए)।',
-  'memorySources.repair.morePending': 'और बाकी हैं — पुरानी यादें सुधारें पर फिर से क्लिक करें।',
+  'memorySources.repair.morePending': 'और बाकी हैं। पुरानी यादें सुधारें पर फिर से क्लिक करें।',
   'memorySources.repair.failed': 'पुरानी यादें सुधारी नहीं जा सकीं।',
   'memorySources.settings.button': 'सेटिंग',
   'memorySources.settings.title': 'सिंक सेटिंग',

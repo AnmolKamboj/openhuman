@@ -67,15 +67,14 @@ interface SourceRowProps {
 }
 
 /**
- * The line shown beside a successful count when the run stopped short. A
- * spent budget with a zero count is already the main text (there is nothing
- * else to say), so it is not repeated here.
+ * The line shown beside a successful count when the run stopped short. With a
+ * zero count the chip itself says why the run stopped (there is no count to
+ * show instead), so the note is never repeated beside it.
  */
 function syncNoteKey(result: SyncResult): string | null {
+  if (!(result.items && result.items > 0)) return null;
   if (result.note === 'more_pending') return 'memorySources.sync.morePending';
-  if (result.note === 'budget_spent' && result.items && result.items > 0) {
-    return 'memorySources.sync.budgetSpent';
-  }
+  if (result.note === 'budget_spent') return 'memorySources.sync.budgetSpent';
   return null;
 }
 
@@ -185,7 +184,9 @@ export function MemorySourceRow({
                         ? `${result.items.toLocaleString()} ${t('memorySources.sync.itemsSynced')}`
                         : result.note === 'budget_spent'
                           ? t('memorySources.sync.budgetSpent')
-                          : t('memorySources.sync.upToDate')}
+                          : result.note === 'more_pending'
+                            ? t('memorySources.sync.morePending')
+                            : t('memorySources.sync.upToDate')}
                     </span>
                     {noteKey && (
                       <span

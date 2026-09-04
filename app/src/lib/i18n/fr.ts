@@ -2713,8 +2713,8 @@ const messages: TranslationMap = {
   'memorySources.sync.upToDate': 'À jour',
   'memorySources.sync.failedLabel': 'Échec',
   'memorySources.sync.morePending':
-    'Il reste des éléments à synchroniser — cliquez à nouveau sur Synchroniser',
-  'memorySources.sync.budgetSpent': 'Le budget de requêtes du jour est épuisé — réessayez demain',
+    'Il reste des éléments à synchroniser. Cliquez à nouveau sur Synchroniser',
+  'memorySources.sync.budgetSpent': 'Le budget de requêtes du jour est épuisé. Réessayez demain',
   'time.justNow': "à l'instant",
   'time.secondsAgoSuffix': 's',
   'time.minutesAgoSuffix': 'min',
@@ -2766,11 +2766,11 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'Réparer',
   'memorySources.repair.cancel': 'Pas maintenant',
   'memorySources.repair.nothing':
-    "Rien à réparer — aucun document synchronisé n'attend d'être classé.",
+    "Rien à réparer. Aucun document synchronisé n'attend d'être classé.",
   'memorySources.repair.success':
     "{ingested} classés dans l'arbre de mémoire ({already} déjà présents, {skipped} ignorés).",
   'memorySources.repair.morePending':
-    'Il en reste — cliquez à nouveau sur Réparer les souvenirs anciens.',
+    'Il en reste. Cliquez à nouveau sur Réparer les souvenirs anciens.',
   'memorySources.repair.failed': 'Impossible de réparer les souvenirs anciens.',
   'memorySources.settings.title': 'Paramètres de synchronisation',
   'memorySources.settings.maxPrs': 'Nombre maximal de pull requests',

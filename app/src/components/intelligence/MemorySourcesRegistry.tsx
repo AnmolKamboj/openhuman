@@ -211,17 +211,21 @@ export function MemorySourcesRegistry({
             next.set(rowId, { kind: 'success', items, reason: null, note });
             return next;
           });
-          const counted =
-            items && items > 0
-              ? `${items} ${tt('memorySources.sync.itemsSynced')}`
-              : note === 'budget_spent'
-                ? tt('memorySources.sync.budgetSpent')
+          // A zero count is not "up to date" when the run stopped short: the
+          // reason it stopped is the whole message then, not a suffix.
+          const hasItems = Boolean(items && items > 0);
+          const counted = hasItems
+            ? `${items} ${tt('memorySources.sync.itemsSynced')}`
+            : note === 'budget_spent'
+              ? tt('memorySources.sync.budgetSpent')
+              : note === 'more_pending'
+                ? tt('memorySources.sync.morePending')
                 : tt('memorySources.sync.upToDate');
           onToastRef.current?.({
             type: note === 'budget_spent' ? 'warning' : 'success',
             title: `${tt('memorySources.sync.completeTitle')} ${label}`,
             message:
-              note === 'more_pending'
+              hasItems && note === 'more_pending'
                 ? `${counted} — ${tt('memorySources.sync.morePending')}`
                 : counted,
           });

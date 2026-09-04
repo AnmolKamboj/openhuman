@@ -2638,8 +2638,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'আইটেম সিঙ্ক হয়েছে',
   'memorySources.sync.upToDate': 'হালনাগাদ আছে',
   'memorySources.sync.failedLabel': 'ব্যর্থ',
-  'memorySources.sync.morePending': 'আরও সিঙ্ক বাকি আছে — আবার Sync-এ ক্লিক করুন',
-  'memorySources.sync.budgetSpent': 'আজকের অনুরোধের বাজেট শেষ — আগামীকাল আবার চেষ্টা করুন',
+  'memorySources.sync.morePending': 'আরও সিঙ্ক বাকি আছে। আবার Sync-এ ক্লিক করুন',
+  'memorySources.sync.budgetSpent': 'আজকের অনুরোধের বাজেট শেষ। আগামীকাল আবার চেষ্টা করুন',
   'time.justNow': 'এইমাত্র',
   'time.secondsAgoSuffix': 'সেকেন্ড আগে',
   'time.minutesAgoSuffix': 'মিনিট আগে',
@@ -2688,10 +2688,10 @@ const messages: TranslationMap = {
   'memorySources.repair.confirm': 'মেরামত করুন',
   'memorySources.repair.cancel': 'এখন নয়',
   'memorySources.repair.nothing':
-    'মেরামতের কিছু নেই — কোনো সিঙ্ক করা নথি ফাইল হওয়ার অপেক্ষায় নেই।',
+    'মেরামতের কিছু নেই। কোনো সিঙ্ক করা নথি ফাইল হওয়ার অপেক্ষায় নেই।',
   'memorySources.repair.success':
     '{ingested}টি মেমোরি ট্রিতে ফাইল করা হয়েছে ({already}টি আগে থেকেই ছিল, {skipped}টি বাদ দেওয়া হয়েছে)।',
-  'memorySources.repair.morePending': 'আরও বাকি আছে — আবার পুরোনো স্মৃতি মেরামত করুন-এ ক্লিক করুন।',
+  'memorySources.repair.morePending': 'আরও বাকি আছে। আবার পুরোনো স্মৃতি মেরামত করুন-এ ক্লিক করুন।',
   'memorySources.repair.failed': 'পুরোনো স্মৃতি মেরামত করা যায়নি।',
   'memorySources.settings.button': 'সেটিংস',
   'memorySources.settings.title': 'সিঙ্ক সেটিংস',
