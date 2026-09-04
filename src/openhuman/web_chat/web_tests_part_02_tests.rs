@@ -643,7 +643,9 @@ fn codex_oauth_expiry_classifies_as_provider_error_not_session_expired() {
         classified.message
     );
     assert!(
-        !classified.message.contains("Your OpenHuman session has expired"),
+        !classified
+            .message
+            .contains("Your OpenHuman session has expired"),
         "must not show the app-session copy: {}",
         classified.message
     );
