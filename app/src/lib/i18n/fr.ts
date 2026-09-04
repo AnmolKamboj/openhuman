@@ -6728,7 +6728,7 @@ const messages: TranslationMap = {
   'userErrors.scope.chat': 'Chat',
   'userErrors.replyDeliveryFailed.title': 'Impossible d’afficher la réponse',
   'userErrors.replyDeliveryFailed.body':
-    'L’agent a terminé ce tour, mais sa réponse n’a pas pu être enregistrée ni relue. Redemande-lui de la répéter.',
+    'L’agent a terminé ce tour, mais sa réponse n’a pas pu être enregistrée ni récupérée. Redemande-lui de la répéter.',
   'userErrors.memoryStoreCorrupt.title': 'L’index mémoire a été corrompu',
   'userErrors.memoryStoreCorrupt.body':
     'La base de données de l’arbre mémoire était endommagée. Le fichier endommagé a été conservé à côté de vos données mémoire et un index vide a été reconstruit. Resynchronisez vos sources mémoire pour le remplir à nouveau.',

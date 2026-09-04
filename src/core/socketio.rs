@@ -492,7 +492,7 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
 
             log::info!("[socketio] client connected id={client_id} (authenticated)");
             // Join a room named after the client ID for targeted event delivery.
-            join_room_logged(&socket, &client_id, &client_id);
+            let _ = join_room_logged(&socket, &client_id, &client_id);
             // Also auto-join the "system" room so every connected client
             // receives broadcast-style events that aren't tied to a
             // specific chat thread. Today this covers proactive messages
@@ -501,7 +501,7 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
             // emits with `client_id = "system"` — see `emit_web_channel_event`.
             // If this join fails the welcome message silently disappears,
             // so we log both success and failure for diagnosability.
-            join_room_logged(&socket, "system", &client_id);
+            let _ = join_room_logged(&socket, "system", &client_id);
             let ready_payload = json!({ "sid": client_id });
             log::debug!("[socketio] emit event=ready to_client={}", socket.id);
             let _ = socket.emit("ready", &ready_payload);
@@ -699,8 +699,12 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
                         return;
                     }
                     let room = format!("thread:{thread_id}");
-                    join_room_logged(&socket, &room, &socket.id.to_string());
-                    ack.send(&ThreadSubscribeAck { joined: true }).ok();
+                    // Report what actually happened. Acknowledging a join that
+                    // failed is worse than not acknowledging at all: the client
+                    // stops queueing the thread for retry and reads on the
+                    // strength of a room it is not in.
+                    let joined = join_room_logged(&socket, &room, &socket.id.to_string());
+                    ack.send(&ThreadSubscribeAck { joined }).ok();
                 },
             );
         },
@@ -1385,11 +1389,23 @@ pub(crate) fn channel_connection_update_payload(
 /// so both the happy and error paths are logged with enough context
 /// (room name + client id) to diagnose missing welcome messages from
 /// logs alone.
+///
+/// Returns whether the socket is actually in the room. Callers that only log
+/// may ignore it; a caller that *tells the client* it joined must not — a
+/// client told it is in a room it never joined reads the thread, waits for
+/// events that will never be routed to it, and reproduces the invisible-reply
+/// bug this room exists to prevent (#6034).
 #[cfg(feature = "http-server")]
-fn join_room_logged(socket: &SocketRef, room: &str, client_id: &str) {
+fn join_room_logged(socket: &SocketRef, room: &str, client_id: &str) -> bool {
     match socket.join(room.to_string()) {
-        Ok(()) => log::debug!("[socketio] joined room '{room}' for client {client_id}"),
-        Err(e) => log::warn!("[socketio] failed to join room '{room}' for client {client_id}: {e}"),
+        Ok(()) => {
+            log::debug!("[socketio] joined room '{room}' for client {client_id}");
+            true
+        }
+        Err(e) => {
+            log::warn!("[socketio] failed to join room '{room}' for client {client_id}: {e}");
+            false
+        }
     }
 }
 
