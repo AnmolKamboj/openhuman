@@ -306,13 +306,22 @@ const Conversations = ({
   // component. assistant-ui renders its tool calls as inline cards and has no
   // equivalent block, so the whole-run view (and the visited-source list, which
   // exists nowhere else) is reached from the command palette instead.
+  //
+  // The composer check is not cosmetic: `showProcessSource` only drives
+  // `TranscriptOverlays`, which mounts inside `assistantUiMainPanel` alone, and
+  // the panel choice below is an either/or (`composer === 'mic-cloud' ?
+  // legacyMainPanel : assistantUiMainPanel`). In mic-cloud voice mode the state
+  // this sets has no host, so without the guard the palette would offer a
+  // command that silently does nothing. `enabled` is re-read through a ref on
+  // every render (see `useRegisterAction`), so switching modes updates it
+  // without re-registering.
   useRegisterAction({
     id: 'chat.agentProcessSource',
     label: 'Open agent process source',
     labelKey: 'conversations.agentTaskInsights.viewProcessSource',
     group: 'Chat',
     handler: () => setShowProcessSource(true),
-    enabled: () => selectedThreadId !== null,
+    enabled: () => selectedThreadId !== null && composer !== 'mic-cloud',
     keywords: ['agent', 'process', 'source', 'timeline', 'run'],
   });
   const [inputMode, setInputMode] = useState<InputMode>('text');
