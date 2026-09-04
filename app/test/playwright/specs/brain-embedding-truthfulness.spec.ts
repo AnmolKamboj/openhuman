@@ -47,8 +47,22 @@ interface SourceStatus {
 
 /** The slice of `memory_tree_pipeline_status` that decides hard vs soft. */
 interface PipelineStatus {
+  status?: string;
+  is_paused?: boolean;
+  gate_paused?: boolean;
   degraded?: { semantic_recall?: boolean } | null;
   first_blocking_cause?: { code?: string } | null;
+}
+
+async function pipelineStatus(): Promise<PipelineStatus> {
+  return callCoreRpc<PipelineStatus>('openhuman.memory_tree_pipeline_status', {});
+}
+
+/** The scheduler gate is paused, configured or live — nothing drains a backlog. */
+function schedulerPaused(pipeline: PipelineStatus): boolean {
+  return (
+    pipeline.is_paused === true || pipeline.status === 'paused' || pipeline.gate_paused === true
+  );
 }
 
 /** `memory_tree_memory_backfill_status`: whether a re-embed chain is queued. */
@@ -82,7 +96,7 @@ const EMBEDDINGS_BLOCKING_CAUSES = new Set([
  * own verdict rather than guessing from the lane's configuration.
  */
 async function embeddingsHardDown(): Promise<boolean> {
-  const status = await callCoreRpc<PipelineStatus>('openhuman.memory_tree_pipeline_status', {});
+  const status = await pipelineStatus();
   const cause = status.first_blocking_cause?.code;
   return (
     status.degraded?.semantic_recall === true ||
@@ -274,52 +288,61 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       .toBeGreaterThan(0);
 
     requireDegraded(status);
-    const hard = await embeddingsHardDown();
 
     await openSources(page, 'pw-brain-unembedded');
 
     const row = page.getByTestId('memory-source-row-folder').filter({ hasText: label });
     await expect(row).toBeVisible({ timeout: 30_000 });
 
-    if (hard) {
-      // The whole point: rendered text a user can read, on the real page.
-      await expect(row.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
-        timeout: 30_000,
-      });
+    // The whole point: rendered text a user can read, on the real page — and
+    // the RIGHT text. The expectation is decided at the assertion point from
+    // the core's own account, through the same inputs and precedence as
+    // `deriveSourcePipelineHealth`: the recall latch, an embeddings-family
+    // blocking cause, a paused scheduler gate (configured or live), or pending
+    // chunks with no re-embed chain queued mean the amber warning; pending
+    // chunks the engine is draining mean the neutral note (openhuman#6025);
+    // a count of zero means a clean row. The backlog can drain, or the gate
+    // can pause, between one poll and the next, so only a row that
+    // contradicts the core at the same instant fails, and it is polled past
+    // because the row refreshes on a timer.
+    const note = row.getByTestId(`memory-source-vectors-pending-${id}`);
+    const warning = row.getByTestId(`memory-source-pipeline-warning-${id}`);
+    // A holder, not a `let`: the poll callback assigns it, and TypeScript
+    // would otherwise narrow a `let` to its initialiser at the checks below.
+    const verdict = { expected: 'clean' as 'warning' | 'note' | 'clean' };
+    await expect
+      .poll(
+        async () => {
+          const [now, pipeline, backfill] = await Promise.all([
+            statusFor(id),
+            pipelineStatus(),
+            backfillStatus(),
+          ]);
+          const pending = now?.chunks_pending ?? 0;
+          const cause = pipeline.first_blocking_cause?.code;
+          const embeddingsBlocked = cause !== undefined && EMBEDDINGS_BLOCKING_CAUSES.has(cause);
+          const hard =
+            pipeline.degraded?.semantic_recall === true ||
+            (pending > 0 &&
+              (embeddingsBlocked || schedulerPaused(pipeline) || !backfill.in_progress));
+          verdict.expected = hard ? 'warning' : pending > 0 ? 'note' : 'clean';
+          const shown = (await warning.isVisible())
+            ? 'warning'
+            : (await note.isVisible())
+              ? 'note'
+              : 'clean';
+          return `${verdict.expected}:${shown}`;
+        },
+        { timeout: 30_000, message: 'the row contradicts the core (expected:shown)' }
+      )
+      .toMatch(/^(warning:warning|note:note|clean:clean)$/);
+
+    if (verdict.expected === 'warning') {
       await expect(row).toContainText('Stored without vectors. Semantic search unavailable.');
       await expect(row).toContainText('Ingested only');
-    } else {
-      // An embeddings provider exists and the engine is draining the backlog:
-      // the truthful state is "waiting", and the row must say so rather than
-      // show a clean freshness pill and nothing else (openhuman#6025). It must
-      // equally not cry failure over work that is in flight.
-      //
-      // The backlog can finish draining between the RPC read above and the
-      // row's next 5 s poll, so the expectation is decided at the assertion
-      // point from the core's own account, the same two inputs the row reads:
-      // chunks still pending with a re-embed chain queued must show the
-      // waiting note; chunks pending with no chain queued are stuck and must
-      // show the amber warning; a count of zero is a clean row. Only a row
-      // that contradicts the core fails, and it is polled past because the
-      // row refreshes on a timer.
-      const note = row.getByTestId(`memory-source-vectors-pending-${id}`);
-      const warning = row.getByTestId(`memory-source-pipeline-warning-${id}`);
-      await expect
-        .poll(
-          async () => {
-            const pendingNow = (await statusFor(id))?.chunks_pending ?? 0;
-            if (pendingNow === 0) return 'drained';
-            const draining = (await backfillStatus()).in_progress;
-            if (draining) return (await note.isVisible()) ? 'pending-shown' : 'pending-hidden';
-            return (await warning.isVisible()) ? 'stuck-shown' : 'stuck-hidden';
-          },
-          {
-            timeout: 30_000,
-            message:
-              'the row contradicts the core: pending chunks with no note, or a stuck backlog with no warning',
-          }
-        )
-        .not.toMatch(/-hidden$/);
+    } else if (verdict.expected === 'note') {
+      await expect(row).toContainText('waiting for vectors');
+      await expect(row).not.toContainText('Stored without vectors');
     }
   });
 
