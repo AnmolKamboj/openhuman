@@ -16,6 +16,7 @@ import {
   parseIngestedCount,
   parseSyncProgress,
 } from '../MemorySourcesRegistry';
+import { resetMemorySyncActivityForTests } from '../memorySyncActivityStore';
 
 // ── i18n mock (returns key as the translation) ────────────────────────────────
 vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (key: string) => key }) }));
@@ -138,6 +139,12 @@ describe('parseIngestedCount', () => {
 // ── MemorySourcesRegistry integration tests ───────────────────────────────────
 
 describe('MemorySourcesRegistry', () => {
+  // The live sync state is a page-wide store now (openhuman#6019); each test
+  // starts from nothing in flight.
+  beforeEach(() => {
+    resetMemorySyncActivityForTests();
+  });
+
   // Expose mock so tests can control what listMemorySources returns.
   let listMemorySources: ReturnType<typeof vi.fn>;
   let memorySourcesStatusList: ReturnType<typeof vi.fn>;
@@ -484,5 +491,69 @@ describe('MemorySourcesRegistry', () => {
     });
     // The optimistic syncing state is cleared after the RPC rejection.
     expect(screen.queryByText('sync.syncing')).not.toBeInTheDocument();
+  });
+
+  it('keeps the live bar and then the result across an unmount and remount (openhuman#6019)', async () => {
+    // Leaving Brain › Sources mid-sync used to drop the bar and miss the
+    // terminal event: the sync kept running in the core, the screen said idle.
+    listMemorySources.mockResolvedValue([makeSource('src-persist')]);
+    memorySourcesStatusList.mockResolvedValue([]);
+
+    const first = renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() => expect(screen.getByText('Source src-persist')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(makeSyncStageEvent({ stage: 'running', source_id: 'src-persist' }));
+    });
+    await waitFor(() => expect(screen.getByText('running')).toBeInTheDocument());
+
+    first.unmount();
+    // The run goes on with no screen listening.
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({ stage: 'fetching', source_id: 'src-persist', detail: '1/3 pages' })
+      );
+    });
+
+    const second = renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() => expect(screen.getByText('Source src-persist')).toBeInTheDocument());
+    expect(screen.getByText('fetching')).toBeInTheDocument();
+
+    second.unmount();
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({
+          stage: 'completed',
+          source_id: 'src-persist',
+          detail: 'ingested 12 item(s)',
+        })
+      );
+    });
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('memory-source-result-src-persist')).toHaveTextContent(
+        '12 memorySources.sync.itemsSynced'
+      )
+    );
+  });
+
+  it('shows a run the core reports in flight on a cold mount (openhuman#6019)', async () => {
+    // An app reload mid-sync: no stage event ever reached this page, but the
+    // status list says the core is still running the source.
+    listMemorySources.mockResolvedValue([makeSource('src-cold')]);
+    memorySourcesStatusList.mockResolvedValue([
+      {
+        source_id: 'src-cold',
+        chunks_synced: 0,
+        chunks_pending: 0,
+        last_chunk_at_ms: null,
+        freshness: 'idle',
+        sync_stage: 'running',
+        sync_detail: null,
+      },
+    ]);
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() => expect(screen.getByText('running')).toBeInTheDocument());
+    expect(screen.getByText('sync.syncing')).toBeInTheDocument();
   });
 });
