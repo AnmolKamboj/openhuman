@@ -65,6 +65,15 @@ export interface SubagentActivity {
   agentId: string;
   /** High-level status: `"running"`, `"awaiting_user"`, `"completed"`, `"failed"`. */
   status?: string;
+  /**
+   * The question the sub-agent asked via `ask_user_clarification`, carried on
+   * the `subagent_awaiting_user` event's `message`. Present only while
+   * `status === 'awaiting_user'`; cleared when the delegation resumes.
+   *
+   * Without it the pause is unreadable: the UI can say the child is blocked
+   * but not what on, and the user has nothing to answer.
+   */
+  awaitingQuestion?: string;
   /** Human-readable display name from the agent registry (e.g. "Researcher"). */
   displayName?: string;
   /**
@@ -1468,7 +1477,23 @@ const chatRuntimeSlice = createSlice({
       // Idempotent: a socket redelivery must not append a second row with the
       // same id (later updates find only the first). Not gated by the provider's
       // event-seen map, so guard here.
-      if (entries.some(e => e.id === rowId)) return;
+      const existing = entries.find(e => e.id === rowId);
+      if (existing) {
+        // ...with one exception. `continue_subagent` republishes
+        // `subagent_spawned` for the SAME task/agent when it resumes a paused
+        // child (continue_subagent.rs:330), and that is the only signal the
+        // frontend gets that the pause is over. Swallowing it left the row
+        // stuck on `awaiting_user` for the rest of the run: the card kept
+        // asking a question the user had already answered.
+        if (existing.status === 'awaiting_user') {
+          existing.status = 'running';
+          if (existing.subagent) {
+            existing.subagent.status = 'running';
+            existing.subagent.awaitingQuestion = undefined;
+          }
+        }
+        return;
+      }
       const pending = findPendingDelegationContext(entries, round);
       // Collapse the parent spawn/delegate row into the subagent row so the
       // timeline shows one entry per delegation.
@@ -1501,13 +1526,22 @@ const chatRuntimeSlice = createSlice({
         })
       );
     },
-    subagentAwaitingUser: (state, action: PayloadAction<{ threadId: string; rowId: string }>) => {
+    subagentAwaitingUser: (
+      state,
+      action: PayloadAction<{ threadId: string; rowId: string; question?: string }>
+    ) => {
       const entry = state.toolTimelineByThread[action.payload.threadId]?.find(
         e => e.id === action.payload.rowId && e.status === 'running'
       );
       if (!entry) return;
       entry.status = 'awaiting_user';
-      if (entry.subagent) entry.subagent.status = 'awaiting_user';
+      if (entry.subagent) {
+        entry.subagent.status = 'awaiting_user';
+        // The question is the whole point of the pause. Keep the previous one
+        // if this event carried none rather than blanking a readable prompt.
+        const question = action.payload.question?.trim();
+        if (question) entry.subagent.awaitingQuestion = question;
+      }
     },
     subagentDone: (
       state,

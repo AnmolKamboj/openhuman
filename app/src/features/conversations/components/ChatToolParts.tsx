@@ -1,5 +1,5 @@
-import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
-import type { FC, PropsWithChildren } from 'react';
+import { type ToolCallMessagePartComponent, useAui } from '@assistant-ui/react';
+import { type FC, type PropsWithChildren, useCallback } from 'react';
 
 import type { ThreadGroupPart } from '../../../components/assistant-ui/thread';
 import {
@@ -42,6 +42,7 @@ function readSubagentState(
 
 /** Adapt an assistant-ui `task` part onto the shared delegation card. */
 export const SubagentCall: ToolCallMessagePartComponent = ({ args, result }) => {
+  const aui = useAui();
   const { activity, running } = readSubagentState(args, result);
   const description = (args as { description?: string } | undefined)?.description;
   const fallbackAgent = (args as { subagent_type?: string } | undefined)?.subagent_type;
@@ -50,8 +51,26 @@ export const SubagentCall: ToolCallMessagePartComponent = ({ args, result }) => 
     agentId: fallbackAgent ?? 'subagent',
     toolCalls: [],
   };
+  // A delegation parked on `ask_user_clarification` is unblocked by an ordinary
+  // user turn: the orchestrator is holding the `[SUBAGENT_AWAITING_USER]`
+  // envelope and resumes the child with `continue_subagent` once the user
+  // answers. Appending through the runtime routes to the external store's
+  // `onNew` and out to the registered chat surface, i.e. the same entry point
+  // as the composer's Send, so queueing behind an in-flight turn is decided in
+  // one place rather than duplicated here.
+  const answer = useCallback(
+    (text: string) => {
+      void aui.thread.append({ role: 'user', content: [{ type: 'text', text }] });
+    },
+    [aui]
+  );
   return (
-    <AssistantUiSubagentCall activity={resolved} running={running} description={description} />
+    <AssistantUiSubagentCall
+      activity={resolved}
+      running={running}
+      description={description}
+      onAnswer={answer}
+    />
   );
 };
 

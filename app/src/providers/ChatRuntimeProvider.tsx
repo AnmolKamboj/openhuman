@@ -672,6 +672,10 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           subagentAwaitingUser({
             threadId: event.thread_id,
             rowId: `${event.thread_id}:subagent:${event.skill_id}:${event.tool_name}`,
+            // The core puts the child's `ask_user_clarification` question in
+            // `message` (progress_bridge.rs:1055). It is the only copy of the
+            // question the frontend ever receives.
+            question: event.message,
           })
         );
       },
