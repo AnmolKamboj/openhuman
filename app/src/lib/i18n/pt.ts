@@ -6749,6 +6749,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Apenas ingerido',
   'sync.pipeline.storedWithoutVectors': 'Armazenado sem vetores. Pesquisa semântica indisponível.',
+  'sync.pipeline.vectorsPending':
+    'Blocos a aguardar vetores: {count}. A pesquisa semântica irá abrangê-los em breve.',
   'sync.pipeline.signInToEnable': 'Inicie sessão para ativar',
   'sync.pipeline.extractionFailed':
     'Falha na extração da estrutura de memória. O wiki pode estar incompleto.',

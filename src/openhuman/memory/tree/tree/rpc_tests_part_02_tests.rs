@@ -476,6 +476,11 @@ async fn pipeline_status_returns_idle_for_empty_store() {
     assert_eq!(out.pipeline_jobs.failed, 0);
     assert!(!out.is_syncing);
     assert!(!out.is_paused);
+    // No gate sampler runs in unit tests, so the live policy is `Normal`.
+    assert!(!out.gate_paused);
+    assert!(out.gate_pause_reason.is_none());
+    // An empty queue has nothing waiting, so nothing is stalled.
+    assert!(!out.queue_stalled);
     assert_eq!(out.wiki_size_bytes, 0, "no content dir yet");
     assert!(out.reason.is_none());
 }
@@ -597,4 +602,40 @@ async fn set_enabled_toggles_scheduler_gate_mode() {
     assert!(on.changed);
     assert_eq!(on.mode, "auto");
     assert_eq!(cfg.scheduler_gate.mode, SchedulerGateMode::Auto);
+}
+
+/// The live gate verdict rides on the wire beside the configured mode
+/// (openhuman#6025 review): every pause reason maps to the slug the module
+/// host reports, and every running policy maps to "not paused".
+#[test]
+fn gate_pause_state_maps_the_live_policy() {
+    use crate::openhuman::cron::scheduler_gate::{PauseReason, Policy};
+
+    for (reason, slug) in [
+        (PauseReason::UserDisabled, "user_disabled"),
+        (PauseReason::OnBattery, "on_battery"),
+        (PauseReason::CpuPressure, "cpu_pressure"),
+        (PauseReason::SignedOut, "signed_out"),
+        (PauseReason::Unknown, "unknown"),
+    ] {
+        assert_eq!(
+            super::gate_pause_state(Policy::Paused { reason }),
+            (true, Some(slug.to_string()))
+        );
+    }
+    for policy in [Policy::Aggressive, Policy::Normal, Policy::Throttled] {
+        assert_eq!(super::gate_pause_state(policy), (false, None));
+    }
+}
+
+/// The stall flag the response carries is the status precedence's own
+/// predicate (openhuman#6025 review): nothing waiting is not a stall, one
+/// millisecond under the threshold is not a stall, the threshold is.
+#[test]
+fn queue_is_stalled_is_the_status_precedences_own_predicate() {
+    assert!(!super::queue_is_stalled(None));
+    assert!(!super::queue_is_stalled(Some(0)));
+    assert!(!super::queue_is_stalled(Some(QUEUE_STALL_THRESHOLD_MS - 1)));
+    assert!(super::queue_is_stalled(Some(QUEUE_STALL_THRESHOLD_MS)));
+    assert!(super::queue_is_stalled(Some(QUEUE_STALL_THRESHOLD_MS * 4)));
 }

@@ -6763,6 +6763,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Solo acquisito',
   'sync.pipeline.storedWithoutVectors':
     'Memorizzato senza vettori. Ricerca semantica non disponibile.',
+  'sync.pipeline.vectorsPending':
+    'Chunk in attesa dei vettori: {count}. La ricerca semantica li coprirà a breve.',
   'sync.pipeline.signInToEnable': 'Accedi per attivare',
   'sync.pipeline.extractionFailed':
     'Estrazione della struttura della memoria non riuscita. Il wiki potrebbe essere incompleto.',

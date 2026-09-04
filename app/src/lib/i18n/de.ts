@@ -6822,6 +6822,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Nur aufgenommen',
   'sync.pipeline.storedWithoutVectors':
     'Ohne Vektoren gespeichert. Semantische Suche nicht verfügbar.',
+  'sync.pipeline.vectorsPending':
+    'Brocken, die auf Vektoren warten: {count}. Die semantische Suche deckt sie in Kürze ab.',
   'sync.pipeline.signInToEnable': 'Zum Aktivieren anmelden',
   'sync.pipeline.extractionFailed':
     'Extraktion der Speicherstruktur fehlgeschlagen. Das Wiki ist möglicherweise unvollständig.',

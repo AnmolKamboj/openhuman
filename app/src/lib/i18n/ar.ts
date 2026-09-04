@@ -6483,6 +6483,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'تم الاستيعاب فقط',
   'sync.pipeline.storedWithoutVectors': 'مخزَّن بدون متجهات. البحث الدلالي غير متاح.',
+  'sync.pipeline.vectorsPending':
+    'أجزاء في انتظار المتجهات: {count}. سيشملها البحث الدلالي قريبًا.',
   'sync.pipeline.signInToEnable': 'سجّل الدخول للتفعيل',
   'sync.pipeline.extractionFailed': 'فشل استخراج بنية الذاكرة. قد يكون الويكي غير مكتمل.',
   'sync.pipeline.treeDegraded': 'شجرة الذاكرة متدهورة. قد يُرجع الاسترجاع نتائج قديمة.',

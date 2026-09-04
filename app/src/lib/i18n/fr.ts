@@ -6808,6 +6808,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Ingéré uniquement',
   'sync.pipeline.storedWithoutVectors':
     'Enregistré sans vecteurs. Recherche sémantique indisponible.',
+  'sync.pipeline.vectorsPending':
+    'Segments en attente de vecteurs : {count}. La recherche sémantique les couvrira sous peu.',
   'sync.pipeline.signInToEnable': 'Connectez-vous pour activer',
   'sync.pipeline.extractionFailed':
     "Échec de l'extraction de la structure mémoire. Le wiki peut être incomplet.",

@@ -6670,6 +6670,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Hanya diserap',
   'sync.pipeline.storedWithoutVectors': 'Disimpan tanpa vektor. Pencarian semantik tidak tersedia.',
+  'sync.pipeline.vectorsPending':
+    'Chunk yang menunggu vektor: {count}. Pencarian semantik akan segera mencakupnya.',
   'sync.pipeline.signInToEnable': 'Masuk untuk mengaktifkan',
   'sync.pipeline.extractionFailed': 'Ekstraksi struktur memori gagal. Wiki mungkin tidak lengkap.',
   'sync.pipeline.treeDegraded':

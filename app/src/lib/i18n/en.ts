@@ -2952,6 +2952,8 @@ const en: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690) — raw sync ≠ retrieval-ready
   'sync.pipeline.ingestedOnly': 'Ingested only',
   'sync.pipeline.storedWithoutVectors': 'Stored without vectors. Semantic search unavailable.',
+  'sync.pipeline.vectorsPending':
+    'Chunks waiting for vectors: {count}. Semantic search will cover them shortly.',
   'sync.pipeline.signInToEnable': 'Sign in to enable',
   'sync.pipeline.extractionFailed': 'Memory structure extraction failed. Wiki may be incomplete.',
   'sync.pipeline.treeDegraded': 'Memory tree degraded. Retrieval may return stale results.',
