@@ -332,6 +332,18 @@ pub fn lookup_openai_oauth_credentials(
                 }
                 Err(e) => {
                     log::warn!("{LOG_PREFIX} oauth refresh failed: {e}");
+                    // If the token has already passed its expiry there is no
+                    // point proceeding — the next inference call will hit 401
+                    // and the user sees a generic error with no remedy.
+                    // Surface it as a session-expired error so the classifier
+                    // routes the user to sign in again rather than showing
+                    // "Something went wrong". (#5869)
+                    if token_set.is_expiring_within(std::time::Duration::ZERO) {
+                        return Err(format!(
+                            "Codex session expired — token refresh failed: {e}. \
+                             Please sign in to Codex again in Settings → Integrations."
+                        ));
+                    }
                 }
             }
         }
