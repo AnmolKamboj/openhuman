@@ -8,7 +8,7 @@ use tinymemory_api::capabilities::{Capabilities, Capability};
 /// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
 /// so bumping the pin without re-reading the list is a red test rather than a
 /// silent over-claim.
-pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.13.8";
+pub(crate) const ARTIFACT_CAPABILITIES_PIN: &str = "1.14.1";
 
 /// The capability families the **pinned artifact** actually serves.
 ///
@@ -74,6 +74,12 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // and embedder identification, served by the module's engine and forwarded
     // by `MemoryScoring for ModuleMemoryProvider` below.
     Capability::Scoring,
+    // Re-read at tag `v1.14.1` (tinymemory#136 + #137, openhuman#6012). It adds a bus
+    // *member*, `BackfillConnectorTrees`, and no capability: `Capability` is the
+    // family enum, and the member is a method inside `Maintenance`, which this
+    // build already advertises. `git diff v1.13.8..v1.14.1 --
+    // crates/tinymemory-bus/src/capabilities.rs` is empty, so nothing below moves.
+    //
     // Re-read at tag `v1.13.8` (tinymemory#134, openhuman#6007): the connector
     // sync path now routes its items into the memory-tree ingest funnel, and
     // `forget_source` sweeps the per-item tree rows it creates. Behaviour inside
@@ -152,8 +158,9 @@ use tinymemory_api::provider::sync::{
     SyncRunOutcome,
 };
 use tinymemory_api::provider::types::{
-    ChunkEntityOccurrence, DiffReport, EntityHit, EntityOccurrence, ExportPage, ExportRecord,
-    FlushOutcome, ForgetOutcome, ForgetSelector, ImportOutcome, IngestItem, IngestOutcome,
+    BackfillTreesOutcome, BackfillTreesRequest, ChunkEntityOccurrence, DiffReport, EntityHit,
+    EntityOccurrence, ExportPage, ExportRecord, FlushOutcome, ForgetOutcome, ForgetSelector,
+    ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, PurgeOutcome, QueueFailure, QueueStats, ResetOutcome, SnapshotRef,
     SourceItem, SourceScope, StoreStats,
 };
