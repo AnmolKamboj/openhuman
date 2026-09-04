@@ -290,6 +290,27 @@ describe('deriveSourcePipelineHealth — vectors pending vs stored without vecto
     expect(h.vectorsPending).toBe(true);
   });
 
+  it.each([
+    { label: 'is_paused', pipeline: makePipeline({ is_paused: true }) },
+    { label: "status 'paused'", pipeline: makePipeline({ status: 'paused', reason: 'gate off' }) },
+  ])(
+    'reads a paused scheduler ($label) as stuck even while a chain is armed and ingest is fresh',
+    ({ pipeline }) => {
+      // Pausing the memory-tree scheduler stops every LLM-bound job, the embed
+      // chain included, while leaving its `in_progress` flag armed and letting
+      // ingest keep writing. Nothing will drain the backlog until the user
+      // resumes, so "shortly" would be a promise nobody is keeping.
+      const h = deriveSourcePipelineHealth(
+        makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'active' }),
+        pipeline,
+        makeBackfill({ in_progress: true, pending_jobs: 1 })
+      );
+      expect(h.state).toBe('ingested_only');
+      expect(h.issues).toEqual(['stored_without_vectors']);
+      expect(h.vectorsPending).toBe(false);
+    }
+  );
+
   it('stays retrieval_ready when a backfill runs but this source has nothing pending', () => {
     const h = deriveSourcePipelineHealth(
       makeStatus({ chunks_pending: 0 }),
