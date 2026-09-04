@@ -121,8 +121,19 @@ type TerminalListener = (event: TerminalSyncEvent) => void;
  */
 export const RECONCILE_GRACE_MS = 10_000;
 
-/** Stages that mean a run is in progress for the button's sake (RC#1, #3295). */
-const SYNCING_STAGES = new Set(['requested', 'fetching', 'stored', 'queued', 'ingesting']);
+/**
+ * Stages that mean a run is in progress for the button's sake (RC#1, #3295).
+ * `running` is the connector's one live stage; the reader path narrates the
+ * rest.
+ */
+const SYNCING_STAGES = new Set([
+  'running',
+  'requested',
+  'fetching',
+  'stored',
+  'queued',
+  'ingesting',
+]);
 
 const EMPTY: MemorySyncActivity = {
   syncingIds: new Set(),
@@ -273,6 +284,12 @@ export function reconcileWithStatuses(statuses: SourceStatus[], now = Date.now()
     const live = status.sync_stage;
     const knownLive = progress.has(rowId) || syncingIds.has(rowId);
     if (live) {
+      // The core has the row running: the flag follows, whether the store
+      // learns of the run here (a cold mount) or already had the bar.
+      if (!syncingIds.has(rowId)) {
+        syncingIds.add(rowId);
+        changed = true;
+      }
       // A row the button lit optimistically has no bar yet; if its first
       // stage event was missed, the poll is what carries the stage.
       if (progress.has(rowId)) continue;

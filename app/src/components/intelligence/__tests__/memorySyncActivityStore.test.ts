@@ -90,6 +90,14 @@ describe('memorySyncActivityStore', () => {
     reconcileWithStatuses([status('src-d', { sync_stage: 'running', sync_detail: 'pass 2' })]);
     const s = getMemorySyncActivity();
     expect(s.progress.get('src-d')).toEqual({ stage: 'running', detail: 'pass 2', percent: null });
+    // The flag follows the bar on a cold mount: the button must read as
+    // syncing, not only the row.
+    expect(s.syncingIds.has('src-d')).toBe(true);
+  });
+
+  it("marks the connector's `running` stage as syncing like the reader stages", () => {
+    applyStageEvent({ stage: 'running', source_id: 'src-h', detail: null });
+    expect(getMemorySyncActivity().syncingIds.has('src-h')).toBe(true);
   });
 
   it('leaves a fresh local entry alone when the core says idle, and clears a stale one', () => {
