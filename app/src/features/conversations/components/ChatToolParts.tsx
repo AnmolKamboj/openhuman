@@ -18,6 +18,7 @@ import type { PendingApproval, SubagentActivity } from '../../../store/chatRunti
 import { useAppSelector } from '../../../store/hooks';
 import { AssistantUiSubagentCall, isActiveSubagentStatus } from './AssistantUiSubagentCall';
 import { isApprovalPending, OpenHumanToolCall } from './AssistantUiToolCall';
+import { useSubagentDrawerHost } from './aui/subagentDrawerHost';
 
 function asSubagentActivity(value: unknown): SubagentActivity | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -72,12 +73,29 @@ export const SubagentCall: ToolCallMessagePartComponent = ({ args, result }) => 
     },
     [aui]
   );
+  // "View full processing" opens the host's `SubagentDrawer`. This is the only
+  // renderer for a delegation on the assistant-ui surface, and it was the only
+  // one that offered no way in: the legacy `ToolTimelineBlock` passes `onView`
+  // per row, and the sole remaining launcher -- `BackgroundProcessesPanel` --
+  // lists async/typed spawns only, so every other delegation's persisted worker
+  // conversation was unreachable.
+  //
+  // Offered only when the host says the drawer can resolve the row -- it looks
+  // the delegation up by `taskId` in the thread's live timeline
+  // (`TranscriptOverlays`) and renders nothing for a `taskId` that is not
+  // there, so a part replayed from the settled core transcript would otherwise
+  // get a button that opens an empty sheet. Asked of the host rather than of
+  // Redux directly: this component renders on surfaces that have no store.
+  const drawerHost = useSubagentDrawerHost();
+  const taskId = resolved.taskId;
+  const view = useCallback(() => drawerHost?.open(taskId), [drawerHost, taskId]);
   return (
     <AssistantUiSubagentCall
       activity={resolved}
       running={running}
       description={description}
       onAnswer={answer}
+      onView={drawerHost?.canOpen(taskId) ? view : undefined}
     />
   );
 };

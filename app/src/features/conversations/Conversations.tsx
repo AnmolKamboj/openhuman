@@ -1732,6 +1732,14 @@ const Conversations = ({
     [selectedThreadToolTimeline]
   );
   const runningBackgroundCount = backgroundProcesses.filter(p => p.status === 'running').length;
+  // `TranscriptOverlays` resolves the open delegation out of this same live
+  // timeline and renders nothing when the id is absent, so an inline card must
+  // not offer "View full processing" for a delegation that would open an empty
+  // sheet -- a delegation replayed from the settled core transcript, say.
+  const canOpenSubagentDrawer = useCallback(
+    (taskId: string) => selectedThreadToolTimeline.some(entry => entry.subagent?.taskId === taskId),
+    [selectedThreadToolTimeline]
+  );
   // Poll-free live signal: lights the badge when memories are syncing even if
   // no sub-agent is running and the panel is closed.
   const memorySyncActive = useMemorySyncActive();
@@ -2648,6 +2656,12 @@ const Conversations = ({
         // same conversation partner, not a second one.
         onOpenHumanMode={() => navigate('/human')}
         onSwitchToMicCloud={() => setComposerOverride('mic-cloud')}
+        // Lets a delegation card inside the transcript open the drawer below.
+        // `setOpenSubagentTaskId` is a stable setter, and `canOpenSubagent` is
+        // memoised on the timeline, so the context value only churns when the
+        // set of resolvable delegations actually changes.
+        onOpenSubagent={setOpenSubagentTaskId}
+        canOpenSubagent={canOpenSubagentDrawer}
         onModelChange={(value, contextWindow) => {
           setComposerModelOverride(value);
           setComposerModelContextWindow(contextWindow ?? null);

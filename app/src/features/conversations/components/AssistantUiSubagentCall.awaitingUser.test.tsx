@@ -25,6 +25,7 @@ import chatRuntimeReducer, {
 } from '../../../store/chatRuntimeSlice';
 import threadReducer from '../../../store/threadSlice';
 import { AssistantUiSubagentCall } from './AssistantUiSubagentCall';
+import { SubagentDrawerHost } from './aui/subagentDrawerHost';
 import { SubagentCall } from './ChatToolParts';
 
 vi.mock('../../../services/api/threadApi', () => ({
@@ -70,8 +71,8 @@ function buildStore() {
   });
 }
 
-/** Drive the row through the real reducers, exactly as the socket does. */
-function parkTheDelegation(store: ReturnType<typeof buildStore>, question: string) {
+/** One `subagent_spawned`, identified the way the provider identifies them. */
+function spawn(store: ReturnType<typeof buildStore>, spawnEventId?: string) {
   store.dispatch(
     subagentSpawned({
       threadId: THREAD_ID,
@@ -80,9 +81,23 @@ function parkTheDelegation(store: ReturnType<typeof buildStore>, question: strin
       taskId: 'sub-1',
       agentId: 'researcher',
       displayName: 'Researcher',
+      spawnEventId,
     })
   );
+}
+
+/** Drive the row through the real reducers, exactly as the socket does. */
+function parkTheDelegation(
+  store: ReturnType<typeof buildStore>,
+  question: string,
+  spawnEventId = 'req-1:3'
+) {
+  spawn(store, spawnEventId);
   store.dispatch(subagentAwaitingUser({ threadId: THREAD_ID, rowId: ROW_ID, question }));
+}
+
+function rowOf(store: ReturnType<typeof buildStore>) {
+  return store.getState().chatRuntime.toolTimelineByThread[THREAD_ID]?.[0];
 }
 
 afterEach(() => __resetChatSurfaces());
@@ -109,22 +124,62 @@ describe('sub-agent awaiting user', () => {
       // `subagent_spawned` for the SAME task/agent, so the row id is identical.
       // The idempotency guard used to swallow it wholesale, leaving the card
       // asking a question the user had already answered for the rest of the run.
-      store.dispatch(
-        subagentSpawned({
-          threadId: THREAD_ID,
-          round: 1,
-          rowId: ROW_ID,
-          taskId: 'sub-1',
-          agentId: 'researcher',
-          displayName: 'Researcher',
-        })
-      );
+      // The resume is a new emission, so it carries a new `(request_id, seq)`
+      // -- in practice a whole new parent turn, since the user's answer is what
+      // triggers it.
+      spawn(store, 'req-2:0');
 
       const rows = store.getState().chatRuntime.toolTimelineByThread[THREAD_ID] ?? [];
       expect(rows).toHaveLength(1); // still idempotent: no duplicate row
       expect(rows[0]?.status).toBe('running');
       expect(rows[0]?.subagent?.status).toBe('running');
       expect(rows[0]?.subagent?.awaitingQuestion).toBeUndefined();
+    });
+
+    it('keeps the pending question when the ORIGINAL spawn is redelivered', () => {
+      // This socket reconnects and replays freely -- 13+ times in one measured
+      // session. A redelivered `subagent_spawned` arriving after
+      // `subagent_awaiting_user` is shape-identical to `continue_subagent`
+      // resuming the child, so the unpark used to fire on it and the question
+      // vanished while the child was still blocked on the user: a spinner with
+      // nothing to answer, which is the exact bug this whole change exists to
+      // remove. The redelivery repeats the identity the core stamped, so it is
+      // recognisable as a replay.
+      const store = buildStore();
+      parkTheDelegation(store, 'Which of the two repos should I patch?', 'req-1:3');
+
+      spawn(store, 'req-1:3'); // <- the same emission, delivered twice
+
+      const rows = store.getState().chatRuntime.toolTimelineByThread[THREAD_ID] ?? [];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe('awaiting_user');
+      expect(rows[0]?.subagent?.status).toBe('awaiting_user');
+      expect(rows[0]?.subagent?.awaitingQuestion).toBe('Which of the two repos should I patch?');
+    });
+
+    it('keeps the pending question when the spawn cannot be identified at all', () => {
+      // An older core stamps no `seq`, so a replay inside one request collapses
+      // to the same string as the original. Failing towards "this is a replay"
+      // is deliberate: a stale question is visible and still settles on
+      // `subagent_done`, while a silently cleared one strands the user.
+      const store = buildStore();
+      parkTheDelegation(store, 'Which repo?', undefined);
+
+      spawn(store, undefined);
+
+      expect(rowOf(store)?.status).toBe('awaiting_user');
+      expect(rowOf(store)?.subagent?.awaitingQuestion).toBe('Which repo?');
+    });
+
+    it('leaves a running row alone when its spawn is redelivered', () => {
+      // The replay guard must not disturb the ordinary case it also covers.
+      const store = buildStore();
+      spawn(store, 'req-1:3');
+      spawn(store, 'req-1:3');
+
+      const rows = store.getState().chatRuntime.toolTimelineByThread[THREAD_ID] ?? [];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe('running');
     });
   });
 
@@ -221,6 +276,93 @@ describe('sub-agent awaiting user', () => {
       // answer is an ordinary user turn on the registered chat surface.
       await waitFor(() => expect(send).toHaveBeenCalledWith('the second one'));
       expect(screen.getByTestId('subagent-answer-sent')).toBeInTheDocument();
+    });
+  });
+
+  describe('opening the drawer', () => {
+    /** Render the inline delegation card the way the /chat transcript does. */
+    function renderInlineCall(
+      store: ReturnType<typeof buildStore>,
+      onOpenSubagent?: (taskId: string) => void,
+      canOpenSubagent?: (taskId: string) => boolean
+    ) {
+      return render(
+        <Provider store={store}>
+          <AssistantUiRuntimeProvider>
+            <SubagentDrawerHost onOpenSubagent={onOpenSubagent} canOpenSubagent={canOpenSubagent}>
+              <SubagentCall
+                type="tool-call"
+                toolName="task"
+                toolCallId={ROW_ID}
+                args={{ subagent_type: 'researcher', progress: activity } as never}
+                argsText="{}"
+                result={undefined}
+                status={{ type: 'running' }}
+                addResult={() => {}}
+                resume={() => {}}
+                respondToApproval={() => {}}
+              />
+            </SubagentDrawerHost>
+          </AssistantUiRuntimeProvider>
+        </Provider>
+      );
+    }
+
+    /**
+     * The card is collapsed by default and the "View full processing" button
+     * lives in its content, so every assertion here has to open it first --
+     * otherwise the two negative cases pass for the wrong reason.
+     */
+    async function expandCard() {
+      await act(async () => {
+        await userEvent.click(screen.getByRole('button', { name: /Delegated to Researcher/i }));
+      });
+    }
+
+    it('opens the sub-agent drawer on the delegation the card is showing', async () => {
+      // This is the ONLY renderer for a delegation on the assistant-ui surface,
+      // and it offered no way into `SubagentDrawer`: the legacy
+      // `ToolTimelineBlock` passes `onView` per row, and the one remaining
+      // launcher (`BackgroundProcessesPanel`) lists async/typed spawns only, so
+      // every other delegation's persisted worker conversation was unreachable.
+      const store = buildStore();
+      spawn(store, 'req-1:3');
+      const onOpenSubagent = vi.fn();
+
+      renderInlineCall(store, onOpenSubagent, () => true);
+      await expandCard();
+
+      await act(async () => {
+        await userEvent.click(screen.getByTestId('subagent-view-processing'));
+      });
+      expect(onOpenSubagent).toHaveBeenCalledWith('sub-1');
+    });
+
+    it('offers nothing when no host is mounted', async () => {
+      // The read-only mounts of this card (the drawer itself, past-turn
+      // insights) render outside the host and must not grow a dead button.
+      const store = buildStore();
+      spawn(store, 'req-1:3');
+
+      renderInlineCall(store, undefined, () => true);
+      await expandCard();
+
+      expect(screen.getByTestId('subagent-activity')).toBeInTheDocument();
+      expect(screen.queryByTestId('subagent-view-processing')).not.toBeInTheDocument();
+    });
+
+    it('offers nothing for a delegation the drawer cannot resolve', async () => {
+      // `TranscriptOverlays` looks the row up by `taskId` in the thread's live
+      // timeline and renders nothing when it is absent, so a part replayed from
+      // the settled core transcript would get a button opening an empty sheet.
+      const store = buildStore();
+      spawn(store, 'req-1:3');
+
+      renderInlineCall(store, vi.fn(), () => false);
+      await expandCard();
+
+      expect(screen.getByTestId('subagent-activity')).toBeInTheDocument();
+      expect(screen.queryByTestId('subagent-view-processing')).not.toBeInTheDocument();
     });
   });
 });

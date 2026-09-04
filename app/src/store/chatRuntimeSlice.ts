@@ -92,6 +92,20 @@ export interface SubagentActivity {
    * but not what on, and the user has nothing to answer.
    */
   awaitingQuestion?: string;
+  /**
+   * Identity (`<request_id>:<seq>`) of the `subagent_spawned` event that last
+   * started or resumed this delegation.
+   *
+   * `continue_subagent` announces a resume by republishing `subagent_spawned`
+   * for the same task/agent, so "an existing row got spawned again" is the
+   * only resume signal the frontend gets — and a Socket.IO redelivery of the
+   * ORIGINAL spawn is indistinguishable from it by shape alone. Comparing
+   * identities separates them: a redelivery repeats the pair the core stamped
+   * (`publish_seq_stamped`), a genuine resume never does. Without this a
+   * replay clears a live pause and the child's question disappears while it is
+   * still blocked on the user.
+   */
+  spawnEventId?: string;
   /** Human-readable display name from the agent registry (e.g. "Researcher"). */
   displayName?: string;
   /**
@@ -1478,6 +1492,8 @@ const chatRuntimeSlice = createSlice({
         workerThreadId?: string;
         mode?: string;
         dedicatedThread?: boolean;
+        /** `<request_id>:<seq>` of the emitting event; see {@link SubagentActivity.spawnEventId}. */
+        spawnEventId?: string;
       }>
     ) => {
       const {
@@ -1490,6 +1506,7 @@ const chatRuntimeSlice = createSlice({
         workerThreadId,
         mode,
         dedicatedThread,
+        spawnEventId,
       } = action.payload;
       const entries = (state.toolTimelineByThread[threadId] ??= []);
       // Idempotent: a socket redelivery must not append a second row with the
@@ -1503,11 +1520,30 @@ const chatRuntimeSlice = createSlice({
         // frontend gets that the pause is over. Swallowing it left the row
         // stuck on `awaiting_user` for the rest of the run: the card kept
         // asking a question the user had already answered.
-        if (existing.status === 'awaiting_user') {
+        //
+        // But "the row already exists and got spawned again" is ALSO what a
+        // redelivered original spawn looks like, and this socket redelivers
+        // often. So the unpark is gated on event identity: only a spawn the
+        // row has not already been started by can be a resume. A replay
+        // repeats the identity the core stamped and is ignored, which is the
+        // safe direction to fail — a stale question is visible and recoverable
+        // (`subagent_done` still settles the row), a silently cleared one
+        // leaves the user staring at a spinner with nothing to answer.
+        //
+        // Unidentifiable events (an older core with no `seq`, replaying inside
+        // one request) collapse to the same string and are therefore treated
+        // as replays, deliberately: the cross-turn resume that matters carries
+        // a different `request_id` regardless.
+        const isResume =
+          existing.status === 'awaiting_user' &&
+          spawnEventId !== undefined &&
+          spawnEventId !== existing.subagent?.spawnEventId;
+        if (isResume) {
           existing.status = 'running';
           if (existing.subagent) {
             existing.subagent.status = 'running';
             existing.subagent.awaitingQuestion = undefined;
+            existing.subagent.spawnEventId = spawnEventId;
           }
         }
         return;
@@ -1535,6 +1571,7 @@ const chatRuntimeSlice = createSlice({
             agentId,
             displayName,
             workerThreadId,
+            spawnEventId,
             mode,
             dedicatedThread,
             prompt: pending.prompt,

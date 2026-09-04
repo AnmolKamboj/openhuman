@@ -15,6 +15,7 @@ import { useAppSelector } from '../../../store/hooks';
 import { DEFAULT_MASCOT_COLOR } from '../../../store/mascotSlice';
 import { MascotChipAvatar } from '../../human/Mascot/MascotChipAvatar';
 import { AssistantUiInferenceStatus } from './AssistantUiInferenceStatus';
+import { SubagentDrawerHost } from './aui/subagentDrawerHost';
 import { ChatToolFallback, ChatToolGroup } from './ChatToolParts';
 import { contextUsageFromTokenUsage, ContextWindowPill } from './composer/ContextWindowPill';
 import {
@@ -78,6 +79,8 @@ export function AssistantUiChat({
   onAttachmentOnlySend,
   onOpenHumanMode,
   onSwitchToMicCloud,
+  onOpenSubagent,
+  canOpenSubagent,
 }: {
   threadGoal: ThreadGoalController;
   model: string | null;
@@ -104,6 +107,14 @@ export function AssistantUiChat({
   onOpenHumanMode?: () => void;
   /** Switches to the existing microphone-first chat composer. */
   onSwitchToMicCloud?: () => void;
+  /**
+   * Opens the host's `SubagentDrawer` on a delegation, by spawn `taskId`.
+   * Handed down by context rather than by prop because the caller is a tool
+   * part rendered from inside the transcript; see `subagentDrawerHost`.
+   */
+  onOpenSubagent?: (taskId: string) => void;
+  /** Whether the host's drawer can resolve that delegation; see the same file. */
+  canOpenSubagent?: (taskId: string) => boolean;
 }) {
   const { t } = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -275,14 +286,16 @@ export function AssistantUiChat({
   return (
     <AssistantUiRuntimeProvider>
       <ComposerTextBridge value={inputValue} onChange={onInputValueChange} />
-      <Thread
-        components={components}
-        model={model}
-        onModelChange={onModelChange}
-        loadError={loadError}
-        onEscape={onEscape}
-        slashCommands={slashCommands}
-      />
+      <SubagentDrawerHost onOpenSubagent={onOpenSubagent} canOpenSubagent={canOpenSubagent}>
+        <Thread
+          components={components}
+          model={model}
+          onModelChange={onModelChange}
+          loadError={loadError}
+          onEscape={onEscape}
+          slashCommands={slashCommands}
+        />
+      </SubagentDrawerHost>
     </AssistantUiRuntimeProvider>
   );
 }
