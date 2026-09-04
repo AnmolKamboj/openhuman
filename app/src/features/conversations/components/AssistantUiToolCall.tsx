@@ -1,10 +1,6 @@
-import type {
-  ToolApprovalOption,
-  ToolCallMessagePart,
-  ToolCallMessagePartComponent,
-} from '@assistant-ui/react';
+import type { ToolCallMessagePart, ToolCallMessagePartProps } from '@assistant-ui/react';
 import { CheckIcon, ChevronDownIcon, CircleXIcon, Loader2Icon, WrenchIcon } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import type { FC, ReactNode } from 'react';
 
 import { cn } from '../../../components/assistant-ui/lib/utils';
 import {
@@ -12,8 +8,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '../../../components/assistant-ui/ui/collapsible';
-import { Button } from '../../../components/ui';
-import { useT } from '../../../lib/i18n/I18nContext';
 import type {
   ToolFailureExplanation,
   ToolTimelineEntryStatus,
@@ -114,87 +108,6 @@ function inferredToolLabel(toolName: string, running: boolean, args: unknown, re
  */
 export function isApprovalPending(approval: ToolCallMessagePart['approval']): boolean {
   return approval != null && approval.approved === undefined && approval.resolution === undefined;
-}
-
-/**
- * How long a pressed decision stays disabled before the buttons come back.
- * Long enough that a slow-but-succeeding decide never flickers; short enough
- * that a failed one does not strand the only surface that can unblock the turn.
- */
-const DECISION_RETRY_MS = 10_000;
-
-/** i18n key per assistant-ui approval `kind`; `undefined` for kinds we skip. */
-const APPROVAL_LABEL_KEYS: Record<string, string> = {
-  'allow-once': 'chat.approval.approve',
-  'allow-always': 'chat.approval.alwaysAllow',
-  'reject-once': 'chat.approval.deny',
-  'reject-always': 'chat.approval.deny',
-};
-
-/**
- * The decision row for a parked tool call, rendered inline under the call it
- * gates rather than as a banner elsewhere on the page.
- *
- * This is deliberately not `ToolFallbackApproval` from the assistant-ui kit:
- * that component hardcodes English labels and the kit's own button, while every
- * other approval surface in OpenHuman is localized and wears the app's buttons.
- * The wire contract is identical — `respondToApproval({ optionId })` resolves
- * through the runtime to the adapter's `onRespondToToolApproval`, which is what
- * calls `openhuman.approval_decide`.
- */
-function ToolApprovalBar({
-  approval,
-  respondToApproval,
-}: {
-  approval: NonNullable<ToolCallMessagePart['approval']>;
-  respondToApproval: (response: { optionId: string }) => void;
-}) {
-  const { t } = useT();
-  // Local, not derived from the store: the decision RPC is in flight before the
-  // socket clears the gate, and a second click in that window would throw
-  // ("Tool call has no pending approval") inside the runtime.
-  // Which decision is in flight, not merely that one is: only the pressed
-  // button says "Working…", the rest stay readable while disabled — the same
-  // shape `ApprovalRequestCard` uses.
-  const [deciding, setDeciding] = useState<string | null>(null);
-  // A successful decide clears the gate and unmounts this bar within a beat. A
-  // failed one cannot say so — `respondToApproval` returns void and the runtime
-  // swallows the rejection — so re-offer the decision rather than leaving the
-  // user staring at a disabled button on a turn that is still parked.
-  useEffect(() => {
-    if (!deciding) return;
-    const timer = window.setTimeout(() => setDeciding(null), DECISION_RETRY_MS);
-    return () => window.clearTimeout(timer);
-  }, [deciding]);
-  const options: readonly ToolApprovalOption[] = approval.options ?? [];
-  if (options.length === 0) return null;
-
-  return (
-    <div
-      data-testid="assistant-ui-tool-approval"
-      className="flex flex-wrap items-center gap-2 px-3 pb-3">
-      {options.map((option, index) => (
-        <Button
-          key={option.id}
-          type="button"
-          size="sm"
-          variant={index === 0 ? 'primary' : 'secondary'}
-          data-analytics-id={`chat-approval-${option.id}`}
-          title={option.kind === 'allow-always' ? t('chat.approval.alwaysAllowHint') : undefined}
-          disabled={deciding !== null}
-          onClick={() => {
-            if (deciding !== null) return;
-            setDeciding(option.id);
-            respondToApproval({ optionId: option.id });
-          }}>
-          {deciding === option.id
-            ? t('chat.approval.deciding')
-            : (option.label ??
-              (APPROVAL_LABEL_KEYS[option.kind] ? t(APPROVAL_LABEL_KEYS[option.kind]) : option.id))}
-        </Button>
-      ))}
-    </div>
-  );
 }
 
 export interface AssistantUiToolCallCardProps {
@@ -352,13 +265,25 @@ function toolStatusEnvelope(
     : undefined;
 }
 
-export const OpenHumanToolCall: ToolCallMessagePartComponent = props => {
+/**
+ * One tool call in the assistant-ui transcript.
+ *
+ * `approval` is supplied by assistant-ui on every tool part; this component used
+ * to destructure four fields and drop the rest, which is why a parked call
+ * rendered as an ordinary running one with no way to answer it.
+ *
+ * The decision surface itself is passed in rather than built here. It is
+ * `ApprovalRequestCard`, which needs the thread id and the store's
+ * `PendingApproval` — neither of which belongs in this file, and both of which
+ * `ChatToolParts` already resolves for the `composio_connect` route.
+ */
+export const OpenHumanToolCall: FC<
+  ToolCallMessagePartProps & {
+    /** Decision surface for a parked call; rendered under the call's header. */
+    approvalCard?: ReactNode;
+  }
+> = props => {
   const envelope = toolStatusEnvelope(props.result);
-  // `approval`, `status` and `respondToApproval` are supplied by assistant-ui on
-  // every tool part; this component used to destructure four fields and drop the
-  // rest, which is why a parked call rendered as an ordinary running one with no
-  // way to answer it.
-  const pending = isApprovalPending(props.approval);
   return (
     <AssistantUiToolCallCard
       toolName={props.toolName}
@@ -367,12 +292,8 @@ export const OpenHumanToolCall: ToolCallMessagePartComponent = props => {
       result={envelope ? envelope.value : props.result}
       status={envelope?.status}
       failure={envelope?.failure}
-      awaitingUser={pending}
-      footer={
-        pending && props.approval && props.respondToApproval ? (
-          <ToolApprovalBar approval={props.approval} respondToApproval={props.respondToApproval} />
-        ) : undefined
-      }
+      awaitingUser={isApprovalPending(props.approval)}
+      footer={props.approvalCard}
     />
   );
 };

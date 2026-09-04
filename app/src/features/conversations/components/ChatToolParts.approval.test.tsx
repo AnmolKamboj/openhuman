@@ -3,19 +3,26 @@
  *
  * `AssistantUiChat` overrides assistant-ui's `ToolFallback` with
  * `ChatToolFallback`, and the component behind it destructured four fields and
- * dropped `status`, `approval` and `respondToApproval` — so even once the
- * runtime carried a decision, nothing on screen offered it. The kit's own
- * approval-capable fallback renders on no user-facing surface (only the dev
- * demo), which is why a grep for approval support in `components/assistant-ui`
- * looked healthy while the chat had none.
+ * dropped `status` and `approval` — so even once the runtime carried a decision,
+ * nothing on screen offered it. The kit's own approval-capable fallback renders
+ * on no user-facing surface (only the dev demo), which is why a grep for
+ * approval support in `components/assistant-ui` looked healthy while the chat
+ * had none.
+ *
+ * The controls are `ApprovalRequestCard`, the surface AGENTS.md designates for
+ * this gate, so the core's action summary and the decision are one component.
+ * A bespoke bar shipped first and had already lost the summary: it offered
+ * "Always allow" for a `shell` call whose command the user could not read, and
+ * `approve_always_for_tool` persists to the auto-approve allowlist.
  */
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { act, render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssistantUiRuntimeProvider } from '../../../providers/AssistantUiRuntimeProvider';
+import { callCoreRpc } from '../../../services/coreRpcClient';
 import chatRuntimeReducer, {
   type PendingApproval,
   setPendingApprovalForThread,
@@ -37,8 +44,14 @@ vi.mock('../../../services/api/threadApi', () => ({
   },
 }));
 
+vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc: vi.fn() }));
+
 const THREAD_ID = 't-1';
 const REQUEST_ID = 'appr-1';
+
+/** The core's own explanation of what it is asking to do. */
+const SUMMARY = 'Run shell — list the repository root';
+const COMMAND = 'ls -la /Users/dev/secret-project';
 
 /** The option set the projection puts on a parked call. */
 const OPTIONS = [
@@ -47,13 +60,22 @@ const OPTIONS = [
   { id: 'deny', kind: 'reject-once' as const },
 ];
 
+const SHELL_REQUEST: PendingApproval = {
+  requestId: REQUEST_ID,
+  toolName: 'shell',
+  message: SUMMARY,
+  command: COMMAND,
+};
+
 function gatedPart(over: Record<string, unknown> = {}) {
   return {
     type: 'tool-call' as const,
     toolName: 'shell',
     toolCallId: 'call-1',
-    args: { command: 'ls -la' } as never,
-    argsText: '{"command":"ls -la"}',
+    // Deliberately argument-less: the gate can park before the `tool_call`
+    // frame lands, and redacted args are the case the summary exists for.
+    args: {} as never,
+    argsText: '{}',
     result: undefined,
     status: { type: 'requires-action' as const, reason: 'interrupt' as const },
     approval: { id: REQUEST_ID, options: OPTIONS },
@@ -94,80 +116,93 @@ function renderInThread(node: React.ReactNode, approval?: PendingApproval) {
   );
 }
 
-describe('ChatToolFallback — parked approval', () => {
-  it('offers the decision on the gated call', () => {
-    render(<ChatToolFallback {...gatedPart()} />);
+beforeEach(() => {
+  vi.mocked(callCoreRpc).mockReset();
+  vi.mocked(callCoreRpc).mockResolvedValue(undefined as never);
+});
 
-    const bar = screen.getByTestId('assistant-ui-tool-approval');
-    expect(bar).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Always allow' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Deny' })).toBeInTheDocument();
+describe('ChatToolFallback — parked approval', () => {
+  it('shows the core action summary and the exact command', () => {
+    renderInThread(<ChatToolFallback {...gatedPart()} />, SHELL_REQUEST);
+
+    expect(screen.getByText(SUMMARY)).toBeInTheDocument();
+    expect(screen.getByText(COMMAND)).toBeInTheDocument();
+  });
+
+  it('keeps every decision control inside the card that carries the summary', () => {
+    // The consent surface must show what is being consented to. A control that
+    // can render without the summary beside it is the defect this pins:
+    // `approve_always_for_tool` writes the auto-approve allowlist, so deciding
+    // blind is a durable mistake, not a recoverable one.
+    renderInThread(<ChatToolFallback {...gatedPart()} />, SHELL_REQUEST);
+
+    const card = screen.getByRole('alertdialog');
+    expect(within(card).getByText(SUMMARY)).toBeInTheDocument();
+    expect(within(card).getByText(COMMAND)).toBeInTheDocument();
+    for (const name of ['Approve', 'Always allow', 'Deny']) {
+      expect(within(card).getByRole('button', { name })).toBeInTheDocument();
+    }
+    // And nowhere else on the surface.
+    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Always allow' })).toHaveLength(1);
   });
 
   it('says the call is awaiting input, not merely running', () => {
     // The `awaiting input` label existed but was unreachable: its only trigger
     // was a `status` the adapter forwards for `error` / `cancelled` alone.
-    render(<ChatToolFallback {...gatedPart()} />);
+    renderInThread(<ChatToolFallback {...gatedPart()} />, SHELL_REQUEST);
 
     expect(screen.getByText('awaiting input')).toBeInTheDocument();
     expect(screen.queryByText('running')).not.toBeInTheDocument();
   });
 
-  it('sends the chosen option id straight to the runtime', async () => {
-    const respondToApproval = vi.fn();
-    render(<ChatToolFallback {...gatedPart({ respondToApproval })} />);
+  it('routes a decision to openhuman.approval_decide', async () => {
+    const store = buildStore(SHELL_REQUEST);
+    render(
+      <Provider store={store}>
+        <AssistantUiRuntimeProvider>
+          <ChatToolFallback {...gatedPart()} />
+        </AssistantUiRuntimeProvider>
+      </Provider>
+    );
 
     await userEvent.click(screen.getByRole('button', { name: 'Always allow' }));
 
-    // The id is the core's own `approval_decide` decision literal, so the
-    // adapter forwards it without a translation table.
-    expect(respondToApproval).toHaveBeenCalledWith({ optionId: 'approve_always_for_tool' });
+    await waitFor(() => expect(callCoreRpc).toHaveBeenCalledTimes(1));
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.approval_decide',
+      params: { request_id: REQUEST_ID, decision: 'approve_always_for_tool' },
+    });
+    await waitFor(() =>
+      expect(store.getState().chatRuntime.pendingApprovalByThread[THREAD_ID]).toBeUndefined()
+    );
   });
 
-  it('does not offer a second decision while the first is in flight', async () => {
-    const respondToApproval = vi.fn();
-    render(<ChatToolFallback {...gatedPart({ respondToApproval })} />);
+  it('re-offers the decision when the decide fails', async () => {
+    // Reusing the card buys this for free: a bespoke bar could not see the
+    // rejection, because the runtime swallows it.
+    vi.mocked(callCoreRpc).mockRejectedValue(new Error('core unreachable'));
+    renderInThread(<ChatToolFallback {...gatedPart()} />, SHELL_REQUEST);
 
-    const approve = screen.getByRole('button', { name: 'Approve' });
-    await userEvent.click(approve);
-    await userEvent.click(approve);
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
-    // A second decision throws "Tool call has no pending approval" inside the
-    // runtime, in the window before the socket clears the gate.
-    expect(respondToApproval).toHaveBeenCalledTimes(1);
-  });
-
-  it('re-offers the decision when the decide never lands', async () => {
-    // `respondToApproval` returns void and the runtime swallows a rejection, so
-    // a failed decide is indistinguishable from a slow one here. Coming back is
-    // what keeps a still-parked turn answerable.
-    vi.useFakeTimers();
-    try {
-      const respondToApproval = vi.fn();
-      render(<ChatToolFallback {...gatedPart({ respondToApproval })} />);
-      const approve = screen.getByRole('button', { name: 'Approve' });
-      act(() => approve.click());
-      expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled();
-
-      act(() => vi.advanceTimersByTime(10_000));
-
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
-    } finally {
-      vi.useRealTimers();
-    }
+    await waitFor(() =>
+      expect(screen.getByText(/Could not record your decision/)).toBeInTheDocument()
+    );
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
   it('leaves an ordinary running tool alone', () => {
     // Every unsettled tool part in a `requires-action` message inherits that
-    // status, so the prompt must key off the approval, not off the status.
-    render(
+    // status, so the prompt must key off the store's request, not the status.
+    renderInThread(
       <ChatToolFallback
         {...gatedPart({ toolName: 'web_search', approval: undefined, toolCallId: 'call-2' })}
-      />
+      />,
+      SHELL_REQUEST
     );
 
-    expect(screen.queryByTestId('assistant-ui-tool-approval')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(screen.queryByText('awaiting input')).not.toBeInTheDocument();
   });
 
@@ -188,27 +223,18 @@ describe('ChatToolFallback — parked approval', () => {
 
     expect(screen.getByTestId('assistant-ui-integration-connect')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /connect/i })).toBeInTheDocument();
-    expect(screen.queryByTestId('assistant-ui-tool-approval')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
-  it('falls back to the ordinary card when the connect request is not the parked one', () => {
-    // A stale part from an earlier turn must not adopt the live request.
+  it('falls back to the ordinary card when the part is not the parked request', () => {
+    // A stale part from an earlier turn must not adopt the live request — it
+    // would render someone else's summary above a live decision.
     renderInThread(
-      <ChatToolFallback
-        {...gatedPart({
-          toolName: 'composio_connect',
-          approval: { id: 'appr-stale', options: OPTIONS },
-        })}
-      />,
-      {
-        requestId: REQUEST_ID,
-        toolName: 'composio_connect',
-        message: 'Connect Google Drive?',
-        toolkit: 'googledrive',
-      }
+      <ChatToolFallback {...gatedPart({ approval: { id: 'appr-stale', options: OPTIONS } })} />,
+      SHELL_REQUEST
     );
 
-    expect(screen.queryByTestId('assistant-ui-integration-connect')).not.toBeInTheDocument();
-    expect(screen.getByTestId('assistant-ui-tool-approval')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(SUMMARY)).not.toBeInTheDocument();
   });
 });
