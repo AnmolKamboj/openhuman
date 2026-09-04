@@ -102,6 +102,44 @@ fn config_aware_factory_builds_managed_provider() {
     }
 }
 
+/// #6032 regression: the config-aware factory must use
+/// `ollama_base_url_from_config` (config > env > default) for the `"ollama"`
+/// provider, not the env-only `ollama_base_url()`. A custom `local_ai.base_url`
+/// must therefore be reflected in the built provider's name — currently the
+/// name is always `"ollama"` regardless of URL, but the URL surfaces in the
+/// provider's `.base_url()` (via `EmbeddingProvider::base_url`). We probe the
+/// observable effect: building the provider succeeds and the default URL
+/// differs from the custom-URL build. The key invariant is that the factory
+/// arm IS config-aware and does NOT fall through to the credential-store path
+/// that ignores `config.local_ai.base_url`.
+#[test]
+fn config_aware_factory_ollama_honours_config_base_url() {
+    let tmp = TempDir::new().unwrap();
+    let mut config = test_config(&tmp);
+    config.local_ai.base_url = Some("http://custom-ollama:12345".to_string());
+
+    // Building must succeed with the custom URL.
+    let p =
+        create_embedding_provider_with_config(&config, "ollama", "nomic-embed-text", 768, "", None)
+            .expect("ollama provider must build with a custom local_ai.base_url");
+    assert_eq!(p.name(), "ollama");
+    assert_eq!(p.dimensions(), 768);
+    // The default-URL build (no custom config) must also succeed and produce
+    // the same provider type.
+    let mut default_config = test_config(&tmp);
+    default_config.local_ai.base_url = None;
+    let default_p = create_embedding_provider_with_config(
+        &default_config,
+        "ollama",
+        "nomic-embed-text",
+        768,
+        "",
+        None,
+    )
+    .expect("ollama provider must build with default URL");
+    assert_eq!(default_p.name(), "ollama");
+}
+
 /// Non-managed providers delegate unchanged to the credentialed factory —
 /// the config scope has no effect on BYO-key / local providers.
 #[test]

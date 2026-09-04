@@ -14,6 +14,7 @@ use crate::openhuman::inference::model_ids;
 use crate::openhuman::inference::presets::{self, VisionMode};
 
 use super::super::LocalAiService;
+use super::health::OllamaHealthStatus;
 use super::util::lm_studio_models_error_means_unreachable;
 
 impl LocalAiService {
@@ -45,7 +46,8 @@ impl LocalAiService {
             return self.lm_studio_diagnostics(config).await;
         }
 
-        let healthy = self.ollama_healthy_at(&base_url).await;
+        let health_status = self.ollama_health_status_at(&base_url).await;
+        let healthy = health_status != OllamaHealthStatus::Stopped;
         let runner_ok = if healthy {
             self.ollama_runner_ok_at(&base_url).await
         } else {
@@ -53,9 +55,9 @@ impl LocalAiService {
         };
 
         log::debug!(
-            "[local_ai] diagnostics: entry base_url={} healthy={}",
+            "[local_ai] diagnostics: entry base_url={} health_status={:?}",
             base_url,
-            healthy
+            health_status
         );
 
         let (models, tags_error) = if healthy {
@@ -220,8 +222,15 @@ impl LocalAiService {
             repair_actions.len(),
         );
 
+        let ollama_status = match health_status {
+            OllamaHealthStatus::Running => "running",
+            OllamaHealthStatus::Degraded => "degraded",
+            OllamaHealthStatus::Stopped => "stopped",
+        };
+
         Ok(serde_json::json!({
             "ollama_running": healthy,
+            "ollama_status": ollama_status,
             "ollama_runner_ok": runner_ok,
             "ollama_base_url": base_url,
             "ollama_binary_path": binary_path,
