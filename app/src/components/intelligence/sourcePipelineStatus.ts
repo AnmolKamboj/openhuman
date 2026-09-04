@@ -27,8 +27,9 @@
  *    (openhuman#6025). A backlog that is being drained is *pending*, not
  *    *failed*: the row shows a neutral note and keeps its freshness pill. The
  *    amber warning is reserved for a backlog nothing will drain: the global
- *    recall latch, an embeddings-family blocking cause, or pending chunks with
- *    no chain queued and no chunk written for over five minutes.
+ *    recall latch, an embeddings-family blocking cause, a paused scheduler
+ *    gate, or pending chunks with no chain queued. The source's freshness
+ *    stands in only when that snapshot is unavailable.
  *
  * The function is pure so it can be unit-tested exhaustively without a DOM.
  */
@@ -129,10 +130,15 @@ export function deriveSourcePipelineHealth(
   //   may still be writing, but no worker will embed anything until the gate
   //   lifts, so "shortly" would be a promise nobody is keeping. Pending
   //   chunks are hard until then;
-  // - otherwise pending chunks are soft while the engine reports a re-embed
-  //   chain with rows to process, OR this source's newest chunk landed inside
-  //   the core's own `recent` window (≤ 5 min: ingest is still writing and
-  //   the chain is queued behind it). A backlog with neither is stuck: hard.
+  // - otherwise the engine's own word decides: pending chunks are soft while
+  //   `backfill.in_progress` reports a re-embed chain with rows to process,
+  //   and hard when that snapshot says no chain is queued. Only when the
+  //   snapshot is unavailable (RPC failed, older core) does the source's
+  //   freshness stand in: a chunk inside the core's `recent` window (≤ 5 min)
+  //   suggests ingest is still writing and the chain arms on the next extract
+  //   admit. A fallback, not evidence of a worker — `last_chunk_at_ms` is the
+  //   content's own time (an email's sent date), which is why it never
+  //   outranks an explicit "no chain queued".
   //
   // `backfill.in_progress` is process-wide on purpose, not a per-source
   // signal to be narrowed: the chain it reports is signature-wide — each
@@ -147,9 +153,9 @@ export function deriveSourcePipelineHealth(
     pipeline?.is_paused === true || pipeline?.status === 'paused' || pipeline?.gate_paused === true;
   const draining =
     !paused &&
-    (backfill?.in_progress === true ||
-      status?.freshness === 'active' ||
-      status?.freshness === 'recent');
+    (backfill
+      ? backfill.in_progress === true
+      : status?.freshness === 'active' || status?.freshness === 'recent');
   const storedWithoutVectors = recallLatched || (pending > 0 && (embeddingsBlocked || !draining));
   if (storedWithoutVectors) {
     issues.push('stored_without_vectors');

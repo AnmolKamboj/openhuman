@@ -51,6 +51,16 @@ interface PipelineStatus {
   first_blocking_cause?: { code?: string } | null;
 }
 
+/** `memory_tree_memory_backfill_status`: whether a re-embed chain is queued. */
+interface BackfillStatus {
+  in_progress: boolean;
+  pending_jobs: number;
+}
+
+async function backfillStatus(): Promise<BackfillStatus> {
+  return callCoreRpc<BackfillStatus>('openhuman.memory_tree_memory_backfill_status', {});
+}
+
 /** Mirrors `EMBEDDINGS_BLOCKING_CAUSES` in `sourcePipelineStatus.ts`. */
 const EMBEDDINGS_BLOCKING_CAUSES = new Set([
   'budget_exhausted',
@@ -286,22 +296,30 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       //
       // The backlog can finish draining between the RPC read above and the
       // row's next 5 s poll, so the expectation is decided at the assertion
-      // point from the core's own count: while chunks are still pending the
-      // note must be showing; once the count reaches zero the row is clean
-      // and the note is correctly gone. Only "pending but no note" is a
-      // failure, and it is polled past because the row refreshes on a timer.
+      // point from the core's own account, the same two inputs the row reads:
+      // chunks still pending with a re-embed chain queued must show the
+      // waiting note; chunks pending with no chain queued are stuck and must
+      // show the amber warning; a count of zero is a clean row. Only a row
+      // that contradicts the core fails, and it is polled past because the
+      // row refreshes on a timer.
       const note = row.getByTestId(`memory-source-vectors-pending-${id}`);
+      const warning = row.getByTestId(`memory-source-pipeline-warning-${id}`);
       await expect
         .poll(
           async () => {
             const pendingNow = (await statusFor(id))?.chunks_pending ?? 0;
             if (pendingNow === 0) return 'drained';
-            return (await note.isVisible()) ? 'pending-shown' : 'pending-hidden';
+            const draining = (await backfillStatus()).in_progress;
+            if (draining) return (await note.isVisible()) ? 'pending-shown' : 'pending-hidden';
+            return (await warning.isVisible()) ? 'stuck-shown' : 'stuck-hidden';
           },
-          { timeout: 30_000, message: 'chunks are pending but the row shows no waiting note' }
+          {
+            timeout: 30_000,
+            message:
+              'the row contradicts the core: pending chunks with no note, or a stuck backlog with no warning',
+          }
         )
-        .not.toBe('pending-hidden');
-      await expect(row).not.toContainText('Stored without vectors');
+        .not.toMatch(/-hidden$/);
     }
   });
 

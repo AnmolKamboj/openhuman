@@ -209,13 +209,28 @@ describe('deriveSourcePipelineHealth — vectors pending vs stored without vecto
     expect(h.state).toBe('vectors_pending');
   });
 
-  it('reads pending chunks as vectors_pending while the newest chunk is recent (under five minutes)', () => {
+  it('reads pending chunks as vectors_pending while the newest chunk is recent, with no backfill snapshot', () => {
     const h = deriveSourcePipelineHealth(
       makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'recent' }),
       null,
-      makeBackfill({ in_progress: false })
+      null
     );
     expect(h.state).toBe('vectors_pending');
+  });
+
+  it('lets an explicit "no chain queued" snapshot outrank a fresh chunk', () => {
+    // `last_chunk_at_ms` is the content's own time (an email's sent date,
+    // a file's mtime), not proof that a worker is alive; a future-dated item
+    // reads `active` forever. When the engine says no chain is queued, the
+    // backlog is stuck whatever the freshness pill shows.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'active' }),
+      makePipeline(),
+      makeBackfill({ in_progress: false })
+    );
+    expect(h.state).toBe('ingested_only');
+    expect(h.issues).toEqual(['stored_without_vectors']);
+    expect(h.vectorsPending).toBe(false);
   });
 
   it('flags stored_without_vectors once the backlog is idle with no chain queued', () => {
