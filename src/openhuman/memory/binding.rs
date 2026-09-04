@@ -681,6 +681,16 @@ pub fn for_subtree(
     let mut guard = cache
         .write()
         .map_err(|e| format!("[memory:binding] cache write lock poisoned: {e}"))?;
+    // Under the same lock the exit snapshot is taken under: once memory is on
+    // its way out, a driver bound now would never be asked to shut down, so
+    // it is not bound at all. The check sits inside the lock on purpose — a
+    // builder that passed it inserted before the snapshot, and one that did
+    // not is refused; there is no third case (memory/exit.rs).
+    if crate::openhuman::memory::exit::exiting() {
+        return Err(
+            "[memory:binding] memory is shutting down; not binding a new driver".to_string(),
+        );
+    }
     // Re-check under the write lock: a racing caller may have bound the same
     // workspace while we were building. Reuse theirs so one workspace never has
     // two live drivers (kernel.md §3.1) and `capabilities()` stays asked once.

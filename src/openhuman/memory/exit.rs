@@ -13,14 +13,11 @@
 //! is bounded, because a quit that hangs on a wedged store is worse than a
 //! lease that expires on its own.
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures::future::join_all;
 use tokio::time::Instant;
-
-use crate::openhuman::memory::binding::MemoryBinding;
 
 /// The whole of memory's exit work — every bound driver's `shutdown`, then
 /// the host's hook registry — must fit in this, together.
@@ -39,38 +36,63 @@ pub const EXIT_BUDGET: Duration = Duration::from_secs(2);
 /// not a driver, so the hooks are never skipped outright.
 const HOOKS_FLOOR: Duration = Duration::from_millis(250);
 
-/// Rounds of "snapshot the cache, shut down what is new". Two is the honest
-/// number: the first round covers everything built before exit began, the
-/// second anything a background task built while the first round ran.
-const SNAPSHOT_ROUNDS: usize = 2;
+/// Whether a real server has started in this process.
+///
+/// The exit gate below engages only then. Unit tests call
+/// [`shutdown_for_exit`] without ever serving, and a process-wide refusal to
+/// bind memory would reach every other test in the same process.
+static SERVING: AtomicBool = AtomicBool::new(false);
+
+/// Set when memory's exit work begins, cleared when a server starts.
+///
+/// Read by the binding cache *inside its write lock* before every insert. That
+/// ordering is what makes the exit snapshot complete: the flag goes up, then
+/// the snapshot is taken under the same lock, so a builder either inserted
+/// before the snapshot (and is in it) or sees the flag and is refused. No
+/// number of re-snapshots could say that.
+static EXITING: AtomicBool = AtomicBool::new(false);
+
+/// Called by the embedded server as it starts serving. Arms the exit gate for
+/// the eventual exit and clears one left by a previous server in this process
+/// (the shell can respawn the core task without restarting the process).
+pub fn server_starting() {
+    EXITING.store(false, Ordering::SeqCst);
+    SERVING.store(true, Ordering::SeqCst);
+}
+
+/// Whether memory is on its way out: new bindings are refused.
+pub(crate) fn exiting() -> bool {
+    EXITING.load(Ordering::SeqCst)
+}
+
+/// Test seam: put both flags back so one test's exit cannot leak into another.
+#[cfg(test)]
+pub(crate) fn reset_gate_for_tests() {
+    EXITING.store(false, Ordering::SeqCst);
+    SERVING.store(false, Ordering::SeqCst);
+}
 
 /// Ask every bound memory driver to shut down, then run the hooks the
 /// in-process engine registered with the host.
 ///
 /// Providers first, concurrently and on the shared deadline: a module drains
 /// its own banked hook inside `Shutdown`, and the host's registry is where the
-/// in-process engine registers instead. The binding cache is snapshotted, not
-/// locked: a build that overlaps exit inserts after the snapshot, so a second
-/// round picks up whatever appeared. Both halves are idempotent — a provider's
-/// second `shutdown` is a no-op and the registry drains — so a signal landing
+/// in-process engine registers instead. The snapshot of the binding cache is
+/// complete rather than merely recent: the exit gate goes up first, and the
+/// cache checks it under its write lock before every insert, so nothing can
+/// appear after the snapshot. Both halves are idempotent — a provider's second
+/// `shutdown` is a no-op and the registry drains — so a signal landing
 /// mid-teardown, or the app-update restart path calling this twice, repeats
 /// nothing.
 pub async fn shutdown_for_exit() {
+    if SERVING.load(Ordering::SeqCst) {
+        EXITING.store(true, Ordering::SeqCst);
+    }
     let deadline = Instant::now() + EXIT_BUDGET;
-    // Addresses, not pointers: a raw pointer in the set would make this future
-    // `!Send`, and the embedded server task that awaits it is spawned. The
-    // `Arc` snapshot keeps every binding alive across the loop, so an address
-    // cannot be reused for a different binding while it is in the set.
-    let mut seen: HashSet<usize> = HashSet::new();
-    for round in 1..=SNAPSHOT_ROUNDS {
-        let pending: Vec<Arc<MemoryBinding>> = crate::openhuman::memory::binding::cached_bindings()
-            .into_iter()
-            .filter(|binding| seen.insert(Arc::as_ptr(binding) as usize))
-            .collect();
-        if pending.is_empty() {
-            break;
-        }
-        let shutdowns = join_all(pending.iter().map(|binding| async move {
+
+    let bindings = crate::openhuman::memory::binding::cached_bindings();
+    if !bindings.is_empty() {
+        let shutdowns = join_all(bindings.iter().map(|binding| async move {
             let driver = binding.driver_id().to_string();
             match binding.provider().shutdown().await {
                 Ok(()) => log::debug!("[memory:exit] driver '{driver}' shut down"),
@@ -81,10 +103,9 @@ pub async fn shutdown_for_exit() {
         }));
         if tokio::time::timeout_at(deadline, shutdowns).await.is_err() {
             log::warn!(
-                "[memory:exit] driver shutdown exceeded the {EXIT_BUDGET:?} exit budget in \
-                 round {round}; proceeding with exit"
+                "[memory:exit] driver shutdown exceeded the {EXIT_BUDGET:?} exit budget; \
+                 proceeding with exit"
             );
-            break;
         }
     }
 

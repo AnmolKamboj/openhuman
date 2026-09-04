@@ -841,6 +841,11 @@ impl CoreRuntime {
             });
         }
 
+        // Arms memory's exit gate for the eventual exit (and clears one a
+        // previous server in this process may have left): from here on a
+        // memory binding built during exit is refused rather than missed.
+        crate::openhuman::memory::exit::server_starting();
+
         // The serve result is held, not propagated, until the exit work below
         // has run. A `?` here on a server error would skip the memory teardown
         // on exactly the exits where a wedged store is likeliest, and the

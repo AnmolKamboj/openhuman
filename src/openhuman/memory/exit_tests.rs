@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::exit::{shutdown_for_exit, EXIT_BUDGET};
+use super::exit::{exiting, reset_gate_for_tests, server_starting, shutdown_for_exit, EXIT_BUDGET};
 
 /// The hook registry is process-global, so the two tests below must not see
 /// each other's hooks: each registers and drains under this lock.
@@ -33,6 +33,30 @@ async fn exit_runs_registered_hooks_once() {
         1,
         "the registry drains on the first exit; the second finds nothing"
     );
+}
+
+/// The gate that refuses new bindings goes up only once a real server has
+/// started — a bare exit (every unit test in this process) must never leave
+/// memory refusing to bind — and a server starting again takes it down.
+#[tokio::test]
+async fn the_exit_gate_engages_only_behind_a_server() {
+    let _serial = REGISTRY.lock().await;
+    reset_gate_for_tests();
+
+    shutdown_for_exit().await;
+    assert!(
+        !exiting(),
+        "no server ever started, so exit must not gate bindings"
+    );
+
+    server_starting();
+    shutdown_for_exit().await;
+    assert!(exiting(), "behind a server, exit refuses new bindings");
+
+    server_starting();
+    assert!(!exiting(), "a server starting again takes the gate down");
+
+    reset_gate_for_tests();
 }
 
 /// A hook that never answers must not hold the quit: exit returns within its
