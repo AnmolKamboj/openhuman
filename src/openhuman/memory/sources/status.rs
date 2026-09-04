@@ -203,6 +203,9 @@ pub(crate) fn source_id_prefix(source: &MemorySourceEntry) -> String {
 pub async fn status_list(config: &Config) -> Result<Vec<SourceStatus>, String> {
     let sources = super::registry::list_sources().await?;
     if sources.is_empty() {
+        // Nothing to ask about, so nothing would touch the in-flight map;
+        // sweep it here so a source removed mid-run leaves it eventually.
+        crate::openhuman::memory::sync_activity::prune_stale();
         return Ok(Vec::new());
     }
 

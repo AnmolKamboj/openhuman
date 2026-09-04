@@ -36,12 +36,16 @@ pub struct LiveSync {
     pub updated_at_ms: i64,
 }
 
-/// An entry older than this without a terminal stage is no run at all.
+/// An entry silent for longer than this without a terminal stage is no run
+/// at all.
 ///
 /// The bus delivers locally over a broadcast channel that drops under lag, so
-/// a `completed` can go missing; a connector run is bounded well inside this
-/// by its pass cap and per-call deadline. Without a ceiling a lost terminal
-/// stage would pin a "running" bar to the row for the life of the process.
+/// a `completed` can go missing, and without a ceiling that lost stage would
+/// pin a "running" bar to the row for the life of the process. A live run is
+/// never silent this long: the connector loop publishes a stage after every
+/// pass, and one pass is bounded by the slow call's fifteen-minute deadline
+/// (`modules::connectors::call_slow`), so the ceiling measures silence, not
+/// the run.
 const STALE_AFTER_MS: i64 = 30 * 60 * 1_000;
 
 static LIVE: OnceLock<Mutex<HashMap<String, LiveSync>>> = OnceLock::new();
@@ -65,8 +69,26 @@ pub(crate) fn note_stage(source_id: &str, stage: &str, detail: Option<&str>) {
     note_stage_at(source_id, stage, detail, now_ms());
 }
 
+/// Drop every entry that has gone silent past the ceiling.
+///
+/// `live_sync_at` already answers `None` for a stale entry; this is what keeps
+/// the map from holding it — and its strings — for the rest of the process. A
+/// source removed mid-run is never asked about again, so its entry would
+/// otherwise never leave.
+fn prune_stale_at(map: &mut HashMap<String, LiveSync>, now_ms: i64) {
+    map.retain(|_, entry| now_ms.saturating_sub(entry.updated_at_ms) <= STALE_AFTER_MS);
+}
+
+/// Sweep stale entries now. The status list calls it on a batch with no
+/// sources, the one shape that would otherwise never touch the map.
+pub fn prune_stale() {
+    let mut map = live().lock().unwrap_or_else(PoisonError::into_inner);
+    prune_stale_at(&mut map, now_ms());
+}
+
 fn note_stage_at(source_id: &str, stage: &str, detail: Option<&str>, at_ms: i64) {
     let mut map = live().lock().unwrap_or_else(PoisonError::into_inner);
+    prune_stale_at(&mut map, at_ms);
     if is_terminal(stage) {
         map.remove(source_id);
     } else {
@@ -87,10 +109,9 @@ pub fn live_sync(source_id: &str) -> Option<LiveSync> {
 }
 
 fn live_sync_at(source_id: &str, now_ms: i64) -> Option<LiveSync> {
-    let map = live().lock().unwrap_or_else(PoisonError::into_inner);
-    map.get(source_id)
-        .filter(|entry| now_ms.saturating_sub(entry.updated_at_ms) <= STALE_AFTER_MS)
-        .cloned()
+    let mut map = live().lock().unwrap_or_else(PoisonError::into_inner);
+    prune_stale_at(&mut map, now_ms);
+    map.get(source_id).cloned()
 }
 
 /// Subscribe the tracker to the bus, once. Registered beside the sync-stage

@@ -73,6 +73,28 @@ fn a_run_with_no_terminal_stage_goes_stale_after_the_ceiling() {
     );
 }
 
+/// A stale entry leaves the map on the next touch of any kind — a read for
+/// another source, a stage for another source, or the explicit sweep — so a
+/// source removed mid-run does not keep its entry for the life of the process.
+#[test]
+fn stale_entries_are_pruned_on_the_next_touch() {
+    let has = |id: &str| live().lock().unwrap().contains_key(id);
+
+    note_stage_at("src-prune-a", "running", None, 1_000);
+    assert!(has("src-prune-a"));
+    let _ = live_sync_at("src-prune-other", 1_000 + STALE_AFTER_MS + 1);
+    assert!(!has("src-prune-a"), "a read for another source sweeps it");
+
+    note_stage_at("src-prune-b", "running", None, 5_000);
+    note_stage_at("src-prune-c", "running", None, 5_000 + STALE_AFTER_MS + 1);
+    assert!(!has("src-prune-b"), "a stage for another source sweeps it");
+    assert!(has("src-prune-c"));
+
+    note_stage_at("src-prune-d", "running", None, 0);
+    prune_stale();
+    assert!(!has("src-prune-d"), "the explicit sweep drops an old entry");
+}
+
 #[test]
 fn the_latest_stage_wins() {
     note_stage_at("src-latest", "requested", None, 10);
