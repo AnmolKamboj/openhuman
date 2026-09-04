@@ -61,6 +61,7 @@ pub mod host_impls;
 pub mod obsidian_registry;
 pub mod ops;
 pub mod preferences;
+pub mod sync_activity;
 pub mod sync_events_bridge;
 // The consolidated `memory_query` agent tool and its six retrieval modes. Came
 // back from `tinymemory-core` with the rest of the agent tools — it is a `Tool`

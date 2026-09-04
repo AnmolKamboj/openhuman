@@ -393,6 +393,20 @@ pub async fn composio_sync_budgeted(
                         // settles with the honest count and the remainder named.
                         break Ok(());
                     }
+                    // A heartbeat between passes. The module reports only a
+                    // run's first stage and its last, and a run of many passes
+                    // can outlive the host's memory of it: `memory::sync_activity`
+                    // forgets a run after a bounded silence, because the bus can
+                    // lose a terminal stage (openhuman#6019). One pass is bounded
+                    // by the slow call's deadline, so a stage per pass keeps the
+                    // run alive for exactly as long as it runs — and tells the
+                    // row where it is.
+                    publish_stage(
+                        "running",
+                        Some(format!(
+                            "pass {passes} done, {total_written} item(s) so far"
+                        )),
+                    );
                 }
                 Err(error) => break Err(error),
             }

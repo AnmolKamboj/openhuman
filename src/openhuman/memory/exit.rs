@@ -14,10 +14,13 @@
 //! lease that expires on its own.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::join_all;
 use tokio::time::Instant;
+
+use crate::openhuman::memory::binding::MemoryBinding;
 
 /// The whole of memory's exit work — every bound driver's `shutdown`, then
 /// the host's hook registry — must fit in this, together.
@@ -36,40 +39,68 @@ pub const EXIT_BUDGET: Duration = Duration::from_secs(2);
 /// not a driver, so the hooks are never skipped outright.
 const HOOKS_FLOOR: Duration = Duration::from_millis(250);
 
-/// Whether a real server has started in this process.
+/// The exit gate: whether a real server has started in this process, and
+/// whether memory is on its way out.
 ///
-/// The exit gate below engages only then. Unit tests call
-/// [`shutdown_for_exit`] without ever serving, and a process-wide refusal to
-/// bind memory would reach every other test in the same process.
-static SERVING: AtomicBool = AtomicBool::new(false);
+/// `exiting` is read by the binding cache *inside its write lock* before every
+/// insert. That ordering is what makes the exit snapshot complete: the flag
+/// goes up, then the snapshot is taken under the same lock, so a builder
+/// either inserted before the snapshot (and is in it) or sees the flag and is
+/// refused. No number of re-snapshots could say that.
+///
+/// The gate engages only behind a server. Unit tests call the exit work
+/// without ever serving, and a process-wide refusal to bind memory would
+/// reach every other test in the same process — which is also why this is a
+/// type with one production instance in [`GATE`] rather than two bare
+/// statics: the tests exercise an instance of their own and never touch the
+/// process's.
+pub(crate) struct ExitGate {
+    serving: AtomicBool,
+    exiting: AtomicBool,
+}
 
-/// Set when memory's exit work begins, cleared when a server starts.
-///
-/// Read by the binding cache *inside its write lock* before every insert. That
-/// ordering is what makes the exit snapshot complete: the flag goes up, then
-/// the snapshot is taken under the same lock, so a builder either inserted
-/// before the snapshot (and is in it) or sees the flag and is refused. No
-/// number of re-snapshots could say that.
-static EXITING: AtomicBool = AtomicBool::new(false);
+impl ExitGate {
+    pub(crate) const fn new() -> Self {
+        Self {
+            serving: AtomicBool::new(false),
+            exiting: AtomicBool::new(false),
+        }
+    }
+
+    /// A server is starting: arm the gate for the eventual exit and clear one
+    /// a previous server in this process may have left.
+    pub(crate) fn server_starting(&self) {
+        self.exiting.store(false, Ordering::SeqCst);
+        self.serving.store(true, Ordering::SeqCst);
+    }
+
+    /// Memory's exit work is beginning: refuse new bindings from here on —
+    /// but only behind a server.
+    pub(crate) fn raise_if_serving(&self) {
+        if self.serving.load(Ordering::SeqCst) {
+            self.exiting.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Whether memory is on its way out.
+    pub(crate) fn exiting(&self) -> bool {
+        self.exiting.load(Ordering::SeqCst)
+    }
+}
+
+/// The process's gate.
+static GATE: ExitGate = ExitGate::new();
 
 /// Called by the embedded server as it starts serving. Arms the exit gate for
 /// the eventual exit and clears one left by a previous server in this process
 /// (the shell can respawn the core task without restarting the process).
 pub fn server_starting() {
-    EXITING.store(false, Ordering::SeqCst);
-    SERVING.store(true, Ordering::SeqCst);
+    GATE.server_starting();
 }
 
 /// Whether memory is on its way out: new bindings are refused.
 pub(crate) fn exiting() -> bool {
-    EXITING.load(Ordering::SeqCst)
-}
-
-/// Test seam: put both flags back so one test's exit cannot leak into another.
-#[cfg(test)]
-pub(crate) fn reset_gate_for_tests() {
-    EXITING.store(false, Ordering::SeqCst);
-    SERVING.store(false, Ordering::SeqCst);
+    GATE.exiting()
 }
 
 /// Ask every bound memory driver to shut down, then run the hooks the
@@ -87,12 +118,32 @@ pub(crate) fn reset_gate_for_tests() {
 /// server the shell starts next in this same process binds anew instead of
 /// reusing a driver whose workers are stopped.
 pub async fn shutdown_for_exit() {
-    if SERVING.load(Ordering::SeqCst) {
-        EXITING.store(true, Ordering::SeqCst);
-    }
+    // The snapshot is taken only after the gate is up (see [`ExitGate`]).
+    GATE.raise_if_serving();
+    run_exit(
+        crate::openhuman::memory::binding::cached_bindings(),
+        crate::core::shutdown::take_hooks(),
+    )
+    .await;
+}
+
+/// The exit work over an explicit set of bindings and hooks: every driver's
+/// `shutdown` concurrently on the shared deadline, eviction of exactly those
+/// bindings, then the hooks.
+///
+/// Split from [`shutdown_for_exit`] so the tests can drive it with bindings
+/// and hooks of their own. The process-wide snapshot and the registry drain
+/// are right for a process on its way out and wrong for a test binary: one
+/// test's exit would shut down and evict every other test's cached driver
+/// mid-flight — the next lookup handing that test the null fallback and an
+/// empty store — and would run every other test's hooks, the shared memory
+/// engine's own shutdown among them.
+pub(crate) async fn run_exit(
+    bindings: Vec<Arc<MemoryBinding>>,
+    hooks: Vec<crate::core::shutdown::ShutdownHook>,
+) {
     let deadline = Instant::now() + EXIT_BUDGET;
 
-    let bindings = crate::openhuman::memory::binding::cached_bindings();
     if !bindings.is_empty() {
         let shutdowns = join_all(bindings.iter().map(|binding| async move {
             let driver = binding.driver_id().to_string();
@@ -118,7 +169,7 @@ pub async fn shutdown_for_exit() {
     }
 
     let hooks_deadline = deadline.max(Instant::now() + HOOKS_FLOOR);
-    if tokio::time::timeout_at(hooks_deadline, crate::core::shutdown::run_hooks_now())
+    if tokio::time::timeout_at(hooks_deadline, crate::core::shutdown::run_hook_list(hooks))
         .await
         .is_err()
     {

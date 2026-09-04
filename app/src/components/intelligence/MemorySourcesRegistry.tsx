@@ -43,71 +43,21 @@ import { MemorySourceRow } from './MemorySourceRow';
 import { AllInIcon, PlusIcon } from './memorySourcesIcons';
 import { sourceTreeScope } from './memorySourcesRowHelpers';
 import {
-  STAGE_FALLBACK_PERCENT,
-  type SyncNote,
-  type SyncProgress,
-  type SyncResult,
-} from './memorySourcesSyncTypes';
+  noteSyncRejected,
+  noteSyncRequested,
+  reconcileWithStatuses,
+  subscribeTerminalSyncEvents,
+  useMemorySyncActivity,
+} from './memorySyncActivityStore';
 import { MemorySyncSchedule } from './MemorySyncSchedule';
+
+// The parsers moved to the store with the state they feed (openhuman#6019);
+// re-exported so their tests and any other reader keep one import path.
+export { parseIngestedCount, parseSyncNote, parseSyncProgress } from './memorySyncActivityStore';
 
 interface MemorySourcesRegistryProps {
   onToast?: (toast: Omit<ToastNotification, 'id'>) => void;
   pollIntervalMs?: number;
-}
-
-/**
- * Parse a sync progress detail string into a 0–100 percent.
- *
- * - Recognises "N/M ..." numeric patterns and returns N/M as a ratio.
- * - Falls back to the per-stage baseline when no ratio is present rather
- *   than returning a bogus number (RC#4, issue #3295).
- * - Returns `null` when both approaches are unavailable (no stage either).
- */
-export function parseSyncProgress(detail: string | null, stage?: string): number | null {
-  // Try the numeric "N/M ..." ratio first.
-  if (detail) {
-    const match = detail.match(/^(\d+)\/(\d+)[\s/]/);
-    if (match) {
-      const current = parseInt(match[1], 10);
-      const total = parseInt(match[2], 10);
-      if (total > 0) return Math.round((current / total) * 100);
-    }
-  }
-  // Fall back to the per-stage baseline percentage.
-  if (stage && stage in STAGE_FALLBACK_PERCENT) {
-    return STAGE_FALLBACK_PERCENT[stage];
-  }
-  return null;
-}
-
-/**
- * Parse the number of newly-ingested items from a `completed` stage detail
- * string. The backend formats this as `"ingested N item(s)"`
- * (`memory_sources/sync.rs`). Returns `null` when no count is present so the
- * UI can fall back to a generic "synced" confirmation (#3295).
- */
-export function parseIngestedCount(detail: string | null): number | null {
-  if (!detail) return null;
-  const match = detail.match(/ingested\s+(\d+)\s+item/i);
-  if (match) return parseInt(match[1], 10);
-  return null;
-}
-
-/**
- * Why a completed run stopped short, from the remainder the core writes after
- * the count: `", more pending — Sync again to continue"` when the per-run cap
- * left more to read, `"; today's provider request budget is spent"` when the
- * day's budget did. The number alone made both read as a finished sync, and a
- * spent budget with zero new items read as "Up to date" — the opposite of what
- * happened. The budget wins when both appear: it is the reason nothing more
- * will arrive today.
- */
-export function parseSyncNote(detail: string | null): SyncNote | null {
-  if (!detail) return null;
-  const lower = detail.toLowerCase();
-  if (lower.includes('budget')) return 'budget_spent';
-  if (lower.includes('more pending')) return 'more_pending';
-  return null;
 }
 
 export function MemorySourcesRegistry({
@@ -131,13 +81,14 @@ export function MemorySourcesRegistry({
   const [pipeline, setPipeline] = useState<MemoryTreePipelineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // RC#1 (#3295): use a Set so multiple sources can show "syncing" concurrently.
-  // Set state is always replaced with a new Set to trigger re-renders.
-  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  // The live sync state — which rows are syncing, their bar, their last
+  // result — lives in `memorySyncActivityStore`, which outlives this screen
+  // (openhuman#6019): a tab or route change mid-sync used to drop it all and
+  // miss the terminal event, so the row came back idle as if the sync had
+  // stopped. The store's listener is installed once for the page; this screen
+  // only reads.
+  const { syncingIds, progress: syncProgress, results: syncResults } = useMemorySyncActivity();
   const [buildingId, setBuildingId] = useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = useState<Map<string, SyncProgress>>(new Map());
-  // Terminal per-source result (success/failure) shown after a sync ends (#3295).
-  const [syncResults, setSyncResults] = useState<Map<string, SyncResult>>(new Map());
   const [allInModalOpen, setAllInModalOpen] = useState(false);
   const [applyingAllIn, setApplyingAllIn] = useState(false);
   const allInInFlightRef = useRef(false);
@@ -163,57 +114,20 @@ export function MemorySourcesRegistry({
     tRef.current = t;
   });
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const data = (e as CustomEvent).detail as {
-        stage?: string;
-        /** Originating memory-source id (RC#2, #3295). Preferred over connection_id. */
-        source_id?: string | null;
-        /** Legacy: document/connection id. Still present for backward compat. */
-        connection_id?: string | null;
-        detail?: string;
-      } | null;
-
-      // RC#2 (#3295): prefer source_id when present; fall back to connection_id for
-      // backward compat with older core versions that don't emit source_id yet.
-      const rowId = data?.source_id ?? data?.connection_id;
-      if (!rowId) return;
-
-      const stage = data?.stage ?? '';
-
-      console.debug(
-        `[ui-flow][memory-sync] stage=${stage} rowId=${rowId} source_id=${data?.source_id ?? 'absent'} connection_id=${data?.connection_id ?? 'absent'}`
-      );
-
-      if (stage === 'completed' || stage === 'failed') {
-        // Clear the live progress bar + syncing flag for this row.
-        setSyncProgress(prev => {
-          const next = new Map(prev);
-          next.delete(rowId);
-          return next;
-        });
-        // RC#1: immutable Set update — remove just this source, keep others syncing.
-        setSyncingIds(prev => {
-          const next = new Set(prev);
-          next.delete(rowId);
-          return next;
-        });
-
+  // The toast for a run that ends while this screen is mounted. The state
+  // itself is the store's; a run that ends while no screen is showing still
+  // lands as the row's result chip on the next mount, it just goes untoasted.
+  useEffect(
+    () =>
+      subscribeTerminalSyncEvents(({ rowId, stage, detail, result }) => {
         const tt = tRef.current;
         const label = sourcesRef.current.find(s => s.id === rowId)?.label ?? rowId;
-
         if (stage === 'completed') {
-          // Success: record + toast the item count parsed from the detail
-          // ("ingested N item(s)"). 0 new items → "up to date" (#3295).
-          const items = parseIngestedCount(data?.detail ?? null);
-          const note = parseSyncNote(data?.detail ?? null);
-          setSyncResults(prev => {
-            const next = new Map(prev);
-            next.set(rowId, { kind: 'success', items, reason: null, note });
-            return next;
-          });
-          // A zero count is not "up to date" when the run stopped short: the
-          // reason it stopped is the whole message then, not a suffix.
+          // The item count parsed from the detail ("ingested N item(s)") and
+          // why the run stopped short, both already on the result. A zero
+          // count is not "up to date" when the run stopped short: the reason
+          // it stopped is the whole message then, not a suffix (#3295).
+          const { items, note } = result;
           const hasItems = Boolean(items && items > 0);
           const counted = hasItems
             ? `${items} ${tt('memorySources.sync.itemsSynced')}`
@@ -238,56 +152,17 @@ export function MemorySourcesRegistry({
             message: hasItems && noteKey ? `${counted} — ${tt(noteKey)}` : counted,
           });
         } else {
-          // Failure: surface the reason on the row + a toast. The core already
-          // reported internal bugs to Sentry via report_error_or_expected.
-          const reason = data?.detail ?? null;
-          setSyncResults(prev => {
-            const next = new Map(prev);
-            next.set(rowId, { kind: 'failed', items: null, reason, note: null });
-            return next;
-          });
+          // The core already reported internal bugs to Sentry via
+          // report_error_or_expected; here the reason reaches the user.
           onToastRef.current?.({
             type: 'error',
             title: `${tt('memorySources.sync.failedLabel')} · ${label}`,
-            message: reason ?? tt('memorySources.sync.failedLabel'),
+            message: detail ?? tt('memorySources.sync.failedLabel'),
           });
         }
-        return;
-      }
-
-      // Non-terminal stage: a sync is genuinely in progress. Drop any stale
-      // terminal result for this row so the live bar replaces the old chip.
-      setSyncResults(prev => {
-        if (!prev.has(rowId)) return prev;
-        const next = new Map(prev);
-        next.delete(rowId);
-        return next;
-      });
-      const percent = parseSyncProgress(data?.detail ?? null, stage);
-      setSyncProgress(prev => {
-        const next = new Map(prev);
-        next.set(rowId, { stage, detail: data?.detail ?? null, percent });
-        return next;
-      });
-      // RC#1: ADD this source id to the set (immutable update).
-      if (
-        stage === 'requested' ||
-        stage === 'fetching' ||
-        stage === 'stored' ||
-        stage === 'queued' ||
-        stage === 'ingesting'
-      ) {
-        setSyncingIds(prev => {
-          if (prev.has(rowId)) return prev; // no change — avoid re-render
-          const next = new Set(prev);
-          next.add(rowId);
-          return next;
-        });
-      }
-    };
-    window.addEventListener('openhuman:memory-sync-stage', handler);
-    return () => window.removeEventListener('openhuman:memory-sync-stage', handler);
-  }, []);
+      }),
+    []
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -311,11 +186,13 @@ export function MemorySourcesRegistry({
       setSources(list);
       setStatuses(stats);
       setPipeline(health);
-      // RC#5 (#3295): The 5s poll is the safety net for missed completed/failed events.
-      // If a source is in syncingIds but the poll shows it's no longer active (no
-      // in-progress status indicator from the server), we clear it here. In practice
-      // the event stream covers this; on remount the state rehydrates within ~5s via poll.
-      // No new RPC needed — reconciliation is best-effort and relies on the existing poll.
+      // The core's own account of what is in flight (`sync_stage`,
+      // openhuman#6019): seeds the bar for a run this page never saw start —
+      // a cold mount, an app reload mid-sync — and takes down a bar whose
+      // terminal event was lost, once the core has reported the row idle for
+      // longer than the grace. RC#5's "rehydrates via poll" promise (#3295)
+      // finally has the field it needed.
+      reconcileWithStatuses(stats);
     } finally {
       setLoading(false);
     }
@@ -394,20 +271,10 @@ export function MemorySourcesRegistry({
 
   const handleSync = useCallback(
     async (source: MemorySourceEntry) => {
-      // RC#1 (#3295): add immediately on click — event will also fire, but this
-      // ensures the row lights up before the first sync-stage event arrives.
-      setSyncingIds(prev => {
-        const next = new Set(prev);
-        next.add(source.id);
-        return next;
-      });
-      // A fresh sync is starting — drop any prior terminal result chip (#3295).
-      setSyncResults(prev => {
-        if (!prev.has(source.id)) return prev;
-        const next = new Map(prev);
-        next.delete(source.id);
-        return next;
-      });
+      // RC#1 (#3295): light the row on click — the event will also fire, but
+      // this way it lights before the first sync-stage event arrives — and
+      // drop the prior run's result chip.
+      noteSyncRequested(source.id);
       console.debug(`[ui-flow][memory-sync] manual sync triggered source_id=${source.id}`);
       try {
         await syncMemorySource(source.id);
@@ -421,16 +288,7 @@ export function MemorySourcesRegistry({
         // sync never started, so no stage event will arrive. Surface it here:
         // clear the syncing flag and record a failed result on the row.
         const reason = err instanceof Error ? err.message : String(err);
-        setSyncingIds(prev => {
-          const next = new Set(prev);
-          next.delete(source.id);
-          return next;
-        });
-        setSyncResults(prev => {
-          const next = new Map(prev);
-          next.set(source.id, { kind: 'failed', items: null, reason, note: null });
-          return next;
-        });
+        noteSyncRejected(source.id, reason);
         onToast?.({
           type: 'error',
           title: `${t('memorySources.sync.failedLabel')} · ${source.label}`,
