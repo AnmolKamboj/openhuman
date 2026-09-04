@@ -43,6 +43,7 @@ pub use execute::composio_execute;
 #[cfg(test)]
 pub(crate) use providers_ops::{
     completed_sync_detail, completed_sync_detail_for_test, next_pass_budget,
+    pick_source_sync_depth_days,
 };
 pub use providers_ops::{
     composio_get_user_profile, composio_refresh_all_identities, composio_sync,

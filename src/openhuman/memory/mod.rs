@@ -36,6 +36,7 @@ pub mod agent;
 pub mod api;
 pub mod binding;
 pub mod driver;
+pub mod exit;
 pub mod guard;
 pub mod host;
 /// Host implementations of the seam traits the ENGINE declares.
@@ -99,6 +100,8 @@ mod api_identity_tests;
 mod bypass_allowlist_tests;
 #[cfg(test)]
 mod direct_engine_refs_tests;
+#[cfg(test)]
+mod exit_tests;
 #[cfg(test)]
 mod profile_conn_guard_tests;
 #[cfg(test)]

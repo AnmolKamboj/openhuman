@@ -2690,6 +2690,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'elementos sincronizados',
   'memorySources.sync.upToDate': 'Actualizado',
   'memorySources.sync.failedLabel': 'Fallido',
+  'memorySources.sync.morePending': 'Queda más por sincronizar. Pulsa Sincronizar de nuevo',
+  'memorySources.sync.budgetSpent':
+    'El presupuesto de solicitudes de hoy se ha agotado. Inténtalo mañana',
   'time.justNow': 'ahora mismo',
   'time.secondsAgoSuffix': 's',
   'time.minutesAgoSuffix': 'min',
@@ -2734,6 +2737,18 @@ const messages: TranslationMap = {
     'No se pudo iniciar ninguna sincronización. Revisa cada fuente para ver el motivo.',
   'memorySources.allIn.partial':
     'Sincronizaciones iniciadas: {triggered}. No se pudieron iniciar: {failed}.',
+  'memorySources.repair.button': 'Reparar recuerdos antiguos',
+  'memorySources.repair.title': '¿Reparar recuerdos antiguos?',
+  'memorySources.repair.message':
+    'Hasta {scanned} documentos sincronizados se guardaron antes de corregir el archivado en el árbol de memoria y no aparecen en el grafo de memoria. Archivarlos consume créditos de embeddings. Los documentos que ya están en el árbol se omiten.',
+  'memorySources.repair.confirm': 'Reparar',
+  'memorySources.repair.cancel': 'Ahora no',
+  'memorySources.repair.nothing':
+    'Nada que reparar. Ningún documento sincronizado está pendiente de archivar.',
+  'memorySources.repair.success':
+    '{ingested} archivados en el árbol de memoria ({already} ya estaban, {skipped} omitidos).',
+  'memorySources.repair.morePending': 'Quedan más. Pulsa Reparar recuerdos antiguos de nuevo.',
+  'memorySources.repair.failed': 'No se pudieron reparar los recuerdos antiguos.',
   'memorySources.settings.button': 'Configuración',
   'memorySources.settings.title': 'Configuración de sincronización',
   'memorySources.settings.maxPrs': 'Máximo de pull requests',
@@ -2747,7 +2762,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Sin límite',
   'memorySources.settings.unlimitedTooltip':
     'Has optado por sincronizar el máximo para {toolkit}. Puedes cambiar los límites aquí.',
-  'memorySources.settings.maxed': 'Lleno',
   'memorySources.settings.save': 'Guardar',
   'memorySources.settings.saving': 'Guardando…',
   'memorySources.settings.saved': 'Configuración guardada',
