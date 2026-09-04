@@ -2657,6 +2657,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'элементов синхронизировано',
   'memorySources.sync.upToDate': 'Актуально',
   'memorySources.sync.failedLabel': 'Не удалось',
+  'memorySources.sync.morePending':
+    'Есть что синхронизировать — нажмите «Синхронизировать» ещё раз',
+  'memorySources.sync.budgetSpent': 'Дневной лимит запросов исчерпан — попробуйте завтра',
   'time.justNow': 'только что',
   'time.secondsAgoSuffix': 'с назад',
   'time.minutesAgoSuffix': 'мин назад',
@@ -2702,6 +2705,19 @@ const messages: TranslationMap = {
     'Ни одну синхронизацию не удалось запустить. Проверьте каждый источник, чтобы узнать причину.',
   'memorySources.allIn.partial':
     'Запущено синхронизаций: {triggered}. Не удалось запустить: {failed}.',
+  'memorySources.repair.button': 'Восстановить старые воспоминания',
+  'memorySources.repair.title': 'Восстановить старые воспоминания?',
+  'memorySources.repair.message':
+    'До {scanned} синхронизированных документов были сохранены до исправления размещения в дереве памяти и не видны в графе памяти. Их размещение расходует кредиты на эмбеддинги. Документы, уже находящиеся в дереве, пропускаются.',
+  'memorySources.repair.confirm': 'Восстановить',
+  'memorySources.repair.cancel': 'Не сейчас',
+  'memorySources.repair.nothing':
+    'Нечего восстанавливать — нет синхронизированных документов, ожидающих размещения.',
+  'memorySources.repair.success':
+    'Размещено в дереве памяти: {ingested} ({already} уже было, {skipped} пропущено).',
+  'memorySources.repair.morePending':
+    'Остались ещё — нажмите «Восстановить старые воспоминания» снова.',
+  'memorySources.repair.failed': 'Не удалось восстановить старые воспоминания.',
   'memorySources.settings.button': 'Настройки',
   'memorySources.settings.title': 'Настройки синхронизации',
   'memorySources.settings.maxPrs': 'Максимум pull request',
@@ -2715,7 +2731,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Без лимита',
   'memorySources.settings.unlimitedTooltip':
     'Вы выбрали синхронизацию максимума для {toolkit}. Лимиты можно изменить здесь.',
-  'memorySources.settings.maxed': 'Заполнено',
   'memorySources.settings.save': 'Сохранить',
   'memorySources.settings.saving': 'Сохранение…',
   'memorySources.settings.saved': 'Настройки сохранены',

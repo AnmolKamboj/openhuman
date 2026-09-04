@@ -467,6 +467,21 @@ pub(crate) fn bind_provider_for_test(
 type BindingCacheKey = (PathBuf, String, MemorySubsystemConfig);
 static BINDINGS: OnceLock<RwLock<HashMap<BindingCacheKey, Arc<MemoryBinding>>>> = OnceLock::new();
 
+/// Every binding this process has built so far, for the exit path.
+///
+/// A snapshot rather than a handle to the map: exit runs while other tasks may
+/// still be resolving bindings, and holding the lock across a driver's
+/// `shutdown` would queue them behind it.
+pub(crate) fn cached_bindings() -> Vec<Arc<MemoryBinding>> {
+    let Some(cache) = BINDINGS.get() else {
+        return Vec::new();
+    };
+    match cache.read() {
+        Ok(map) => map.values().cloned().collect(),
+        Err(poisoned) => poisoned.into_inner().values().cloned().collect(),
+    }
+}
+
 /// The bound memory driver for `workspace_dir`, constructing it on first use.
 ///
 /// The same workspace always resolves to the same cached `Arc` (so

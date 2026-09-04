@@ -643,3 +643,55 @@ async fn enrich_leaves_unmatched_connection_unchanged() {
         "connection with no cached profile must remain unenriched"
     );
 }
+
+/// A run that wrote nothing because the day's request budget was spent must
+/// say so: the UI shows "Up to date" for a zero count, and a spent budget is
+/// the opposite. The note rides after the count so the parse contract holds,
+/// and a blank note is no separator with nothing behind it.
+#[test]
+fn completed_detail_carries_the_module_note_after_the_count() {
+    let re = regex::Regex::new(r"(?i)ingested\s+(\d+)\s+item").expect("ui parse regex");
+    let detail = crate::openhuman::integrations::composio::ops::completed_sync_detail(
+        0,
+        true,
+        Some("today's provider request budget is spent"),
+    );
+    let caps = re.captures(&detail).expect("detail still parses");
+    assert_eq!(&caps[1], "0");
+    assert!(
+        detail.ends_with("; today's provider request budget is spent"),
+        "{detail}"
+    );
+    let bare =
+        crate::openhuman::integrations::composio::ops::completed_sync_detail(3, false, Some("   "));
+    assert_eq!(bare, "ingested 3 item(s)");
+}
+
+/// The per-source depth cap is matched the way the engine keys the rows and a
+/// zero reads as "no cap": the settings field stores unlimited as empty, and a
+/// zero typed by hand must not ask for mail newer than today.
+#[test]
+fn source_depth_matches_the_row_and_treats_zero_as_unbounded() {
+    use crate::openhuman::integrations::composio::ops::pick_source_sync_depth_days;
+    let rows = [
+        (Some("gmail"), Some("conn-1"), Some(30)),
+        (Some("gmail"), Some("conn-2"), Some(0)),
+        (Some("notion"), Some("conn-3"), Some(14)),
+        (Some("gmail"), None, Some(7)),
+    ];
+    assert_eq!(
+        pick_source_sync_depth_days(rows, "gmail", "conn-1"),
+        Some(30)
+    );
+    assert_eq!(
+        pick_source_sync_depth_days(rows, " GMAIL ", "conn-1 "),
+        Some(30)
+    );
+    assert_eq!(pick_source_sync_depth_days(rows, "gmail", "conn-2"), None);
+    assert_eq!(pick_source_sync_depth_days(rows, "gmail", "conn-9"), None);
+    assert_eq!(
+        pick_source_sync_depth_days(rows, "notion", "conn-3"),
+        Some(14)
+    );
+    assert_eq!(pick_source_sync_depth_days([], "gmail", "conn-1"), None);
+}

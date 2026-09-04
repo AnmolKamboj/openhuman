@@ -52,6 +52,17 @@ async fn run_hooks() {
     }
 }
 
+/// Run every registered hook now, once, without waiting for a signal.
+///
+/// For the embedded server, whose graceful path is a cancellation token rather
+/// than SIGTERM: [`signal`] never resolves there, so the hooks it would have
+/// run — the memory engine releasing its queue leases, above all — never ran
+/// on a normal quit. Drains the registry, so a later call, or a signal landing
+/// mid-teardown, finds nothing to run twice.
+pub async fn run_hooks_now() {
+    run_hooks().await;
+}
+
 /// Returns a future that resolves when the process receives a termination
 /// signal (SIGINT on all platforms, plus SIGTERM on Unix), then runs all
 /// registered shutdown hooks.

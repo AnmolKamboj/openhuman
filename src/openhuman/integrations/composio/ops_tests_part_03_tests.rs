@@ -648,8 +648,9 @@ async fn composio_list_connections_returns_empty_when_direct_mode_no_key() {
 fn completed_sync_detail_matches_the_ui_parse_contract() {
     let re = regex::Regex::new(r"(?i)ingested\s+(\d+)\s+item").expect("ui parse regex");
     for count in [0u64, 1, 200, 25_000] {
-        let detail =
-            crate::openhuman::integrations::composio::ops::completed_sync_detail(count, false);
+        let detail = crate::openhuman::integrations::composio::ops::completed_sync_detail(
+            count, false, None,
+        );
         let caps = re
             .captures(&detail)
             .unwrap_or_else(|| panic!("detail must parse: {detail}"));

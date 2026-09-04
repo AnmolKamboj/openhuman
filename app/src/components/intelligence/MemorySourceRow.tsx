@@ -66,6 +66,19 @@ interface SourceRowProps {
   onSignIn: () => void;
 }
 
+/**
+ * The line shown beside a successful count when the run stopped short. A
+ * spent budget with a zero count is already the main text (there is nothing
+ * else to say), so it is not repeated here.
+ */
+function syncNoteKey(result: SyncResult): string | null {
+  if (result.note === 'more_pending') return 'memorySources.sync.morePending';
+  if (result.note === 'budget_spent' && result.items && result.items > 0) {
+    return 'memorySources.sync.budgetSpent';
+  }
+  return null;
+}
+
 export function MemorySourceRow({
   source,
   status,
@@ -97,6 +110,7 @@ export function MemorySourceRow({
   // renders live progress / a terminal chip instead, and `chunks_pending` is
   // legitimately transient, so we suppress the warning until things settle.
   const settled = !progress && !result;
+  const noteKey = result ? syncNoteKey(result) : null;
   const health: SourcePipelineHealth = settled
     ? deriveSourcePipelineHealth(status, pipeline)
     : { state: 'none', issues: [], authRelated: false };
@@ -164,12 +178,23 @@ export function MemorySourceRow({
             {!progress && result && (
               <div className="mt-2 pl-7" data-testid={`memory-source-result-${source.id}`}>
                 {result.kind === 'success' ? (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-sage-100 px-2 py-0.5 text-xs font-medium text-sage-700 dark:bg-sage-500/20 dark:text-sage-300">
-                    <CheckIcon />
-                    {result.items && result.items > 0
-                      ? `${result.items.toLocaleString()} ${t('memorySources.sync.itemsSynced')}`
-                      : t('memorySources.sync.upToDate')}
-                  </span>
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-sage-100 px-2 py-0.5 text-xs font-medium text-sage-700 dark:bg-sage-500/20 dark:text-sage-300">
+                      <CheckIcon />
+                      {result.items && result.items > 0
+                        ? `${result.items.toLocaleString()} ${t('memorySources.sync.itemsSynced')}`
+                        : result.note === 'budget_spent'
+                          ? t('memorySources.sync.budgetSpent')
+                          : t('memorySources.sync.upToDate')}
+                    </span>
+                    {noteKey && (
+                      <span
+                        className="ml-2 text-xs text-content-muted"
+                        data-testid={`memory-source-note-${source.id}`}>
+                        {t(noteKey)}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <span
                     className="inline-flex items-start gap-1 rounded-md bg-coral-50 px-2 py-0.5 text-xs font-medium text-coral-700 dark:bg-coral-500/10 dark:text-coral-300"
@@ -294,12 +319,7 @@ export function MemorySourceRow({
           </div>
         </div>
         <CollapsibleContent>
-          <SourceSettingsPanel
-            source={source}
-            syncedCount={status?.chunks_synced}
-            onSaved={onSettingsSaved}
-            onToast={onToast}
-          />
+          <SourceSettingsPanel source={source} onSaved={onSettingsSaved} onToast={onToast} />
         </CollapsibleContent>
       </CollapsibleRoot>
     </li>

@@ -683,13 +683,39 @@ impl CoreProcessHandle {
 
     /// Synchronous-friendly shutdown for `RunEvent::ExitRequested`.
     ///
-    /// Aborts the embedded server task so any background tokio tasks the
-    /// server spawned stop driving I/O before CEF's teardown runs. Cheap
-    /// and non-blocking on the UI thread — `JoinHandle::abort` returns
-    /// immediately.
+    /// Cancels the embedded server's token, gives it a bounded moment to
+    /// drain, then aborts whatever is left so any background tokio tasks the
+    /// server spawned stop driving I/O before CEF's teardown runs.
+    ///
+    /// The moment is what makes the server's post-drain teardown real. The
+    /// memory engine releases its job leases there, and an immediate abort
+    /// skipped it on every normal quit, so every next launch waited the
+    /// leases out (tinymemory#133). The wait is the same shape as the gateway
+    /// shutdown beside it: short, bounded, and worth the last moment of the
+    /// UI thread. A server that does not finish in time is aborted as before.
     pub async fn send_terminate_signal(&self) {
         self.cancel_shutdown_token(" on app shutdown").await;
+        self.drain_task_briefly().await;
         self.abort_task(" on app shutdown").await;
+    }
+
+    /// Wait a bounded moment for the server task to finish on its own after
+    /// its token was cancelled, so the teardown inside it runs.
+    async fn drain_task_briefly(&self) {
+        const BUDGET: Duration = Duration::from_millis(2_500);
+        let mut task_guard = self.task.lock().await;
+        let Some(task) = task_guard.as_mut() else {
+            return;
+        };
+        match timeout(BUDGET, task).await {
+            Ok(_) => {
+                task_guard.take();
+                log::info!("[core] embedded core server task drained on app shutdown");
+            }
+            Err(_) => log::warn!(
+                "[core] embedded core server task did not drain within {BUDGET:?}; aborting"
+            ),
+        }
     }
 }
 

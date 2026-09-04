@@ -856,6 +856,13 @@ impl CoreRuntime {
                 .await?;
         }
 
+        // Memory first. The engine's queue worker holds leases on in-flight
+        // jobs, and releasing them is a write to the store, so it has to happen
+        // while the store is still open and before anything else on the way
+        // out (tinymemory#133). Bounded inside, per driver: a wedged store
+        // costs at most its budget, never the exit.
+        crate::openhuman::memory::exit::shutdown_for_exit().await;
+
         // Server has stopped accepting and in-flight requests drained. Kill any
         // `ollama serve` openhuman itself spawned (no-op when externally
         // managed) so the next launch doesn't try to reclaim a dead daemon.

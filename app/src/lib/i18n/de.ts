@@ -2713,6 +2713,9 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'Elemente synchronisiert',
   'memorySources.sync.upToDate': 'Aktuell',
   'memorySources.sync.failedLabel': 'Fehlgeschlagen',
+  'memorySources.sync.morePending': 'Mehr zu synchronisieren — erneut auf Synchronisieren klicken',
+  'memorySources.sync.budgetSpent':
+    'Das heutige Anfragebudget ist aufgebraucht — morgen erneut versuchen',
   'time.justNow': 'gerade eben',
   'time.secondsAgoSuffix': 'vor {count} Sek.',
   'time.minutesAgoSuffix': 'vor {count} Min.',
@@ -2756,6 +2759,19 @@ const messages: TranslationMap = {
     'Keine Synchronisierung konnte gestartet werden. Prüfe jede Quelle, um den Grund zu sehen.',
   'memorySources.allIn.partial':
     'Gestartete Synchronisierungen: {triggered}. Nicht startbar: {failed}.',
+  'memorySources.repair.button': 'Ältere Erinnerungen reparieren',
+  'memorySources.repair.title': 'Ältere Erinnerungen reparieren?',
+  'memorySources.repair.message':
+    'Bis zu {scanned} synchronisierte Dokumente wurden gespeichert, bevor die Ablage im Gedächtnisbaum korrigiert wurde, und sind im Gedächtnisgraphen unsichtbar. Das Ablegen verbraucht Embedding-Guthaben. Bereits abgelegte Dokumente werden übersprungen.',
+  'memorySources.repair.confirm': 'Reparieren',
+  'memorySources.repair.cancel': 'Nicht jetzt',
+  'memorySources.repair.nothing':
+    'Nichts zu reparieren — keine synchronisierten Dokumente warten auf die Ablage.',
+  'memorySources.repair.success':
+    '{ingested} im Gedächtnisbaum abgelegt ({already} bereits vorhanden, {skipped} übersprungen).',
+  'memorySources.repair.morePending':
+    'Es sind noch weitere übrig — erneut auf „Ältere Erinnerungen reparieren“ klicken.',
+  'memorySources.repair.failed': 'Ältere Erinnerungen konnten nicht repariert werden.',
   'memorySources.settings.button': 'Einstellungen',
   'memorySources.settings.title': 'Synchronisierungseinstellungen',
   'memorySources.settings.maxPrs': 'Maximale Pull-Requests',
@@ -2769,7 +2785,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Unbegrenzt',
   'memorySources.settings.unlimitedTooltip':
     'Du hast dich entschieden, das Maximum für {toolkit} zu synchronisieren. Du kannst die Limits hier ändern.',
-  'memorySources.settings.maxed': 'Voll',
   'memorySources.settings.save': 'Speichern',
   'memorySources.settings.saving': 'Speichern…',
   'memorySources.settings.saved': 'Einstellungen gespeichert',

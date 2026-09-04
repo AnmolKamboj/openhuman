@@ -126,7 +126,15 @@ pub(crate) fn source_id_prefix(source: &MemorySourceEntry) -> String {
     match source.kind {
         SourceKind::Composio => {
             match (source.toolkit.as_deref(), source.connection_id.as_deref()) {
-                (Some(toolkit), Some(connection_id)) => format!("{toolkit}:{connection_id}:"),
+                // Normalised exactly as the engine keys the rows
+                // (`ingest_connector_item_into_tree`: toolkit trimmed and
+                // lower-cased, connection trimmed), so a slug that ever arrives
+                // in another case still counts its own chunks instead of none.
+                (Some(toolkit), Some(connection_id)) => format!(
+                    "{}:{}:",
+                    toolkit.trim().to_ascii_lowercase(),
+                    connection_id.trim()
+                ),
                 // A connection-less entry gets an unmatchable prefix, not the
                 // bare `{toolkit}:` — that widened prefix matched *every*
                 // connection of the toolkit, so a malformed or legacy Gmail

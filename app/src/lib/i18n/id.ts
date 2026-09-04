@@ -2650,6 +2650,8 @@ const messages: TranslationMap = {
   'memorySources.sync.itemsSynced': 'item tersinkron',
   'memorySources.sync.upToDate': 'Sudah terbaru',
   'memorySources.sync.failedLabel': 'Gagal',
+  'memorySources.sync.morePending': 'Masih ada yang perlu disinkronkan — klik Sinkronkan lagi',
+  'memorySources.sync.budgetSpent': 'Anggaran permintaan hari ini sudah habis — coba lagi besok',
   'time.justNow': 'baru saja',
   'time.secondsAgoSuffix': 'd lalu',
   'time.minutesAgoSuffix': 'm lalu',
@@ -2692,6 +2694,18 @@ const messages: TranslationMap = {
   'memorySources.allIn.allFailed':
     'Tidak ada sinkronisasi yang bisa dimulai. Periksa setiap sumber untuk melihat alasannya.',
   'memorySources.allIn.partial': 'Sinkronisasi dimulai: {triggered}. Tidak bisa dimulai: {failed}.',
+  'memorySources.repair.button': 'Perbaiki memori lama',
+  'memorySources.repair.title': 'Perbaiki memori lama?',
+  'memorySources.repair.message':
+    'Hingga {scanned} dokumen yang disinkronkan disimpan sebelum pengarsipan pohon memori diperbaiki dan tidak terlihat di grafik memori. Mengarsipkannya menggunakan kredit embedding. Dokumen yang sudah ada di pohon dilewati.',
+  'memorySources.repair.confirm': 'Perbaiki',
+  'memorySources.repair.cancel': 'Nanti saja',
+  'memorySources.repair.nothing':
+    'Tidak ada yang perlu diperbaiki — tidak ada dokumen tersinkron yang menunggu diarsipkan.',
+  'memorySources.repair.success':
+    '{ingested} diarsipkan ke pohon memori ({already} sudah ada, {skipped} dilewati).',
+  'memorySources.repair.morePending': 'Masih ada sisa — klik Perbaiki memori lama lagi.',
+  'memorySources.repair.failed': 'Tidak dapat memperbaiki memori lama.',
   'memorySources.settings.button': 'Pengaturan',
   'memorySources.settings.title': 'Pengaturan sinkronisasi',
   'memorySources.settings.maxPrs': 'Maksimal pull request',
@@ -2705,7 +2719,6 @@ const messages: TranslationMap = {
   'memorySources.settings.unlimited': 'Tanpa batas',
   'memorySources.settings.unlimitedTooltip':
     'Anda memilih menyinkronkan maksimum untuk {toolkit}. Anda dapat mengubah batas di sini.',
-  'memorySources.settings.maxed': 'Penuh',
   'memorySources.settings.save': 'Simpan',
   'memorySources.settings.saving': 'Menyimpan…',
   'memorySources.settings.saved': 'Pengaturan tersimpan',

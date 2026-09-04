@@ -14,6 +14,7 @@ import { renderWithProviders } from '../../../test/test-utils';
 import {
   MemorySourcesRegistry,
   parseIngestedCount,
+  parseSyncNote,
   parseSyncProgress,
 } from '../MemorySourcesRegistry';
 
@@ -53,6 +54,7 @@ vi.mock('../../../services/memorySourcesService', () => ({
 // memoryTreePipelineStatus is polled for downstream pipeline health (GH-4690);
 // default to a healthy running snapshot so rows keep their clean synced state.
 vi.mock('../../../utils/tauriCommands/memoryTree', () => ({
+  memoryTreeBackfillConnectorTrees: vi.fn(),
   memoryTreeFlushSource: vi.fn().mockResolvedValue({ seals_fired: 0 }),
   memoryTreePipelineStatus: vi
     .fn()
@@ -132,6 +134,32 @@ describe('parseIngestedCount', () => {
     expect(parseIngestedCount(null)).toBeNull();
     expect(parseIngestedCount('done')).toBeNull();
     expect(parseIngestedCount('delegating to composio sync')).toBeNull();
+  });
+});
+
+// ── parseSyncNote unit tests ──────────────────────────────────────────────────
+
+describe('parseSyncNote', () => {
+  it('reads "more pending" from the remainder after the count', () => {
+    expect(parseSyncNote('ingested 100 item(s), more pending — Sync again to continue')).toBe(
+      'more_pending'
+    );
+  });
+
+  it('reads a spent budget, and prefers it when both appear', () => {
+    expect(parseSyncNote("ingested 0 item(s); today's provider request budget is spent")).toBe(
+      'budget_spent'
+    );
+    expect(
+      parseSyncNote(
+        "ingested 0 item(s), more pending — Sync again to continue; today's provider request budget is spent"
+      )
+    ).toBe('budget_spent');
+  });
+
+  it('returns null for a plain count or no detail', () => {
+    expect(parseSyncNote('ingested 5 item(s)')).toBeNull();
+    expect(parseSyncNote(null)).toBeNull();
   });
 });
 
@@ -484,5 +512,146 @@ describe('MemorySourcesRegistry', () => {
     });
     // The optimistic syncing state is cleared after the RPC rejection.
     expect(screen.queryByText('sync.syncing')).not.toBeInTheDocument();
+  });
+  it('says the budget is spent instead of "Up to date" when zero items arrive for that reason', async () => {
+    // The core writes why a run stopped after the count; a spent budget with
+    // zero new items used to read as "Up to date" — the opposite of what
+    // happened (openhuman#6012 follow-up).
+    const sources = [makeSource('src-budget')];
+    listMemorySources.mockResolvedValue(sources);
+    memorySourcesStatusList.mockResolvedValue([]);
+    const onToast = vi.fn();
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} onToast={onToast} />);
+    await waitFor(() => expect(screen.getByText('Source src-budget')).toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({
+          stage: 'completed',
+          source_id: 'src-budget',
+          detail:
+            "ingested 0 item(s), more pending — Sync again to continue; today's provider request budget is spent",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      const chip = screen.getByTestId('memory-source-result-src-budget');
+      expect(chip).toHaveTextContent('memorySources.sync.budgetSpent');
+      expect(chip).not.toHaveTextContent('memorySources.sync.upToDate');
+    });
+    expect(onToast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'warning', message: 'memorySources.sync.budgetSpent' })
+    );
+  });
+
+  it('shows the "more to sync" note beside a count when the run stopped at its cap', async () => {
+    const sources = [makeSource('src-more')];
+    listMemorySources.mockResolvedValue(sources);
+    memorySourcesStatusList.mockResolvedValue([]);
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+    await waitFor(() => expect(screen.getByText('Source src-more')).toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(
+        makeSyncStageEvent({
+          stage: 'completed',
+          source_id: 'src-more',
+          detail: 'ingested 100 item(s), more pending — Sync again to continue',
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-source-result-src-more')).toHaveTextContent(
+        '100 memorySources.sync.itemsSynced'
+      );
+      expect(screen.getByTestId('memory-source-note-src-more')).toHaveTextContent(
+        'memorySources.sync.morePending'
+      );
+    });
+  });
+
+  it('repairs older memories only after a preview and a confirmation', async () => {
+    // Backfill has no other entry point in the app (openhuman#6012). The real
+    // pass embeds every document it files, so the button previews (dry run)
+    // and asks before it writes anything.
+    const memoryTree = await import('../../../utils/tauriCommands/memoryTree');
+    const backfill = memoryTree.memoryTreeBackfillConnectorTrees as ReturnType<typeof vi.fn>;
+    backfill
+      .mockResolvedValueOnce({
+        executed: false,
+        scanned: 42,
+        ingested: 0,
+        already_present: 0,
+        skipped: 0,
+        more_pending: false,
+        notes: [],
+      })
+      .mockResolvedValueOnce({
+        executed: true,
+        scanned: 42,
+        ingested: 40,
+        already_present: 1,
+        skipped: 1,
+        more_pending: false,
+        notes: [],
+      });
+    listMemorySources.mockResolvedValue([makeSource('src-a')]);
+    memorySourcesStatusList.mockResolvedValue([]);
+    const onToast = vi.fn();
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} onToast={onToast} />);
+    await waitFor(() => expect(screen.getByText('Source src-a')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('repair-memories-button'));
+    await waitFor(() => expect(backfill).toHaveBeenCalledWith({ dryRun: true }));
+    // The confirmation names the preview count and nothing has been written.
+    await waitFor(() =>
+      expect(screen.getByText('memorySources.repair.confirm')).toBeInTheDocument()
+    );
+    expect(backfill).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('memorySources.repair.confirm'));
+    await waitFor(() => expect(backfill).toHaveBeenCalledWith({ dryRun: false }));
+    // The i18n mock returns keys, so the placeholders in the summary are
+    // not substituted here; the counts are covered by the wrapper's tests.
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'success', title: 'memorySources.repair.success' })
+      )
+    );
+  });
+
+  it('does not ask when the preview finds nothing to repair', async () => {
+    const memoryTree = await import('../../../utils/tauriCommands/memoryTree');
+    const backfill = memoryTree.memoryTreeBackfillConnectorTrees as ReturnType<typeof vi.fn>;
+    backfill.mockReset();
+    backfill.mockResolvedValueOnce({
+      executed: false,
+      scanned: 0,
+      ingested: 0,
+      already_present: 0,
+      skipped: 0,
+      more_pending: false,
+      notes: [],
+    });
+    listMemorySources.mockResolvedValue([makeSource('src-b')]);
+    memorySourcesStatusList.mockResolvedValue([]);
+    const onToast = vi.fn();
+
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} onToast={onToast} />);
+    await waitFor(() => expect(screen.getByText('Source src-b')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('repair-memories-button'));
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'memorySources.repair.nothing' })
+      )
+    );
+    expect(screen.queryByText('memorySources.repair.confirm')).not.toBeInTheDocument();
+    expect(backfill).toHaveBeenCalledTimes(1);
   });
 });
