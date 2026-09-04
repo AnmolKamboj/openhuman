@@ -65,6 +65,7 @@ export function AssistantUiChat({
   modelContextWindow,
   onModelChange,
   composerHeader,
+  composerFooterExtras,
   inputValue,
   onInputValueChange,
   onEscape,
@@ -83,6 +84,12 @@ export function AssistantUiChat({
   modelContextWindow?: number | null;
   onModelChange: (value: string | null, contextWindow?: number | null) => void;
   composerHeader?: ReactNode;
+  /**
+   * Host controls for the composer's own toolbar row, beside the model pill —
+   * the assistant-ui equivalent of the legacy panel's footer row (the
+   * background-processes button and the thread files chip).
+   */
+  composerFooterExtras?: ReactNode;
   inputValue: string;
   onInputValueChange: (value: string) => void;
   onEscape?: () => void;
@@ -135,6 +142,11 @@ export function AssistantUiChat({
   });
   const slashCommands = useSlashCommands();
 
+  // Read through a ref for the same reason `ComposerHeader` does below: the
+  // slot is rendered by type, so closing over the node would remount the whole
+  // row on every host render.
+  const composerFooterExtrasRef = useRef(composerFooterExtras);
+  composerFooterExtrasRef.current = composerFooterExtras;
   const ComposerExtras = useCallback(
     () => (
       <>
@@ -143,6 +155,7 @@ export function AssistantUiChat({
           <ThreadGoalEditorPanel ctl={threadGoal} />
         </div>
         <ThreadGoalFooterTrigger ctl={threadGoal} />
+        {composerFooterExtrasRef.current}
       </>
     ),
     [contextUsage, threadGoal]
