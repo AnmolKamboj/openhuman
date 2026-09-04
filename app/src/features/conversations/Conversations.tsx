@@ -2569,6 +2569,29 @@ const Conversations = ({
       {sendErrorBanner}
       {sendAdvisoryBanner}
       {liveArtifactDeck}
+      {/* The thread todo board. Its only other mount is inside
+          `legacyMainPanel`, which the text surface never renders, so
+          `taskBoardByThread` reached Redux and stopped there: a long
+          multi-step turn lost its whole plan/progress strip. This is the same
+          position relative to the composer that the legacy panel gave it, and
+          the strip renders nothing when the board is empty, so it is inert on
+          an ordinary turn. */}
+      {selectedThreadId && (
+        <ThreadTodoStrip
+          board={selectedTaskBoard}
+          onViewSession={card => {
+            if (!card.sessionThreadId) return;
+            // Navigation only - do NOT mark the thread active. activeThreadId
+            // tracks a true in-flight turn; forcing a completed session active
+            // would wedge the composer.
+            dispatch(setSelectedThread(card.sessionThreadId));
+            void dispatch(loadThreadMessages(card.sessionThreadId));
+            if (shouldSyncChatRoute) {
+              navigate(chatThreadPath(card.sessionThreadId));
+            }
+          }}
+        />
+      )}
       {selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 ? (
         <QueuedFollowups
           items={queuedFollowupsByThread[selectedThreadId] ?? []}
