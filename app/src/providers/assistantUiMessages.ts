@@ -7,11 +7,12 @@ import type {
 
 import { parseMessageImages } from '../lib/attachments';
 import { unwrapToolCallEnvelope } from '../lib/chat/toolCallEnvelope';
-import type {
-  PendingApproval,
-  ProcessingTranscriptItem,
-  StreamingAssistantState,
-  ToolTimelineEntry,
+import {
+  isActiveTimelineStatus,
+  type PendingApproval,
+  type ProcessingTranscriptItem,
+  type StreamingAssistantState,
+  type ToolTimelineEntry,
 } from '../store/chatRuntimeSlice';
 import type { ThreadMessage } from '../types/thread';
 
@@ -105,7 +106,7 @@ function toolResultPayload(entry: ToolTimelineEntry): unknown {
 }
 
 function toolPart(entry: ToolTimelineEntry): ThreadAssistantMessagePart {
-  const running = entry.status === 'running' || entry.status === 'awaiting_user';
+  const running = isActiveTimelineStatus(entry.status);
   const isSubagent = entry.name.startsWith('subagent:') || entry.subagent !== undefined;
   const args = isSubagent
     ? jsonObject({

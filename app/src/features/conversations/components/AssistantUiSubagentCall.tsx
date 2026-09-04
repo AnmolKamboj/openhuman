@@ -18,10 +18,11 @@ import { Button } from '../../../components/ui';
 import Badge from '../../../components/ui/Badge';
 import WorktreeActions from '../../../components/worktree/WorktreeActions';
 import { useT } from '../../../lib/i18n/I18nContext';
-import type {
-  SubagentActivity,
-  SubagentToolCallEntry,
-  SubagentTranscriptItem,
+import {
+  isActiveTimelineStatus,
+  type SubagentActivity,
+  type SubagentToolCallEntry,
+  type SubagentTranscriptItem,
 } from '../../../store/chatRuntimeSlice';
 import { basename } from '../../../utils/pathUtils';
 import { stripToolCallEnvelopes } from '../../../utils/toolTimelineFormatting';
@@ -167,9 +168,14 @@ function SubagentDetails({
  * rendering bugs: a caller that omitted `running` showed a *failed* delegation
  * with a success check, while `status !== 'completed'` gave the same row an
  * endless spinner. Both call sites now ask this one question.
+ *
+ * The question itself is `isActiveTimelineStatus`, which the timeline row's
+ * top-level `status` is also read through. This name survives because ~4 call
+ * sites and their tests use it and it reads better beside a `SubagentActivity`
+ * — but it must never grow a second opinion about what "active" means.
  */
 export function isActiveSubagentStatus(status: string | undefined): boolean {
-  return status === 'running' || status === 'awaiting_user';
+  return isActiveTimelineStatus(status);
 }
 
 /** Statuses that mean the delegation stopped without succeeding. */

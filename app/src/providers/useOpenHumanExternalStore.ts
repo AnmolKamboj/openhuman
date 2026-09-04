@@ -7,6 +7,7 @@ import { threadApi } from '../services/api/threadApi';
 import {
   clearPendingApprovalForThread,
   type InferenceStatus,
+  isActiveTimelineStatus,
   type ToolTimelineEntry,
 } from '../store/chatRuntimeSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -242,11 +243,15 @@ export function useOpenHumanExternalStore(threadId: string | null) {
     if (!inferenceStatus) return EMPTY_EXTRAS;
     return {
       inferenceStatus,
+      // `isActiveTimelineStatus`, not `status === 'running'`: a delegated child
+      // parked on `ask_user_clarification` carries `awaiting_user` on the row's
+      // top-level status, and dropping the match there loses the sub-agent's
+      // identity at the one moment the user is the thing being waited on.
       activeToolEntry: [...liveTimeline]
         .reverse()
-        .find(entry => entry.status === 'running' && !entry.name.startsWith('subagent:')),
+        .find(entry => isActiveTimelineStatus(entry.status) && !entry.name.startsWith('subagent:')),
       activeSubagentEntry: liveTimeline.find(
-        entry => entry.status === 'running' && entry.name.startsWith('subagent:')
+        entry => isActiveTimelineStatus(entry.status) && entry.name.startsWith('subagent:')
       ),
     };
   }, [inferenceStatus, liveTimeline]);

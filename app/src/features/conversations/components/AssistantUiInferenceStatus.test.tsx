@@ -24,6 +24,7 @@ import chatRuntimeReducer, {
   markInferenceTurnStreaming,
   setInferenceStatusForThread,
   setToolTimelineForThread,
+  subagentAwaitingUser,
 } from '../../../store/chatRuntimeSlice';
 import mascotReducer from '../../../store/mascotSlice';
 import threadReducer from '../../../store/threadSlice';
@@ -198,6 +199,76 @@ describe('inference status on the assistant-ui chat surface', () => {
       );
     });
 
+    expect(screen.queryByTestId('inference-status-line')).not.toBeInTheDocument();
+  });
+
+  it('keeps the paused sub-agent as the active row when the child asks the user', async () => {
+    // Regression (CodeRabbit, PR #6036): `activeSubagentEntry` matched only
+    // `status === 'running'`, but `subagentAwaitingUser` sets `awaiting_user` on
+    // the row's TOP-LEVEL status. The lookup therefore lost the row the instant
+    // the child parked on `ask_user_clarification`, and the generic status line
+    // reappeared over the delegation card — announcing that the agent was
+    // working at the one moment it was blocked on the user.
+    const store = buildStore();
+    renderChat(store);
+    startTurn(store);
+
+    const rowId = `${THREAD_ID}:subagent:task-1:researcher`;
+    act(() => {
+      store.dispatch(
+        setToolTimelineForThread({
+          threadId: THREAD_ID,
+          entries: [
+            {
+              id: rowId,
+              name: 'subagent:researcher',
+              round: 1,
+              seq: 0,
+              status: 'running',
+              subagent: {
+                taskId: 'task-1',
+                agentId: 'researcher',
+                status: 'running',
+                toolCalls: [],
+              },
+            },
+          ],
+        })
+      );
+      store.dispatch(
+        setInferenceStatusForThread({
+          threadId: THREAD_ID,
+          status: {
+            phase: 'subagent',
+            iteration: 1,
+            maxIterations: 8,
+            activeSubagent: 'researcher',
+          },
+        })
+      );
+    });
+
+    // Guards the instrument: while the child runs, the delegation card owns the
+    // display and the generic line is already suppressed.
+    await screen.findByText(/researcher/i);
+    expect(screen.queryByTestId('inference-status-line')).not.toBeInTheDocument();
+
+    // The child parks on the user. Driven through the real reducer, so the test
+    // pins the reducer -> adapter -> render chain rather than a hand-written
+    // status value.
+    act(() => {
+      store.dispatch(
+        subagentAwaitingUser({
+          threadId: THREAD_ID,
+          rowId,
+          question: 'Which repository should I review?',
+        })
+      );
+    });
+
+    // The row is still the active sub-agent, so the card keeps the floor and
+    // the generic line stays away.
+    expect(await screen.findByText('Which repository should I review?')).toBeInTheDocument();
     expect(screen.queryByTestId('inference-status-line')).not.toBeInTheDocument();
   });
 

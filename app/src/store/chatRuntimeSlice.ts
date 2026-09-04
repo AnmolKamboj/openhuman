@@ -39,6 +39,24 @@ export type ToolTimelineEntryStatus =
   | 'awaiting_user'
   | 'cancelled';
 
+/**
+ * The single answer to "is this row still in flight?".
+ *
+ * `awaiting_user` is in flight. `subagentAwaitingUser` below sets it on the
+ * row's TOP-LEVEL `status` (not only on `subagent.status`) when a delegated
+ * child parks on `ask_user_clarification`, and a turn parked on the user has
+ * not finished — it is blocked, which is the one moment the UI most needs to
+ * keep the row's identity.
+ *
+ * It lives beside the reducer that produces the status because the alternative
+ * was measured: three call sites spelled this out by hand, and the one that
+ * omitted `awaiting_user` lost the delegation exactly during the pause. A
+ * predicate a caller can retype is a predicate that drifts.
+ */
+export function isActiveTimelineStatus(status: string | undefined): boolean {
+  return status === 'running' || status === 'awaiting_user';
+}
+
 /** Live progress of the running turn, as the socket handlers maintain it. */
 export interface InferenceStatus {
   phase: 'thinking' | 'tool_use' | 'subagent';
