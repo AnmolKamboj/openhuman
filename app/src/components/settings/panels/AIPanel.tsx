@@ -390,7 +390,7 @@ const AIPanel = ({
               initial={current}
               cloudProviders={draft.cloudProviders}
               localModels={installed}
-              ollamaRunning={ollama.state === 'running'}
+              ollamaRunning={ollama.state === 'running' || ollama.state === 'degraded'}
               modelRegistry={draft.modelRegistry}
               onClose={() => setPickerFor(null)}
               onSubmit={(next, vision) => {

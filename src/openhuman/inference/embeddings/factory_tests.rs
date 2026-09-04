@@ -102,16 +102,13 @@ fn config_aware_factory_builds_managed_provider() {
     }
 }
 
-/// #6032 regression: the config-aware factory must use
-/// `ollama_base_url_from_config` (config > env > default) for the `"ollama"`
-/// provider, not the env-only `ollama_base_url()`. A custom `local_ai.base_url`
-/// must therefore be reflected in the built provider's name — currently the
-/// name is always `"ollama"` regardless of URL, but the URL surfaces in the
-/// provider's `.base_url()` (via `EmbeddingProvider::base_url`). We probe the
-/// observable effect: building the provider succeeds and the default URL
-/// differs from the custom-URL build. The key invariant is that the factory
-/// arm IS config-aware and does NOT fall through to the credential-store path
-/// that ignores `config.local_ai.base_url`.
+/// #6032: both the config-URL and default-URL paths of the `"ollama"` arm must
+/// construct successfully. This is the build-side smoke check; the *binding*
+/// proof (that `config.local_ai.base_url` is the URL actually used) is
+/// [`config_aware_factory_ollama_embeds_against_config_base_url`] below —
+/// `create_embedding_provider_with_config` returns `Box<dyn EmbeddingProvider>`,
+/// whose trait surface is `name`/`model_id`/`dimensions`/`embed`, so there is
+/// no `base_url()` accessor to assert against here.
 #[test]
 fn config_aware_factory_ollama_honours_config_base_url() {
     let tmp = TempDir::new().unwrap();
@@ -138,6 +135,61 @@ fn config_aware_factory_ollama_honours_config_base_url() {
     )
     .expect("ollama provider must build with default URL");
     assert_eq!(default_p.name(), "ollama");
+}
+
+/// #6032 binding proof: an `"ollama"` provider built through
+/// `create_embedding_provider_with_config` must send its embed request to
+/// `config.local_ai.base_url`, not the env-only `ollama_base_url()` default. A
+/// local mock stands in for the Ollama daemon at a random port set as
+/// `local_ai.base_url`; a regression to the credential-store path (which calls
+/// `ollama_base_url()` → `localhost:11434`) would never hit the mock. This is
+/// the assertion the build-only test above cannot make, since the returned
+/// trait object exposes no URL accessor.
+#[tokio::test]
+async fn config_aware_factory_ollama_embeds_against_config_base_url() {
+    use std::sync::{Arc, Mutex};
+
+    use axum::{extract::State, routing::post, Json, Router};
+
+    // Mock Ollama `/api/embed`: records that it was hit and echoes a
+    // 3-dimensional vector (matching the requested `dims`).
+    #[derive(Clone, Default)]
+    struct Hit {
+        count: Arc<Mutex<usize>>,
+    }
+    let hit = Hit::default();
+    let app = Router::new()
+        .route(
+            "/api/embed",
+            post(
+                |State(h): State<Hit>, Json(_body): Json<serde_json::Value>| async move {
+                    *h.count.lock().unwrap() += 1;
+                    Json(serde_json::json!({ "embeddings": [[0.1_f32, 0.2, 0.3]] }))
+                },
+            ),
+        )
+        .with_state(hit.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let tmp = TempDir::new().unwrap();
+    let mut config = test_config(&tmp);
+    config.local_ai.base_url = Some(base.clone());
+
+    let provider =
+        create_embedding_provider_with_config(&config, "ollama", "nomic-embed-text", 3, "", None)
+            .expect("ollama provider builds with a config base_url");
+
+    let vectors = provider
+        .embed(&["binding probe"])
+        .await
+        .expect("factory-built ollama embedder must reach the config base_url");
+    assert_eq!(vectors.first().map(|v| v.len()).unwrap_or(0), 3);
+    assert!(
+        *hit.count.lock().unwrap() >= 1,
+        "embed must hit the configured local_ai.base_url, proving the ollama arm is config-aware"
+    );
 }
 
 /// Non-managed providers delegate unchanged to the credentialed factory —
