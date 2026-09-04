@@ -6630,6 +6630,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'केवल अंतर्ग्रहीत',
   'sync.pipeline.storedWithoutVectors': 'वेक्टर के बिना संग्रहीत। सिमेंटिक खोज अनुपलब्ध।',
+  'sync.pipeline.vectorsPending':
+    '{count} चंक्स वेक्टर की प्रतीक्षा में हैं। सिमेंटिक खोज जल्द ही उन्हें शामिल करेगी।',
   'sync.pipeline.signInToEnable': 'सक्षम करने के लिए साइन इन करें',
   'sync.pipeline.extractionFailed': 'मेमोरी संरचना निष्कर्षण विफल रहा। विकी अपूर्ण हो सकता है।',
   'sync.pipeline.treeDegraded': 'मेमोरी ट्री अवक्रमित। पुनर्प्राप्ति पुराने परिणाम दे सकती है।',

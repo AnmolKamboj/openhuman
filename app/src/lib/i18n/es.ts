@@ -6777,6 +6777,8 @@ const messages: TranslationMap = {
   'sync.pipeline.ingestedOnly': 'Solo ingerido',
   'sync.pipeline.storedWithoutVectors':
     'Almacenado sin vectores. La búsqueda semántica no está disponible.',
+  'sync.pipeline.vectorsPending':
+    '{count} fragmentos esperan vectores. La búsqueda semántica los cubrirá en breve.',
   'sync.pipeline.signInToEnable': 'Inicia sesión para activar',
   'sync.pipeline.extractionFailed':
     'Error al extraer la estructura de memoria. Es posible que el wiki esté incompleto.',

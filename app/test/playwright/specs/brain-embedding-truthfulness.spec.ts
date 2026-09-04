@@ -45,6 +45,41 @@ interface SourceStatus {
   chunks_pending: number;
 }
 
+/** The slice of `memory_tree_pipeline_status` that decides hard vs soft. */
+interface PipelineStatus {
+  degraded?: { semantic_recall?: boolean } | null;
+  first_blocking_cause?: { code?: string } | null;
+}
+
+/** Mirrors `EMBEDDINGS_BLOCKING_CAUSES` in `sourcePipelineStatus.ts`. */
+const EMBEDDINGS_BLOCKING_CAUSES = new Set([
+  'budget_exhausted',
+  'auth_missing',
+  'auth_invalid',
+  'embeddings_unconfigured',
+  'embedding_dim_mismatch',
+  'local_model_unavailable',
+]);
+
+/**
+ * Whether the core says embeddings cannot be written at all (no usable
+ * provider, no session, budget gone), as opposed to merely not written YET.
+ *
+ * Since openhuman#6025 the row distinguishes the two: a backlog the engine is
+ * still draining renders as a neutral "waiting for vectors" note, and the
+ * amber "Stored without vectors" warning is reserved for the hard case. A lane
+ * with no embeddings provider staged is the hard case; this reads the core's
+ * own verdict rather than guessing from the lane's configuration.
+ */
+async function embeddingsHardDown(): Promise<boolean> {
+  const status = await callCoreRpc<PipelineStatus>('openhuman.memory_tree_pipeline_status', {});
+  const cause = status.first_blocking_cause?.code;
+  return (
+    status.degraded?.semantic_recall === true ||
+    (cause !== undefined && EMBEDDINGS_BLOCKING_CAUSES.has(cause))
+  );
+}
+
 async function seedDeveloperMode(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
@@ -187,6 +222,25 @@ function requireDegraded(status: SourceStatus | undefined): void {
   test.skip(!degraded, 'this core embedded every chunk, so there is no degraded state to surface');
 }
 
+/**
+ * Like {@link requireDegraded}, for the tests that need the amber warning
+ * itself (its reload survival, its "View memory health" route). Pending
+ * chunks alone no longer guarantee it (openhuman#6025): the core must also
+ * report that embeddings are down, or the row is truthfully saying "waiting".
+ */
+async function requireHardDegraded(status: SourceStatus | undefined): Promise<void> {
+  requireDegraded(status);
+  const hard = await embeddingsHardDown();
+  if (!hard && process.env.CI) {
+    throw new Error(
+      'the backlog is merely draining (an embeddings provider is configured): this ' +
+        'lane cannot exercise the stored-without-vectors render. Stage the memory ' +
+        'module without an embeddings provider, or move this spec to a lane that can.'
+    );
+  }
+  test.skip(!hard, 'this core is still embedding the backlog, so there is no failure to surface');
+}
+
 test.describe('Brain — the UI tells the truth about embedding state', () => {
   test('a source whose chunks were never embedded is visibly flagged, not shown as healthy', async ({
     page,
@@ -210,18 +264,31 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
       .toBeGreaterThan(0);
 
     requireDegraded(status);
+    const hard = await embeddingsHardDown();
 
     await openSources(page, 'pw-brain-unembedded');
 
     const row = page.getByTestId('memory-source-row-folder').filter({ hasText: label });
     await expect(row).toBeVisible({ timeout: 30_000 });
 
-    // The whole point: rendered text a user can read, on the real page.
-    await expect(row.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(row).toContainText('Stored without vectors. Semantic search unavailable.');
-    await expect(row).toContainText('Ingested only');
+    if (hard) {
+      // The whole point: rendered text a user can read, on the real page.
+      await expect(row.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(row).toContainText('Stored without vectors. Semantic search unavailable.');
+      await expect(row).toContainText('Ingested only');
+    } else {
+      // An embeddings provider exists and the engine is draining the backlog:
+      // the truthful state is "waiting", and the row must say so rather than
+      // show a clean freshness pill and nothing else (openhuman#6025). It must
+      // equally not cry failure over work that is in flight.
+      await expect(row.getByTestId(`memory-source-vectors-pending-${id}`)).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(row).toContainText('waiting for vectors');
+      await expect(row).not.toContainText('Stored without vectors');
+    }
   });
 
   test('the warning survives a reload rather than being a first-paint artefact', async ({
@@ -242,7 +309,7 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
         { timeout: 60_000 }
       )
       .toBeGreaterThan(0);
-    requireDegraded(status);
+    await requireHardDegraded(status);
 
     await openSources(page, 'pw-brain-reload');
     const warning = page.getByTestId(`memory-source-pipeline-warning-${id}`);
@@ -273,7 +340,7 @@ test.describe('Brain — the UI tells the truth about embedding state', () => {
         { timeout: 60_000 }
       )
       .toBeGreaterThan(0);
-    requireDegraded(status);
+    await requireHardDegraded(status);
 
     await openSources(page, 'pw-brain-health');
     await expect(page.getByTestId(`memory-source-pipeline-warning-${id}`)).toBeVisible({

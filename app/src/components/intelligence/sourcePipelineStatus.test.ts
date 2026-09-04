@@ -5,7 +5,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SourceStatus } from '../../services/memorySourcesService';
-import type { MemoryTreePipelineStatus } from '../../utils/tauriCommands/memoryTree';
+import type {
+  BackfillStatus,
+  MemoryTreePipelineStatus,
+} from '../../utils/tauriCommands/memoryTree';
 import {
   deriveSourcePipelineHealth,
   pipelineIssueMessageKey,
@@ -35,6 +38,11 @@ function makePipeline(overrides: Partial<MemoryTreePipelineStatus> = {}): Memory
     is_paused: false,
     ...overrides,
   };
+}
+
+/** The global embed-backfill snapshot (`memory_tree_memory_backfill_status`). */
+function makeBackfill(overrides: Partial<BackfillStatus> = {}): BackfillStatus {
+  return { in_progress: false, pending_jobs: 0, ...overrides };
 }
 
 describe('deriveSourcePipelineHealth', () => {
@@ -68,8 +76,12 @@ describe('deriveSourcePipelineHealth', () => {
 
   // -- Layer 1: embeddings ---------------------------------------------------
   it('flags stored_without_vectors from per-source pending chunks alone', () => {
-    // The exact issue repro: "1 chunk / 1 pending" with no pipeline snapshot.
-    const h = deriveSourcePipelineHealth(makeStatus({ chunks_synced: 1, chunks_pending: 1 }), null);
+    // The exact issue repro: "1 chunk / 1 pending" with no pipeline snapshot,
+    // and nothing draining it: no backfill snapshot, newest chunk long idle.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 1, chunks_pending: 1, freshness: 'idle' }),
+      null
+    );
     expect(h.state).toBe('ingested_only');
     expect(h.issues).toContain('stored_without_vectors');
   });
@@ -168,6 +180,124 @@ describe('deriveSourcePipelineHealth', () => {
     // Embeddings + extraction; the generic tree layer is suppressed because
     // more specific layers already explain the degradation.
     expect(h.issues).toEqual(['stored_without_vectors', 'extraction_failed']);
+  });
+});
+
+// -- Layer 1, the soft half: a backlog that is being drained (openhuman#6025)
+describe('deriveSourcePipelineHealth — vectors pending vs stored without vectors', () => {
+  it('reads pending chunks as vectors_pending while a re-embed chain has rows to process', () => {
+    // The incident's numbers: 676 synced, 322 waiting, the backfill row queued
+    // behind extraction. Nothing failed; the row must not say it did.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 676, chunks_pending: 322, freshness: 'idle' }),
+      makePipeline(),
+      makeBackfill({ in_progress: true, pending_jobs: 1 })
+    );
+    expect(h.state).toBe('vectors_pending');
+    expect(h.vectorsPending).toBe(true);
+    expect(h.issues).toEqual([]);
+    expect(h.authRelated).toBe(false);
+  });
+
+  it('reads pending chunks as vectors_pending while the newest chunk is active, with no backfill snapshot', () => {
+    // The backfill RPC failed (or predates this build): the source's own
+    // freshness carries the "still moving" judgement on its own.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'active' }),
+      null
+    );
+    expect(h.state).toBe('vectors_pending');
+  });
+
+  it('reads pending chunks as vectors_pending while the newest chunk is recent (under five minutes)', () => {
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'recent' }),
+      null,
+      makeBackfill({ in_progress: false })
+    );
+    expect(h.state).toBe('vectors_pending');
+  });
+
+  it('flags stored_without_vectors once the backlog is idle with no chain queued', () => {
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_synced: 10, chunks_pending: 4, freshness: 'idle' }),
+      makePipeline(),
+      makeBackfill({ in_progress: false })
+    );
+    expect(h.state).toBe('ingested_only');
+    expect(h.issues).toEqual(['stored_without_vectors']);
+    expect(h.vectorsPending).toBe(false);
+  });
+
+  it('lets the global recall latch win over a draining backfill', () => {
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_pending: 4, freshness: 'active' }),
+      makePipeline({ status: 'degraded', degraded: { semantic_recall: true, structure: false } }),
+      makeBackfill({ in_progress: true })
+    );
+    expect(h.state).toBe('ingested_only');
+    expect(h.issues).toContain('stored_without_vectors');
+    expect(h.vectorsPending).toBe(false);
+  });
+
+  it.each([
+    'budget_exhausted',
+    'auth_missing',
+    'auth_invalid',
+    'embeddings_unconfigured',
+    'embedding_dim_mismatch',
+    'local_model_unavailable',
+  ] as const)(
+    'lets an embeddings-family blocking cause (%s) win over a draining backfill',
+    code => {
+      // The provider cannot write vectors, so the backlog is not going to drain
+      // whatever the chain flag says; that is the hard state, sign-in CTA and all.
+      const h = deriveSourcePipelineHealth(
+        makeStatus({ chunks_pending: 4, freshness: 'active' }),
+        makePipeline({
+          status: 'error',
+          first_blocking_cause: {
+            code,
+            class: 'unrecoverable',
+            remediation_key: `memory.health.remediation.${code}`,
+          },
+        }),
+        makeBackfill({ in_progress: true })
+      );
+      expect(h.issues).toContain('stored_without_vectors');
+      expect(h.vectorsPending).toBe(false);
+      expect(h.authRelated).toBe(code === 'auth_missing');
+    }
+  );
+
+  it('keeps a non-embeddings blocking cause from turning a draining backlog amber', () => {
+    // Extraction timing out says nothing about the embedder; the vectors are
+    // still coming. Both truths are carried: the extraction warning AND the
+    // neutral pending note.
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_pending: 4, freshness: 'active' }),
+      makePipeline({
+        status: 'degraded',
+        first_blocking_cause: {
+          code: 'extraction_timeout',
+          class: 'transient',
+          remediation_key: 'memory.health.remediation.extraction_timeout',
+        },
+      })
+    );
+    expect(h.state).toBe('ingested_only');
+    expect(h.issues).toEqual(['extraction_failed']);
+    expect(h.vectorsPending).toBe(true);
+  });
+
+  it('stays retrieval_ready when a backfill runs but this source has nothing pending', () => {
+    const h = deriveSourcePipelineHealth(
+      makeStatus({ chunks_pending: 0 }),
+      makePipeline(),
+      makeBackfill({ in_progress: true, pending_jobs: 1 })
+    );
+    expect(h.state).toBe('retrieval_ready');
+    expect(h.vectorsPending).toBe(false);
   });
 });
 

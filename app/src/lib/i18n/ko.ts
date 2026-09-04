@@ -6556,6 +6556,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': '수집만 완료',
   'sync.pipeline.storedWithoutVectors': '벡터 없이 저장됨. 의미 검색을 사용할 수 없습니다.',
+  'sync.pipeline.vectorsPending':
+    '{count}개 청크가 벡터를 기다리는 중입니다. 곧 시맨틱 검색에 포함됩니다.',
   'sync.pipeline.signInToEnable': '사용하려면 로그인하세요',
   'sync.pipeline.extractionFailed': '메모리 구조 추출에 실패했습니다. 위키가 불완전할 수 있습니다.',
   'sync.pipeline.treeDegraded':

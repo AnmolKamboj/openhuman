@@ -6706,6 +6706,8 @@ const messages: TranslationMap = {
   // Data Sync layered pipeline status (GH-4690)
   'sync.pipeline.ingestedOnly': 'Только загружено',
   'sync.pipeline.storedWithoutVectors': 'Сохранено без векторов. Семантический поиск недоступен.',
+  'sync.pipeline.vectorsPending':
+    '{count} блоков ожидают векторы. Семантический поиск скоро охватит их.',
   'sync.pipeline.signInToEnable': 'Войдите, чтобы включить',
   'sync.pipeline.extractionFailed':
     'Не удалось извлечь структуру памяти. Вики может быть неполной.',
