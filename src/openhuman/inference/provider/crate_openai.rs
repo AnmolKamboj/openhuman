@@ -95,12 +95,23 @@ pub(crate) struct CrateOpenAiConfig<'a> {
 /// Build a crate-native `OpenAiModel` (`ChatModel`) for the given OpenAI-compatible
 /// provider config.
 pub(crate) fn build_crate_openai_model(config: CrateOpenAiConfig<'_>) -> Arc<dyn ChatModel<()>> {
+    // Use the platform-specific TLS backend so requests reach corporate
+    // endpoints that sit behind TLS-inspection proxies. On Windows this means
+    // schannel, which reads from the Windows certificate store; on macOS/Linux
+    // rustls is preferred. The 30-second connect-timeout matches the
+    // tinyinference default so behaviour is unchanged on non-Windows hosts.
+    let http_client = crate::openhuman::util::tls::tls_client_builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("platform TLS reqwest client builds");
+
     let mut model = OpenAiModel::compatible_provider(
         config.provider_name,
         config.api_key,
         config.endpoint,
         config.model,
     )
+    .with_http_client(http_client)
     .with_auth_style(map_auth_style(config.auth_style));
 
     if !config.temperature_unsupported_models.is_empty() {
