@@ -181,8 +181,6 @@ test.describe('Chat composer — caret on mid-string edits', () => {
    * "expected to fail but passed", and the marker has to be removed here.
    */
   test('typing mid-string leaves the caret after the inserted character', async ({ page }) => {
-    test.fail();
-
     const input = await openChat(page);
     await seed(page, input, 'hello world');
 
