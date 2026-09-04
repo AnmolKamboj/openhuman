@@ -123,10 +123,12 @@ export function deriveSourcePipelineHealth(
   // - the global "semantic recall degraded" latch (no usable provider): hard;
   // - an embeddings-family blocking cause: the provider cannot write vectors,
   //   so the backlog will not drain: hard;
-  // - a paused scheduler (`is_paused` / `status === 'paused'`): the chain may
-  //   be armed and ingest may still be writing, but no worker will embed
-  //   anything until the user resumes, so "shortly" would be a promise nobody
-  //   is keeping. Pending chunks are hard until then;
+  // - a paused scheduler: the configured `off` mode (`is_paused` /
+  //   `status === 'paused'`) or the gate's live policy (`gate_paused`: on
+  //   battery, CPU pressure, signed out). The chain may be armed and ingest
+  //   may still be writing, but no worker will embed anything until the gate
+  //   lifts, so "shortly" would be a promise nobody is keeping. Pending
+  //   chunks are hard until then;
   // - otherwise pending chunks are soft while the engine reports a re-embed
   //   chain with rows to process, OR this source's newest chunk landed inside
   //   the core's own `recent` window (≤ 5 min: ingest is still writing and
@@ -141,7 +143,8 @@ export function deriveSourcePipelineHealth(
   const pending = status?.chunks_pending ?? 0;
   const recallLatched = degraded?.semantic_recall === true;
   const embeddingsBlocked = causeCode !== null && EMBEDDINGS_BLOCKING_CAUSES.has(causeCode);
-  const paused = pipeline?.is_paused === true || pipeline?.status === 'paused';
+  const paused =
+    pipeline?.is_paused === true || pipeline?.status === 'paused' || pipeline?.gate_paused === true;
   const draining =
     !paused &&
     (backfill?.in_progress === true ||

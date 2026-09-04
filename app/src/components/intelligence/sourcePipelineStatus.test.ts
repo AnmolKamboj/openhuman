@@ -293,6 +293,10 @@ describe('deriveSourcePipelineHealth — vectors pending vs stored without vecto
   it.each([
     { label: 'is_paused', pipeline: makePipeline({ is_paused: true }) },
     { label: "status 'paused'", pipeline: makePipeline({ status: 'paused', reason: 'gate off' }) },
+    {
+      label: 'gate_paused (live policy, mode still auto)',
+      pipeline: makePipeline({ gate_paused: true, gate_pause_reason: 'on_battery' }),
+    },
   ])(
     'reads a paused scheduler ($label) as stuck even while a chain is armed and ingest is fresh',
     ({ pipeline }) => {
