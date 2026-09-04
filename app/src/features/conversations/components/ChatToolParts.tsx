@@ -7,9 +7,12 @@ import {
   ToolGroupRoot,
   ToolGroupTrigger,
 } from '../../../components/assistant-ui/tool-group';
+import IntegrationConnectCard from '../../../components/chat/IntegrationConnectCard';
+import { useAuiThreadId } from '../../../providers/AssistantUiRuntimeProvider';
 import type { SubagentActivity } from '../../../store/chatRuntimeSlice';
+import { useAppSelector } from '../../../store/hooks';
 import { AssistantUiSubagentCall, isActiveSubagentStatus } from './AssistantUiSubagentCall';
-import { OpenHumanToolCall } from './AssistantUiToolCall';
+import { isApprovalPending, OpenHumanToolCall } from './AssistantUiToolCall';
 
 function asSubagentActivity(value: unknown): SubagentActivity | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -74,9 +77,49 @@ export const SubagentCall: ToolCallMessagePartComponent = ({ args, result }) => 
   );
 };
 
+/** The tool that parks on the ApprovalGate but needs OAuth, not approve/deny. */
+const COMPOSIO_CONNECT_TOOL = 'composio_connect';
+
+/**
+ * A parked `composio_connect` call.
+ *
+ * It arrives over the same `approval_request` path as every other gated tool,
+ * but "Approve" is the wrong affordance: approving without connecting resumes
+ * the agent against a toolkit that still has no credentials. The existing
+ * connect card runs the OAuth handoff, polls until the toolkit is live, and
+ * only then resolves the gate with `approve_once` (or `deny` on cancel/timeout)
+ * — so it is reused verbatim rather than reimplemented against
+ * `respondToApproval`.
+ *
+ * Falls through to the ordinary card once the approval is resolved, or when the
+ * request is not the one the store holds: `PendingApproval.toolkit` names the
+ * integration to connect and lives in Redux, not on the part.
+ */
+const ComposioConnectCall: ToolCallMessagePartComponent = props => {
+  const threadId = useAuiThreadId();
+  const approval = useAppSelector(state =>
+    threadId ? (state.chatRuntime.pendingApprovalByThread?.[threadId] ?? null) : null
+  );
+  const gated =
+    isApprovalPending(props.approval) &&
+    approval != null &&
+    approval.requestId === props.approval?.id;
+  if (!gated || !threadId || !approval) return <OpenHumanToolCall {...props} />;
+  return (
+    <div data-testid="assistant-ui-integration-connect">
+      {/* Keyed by request id so a second parked connect remounts the card with
+          fresh phase / field / poll state, matching the legacy placement. */}
+      <IntegrationConnectCard key={approval.requestId} threadId={threadId} approval={approval} />
+    </div>
+  );
+};
+
 /** Route every call through an assistant-ui-native rich renderer. */
-export const ChatToolFallback: ToolCallMessagePartComponent = props =>
-  props.toolName === 'task' ? <SubagentCall {...props} /> : <OpenHumanToolCall {...props} />;
+export const ChatToolFallback: ToolCallMessagePartComponent = props => {
+  if (props.toolName === 'task') return <SubagentCall {...props} />;
+  if (props.toolName === COMPOSIO_CONNECT_TOOL) return <ComposioConnectCall {...props} />;
+  return <OpenHumanToolCall {...props} />;
+};
 
 /** Keep the assistant-ui tool cards visible; each card owns its detail collapse. */
 export const ChatToolGroup: FC<PropsWithChildren<{ group: ThreadGroupPart }>> = ({

@@ -1,10 +1,15 @@
-import type { AppendMessage } from '@assistant-ui/react';
+import type { AppendMessage, RespondToToolApprovalOptions } from '@assistant-ui/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
+import { type ApprovalDecision, decideApproval } from '../services/api/approvalApi';
 import { threadApi } from '../services/api/threadApi';
-import type { InferenceStatus, ToolTimelineEntry } from '../store/chatRuntimeSlice';
-import { useAppSelector } from '../store/hooks';
+import {
+  clearPendingApprovalForThread,
+  type InferenceStatus,
+  type ToolTimelineEntry,
+} from '../store/chatRuntimeSlice';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { DerivedDisplayItem } from '../types/derivedTranscript';
 import type { ThreadMessage } from '../types/thread';
 import { buildRuntimeMessages } from './assistantUiMessages';
@@ -169,6 +174,7 @@ function appendMessageText(message: AppendMessage): string {
  * projection. Redux is not a second transcript database.
  */
 export function useOpenHumanExternalStore(threadId: string | null) {
+  const dispatch = useAppDispatch();
   const messages = useAppSelector(state =>
     threadId ? (state.thread.messagesByThreadId[threadId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES
   );
@@ -194,6 +200,12 @@ export function useOpenHumanExternalStore(threadId: string | null) {
   const inferenceStatus = useAppSelector(state =>
     threadId ? (state.chatRuntime.inferenceStatusByThread?.[threadId] ?? null) : null
   );
+  // The thread's parked ApprovalGate request. Selected here rather than read by
+  // a card somewhere else on the page: the decision belongs on the tool call it
+  // gates, and only this adapter can put it there.
+  const pendingApproval = useAppSelector(state =>
+    threadId ? (state.chatRuntime.pendingApprovalByThread?.[threadId] ?? null) : null
+  );
   const settledRevision = `${messages.at(-1)?.id ?? ''}:${messages.at(-1)?.content?.length ?? 0}:${lifecycle ?? ''}`;
   const coreTranscript = useCoreTranscriptProjection(
     threadId,
@@ -215,10 +227,11 @@ export function useOpenHumanExternalStore(threadId: string | null) {
         isRunning,
         liveTimeline,
         liveTranscript,
+        pendingApproval,
         turnTimelines: coreTranscript.timelines,
         turnTranscripts: coreTranscript.transcripts,
       }),
-    [messages, streaming, isRunning, liveTimeline, liveTranscript, coreTranscript]
+    [messages, streaming, isRunning, liveTimeline, liveTranscript, pendingApproval, coreTranscript]
   );
 
   // The status line titles its `tool_use` / `subagent` phases from the matching
@@ -256,6 +269,32 @@ export function useOpenHumanExternalStore(threadId: string | null) {
     await getChatSurface(threadId)?.cancel?.();
   }, [threadId]);
 
+  /**
+   * Record the user's decision on the parked tool call.
+   *
+   * `optionId` is the core's own `decision` literal (see
+   * `APPROVAL_DECISION_OPTIONS`), so it forwards unchanged; the boolean
+   * `approved` is only the fallback for a renderer that answered with a plain
+   * allow/deny rather than picking one of the declared options.
+   *
+   * Supplying this at all is load-bearing, not optional: without it the runtime
+   * *throws* `Runtime does not support tool approvals.` the moment a decision
+   * button is pressed, rather than no-opping.
+   */
+  const onRespondToToolApproval = useCallback(
+    async ({ approvalId, approved, optionId }: RespondToToolApprovalOptions) => {
+      const decision = (optionId ?? (approved ? 'approve_once' : 'deny')) as ApprovalDecision;
+      await decideApproval(approvalId, decision);
+      // Resolve optimistically, exactly as `ApprovalRequestCard` does — the
+      // turn-end handlers in `ChatRuntimeProvider` clear it again if the turn
+      // is cancelled instead. Only on success: a failed decide leaves the call
+      // parked, and dropping the prompt would strand the thread until the
+      // gate's TTL with nothing left on screen to retry from.
+      if (threadId) dispatch(clearPendingApprovalForThread({ threadId }));
+    },
+    [dispatch, threadId]
+  );
+
   return useMemo(
     () => ({
       messages: runtimeMessages,
@@ -266,7 +305,8 @@ export function useOpenHumanExternalStore(threadId: string | null) {
       convertMessage: (m: (typeof runtimeMessages)[number]) => m,
       onNew,
       onCancel,
+      onRespondToToolApproval,
     }),
-    [runtimeMessages, isRunning, isLoading, extras, onNew, onCancel]
+    [runtimeMessages, isRunning, isLoading, extras, onNew, onCancel, onRespondToToolApproval]
   );
 }
