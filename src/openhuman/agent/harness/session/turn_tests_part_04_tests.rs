@@ -462,3 +462,229 @@ fn skill_retraction_note_names_removed_skills_and_warns_against_run_skill() {
         "retraction note must not look like an install announcement: {note}"
     );
 }
+
+// ── Lane C: auto-recall of facts about the user (#6040) ──────────────────────
+//
+// The lane is exercised through a real `turn()`: a scripted source stands in
+// for the memory driver, the scripted chat model records every request, and
+// the assertions read the user message the model was actually sent.
+
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::provider::retrieval::{
+    FastRetrieveQuery, RetrievalHit, RetrievalNodeKind, RetrievalResponse,
+};
+use crate::openhuman::memory::auto_recall::{AutoRecall, AutoRecallSource, AUTO_RECALL_BANNER};
+
+const IDOL_QUESTION: &str = "who is my idol and why?";
+const IDOL_FACT: &str = "Idol: Virat Kohli, because of his dedication and consistency";
+
+struct ScriptedAutoRecallSource {
+    hits: Vec<RetrievalHit>,
+    delay: Duration,
+    calls: AtomicUsize,
+}
+
+impl ScriptedAutoRecallSource {
+    fn with_fact(content: &str) -> Arc<Self> {
+        Arc::new(Self {
+            hits: vec![RetrievalHit {
+                node_id: "leaf-1".into(),
+                node_kind: RetrievalNodeKind::Leaf,
+                tree_id: String::new(),
+                tree_kind: None,
+                tree_scope: "folder:profile".into(),
+                level: 0,
+                content: content.to_string(),
+                entities: Vec::new(),
+                topics: Vec::new(),
+                time_range_start: chrono::DateTime::<chrono::Utc>::default(),
+                time_range_end: chrono::DateTime::<chrono::Utc>::default(),
+                score: 0.9,
+                child_ids: Vec::new(),
+                source_ref: None,
+            }],
+            delay: Duration::ZERO,
+            calls: AtomicUsize::new(0),
+        })
+    }
+
+    fn slow(content: &str, delay: Duration) -> Arc<Self> {
+        let mut source = Arc::try_unwrap(Self::with_fact(content))
+            .ok()
+            .expect("fresh arc");
+        source.delay = delay;
+        Arc::new(source)
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl AutoRecallSource for ScriptedAutoRecallSource {
+    async fn fast_retrieve(
+        &self,
+        _query: &str,
+        _options: FastRetrieveQuery,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
+        }
+        Ok(RetrievalResponse {
+            total: self.hits.len(),
+            hits: self.hits.clone(),
+            truncated: false,
+        })
+    }
+}
+
+fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
+    Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![Ok(ChatResponse {
+            text: Some(text.into()),
+            tool_calls: vec![],
+            usage: None,
+            reasoning_content: None,
+        })]),
+        requests: AsyncMutex::new(Vec::new()),
+        tool_counts: AsyncMutex::new(Vec::new()),
+    })
+}
+
+/// A turn-capable agent with Lane C bound (or deliberately absent), over the
+/// same real embedded store the other turn tests use.
+fn make_agent_with_auto_recall(
+    provider: Arc<dyn ChatModel<()>>,
+    auto_recall: Option<Arc<AutoRecall>>,
+) -> Agent {
+    let workspace = tempfile::TempDir::new().expect("temp workspace");
+    let workspace_path = workspace.path().to_path_buf();
+    std::mem::forget(workspace);
+    let memory_cfg = crate::openhuman::config::MemoryConfig {
+        backend: "none".into(),
+        ..crate::openhuman::config::MemoryConfig::default()
+    };
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+
+    Agent::builder()
+        .chat_model(provider)
+        .tools(vec![])
+        .memory(mem)
+        .auto_recall(auto_recall)
+        .tool_dispatcher(Box::new(XmlToolDispatcher))
+        .config(crate::openhuman::config::AgentConfig::default())
+        .context_config(crate::openhuman::config::ContextConfig::default())
+        .workspace_dir(workspace_path)
+        .event_context("turn-test-session", "turn-test-channel")
+        .build()
+        .unwrap()
+}
+
+/// The messages the model was sent on the first (only) request, split by role.
+async fn first_request(provider: &SequenceProvider) -> (Vec<String>, Vec<String>) {
+    let requests = provider.requests.lock().await;
+    let request = requests.first().expect("the model was called once");
+    let system = request
+        .iter()
+        .filter(|m| m.role == "system")
+        .map(|m| m.content.clone())
+        .collect();
+    let user = request
+        .iter()
+        .filter(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .collect();
+    (system, user)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_recall_block_rides_the_user_message_for_a_personal_question() {
+    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
+    let lane = Arc::new(AutoRecall::new(source.clone(), true, None));
+    let provider_impl = scripted_reply("Virat Kohli, for his dedication and consistency.");
+    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
+    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+
+    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
+    assert!(reply.contains("Virat"));
+    assert_eq!(source.calls(), 1, "one bounded lookup for one gated turn");
+
+    let (system, user) = first_request(&provider_impl).await;
+    let last_user = user.last().expect("a user message");
+    assert!(
+        last_user.contains(AUTO_RECALL_BANNER) && last_user.contains("Virat Kohli"),
+        "the block must ride the user message: {last_user}"
+    );
+    assert!(
+        last_user.contains(IDOL_QUESTION),
+        "the user's own words must follow the block: {last_user}"
+    );
+    assert!(
+        system.iter().all(|s| !s.contains(AUTO_RECALL_BANNER)),
+        "the block must never land in the system prompt"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_recall_stays_silent_and_costs_nothing_on_small_talk() {
+    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
+    let lane = Arc::new(AutoRecall::new(source.clone(), true, None));
+    let provider_impl = scripted_reply("Sunny, probably.");
+    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
+    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+
+    agent
+        .turn("what's the weather today")
+        .await
+        .expect("turn succeeds");
+    assert_eq!(source.calls(), 0, "a closed gate never reaches the store");
+    let (_, user) = first_request(&provider_impl).await;
+    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_recall_disabled_by_the_hooks_switch_injects_nothing() {
+    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
+    let lane = Arc::new(AutoRecall::new(source.clone(), false, None));
+    let provider_impl = scripted_reply("I don't have that stored.");
+    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
+    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+
+    agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
+    assert_eq!(source.calls(), 0);
+    let (_, user) = first_request(&provider_impl).await;
+    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_recall_timeout_yields_an_ordinary_turn() {
+    let source = ScriptedAutoRecallSource::slow(IDOL_FACT, Duration::from_millis(300));
+    let lane = Arc::new(
+        AutoRecall::new(source.clone(), true, None).with_budget(Duration::from_millis(20)),
+    );
+    let provider_impl = scripted_reply("Still here.");
+    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
+    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+
+    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
+    assert_eq!(reply, "Still here.");
+    assert_eq!(source.calls(), 1);
+    let (_, user) = first_request(&provider_impl).await;
+    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_session_without_the_lane_turns_as_before() {
+    let provider_impl = scripted_reply("Hello.");
+    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
+    let mut agent = make_agent_with_auto_recall(provider, None);
+
+    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
+    assert_eq!(reply, "Hello.");
+    let (_, user) = first_request(&provider_impl).await;
+    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
+}

@@ -541,6 +541,35 @@ async fn build_session_agent_uses_profile_memory_instead_of_root_memory() {
     assert!(!prompt.contains("shared root memory marker"));
 }
 
+/// #6040 — the memory-access instruction is about the memory tools, not the
+/// learning subsystem, so it must be in the prompt with `learning.enabled`
+/// off (the default) whenever a retrieval tool is registered and visible.
+#[tokio::test]
+async fn memory_access_instruction_is_present_with_learning_disabled() {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    use crate::openhuman::agent::context::prompt::LearnedContextData;
+    use crate::openhuman::agent::harness::session::types::Agent;
+    use crate::openhuman::agent::learning::MEMORY_ACCESS_INSTRUCTION;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let mut config = test_config(&tmp);
+    config.learning.enabled = false;
+
+    let agent = Agent::build_session_agent_inner(&config, "orchestrator", None, None, false, None)
+        .expect("build session agent");
+    let prompt = agent
+        .build_system_prompt(LearnedContextData::default())
+        .expect("build_system_prompt");
+    assert!(
+        prompt.contains(MEMORY_ACCESS_INSTRUCTION.trim()),
+        "the memory-access section must not be gated on learning.enabled"
+    );
+    assert!(
+        prompt.contains("Never say something is not stored"),
+        "the instruction must forbid claiming absence without a retrieval"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // B38 (Gap 2) — a custom (non-shipped) `AgentRegistryEntry` must synthesize a
 // real `AgentDefinition` and run with its own `ToolScope::Named` filter,

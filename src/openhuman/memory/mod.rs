@@ -34,6 +34,10 @@
 
 pub mod agent;
 pub mod api;
+/// Lane C — the gated, bounded pre-turn recall of facts about the user
+/// (#6040). Host policy end to end: what counts as a question about the user,
+/// how much a block may carry, and the switch are product decisions.
+pub mod auto_recall;
 pub mod binding;
 pub mod driver;
 pub mod exit;
