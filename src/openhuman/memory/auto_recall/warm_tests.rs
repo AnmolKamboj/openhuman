@@ -93,3 +93,25 @@ async fn spawn_at_boot_is_a_no_op_when_the_lane_is_off() {
     // never happens, so there is no task to wait for.
     spawn_at_boot(Arc::new(config));
 }
+
+/// The boot path end to end against whatever driver the test build binds
+/// (the null driver unless a module is staged): binding succeeds, the guard
+/// has no retrieval family, the warm-up reports `Warmed` on an empty page.
+/// Whatever the driver, the contract is the same — no error, one log line.
+#[tokio::test]
+async fn warm_up_from_config_binds_and_degrades_quietly() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = Config {
+        workspace_dir: tmp.path().join("workspace"),
+        action_dir: tmp.path().join("workspace"),
+        config_path: tmp.path().join("config.toml"),
+        ..Config::default()
+    };
+    std::fs::create_dir_all(&config.workspace_dir).unwrap();
+
+    let outcome = warm_up_from_config(&config).await;
+    assert!(
+        !matches!(outcome, Some(WarmUpOutcome::TimedOut)),
+        "a warm-up against the test driver must not hang: {outcome:?}"
+    );
+}

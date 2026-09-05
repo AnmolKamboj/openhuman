@@ -69,6 +69,9 @@ pub const AUTO_RECALL_LIMIT: usize = 3;
 /// needs the fact, not the whole page it came from.
 pub const AUTO_RECALL_PER_HIT_CHARS: usize = 400;
 
+/// Characters kept of a hit's scope label (`folder:profile`, `slack:#eng`).
+pub const AUTO_RECALL_SCOPE_CHARS: usize = 80;
+
 /// How long the turn waits for the lookup before proceeding without it.
 ///
 /// Wider than Lane B's 3 s on purpose. A warm `fast_retrieve` through the
@@ -231,10 +234,13 @@ pub(crate) fn render_block(hits: &[RetrievalHit], recall_max_chars: Option<usize
     for hit in hits {
         block.push_str("- ");
         block.push_str(&one_line(&hit.content, AUTO_RECALL_PER_HIT_CHARS));
-        let scope = hit.tree_scope.trim();
+        // The scope is driver metadata (`folder:profile`, `slack:#eng`), but
+        // it lands in the prompt like the content does, so it gets the same
+        // one-line treatment and a short cap rather than a trusted pass-through.
+        let scope = one_line(&hit.tree_scope, AUTO_RECALL_SCOPE_CHARS);
         if !scope.is_empty() {
             block.push_str(" (from ");
-            block.push_str(scope);
+            block.push_str(&scope);
             block.push(')');
         }
         block.push('\n');

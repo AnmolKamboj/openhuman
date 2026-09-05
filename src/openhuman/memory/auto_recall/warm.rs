@@ -75,26 +75,33 @@ pub async fn warm_up(source: &dyn AutoRecallSource, budget: Duration) -> WarmUpO
     }
 }
 
+/// Bind the memory driver `config` selects and run [`warm_up`] through its
+/// guard. `None` when the driver cannot be bound — logged, never an error.
+pub async fn warm_up_from_config(config: &Config) -> Option<WarmUpOutcome> {
+    let binding = match crate::openhuman::memory::binding::for_config(config) {
+        Ok(binding) => binding,
+        Err(reason) => {
+            log::debug!("[auto_recall] warm-up skipped: memory binding unavailable: {reason}");
+            return None;
+        }
+    };
+    let source = GuardSource::new(binding.guard());
+    Some(warm_up(&source, WARM_UP_BUDGET).await)
+}
+
 /// Spawn the boot warm-up for the memory driver `config` binds.
 ///
 /// Returns without doing anything when the lane is switched off — a host that
-/// disabled `auto_recall` asked for no pre-turn retrieval work at all — or when
-/// the driver cannot be bound. Never blocks the caller.
+/// disabled `auto_recall` asked for no pre-turn retrieval work at all. Never
+/// blocks the caller; the spawned task's own timeout only stops the wait, a
+/// retrieval already in flight inside the module runs to completion.
 pub fn spawn_at_boot(config: Arc<Config>) {
     if !config.subsystems.memory.hooks.auto_recall {
         log::debug!("[auto_recall] warm-up skipped: hooks.auto_recall is off");
         return;
     }
     tokio::spawn(async move {
-        let binding = match crate::openhuman::memory::binding::for_config(&config) {
-            Ok(binding) => binding,
-            Err(reason) => {
-                log::debug!("[auto_recall] warm-up skipped: memory binding unavailable: {reason}");
-                return;
-            }
-        };
-        let source = GuardSource::new(binding.guard());
-        warm_up(&source, WARM_UP_BUDGET).await;
+        warm_up_from_config(&config).await;
     });
 }
 
