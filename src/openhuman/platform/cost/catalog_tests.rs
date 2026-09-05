@@ -272,8 +272,16 @@ fn estimate_resolves_decorated_model_ids() {
 
 #[test]
 fn minimax_rows_and_vision_normalization() {
-    assert_eq!(lookup("minimax/minimax-m3").unwrap().context_window, 1_000_000);
-    assert_eq!(lookup("minimax-m2.7-highspeed").unwrap().output_per_mtok_usd, 2.40);
+    assert_eq!(
+        lookup("minimax/minimax-m3").unwrap().context_window,
+        1_000_000
+    );
+    assert_eq!(
+        lookup("minimax-m2.7-highspeed")
+            .unwrap()
+            .output_per_mtok_usd,
+        2.40
+    );
     assert!(model_accepts_image_input("MiniMax/minimax-m3:latest"));
     assert!(default_registry_entries()
         .iter()
