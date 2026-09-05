@@ -101,23 +101,31 @@ impl PromptSection for UserProfileSection {
 
 /// Static bias instruction that tells the agent to call `memory_recall` before
 /// answering questions involving named people, projects, prior decisions, or
-/// anything the user mentioned in past sessions.
+/// anything the user mentioned in past sessions — and never to claim something
+/// is not stored without having looked (#6040).
 ///
 /// The text is frozen at compile time — no I/O at build time.
 /// Register this section after [`LearnedContextSection`] in the prompt-section
-/// composition order (see `SystemPromptBuilder::with_defaults`).
+/// composition order (see `SystemPromptBuilder::with_defaults`). It is added
+/// whenever a retrieval tool is registered and visible, independently of
+/// `learning.enabled`: the instruction is about the memory tools, which exist
+/// whether or not the learning subsystem runs.
 pub struct MemoryAccessSection;
 
-/// The static prose injected into every system prompt. Kept at ≤ 80 tokens.
+/// The static prose injected into every system prompt. Kept at ≤ 100 words
+/// (the composition test pins that ceiling).
 pub const MEMORY_ACCESS_INSTRUCTION: &str = "\
 ## Memory access\n\
 \n\
 Before answering questions involving named people, projects, threads, prior \
 decisions, recurring topics, or anything the user has mentioned in past sessions, \
 call `memory_recall` (or `memory_search` for keyword lookups) to retrieve \
-relevant context. Surface what matters in your reply; don't stitch together \
-continuity from prompt history alone. Skip retrieval for purely procedural \
-requests where prior context isn't relevant.";
+relevant context. Questions about the user themselves — favourites, idols, \
+people, plans, habits — always warrant a retrieval first. Never say something is \
+not stored or not remembered unless a retrieval you just ran returned nothing. \
+Surface what matters in your reply; don't stitch together continuity from prompt \
+history alone. Skip retrieval for purely procedural requests where prior context \
+isn't relevant.";
 
 impl PromptSection for MemoryAccessSection {
     fn name(&self) -> &str {

@@ -24,6 +24,7 @@ impl AgentBuilder {
             subagent_tool_ceiling_names: None,
             memory: None,
             shared_experience_memory: None,
+            auto_recall: None,
             prompt_builder: None,
             tool_dispatcher: None,
             config: None,
@@ -119,6 +120,16 @@ impl AgentBuilder {
     /// dedicated profile subtree.
     pub fn shared_experience_memory(mut self, memory: Option<Arc<dyn Memory>>) -> Self {
         self.shared_experience_memory = memory;
+        self
+    }
+
+    /// Binds Lane C, the gated pre-turn auto-recall of facts about the user
+    /// (#6040). `None` leaves the lane out of the turn entirely.
+    pub fn auto_recall(
+        mut self,
+        auto_recall: Option<Arc<crate::openhuman::memory::auto_recall::AutoRecall>>,
+    ) -> Self {
+        self.auto_recall = auto_recall;
         self
     }
 
@@ -603,6 +614,7 @@ impl AgentBuilder {
                 .memory
                 .ok_or_else(|| anyhow::anyhow!("memory is required"))?,
             shared_experience_memory: self.shared_experience_memory,
+            auto_recall: self.auto_recall,
             tool_dispatcher: std::sync::Arc::from(
                 self.tool_dispatcher
                     .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
