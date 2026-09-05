@@ -16,6 +16,7 @@ mod schemas;
 pub mod settings_cli;
 pub mod tools;
 pub mod workspace;
+pub mod workspace_handle;
 
 #[allow(unused_imports)]
 pub use daemon::DaemonConfig;
@@ -25,10 +26,12 @@ pub use ops as rpc;
 pub use ops::*;
 
 pub use schema::{
-    action_dir_env_override, active_user_marker_path, clear_active_user, default_action_dir,
+    action_dir_env_override, active_user_marker_path, active_workspace_dir,
+    active_workspace_dir_cached, active_workspace_snapshot, clear_active_user, default_action_dir,
     default_projects_dir, default_root_openhuman_dir, pre_login_user_dir, read_active_user_id,
     resolve_action_dir, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
+pub use workspace_handle::workspace_handle;
 // Crate-internal: workspace→config-dir resolver reused by the cloud embedder.
 pub(crate) use schema::resolve_config_dir_for_workspace;
 pub(crate) use schema::set_cli_inference_overrides;
@@ -36,17 +39,15 @@ pub(crate) use schema::set_cli_inference_overrides;
 pub use schema::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,
     build_runtime_proxy_client_with_timeouts, output_language_directive, runtime_proxy_config,
-    set_runtime_proxy_config, AgentConfig, AuditConfig, AutoJoinPolicy, AutoSummarizePolicy,
-    AutonomyConfig, BrowserComputerUseConfig, BrowserConfig, CapabilityProviderConfig,
-    CapabilityProviderTrustState, ChannelsConfig, ComposioConfig, Config, ContextConfig,
-    CostConfig, CronConfig, CurlConfig, DashboardConfig, DelegateAgentConfig, DiagramViewerConfig,
-    DictationActivationMode, DictationConfig, DiscordConfig, DockerRuntimeConfig, EmailConfig,
-    EmbeddingRouteConfig, GitbooksConfig, HeartbeatConfig, HttpHeader, HttpRequestConfig,
-    IMessageConfig, IntegrationToggle, IntegrationsConfig, LarkConfig, LearningConfig, LinqConfig,
-    LlmBackend, LocalAiConfig, MatrixConfig, McpAuthConfig, McpClientConfig,
-    McpClientIdentityConfig, McpServerConfig, MedullaClientConfig, MedullaCycleConfig,
-    MedullaCycleLimits, MedullaPromptOverrides, MedullaVerification, MeetConfig, MemoryConfig,
-    MemoryTreeConfig, ModelRouteConfig, MultimodalConfig, MultimodalFileConfig,
+    set_runtime_proxy_config, AgentConfig, AuditConfig, AutonomyConfig, BrowserComputerUseConfig,
+    BrowserConfig, CapabilityProviderConfig, CapabilityProviderTrustState, ChannelsConfig,
+    ComposioConfig, Config, ContextConfig, CostConfig, CronConfig, CurlConfig, DashboardConfig,
+    DelegateAgentConfig, DiagramViewerConfig, DictationActivationMode, DictationConfig,
+    DiscordConfig, DockerRuntimeConfig, EmailConfig, EmbeddingRouteConfig, GitbooksConfig,
+    HeartbeatConfig, HttpHeader, HttpRequestConfig, IMessageConfig, IntegrationToggle,
+    IntegrationsConfig, LarkConfig, LearningConfig, LinqConfig, LlmBackend, LocalAiConfig,
+    MatrixConfig, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpServerConfig,
+    MemoryConfig, MemoryTreeConfig, ModelRouteConfig, MultimodalConfig, MultimodalFileConfig,
     ObservabilityConfig, OrchestratorModelConfig, PrivacyConfig, PrivacyMode, ProxyConfig,
     ProxyScope, ReflectionSource, ReliabilityConfig, ResourceLimitsConfig, RuntimeConfig,
     RuntimePoolConfig, RuntimePoolLangConfig, SandboxBackend, SandboxConfig, SchedulerConfig,
@@ -78,51 +79,5 @@ pub use schemas::{
 pub(crate) static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reexported_config_default_is_constructible() {
-        let config = Config::default();
-
-        assert!(config.default_model.is_some());
-        assert!(config.default_temperature > 0.0);
-    }
-
-    #[test]
-    fn reexported_channel_configs_are_constructible() {
-        let telegram = TelegramConfig {
-            bot_token: "token".into(),
-            chat_id: None,
-            allowed_users: vec!["alice".into()],
-            stream_mode: StreamMode::default(),
-            draft_update_interval_ms: 1000,
-            silent_streaming: true,
-            mention_only: false,
-        };
-
-        let discord = DiscordConfig {
-            bot_token: "token".into(),
-            guild_id: Some("123".into()),
-            channel_id: None,
-            allowed_users: vec![],
-            listen_to_bots: false,
-            mention_only: false,
-        };
-
-        let lark = LarkConfig {
-            app_id: "app-id".into(),
-            app_secret: "app-secret".into(),
-            encrypt_key: None,
-            verification_token: None,
-            allowed_users: vec![],
-            use_feishu: false,
-            receive_mode: crate::openhuman::config::schema::LarkReceiveMode::Websocket,
-            port: None,
-        };
-
-        assert_eq!(telegram.allowed_users.len(), 1);
-        assert_eq!(discord.guild_id.as_deref(), Some("123"));
-        assert_eq!(lark.app_id, "app-id");
-    }
-}
+#[path = "mod_tests.rs"]
+mod tests;

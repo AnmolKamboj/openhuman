@@ -71,7 +71,7 @@ use openhuman_core::openhuman::memory::ops::{
     KvSetParams, PutDocParams,
 };
 use openhuman_core::openhuman::memory::rpc_models::{RecallContextRequest, RecallMemoriesRequest};
-use openhuman_core::openhuman::memory::tinycortex::memory_config_from;
+use tinymemory_core::tinycortex::memory_config_from;
 
 // ── Env isolation (mirrors memory_roundtrip_e2e) ─────────────────────────────
 

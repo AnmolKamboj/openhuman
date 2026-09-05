@@ -267,6 +267,7 @@ impl Config {
             &ProcessEnv,
         )
         .await
+        .inspect(super::active_workspace::publish_loaded_workspace)
     }
 
     pub(crate) async fn load_or_init_with_env_lookup(

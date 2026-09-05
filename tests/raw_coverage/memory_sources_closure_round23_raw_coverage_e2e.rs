@@ -172,16 +172,16 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
         path: Some(folder_root.to_string_lossy().into_owned()),
         ..source_entry("round23-folder", SourceKind::Folder)
     };
-    let added = memory_sources::add_source(folder.clone())
+    let added = memory_sources::registry::add_source(folder.clone())
         .await
         .expect("add folder source");
     assert_eq!(added.id, "round23-folder");
-    let duplicate = memory_sources::add_source(folder)
+    let duplicate = memory_sources::registry::add_source(folder)
         .await
         .expect_err("duplicate source rejected");
     assert!(duplicate.contains("already exists"));
 
-    let updated = memory_sources::update_source(
+    let updated = memory_sources::registry::update_source(
         "round23-folder",
         MemorySourcePatch {
             label: Some("Round23 Folder Updated".to_string()),
@@ -196,7 +196,7 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
     assert!(!updated.enabled);
     assert_eq!(updated.glob.as_deref(), Some("**/*.md"));
 
-    let missing_update = memory_sources::update_source(
+    let missing_update = memory_sources::registry::update_source(
         "missing-round23",
         MemorySourcePatch {
             label: Some("Missing".to_string()),
@@ -207,7 +207,7 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
     .expect_err("missing source rejected");
     assert!(missing_update.contains("source 'missing-round23' not found"));
 
-    let invalid = memory_sources::add_source(MemorySourceEntry {
+    let invalid = memory_sources::registry::add_source(MemorySourceEntry {
         url: None,
         ..source_entry("bad-rss", SourceKind::RssFeed)
     })
@@ -222,7 +222,7 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
     )
     .await
     .expect("insert composio");
-    let composio = memory_sources::update_source(
+    let composio = memory_sources::registry::update_source(
         &composio.id,
         MemorySourcePatch {
             enabled: Some(true),
@@ -231,14 +231,14 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
     )
     .await
     .expect("enable composio source");
-    let status = memory_sources::status::source_status(&config, &composio)
+    let status = tinymemory_core::sources::status::source_status(&config, &composio)
         .await
         .expect("composio status");
     assert_eq!(status.source_id, composio.id);
     assert_eq!(status.chunks_synced, 0);
     assert_eq!(
         status.freshness,
-        memory_sources::status::FreshnessLabel::Idle
+        tinymemory_core::sources::status::FreshnessLabel::Idle
     );
 
     let statuses = memory_sources::status::status_list(&config)
@@ -248,7 +248,7 @@ async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edge
         .iter()
         .any(|status| status.source_id == composio.id));
 
-    let enabled_composio = memory_sources::list_enabled_by_kind(SourceKind::Composio)
+    let enabled_composio = memory_sources::registry::list_enabled_by_kind(SourceKind::Composio)
         .await
         .expect("enabled composio");
     assert_eq!(enabled_composio.len(), 1);

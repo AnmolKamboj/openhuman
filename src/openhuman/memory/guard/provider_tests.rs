@@ -5,13 +5,13 @@ use super::*;
 use std::sync::Arc;
 
 use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
-use crate::openhuman::memory::api::null::NullMemoryProvider;
 use crate::openhuman::memory::api::provider::types::SourceScope;
 use crate::openhuman::memory::api::provider::{
     audit_provider, MemoryCore, MemoryPortability, MemoryProvider, MemoryRecall,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
+use tinymemory_api::null::NullMemoryProvider;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
@@ -58,7 +58,7 @@ async fn guard_passes_audit_provider_against_its_own_capabilities() {
 }
 
 #[tokio::test]
-async fn guard_accessor_presence_mirrors_inner_provides_for_all_ten_families() {
+async fn guard_accessor_presence_mirrors_inner_provides_for_every_family() {
     let (_driver, guard) = guarded(embedded_policy());
     for capability in Capability::ALL {
         assert!(

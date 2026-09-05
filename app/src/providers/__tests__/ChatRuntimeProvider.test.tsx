@@ -482,6 +482,147 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       await waitFor(() => expect(mockRefetchSnapshot).toHaveBeenCalledTimes(1));
     });
 
+    it('persists a core-initiated (system) turn under the id the core already wrote (#5933)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-sys',
+          request_id: 'bgdeliver-1',
+          client_id: 'system',
+          full_response: 'Same two issues as before',
+          rounds_used: 1,
+        });
+      });
+
+      // The same `agent:<run_id>` id `task_session::append_final` used, so the
+      // core's idempotent store collapses this append onto its own row instead
+      // of keeping a second copy of the reply.
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys',
+          expect.objectContaining({
+            id: 'agent:bgdeliver-1',
+            sender: 'agent',
+            content: 'Same two issues as before',
+            extraMetadata: expect.objectContaining({ requestId: 'bgdeliver-1' }),
+          })
+        )
+      );
+    });
+
+    it('persists a core-initiated (system) turn failure under the same core id', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err',
+          request_id: 'bgdeliver-2',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err',
+          expect.objectContaining({ id: 'agent:bgdeliver-2', sender: 'agent' })
+        )
+      );
+    });
+
+    it('persists a second core failure with identical text under its own id (#5933)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err-dup',
+          request_id: 'bgdeliver-a',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err-dup',
+          expect.objectContaining({ id: 'agent:bgdeliver-a' })
+        )
+      );
+
+      // Same thread, same failure text, a different run. The core persisted
+      // this one as `agent:bgdeliver-b`; deduping on the last row's content
+      // would read the previous run's row as this one and drop the new
+      // failure from the cache entirely.
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-sys-err-dup',
+          request_id: 'bgdeliver-b',
+          client_id: 'system',
+          message: 'Run failed: boom',
+          error_type: 'inference',
+          round: null,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-sys-err-dup',
+          expect.objectContaining({ id: 'agent:bgdeliver-b', sender: 'agent' })
+        )
+      );
+      expect(threadApi.appendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('still suppresses a repeat of the same core failure event', async () => {
+      const listeners = renderProvider();
+      const fire = () =>
+        act(() => {
+          listeners.onError?.({
+            thread_id: 't-sys-err-same',
+            request_id: 'bgdeliver-c',
+            client_id: 'system',
+            message: 'Run failed: boom',
+            error_type: 'inference',
+            round: null,
+          });
+        });
+
+      fire();
+      await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
+
+      // The row is in the cache under `agent:bgdeliver-c` now, so the id check
+      // recognises the redelivery. Trading the content check for an id check
+      // must not turn a duplicate event into a duplicate append.
+      fire();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(threadApi.appendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a generated id for an interactive chat_done (nothing else persisted it)', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onDone?.({
+          thread_id: 't-user',
+          request_id: 'r-user',
+          full_response: 'hi',
+          rounds_used: 1,
+        });
+      });
+
+      await waitFor(() => expect(threadApi.appendMessage).toHaveBeenCalledTimes(1));
+      const [, persisted] = vi.mocked(threadApi.appendMessage).mock.calls[0];
+      expect(persisted.id).not.toBe('agent:r-user');
+      expect(persisted.sender).toBe('agent');
+    });
+
     it('stores a parked plan review from the plan_review_request event', () => {
       const listeners = renderProvider();
       act(() => {
@@ -2050,6 +2191,55 @@ describe('ChatRuntimeProvider — skill tool-chain latency (#4273 AC3)', () => {
     expect(warnSpy.mock.calls.some(args => String(args[0]).includes('[skill-latency]'))).toBe(
       false
     );
+  });
+
+  it('dispatches openhuman:session-expired window event on session_expired chat error (#5868)', () => {
+    const listeners = renderProvider();
+    const received: Event[] = [];
+    const handler = (e: Event) => received.push(e);
+    window.addEventListener('openhuman:session-expired', handler);
+
+    act(() => {
+      listeners.onError?.({
+        thread_id: 't-sess',
+        request_id: 'r1',
+        error_type: 'session_expired',
+        message: 'Your OpenHuman session has expired. Please sign in again to continue.',
+      } as chatService.ChatErrorEvent);
+    });
+
+    window.removeEventListener('openhuman:session-expired', handler);
+    expect(received).toHaveLength(1);
+    expect((received[0] as CustomEvent).detail?.source).toBe('chat-error');
+    // The reason is the load-bearing half, not decoration. `CoreStateProvider`
+    // defaults a reason-less `openhuman:session-expired` to `confirmed`, which
+    // SKIPS `confirmSessionTokenGone()` and runs the destructive
+    // `clearSession()`. The core reaches this error type through
+    // `is_session_expired_message`, which also matches the local guards
+    // "no backend session token" and "session jwt required" — the transient
+    // pre-profile-load signals #2758 exists to corroborate rather than trust.
+    // Dropping this field silently reintroduces that bug through a new door,
+    // so it is asserted here, at the dispatch, where the value is decided.
+    expect((received[0] as CustomEvent).detail?.reason).toBe('unconfirmed');
+  });
+
+  it('does not dispatch openhuman:session-expired for non-session error types', () => {
+    const listeners = renderProvider();
+    const received: Event[] = [];
+    const handler = (e: Event) => received.push(e);
+    window.addEventListener('openhuman:session-expired', handler);
+
+    act(() => {
+      listeners.onError?.({
+        thread_id: 't-inf',
+        request_id: 'r1',
+        error_type: 'inference',
+        message: 'Something went wrong.',
+      } as chatService.ChatErrorEvent);
+    });
+
+    window.removeEventListener('openhuman:session-expired', handler);
+    expect(received).toHaveLength(0);
   });
 
   it('closes the latency window on chat_error without warning', () => {

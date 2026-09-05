@@ -19,9 +19,12 @@ vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) 
 describe('SidebarHeader', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders Keyboard Shortcuts, Settings, and Collapse buttons', () => {
+  it('renders Keyboard Shortcuts, Search, Settings, and Collapse buttons', () => {
     renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
     expect(screen.getByRole('button', { name: 'shortcuts.title' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'shortcuts.action.commandPalette' })
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'nav.settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'chat.hideSidebar' })).toBeInTheDocument();
     // The wallet shortcut was removed long ago; Home followed it, since the
@@ -58,9 +61,21 @@ describe('SidebarHeader', () => {
   it('settings button navigates to /settings', () => {
     renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
     fireEvent.click(screen.getByRole('button', { name: 'nav.settings' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings', {
-      state: { backgroundLocation: expect.objectContaining({ pathname: '/home' }) },
-    });
+    expect(mockNavigate).toHaveBeenCalledWith('/settings');
+  });
+
+  // This slot used to be Share Feedback, navigating to `/feedback`. That page
+  // is a settings panel now, and the slot opens the command palette.
+  it('search button runs the command-palette action', () => {
+    const runAction = vi.spyOn(registry, 'runAction');
+    renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
+    fireEvent.click(screen.getByRole('button', { name: 'shortcuts.action.commandPalette' }));
+    expect(runAction).toHaveBeenCalledWith('meta.command-palette');
+  });
+
+  it('no longer renders a feedback button', () => {
+    renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
+    expect(screen.queryByRole('button', { name: 'nav.feedback' })).not.toBeInTheDocument();
   });
 
   it('Collapse button calls hide()', () => {

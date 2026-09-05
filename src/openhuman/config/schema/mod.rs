@@ -24,15 +24,25 @@ mod context;
 mod dashboard;
 mod defaults;
 mod dictation;
+mod hooks;
+pub use hooks::HooksConfig;
 mod heartbeat_cron;
+pub mod hosting;
+pub use hosting::HostingConfig;
 mod identity_cost;
 mod learning;
 mod load;
 pub use load::{
-    action_dir_env_override, active_user_marker_path, clear_active_user, default_action_dir,
+    action_dir_env_override, active_user_marker_path, active_workspace_dir,
+    active_workspace_dir_cached, active_workspace_snapshot, clear_active_user, default_action_dir,
     default_projects_dir, default_root_openhuman_dir, pre_login_user_dir, read_active_user_id,
     resolve_action_dir, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
+// Crate-internal: the invalidation half of the cached active workspace. The
+// marker writers in `load_user_state` call it from outside `load`; the
+// write-through half stays inside `load`, where the two resolvers live. Every
+// other caller reads through `active_workspace_dir_cached`.
+pub(crate) use load::invalidate_active_workspace;
 // Crate-internal: the workspace→config-dir resolver, reused by the cloud
 // embedder's keyless credential-scope resolution (mirrors `config::load`).
 pub(crate) use load::resolve_config_dir_for_workspace;
@@ -44,11 +54,9 @@ pub(crate) use load::CONFIG_OWNER_MISMATCH_MARKER;
 pub mod claude_agent_sdk;
 pub use claude_agent_sdk::ClaudeAgentSdkConfig;
 mod local_ai;
-mod meet;
 mod modules;
 mod node;
 mod observability;
-mod orchestration;
 mod privacy;
 mod proxy;
 mod routes;
@@ -83,14 +91,9 @@ pub use heartbeat_cron::{CronConfig, HeartbeatConfig, SubconsciousMode};
 pub use identity_cost::{CostConfig, ModelPricing};
 pub use learning::{LearningConfig, ReflectionSource};
 pub use local_ai::{LocalAiConfig, LocalAiUsage};
-pub use meet::{AutoJoinPolicy, AutoSummarizePolicy, CalendarProvider, MeetConfig};
 pub use modules::{ModuleOverride, ModulesConfig};
 pub use node::NodeConfig;
 pub use observability::{AgentTracingBackend, AgentTracingConfig, ObservabilityConfig};
-pub use orchestration::{
-    MedullaClientConfig, MedullaCycleConfig, MedullaCycleLimits, MedullaPromptOverrides,
-    MedullaVerification, OrchestrationConfig,
-};
 pub use privacy::{PrivacyConfig, PrivacyMode};
 pub use proxy::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,
