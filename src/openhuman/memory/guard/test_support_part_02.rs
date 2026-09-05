@@ -538,7 +538,7 @@ impl MemoryRetrieval for RecordingProvider {
         _exclude_session_id: Option<&str>,
     ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
         self.record(Call::plain("retrieval.recall_namespace_scored"));
-        Ok(vec![])
+        Ok(self.namespace_hits.lock().unwrap().clone())
     }
 
     async fn recall_namespace_recent(
