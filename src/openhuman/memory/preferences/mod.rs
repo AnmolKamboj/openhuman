@@ -232,13 +232,20 @@ pub async fn recall_situational_preferences_on(
     // The vector recall embeds the message — a round trip to the embedder,
     // measured at 0.8–3 s on the desktop — and it runs on every turn. Most
     // users have never saved a topic-scoped preference, so ask the store the
-    // cheap question first (a namespace listing, no embedding) and only pay
-    // for the embed when there is something to match. A failed listing falls
-    // through to the recall rather than silently disabling the lane.
+    // cheap question first and only pay for the embed when there is something
+    // to match. The question is a namespace *count*, not a listing: a user
+    // with hundreds of preferences must not ship every row over the bus on
+    // every turn just to learn that the namespace is non-empty. A failed
+    // count falls through to the recall rather than silently disabling the
+    // lane.
     let has_candidates = memory
-        .list(Some(USER_PREF_SITUATIONAL_NAMESPACE), None, None)
+        .namespace_summaries()
         .await
-        .map(|entries| !entries.is_empty())
+        .map(|summaries| {
+            summaries
+                .iter()
+                .any(|s| s.namespace == USER_PREF_SITUATIONAL_NAMESPACE && s.count > 0)
+        })
         .unwrap_or(true);
     if !has_candidates {
         log::debug!("[pref_recall] no situational preferences stored; skipping the vector recall");
