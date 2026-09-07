@@ -256,14 +256,9 @@ impl Agent {
         // raw SQLite handle the factory used to strip off the engine result.
         // That handle was the #5378 `:290` blocker: a concrete connection no
         // module or remote driver can supply. The engine's connection is now
-        // exclusively the engine's.
-        let archivist_provider = crate::openhuman::memory::binding::for_subtree(
-            &config.workspace_dir,
-            &memory_subdir,
-            &config.subsystems.memory,
-        )
-        .map(|binding| binding.provider().clone())
-        .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
+        // exclusively the engine's. Lane C (#6040) rides the same binding.
+        let (archivist_provider, auto_recall) =
+            super::helpers::bind_session_memory(config, &memory_subdir)?;
         // Dedicated profiles still recall unstamped experiences written by
         // pre-profile versions from the shared memory DB. Resolve that shared
         // store once, here, and hand it to the session rather than making the
@@ -986,7 +981,9 @@ impl Agent {
         //     listing is build-time configurable)
         // An empty `visible` set means "no filter" (wildcard / orchestrator
         // path); in that case any registered retrieval tool is reachable.
-        if config.learning.enabled {
+        // Not gated on `learning.enabled` (#6040): the instruction is about
+        // the memory tools, which exist whether or not learning runs.
+        {
             let recall_tools = ["memory_recall", "memory_search"];
             let has_retrieval = recall_tools.iter().any(|name| {
                 let registered = tools.iter().any(|t| t.name() == *name)
@@ -998,10 +995,10 @@ impl Agent {
                 prompt_builder = prompt_builder.add_section(Box::new(
                     crate::openhuman::agent::learning::MemoryAccessSection,
                 ));
-                log::debug!("[learning] memory_access prompt section registered");
+                log::debug!("[memory_access] prompt section registered");
             } else {
                 log::debug!(
-                    "[learning] skipping MemoryAccessSection — neither memory_recall nor \
+                    "[memory_access] skipping MemoryAccessSection — neither memory_recall nor \
                      memory_search is registered+visible for agent={agent_id}"
                 );
             }
@@ -1215,6 +1212,7 @@ impl Agent {
             .visible_tool_names(visible)
             .memory(memory)
             .shared_experience_memory(shared_experience_memory)
+            .auto_recall(Some(auto_recall))
             .tool_dispatcher(tool_dispatcher)
             .prompt_builder(prompt_builder)
             .config(effective_agent_config)

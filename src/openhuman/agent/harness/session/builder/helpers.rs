@@ -17,9 +17,30 @@
 //! reached through this session's own `binding::for_subtree(..)`, which needs
 //! the subtree passed in rather than the memory object.
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::auto_recall::AutoRecall;
 use crate::openhuman::memory::tool_memory::{tool_memory_store, ToolMemoryRule};
 use crate::openhuman::memory::Memory;
 use std::sync::Arc;
+
+/// Binds this session's memory subtree once and hands back the two handles
+/// the factory takes from it: the raw provider the archivist writes through,
+/// and Lane C (#6040) over the same binding's guard, so the auto-recall reads
+/// exactly the subtree the session chats against — a dedicated profile recalls
+/// its own facts, never the shared tree's.
+pub(super) fn bind_session_memory(
+    config: &crate::openhuman::config::Config,
+    memory_subdir: &str,
+) -> anyhow::Result<(Arc<dyn MemoryProvider>, Arc<AutoRecall>)> {
+    let binding = crate::openhuman::memory::binding::for_subtree(
+        &config.workspace_dir,
+        memory_subdir,
+        &config.subsystems.memory,
+    )
+    .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
+    let auto_recall = Arc::new(AutoRecall::from_guard(binding.guard()));
+    Ok((binding.provider().clone(), auto_recall))
+}
 
 /// (#1400) Best-effort synchronous prefetch of eager tool-scoped rules.
 ///

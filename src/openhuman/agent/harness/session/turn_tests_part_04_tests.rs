@@ -480,7 +480,7 @@ use crate::openhuman::memory::preferences::USER_PREF_SITUATIONAL_NAMESPACE;
 
 const PREFERENCES_BANNER: &str = "## Relevant preferences for this message";
 
-fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
+pub(super) fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
     Arc::new(SequenceProvider {
         responses: AsyncMutex::new(vec![Ok(ChatResponse {
             text: Some(text.into()),
