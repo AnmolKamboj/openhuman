@@ -131,6 +131,9 @@ fn assemble_turn_harness(
 
     // Capture context settings before `install` consumes `context_mw`.
     let autocompact_enabled = context_mw.autocompact_enabled;
+    // Captured for the same reason `autocompact_enabled` is — `install` consumes
+    // `context_mw` — and used to site microcompact below, after compression.
+    let microcompact_keep_recent = context_mw.microcompact_keep_recent;
     let tool_result_artifact_index = context_mw
         .artifact_store
         .as_ref()
@@ -207,36 +210,6 @@ fn assemble_turn_harness(
             )));
         }
     }
-    // Issue #6014: make the last permitted model call the turn's conclusion,
-    // rather than leaving the answer to an extra out-of-band call after the loop
-    // has exited. Registered late so its `before_model` runs after the context
-    // middlewares have shaped the transcript — the instruction it appends is the
-    // final turn of the request and must not be what a trim evicts.
-    //
-    // **Top-level turns only**, the same cut `CapPauser`'s dispatch guard takes
-    // and for a related reason: a sub-agent reaching its own model-call cap is a
-    // routine outcome rather than a user-visible dead end. It summarises and
-    // hands the result back to its parent as a tool result, the parent keeps
-    // going, and `subagent_runner` already owns that checkpoint (including its
-    // own deterministic fallback). The problem this fixes — a person left with a
-    // status line where an answer should be — is a property of the turn that
-    // answers a human.
-    //
-    // Withholding it also leaves the child's budget arithmetic alone. The
-    // conclusion costs one model call, so installing this would silently convert
-    // a delegated run's N tool rounds into N-1; that is a fine trade to make
-    // once, deliberately, at the top level, and not one to impose on every child
-    // as a side effect.
-    let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
-        Arc::new(middleware::FinalCallWrapUpMiddleware::new(
-            crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
-        ))
-    });
-    let wrap_up_fired = wrap_up_mw.as_ref().map(|mw| mw.fired());
-    if let Some(mw) = wrap_up_mw {
-        harness.push_middleware(mw);
-    }
-
     let early_exit_set: HashSet<&str> = early_exit_tools.iter().copied().collect();
     // One hook per run, shared by every early-exit adapter (records the first
     // early-exit and pauses). Requires the steering handle.
@@ -519,7 +492,6 @@ fn assemble_turn_harness(
     harness.push_middleware(Arc::new(middleware::CostBudgetMiddleware::with_shadow(
         shadow_budget_tracker,
     )));
-
     // Autocompaction parity: when the provider's context window is known, install
     // the two-stage context-management step (issue #4249).
     //
@@ -575,6 +547,83 @@ fn assemble_turn_harness(
         // restores all three: image markers priced at a flat cost, the
         // proportional reply reserve, system messages always kept in place, and a
         // grep-able warn with drop/token counts on any eviction.
+    }
+
+    // ── The context ladder, cheapest sufficient step first (issue #6014) ──────
+    //
+    // `before_model` runs in registration order, so what follows IS the order
+    // these fire in, and each step only matters when the one above it was not
+    // enough:
+    //
+    //   1. compression (above) — at 90% of the window, fold the older slice
+    //      into one task-aware summary that preserves its results.
+    //   2. microcompact — if still over, blank older tool bodies outright.
+    //   3. the wrap-up — on a capped turn's final call, undo (2) for the one
+    //      call that has to report everything, then ask for the conclusion.
+    //   4. trim — if still over, evict oldest whole messages.
+    //
+    // The order used to be 2 -> 1 -> 4, because `context_mw.install` registered
+    // microcompact: the summarizer was handed a transcript whose tool bodies
+    // were already `CLEARED_PLACEHOLDER` and asked, by its own prompt, for "key
+    // results/outputs" it could no longer see. Nothing recovered them.
+    if microcompact_keep_recent > 0 {
+        // The token-budget gate the crate added for this and this call site
+        // never used (`with_token_budget`, tinyhumansai/openhuman#4755).
+        // Constructed bare, microcompact blanks on EVERY call once past
+        // `keep_recent` — not only under context pressure — so a turn that made
+        // ten tool calls composed its answer from the last five results with the
+        // rest blanked, while sitting well inside a window with room for all
+        // ten. That is not a capped-turn problem: it is every turn.
+        //
+        // The budget matches the trim's input allowance, which is what puts
+        // microcompact strictly behind compression: the summarizer fires first,
+        // and blanking happens only if the transcript is STILL over afterwards.
+        //
+        // With no advertised window there is no budget to size and nothing else
+        // bounding the transcript, so the legacy always-blank behaviour stays as
+        // the sole backstop against unbounded growth.
+        let microcompact = tinyagents_harness::middleware::MicrocompactMiddleware::new(
+            microcompact_keep_recent,
+            crate::openhuman::agent::context::CLEARED_PLACEHOLDER,
+        );
+        let microcompact = match context_window.filter(|w| *w > 0) {
+            Some(window) => {
+                microcompact.with_token_budget(middleware::legacy_max_input_tokens(window).max(1))
+            }
+            None => microcompact,
+        };
+        harness.push_middleware(Arc::new(microcompact));
+    }
+
+    // Issue #6014: make the last permitted model call the turn's conclusion,
+    // rather than leaving the answer to an extra out-of-band call after the loop
+    // has exited.
+    //
+    // **Top-level turns only**, the same cut `CapPauser`'s dispatch guard takes.
+    // A sub-agent reaching its own model-call cap is a routine outcome rather
+    // than a user-visible dead end: it summarises, hands the result back to its
+    // parent as a tool result, the parent keeps going, and `subagent_runner`
+    // already owns that checkpoint. The harm this fixes — a person left with a
+    // status line where an answer should be — belongs to the turn that answers a
+    // human. Withholding it also leaves a child's budget arithmetic alone: the
+    // conclusion costs a model call, and turning every delegated run's N tool
+    // rounds into N-1 is not a trade to impose as a side effect.
+    let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
+        Arc::new(middleware::FinalCallWrapUpMiddleware::new(
+            crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
+            tool_outcome_sink.clone(),
+        ))
+    });
+    let wrap_up_fired = wrap_up_mw.as_ref().map(|mw| mw.fired());
+    if let Some(mw) = wrap_up_mw {
+        harness.push_middleware(mw);
+    }
+
+    if let Some(window) = context_window.filter(|w| *w > 0) {
+        // Deterministic hard-cap trim (issue #4462), last in the ladder: it drops
+        // whole messages, so it runs only once summarizing and blanking have both
+        // failed to fit the window. See `ImageAwareMessageTrimMiddleware` for the
+        // three legacy guards it restores over the crate trim.
         harness.push_middleware(Arc::new(
             middleware::ImageAwareMessageTrimMiddleware::for_context_window(window),
         ));

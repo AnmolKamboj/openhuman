@@ -548,6 +548,9 @@ impl Middleware<()> for ImageAwareMessageTrimMiddleware {
 pub(crate) struct FinalCallWrapUpMiddleware {
     /// The synthetic user turn appended on the final call.
     instruction: &'static str,
+    /// Every tool call's captured outcome, so the concluding call can be given
+    /// back the results microcompact blanked (see `before_model`).
+    outcomes: crate::openhuman::agent::tinyagents::ToolOutcomeSink,
     /// Set when the injection fires, so the caller can report the turn as
     /// capped. Necessary because this turn now ends *naturally* — the model
     /// returns text and requests no tools, which is the loop's ordinary
@@ -557,9 +560,13 @@ pub(crate) struct FinalCallWrapUpMiddleware {
 }
 
 impl FinalCallWrapUpMiddleware {
-    pub(crate) fn new(instruction: &'static str) -> Self {
+    pub(crate) fn new(
+        instruction: &'static str,
+        outcomes: crate::openhuman::agent::tinyagents::ToolOutcomeSink,
+    ) -> Self {
         Self {
             instruction,
+            outcomes,
             fired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -602,6 +609,81 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
         );
         request.tools.clear();
         request.tool_choice = tinyinference::model::ToolChoice::None;
+        // Give the concluding call back the results microcompact blanked.
+        //
+        // `MicrocompactMiddleware` replaces every tool-result body past the
+        // most recent `keep_recent` (5, by default) with `CLEARED_PLACEHOLDER`,
+        // and — constructed without a token budget — it does so on every call,
+        // not only under context pressure. That is right for an intermediate
+        // call, which needs recent context to choose the next tool and nothing
+        // more. It is exactly wrong for this one: a turn that spent 24 rounds
+        // gathering would be asked to report its findings with 19 rounds of
+        // them replaced by "[Old tool result content cleared]", which is the
+        // same empty-handed answer this whole mechanism exists to prevent,
+        // arrived at from the other direction.
+        //
+        // Restored from the captured outcomes rather than by exempting the
+        // turn from microcompact, because the blanking has already happened by
+        // the time this runs (registration order: microcompact is installed by
+        // `context_mw.install`, this middleware immediately after it) and
+        // because the sink is the honest source — it holds each result as it
+        // entered the transcript, after the per-result byte cap.
+        //
+        // Only a body that IS the placeholder is replaced, so a result the
+        // model legitimately saw in full is never rewritten.
+        //
+        // This deliberately runs BEFORE the compression and trim middlewares,
+        // which are installed after it: restoring can make the request large,
+        // and those two are what bound it. The resulting degradation ladder is
+        // the one this call wants — everything when it fits, an LLM summary of
+        // the older slice when it does not, and oldest-first eviction only in
+        // extremis. What it never does again is silently blank the middle.
+        let restored = match self.outcomes.lock() {
+            Ok(outcomes) => {
+                let mut restored = 0usize;
+                for message in request.messages.iter_mut() {
+                    let TaMessage::Tool(tool) = message else {
+                        continue;
+                    };
+                    if tool.content.iter().any(|block| !matches!(block, ContentBlock::Text(_))) {
+                        continue;
+                    }
+                    let body: String = tool
+                        .content
+                        .iter()
+                        .filter_map(|block| match block {
+                            ContentBlock::Text(text) => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+                    if body.trim() != CLEARED_PLACEHOLDER {
+                        continue;
+                    }
+                    let Some(outcome) = self_outcome_for(&outcomes, &tool.tool_call_id) else {
+                        continue;
+                    };
+                    if outcome.trim().is_empty() {
+                        continue;
+                    }
+                    tool.content = vec![ContentBlock::Text(outcome)];
+                    restored += 1;
+                }
+                restored
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "[tinyagents::mw] tool-outcome sink poisoned; concluding without restoring \
+                     cleared tool results"
+                );
+                0
+            }
+        };
+        if restored > 0 {
+            tracing::info!(
+                restored,
+                "[tinyagents::mw] restored cleared tool results for the concluding call"
+            );
+        }
         request
             .messages
             .push(TaMessage::user(self.instruction.to_string()));
@@ -609,4 +691,18 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
             .store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
+}
+
+/// The captured content for one tool call id, if the sink holds it.
+///
+/// A free function so the borrow of the locked sink stays scoped to the lookup
+/// rather than being held across the mutation of `request.messages`.
+fn self_outcome_for(
+    outcomes: &[crate::openhuman::agent::tinyagents::ToolCallOutcome],
+    call_id: &str,
+) -> Option<String> {
+    outcomes
+        .iter()
+        .find(|outcome| outcome.call_id == call_id)
+        .map(|outcome| outcome.content.clone())
 }
