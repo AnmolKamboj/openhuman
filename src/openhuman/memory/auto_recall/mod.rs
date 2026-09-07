@@ -420,8 +420,10 @@ pub(crate) fn select_notes(mut notes: Vec<NamespaceMemoryHit>) -> Vec<NamespaceM
 /// not fit is left out, so an `<untrusted-source>` marker is never cut in half
 /// and every opening marker keeps its closing one. Notes come first — they are
 /// what the user asked to keep — so under a tight cap they win over tree hits.
-/// The hint is taken only when it fits, and never on its own: a cap that fits
-/// no hit at all yields an empty block, since a banner over nothing would be
+/// The hint is a caption, not the content: it is reserved first, but a cap
+/// that then fits no line at all is rendered again without it, so the hint
+/// can never be what suppresses the only recalled line. A cap that fits no
+/// line even then yields an empty block, since a banner over nothing would be
 /// noise.
 pub(crate) fn render_block(
     notes: &[NamespaceMemoryHit],
@@ -430,31 +432,25 @@ pub(crate) fn render_block(
 ) -> String {
     let banner = format!("{AUTO_RECALL_BANNER}\n\n");
     let hint = format!("{AUTO_RECALL_HINT}\n\n");
-    let fits = |used: usize, cost: usize| match recall_max_chars {
-        Some(max_chars) => used + cost <= max_chars,
-        None => true,
-    };
-    // Banner, hint, lines, and the closing blank line all count against the cap.
-    let mut used = banner.chars().count() + 1;
-    let with_hint = fits(used, hint.chars().count());
-    if with_hint {
-        used += hint.chars().count();
-    }
-    let mut lines: Vec<String> = Vec::with_capacity(notes.len() + hits.len());
-    let candidates = notes
+    let candidates: Vec<String> = notes
         .iter()
         .map(render_note_line)
-        .chain(hits.iter().map(render_hit_line));
-    for line in candidates {
-        let cost = line.chars().count();
-        if !fits(used, cost) {
-            log::debug!(
-                "[auto_recall] line omitted: {cost} chars would exceed recall_max_chars={recall_max_chars:?}"
-            );
-            continue;
-        }
-        used += cost;
-        lines.push(line);
+        .chain(hits.iter().map(render_hit_line))
+        .collect();
+    // Banner, hint, lines, and the closing blank line all count against the cap.
+    let base = banner.chars().count() + 1;
+    let hint_cost = hint.chars().count();
+    let mut with_hint = fits_within(base, hint_cost, recall_max_chars);
+    let mut lines = fit_lines(
+        &candidates,
+        if with_hint { base + hint_cost } else { base },
+        recall_max_chars,
+    );
+    if with_hint && lines.is_empty() {
+        // The hint fit on its own but left no room for a line: a block is its
+        // lines, so give the space back and try once more without the caption.
+        with_hint = false;
+        lines = fit_lines(&candidates, base, recall_max_chars);
     }
     if lines.is_empty() {
         return String::new();
@@ -470,23 +466,57 @@ pub(crate) fn render_block(
     block
 }
 
-/// One note as a bullet line: the content (one line, capped, wrapped when its
-/// provenance is not the user's own words) and the key it was filed under, so
-/// the model can tell a kept note from a passing chunk.
+/// Whether `cost` more characters still fit under `recall_max_chars` once
+/// `used` are spent. No cap fits everything.
+fn fits_within(used: usize, cost: usize, recall_max_chars: Option<usize>) -> bool {
+    match recall_max_chars {
+        Some(max_chars) => used + cost <= max_chars,
+        None => true,
+    }
+}
+
+/// The `candidates` that fit, in order, once `used` characters are spent:
+/// whole lines only, each omitted when it would cross the cap.
+fn fit_lines(
+    candidates: &[String],
+    mut used: usize,
+    recall_max_chars: Option<usize>,
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::with_capacity(candidates.len());
+    for line in candidates {
+        let cost = line.chars().count();
+        if !fits_within(used, cost, recall_max_chars) {
+            log::debug!(
+                "[auto_recall] line omitted: {cost} chars would exceed recall_max_chars={recall_max_chars:?}"
+            );
+            continue;
+        }
+        used += cost;
+        lines.push(line.clone());
+    }
+    lines
+}
+
+/// One note as a bullet line: the content (one line, capped) and the key it
+/// was filed under, so the model can tell a kept note from a passing chunk.
+///
+/// A note that did not come from the conversation is wrapped whole — content
+/// **and** key inside one `<untrusted-source>` marker. The key is model- or
+/// provider-supplied text on exactly the same footing as the body (a synced
+/// row's key can be an email subject), so a key rendered after the closing
+/// marker would be the payload's way back into the trusted region.
 fn render_note_line(note: &NamespaceMemoryHit) -> String {
     let mut line = String::from("- ");
     let content = one_line(&note.content, AUTO_RECALL_PER_HIT_CHARS);
-    match untrusted_note_hint(note) {
-        Some(hint) => line.push_str(&wrap_untrusted_for_agent(&content, &hint)),
-        None => line.push_str(&content),
-    }
-    // The key is model- or content-derived text, so it gets the one-line
-    // treatment and the scope cap rather than a trusted pass-through.
     let key = one_line(&note.key, AUTO_RECALL_SCOPE_CHARS);
-    if !key.is_empty() {
-        line.push_str(" (note: ");
-        line.push_str(&key);
-        line.push(')');
+    let labelled = if key.is_empty() {
+        content
+    } else {
+        format!("{content} (note: {key})")
+    };
+    match untrusted_note_hint(note) {
+        Some(hint) => line.push_str(&wrap_untrusted_for_agent(&labelled, &hint)),
+        None => line.push_str(&labelled),
     }
     line.push('\n');
     line
