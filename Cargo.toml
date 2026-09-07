@@ -229,8 +229,11 @@ tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinfe
 # crates. After cloning: `git submodule update --init --recursive vendor/`.
 tinytools = { path = "vendor/tinyagents/vendor/tinytools/crates/tinytools" }
 # TinyCortex — Rust core for the memory engine (store/chunks/tree/retrieval/
-# queue/ingest/score + long tail), vendored as a git submodule and patched
-# below to `vendor/tinycortex`. OpenHuman's memory subsystem migrates onto this
+# queue/ingest/score + long tail). No longer a submodule of this repo: the
+# `[patch.crates-io]` entry below resolves it to the copy `tinymemory` vendors
+# (`vendor/tinymemory/vendor/tinycortex`), so the engine the tests link is by
+# construction the one the prebuilt `tinymemory` module was built from.
+# OpenHuman's memory subsystem migrates onto this
 # crate through the adapter seam in `src/openhuman/tinycortex/` (mirroring the
 # tinyagents seam): engine logic (including provider sync pipelines) in the
 # crate; RPC, agent tools, sync scheduling/credentials/events, security gating,
@@ -1446,7 +1449,7 @@ should_implement_trait = "allow"
 too_many_arguments = "allow"
 while_let_loop = "allow"
 
-# The tinycortex vendored above takes `tinymemory-api` by git (it re-exports
+# The tinycortex patched in below takes `tinymemory-api` by git (it re-exports
 # the TinyMemory contract instead of duplicating it, tinymemory#18 §A1).
 # Without this entry cargo resolves that git copy *and* the path copy under
 # vendor/tinymemory as two distinct crates, and `tinymemory_api::MemoryCategory`
@@ -1456,7 +1459,7 @@ while_let_loop = "allow"
 [patch."https://github.com/tinyhumansai/tinymemory"]
 tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
 
-# `tinycortex` (vendored below) depends on `tinyinference` by git rev rather
+# `tinycortex` (patched in below) depends on `tinyinference` by git rev rather
 # than by path — `[patch.crates-io]` only rewrites crates.io-sourced deps, so
 # it does not touch this one. Without this entry cargo resolves a THIRD copy
 # of `tinyinference` (git) alongside the path copy openhuman/tinyagents use and
@@ -1502,15 +1505,25 @@ motosan-ai-oauth = { path = "vendor/motosan-ai-oauth" }
 # path (tinyagents' crates are built against it too), so `cargo tree -i
 # tinyinference` resolves to exactly one package.
 tinyinference = { path = "vendor/tinyagents/vendor/tinyinference/crates/tinyinference" }
-# TinyFlows, TinyCortex, and TinyChannels are vendored beside
-# TinyAgents so integration work can test crate changes against OpenHuman before
-# publishing.
+# TinyFlows and TinyChannels are vendored beside TinyAgents so integration
+# work can test crate changes against OpenHuman before publishing.
 tinyflows = { path = "vendor/tinyflows/crates/tinyflows" }
-tinycortex = { path = "vendor/tinycortex" }
-# `tinymemory-core` names `tinycortex-api` by version requirement (this crate
-# depends on it by path, above). Patch it onto the same checkout so both see one
-# copy of the contract types and the trait identities unify.
-tinycortex-api = { path = "vendor/tinycortex/api" }
+# TinyCortex is not a submodule of this repo. `tinymemory-core` and
+# `tinymemory-tinycortex` — the [dev-dependencies] engine — name `tinycortex`
+# and `tinycortex-api` by version requirement, i.e. from crates.io.
+# `tinycortex-api` was never published, so without a patch resolution fails
+# outright ("no matching package named `tinycortex-api` found") before anything
+# compiles — product build included, because lock resolution is feature-blind.
+# `tinycortex` IS on crates.io, as a stale 0.1.1 that declares none of the
+# features the engine crates ask for, so without a patch cargo would look there
+# instead of at the commit the module ships, and fail on the features.
+# tinymemory already vendors that exact commit, so the patch points into its
+# nested checkout rather than a second, hand-synchronised copy: one checkout,
+# one copy of the contract types, and a tinymemory re-pin moves the test
+# engine with it. Needs `git submodule update --init --recursive
+# vendor/tinymemory`; every CI lane that builds Rust checks out recursively.
+tinycortex = { path = "vendor/tinymemory/vendor/tinycortex" }
+tinycortex-api = { path = "vendor/tinymemory/vendor/tinycortex/api" }
 tinychannels = { path = "vendor/tinychannels" }
 
 # Emit just enough DWARF in release builds for Sentry to symbolicate Rust
