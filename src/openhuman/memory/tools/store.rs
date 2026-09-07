@@ -8,6 +8,7 @@ use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 /// Let the agent store memories — its own brain writes
@@ -28,6 +29,15 @@ const DERIVED_KEY_WORDS: usize = 6;
 
 /// Longest stem a derived key carries before its hash suffix.
 const DERIVED_KEY_STEM_CHARS: usize = 48;
+
+/// Hex characters of digest a derived key carries — 16 hex, so 64 bits.
+///
+/// The stem collides constantly by design (a mailbox of "meeting with …"
+/// notes opens the same way), so the suffix is the whole of what keeps two
+/// facts apart, and a collision does not merely duplicate — it overwrites an
+/// unrelated memory under the same key. 24 bits made that likely within a few
+/// thousand notes (review finding); 64 keeps it out of reach.
+const DERIVED_KEY_HASH_CHARS: usize = 16;
 
 /// The namespace to write to: the caller's, or the assistant's own scope.
 ///
@@ -59,8 +69,12 @@ fn resolve_key(args: &serde_json::Value, content: &str) -> anyhow::Result<String
 }
 
 /// A stable, readable key for `content`: its first few words as a snake_case
-/// stem, plus a short hash of the whole text so two notes that open the same
-/// way do not overwrite each other.
+/// stem, plus a digest of the whole text so two notes that open the same way
+/// do not overwrite each other.
+///
+/// SHA-256 rather than a cheap non-cryptographic hash: the input is user text,
+/// the cost is irrelevant beside the write it precedes, and the same digest ->
+/// same key property is what makes re-saving a sentence idempotent.
 fn derive_key(content: &str) -> String {
     let stem = content
         .split(|c: char| !c.is_alphanumeric())
@@ -74,15 +88,8 @@ fn derive_key(content: &str) -> String {
     } else {
         stem.chars().take(DERIVED_KEY_STEM_CHARS).collect()
     };
-    format!("{stem}_{:06x}", fnv1a_32(content.trim()) & 0x00ff_ffff)
-}
-
-/// FNV-1a over the bytes — stable across builds and platforms, unlike
-/// `DefaultHasher`, so a derived key never changes under the caller.
-fn fnv1a_32(text: &str) -> u32 {
-    text.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
-        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
-    })
+    let digest = hex::encode(Sha256::digest(content.trim().as_bytes()));
+    format!("{stem}_{}", &digest[..DERIVED_KEY_HASH_CHARS])
 }
 
 #[async_trait]

@@ -331,26 +331,75 @@ fn visible(names: &[&str]) -> HashSet<String> {
 }
 
 #[test]
-fn memory_write_section_renders_the_frozen_instruction() {
-    let section = MemoryWriteSection;
+fn memory_write_section_states_the_rule_the_bug_needed() {
+    let section = MemoryWriteSection::new(true, true);
     assert_eq!(section.name(), "memory_write");
     let rendered = section
         .build(&prompt_context(LearnedContextData::default()))
         .unwrap();
-    assert_eq!(rendered.trim(), MEMORY_WRITE_INSTRUCTION.trim());
+    assert_eq!(rendered.trim(), memory_write_instruction(true, true).trim());
     assert!(rendered.contains("## Remembering"), "{rendered}");
-    // Both write tools are named, and the rule the bug needed is stated.
-    assert!(rendered.contains("`memory_store`") && rendered.contains("`save_preference`"));
     assert!(
         rendered.contains("Never say saved"),
         "the instruction must forbid claiming a save that did not happen: {rendered}"
     );
-    // Not context-gated: renders for an empty learned context too.
-    let word_count = rendered.split_whitespace().count();
+    // Not context-gated: it renders for an empty learned context too.
+    let empty = MemoryWriteSection::new(true, true)
+        .build(&prompt_context(LearnedContextData::default()))
+        .unwrap();
+    assert!(!empty.trim().is_empty());
+}
+
+/// The section names the routes it was given and no others. Telling a session
+/// that holds one write tool to call the other is the same class of mistake as
+/// registering the section with no write tool at all.
+#[test]
+fn memory_write_instruction_names_only_the_offered_tools() {
+    let both = memory_write_instruction(true, true);
     assert!(
-        word_count <= 80,
-        "MemoryWriteSection is too long ({word_count} words, ceiling 80)"
+        both.contains("`save_preference`") && both.contains("`memory_store`"),
+        "{both}"
     );
+
+    let preferences_only = memory_write_instruction(true, false);
+    assert!(
+        preferences_only.contains("`save_preference`"),
+        "{preferences_only}"
+    );
+    assert!(
+        !preferences_only.contains("`memory_store`"),
+        "a session without memory_store must not be sent to it: {preferences_only}"
+    );
+
+    let facts_only = memory_write_instruction(false, true);
+    assert!(facts_only.contains("`memory_store`"), "{facts_only}");
+    assert!(
+        !facts_only.contains("`save_preference`"),
+        "a session without save_preference must not be sent to it: {facts_only}"
+    );
+
+    // Every variant still carries the heading, the rule, and the word ceiling.
+    for rendered in [&both, &preferences_only, &facts_only] {
+        assert!(rendered.contains("## Remembering"), "{rendered}");
+        assert!(rendered.contains("Never say saved"), "{rendered}");
+        let words = rendered.split_whitespace().count();
+        assert!(
+            words <= 80,
+            "instruction is too long ({words} words): {rendered}"
+        );
+    }
+}
+
+/// Neither tool offered renders nothing — the guard behind the gate, so a
+/// future caller that registers the section unconditionally still cannot name
+/// a tool the session lacks.
+#[test]
+fn memory_write_instruction_is_empty_without_a_write_tool() {
+    assert!(memory_write_instruction(false, false).is_empty());
+    let rendered = MemoryWriteSection::new(false, false)
+        .build(&prompt_context(LearnedContextData::default()))
+        .unwrap();
+    assert!(rendered.is_empty(), "{rendered}");
 }
 
 #[test]

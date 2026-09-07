@@ -133,25 +133,53 @@ impl PromptSection for MemoryAccessSection {
 
 // ── MemoryWriteSection ────────────────────────────────────────────────────────
 
-/// Static instruction that turns "remember this" into a write before the reply.
+/// Instruction that turns "remember this" into a write before the reply.
 ///
 /// The read-side rule above tells the model when to look. Nothing told it that
 /// an explicit request to remember must become a tool call, or that it may not
 /// say "saved" without one — so, left to itself, it narrated a save it never
-/// made and the next chat had nothing to find (#6048). The text is frozen at
-/// compile time — no I/O at build time.
-pub struct MemoryWriteSection;
+/// made and the next chat had nothing to find (#6048).
+///
+/// It names only the routes this session actually holds. Naming both
+/// unconditionally would point a profile that carries just one of them at a
+/// tool it cannot see — the failure [`any_tool_offered`] exists to prevent
+/// (review finding).
+pub struct MemoryWriteSection {
+    preferences: bool,
+    facts: bool,
+}
 
-/// The static prose injected whenever a memory-writing tool is offered. Kept
-/// at ≤ 80 words (the composition test pins the ceiling).
-pub const MEMORY_WRITE_INSTRUCTION: &str = "\
-## Remembering\n\
-\n\
-When the user asks you to remember, note, or keep something — a date, plan, \
-person, decision, or preference — write it before you confirm: `save_preference` \
-for preferences, `memory_store` for everything else. Never say saved, noted, or \
-remembered unless that write succeeded in this turn; if it failed or was refused, \
-say so instead.";
+impl MemoryWriteSection {
+    /// `preferences` = `save_preference` is offered here, `facts` =
+    /// `memory_store` is.
+    #[must_use]
+    pub fn new(preferences: bool, facts: bool) -> Self {
+        Self { preferences, facts }
+    }
+}
+
+/// The instruction for a session offering `save_preference` (`preferences`)
+/// and/or `memory_store` (`facts`).
+///
+/// Kept at ≤ 80 words in every variant (the composition test pins the ceiling).
+/// Empty when neither tool is offered — which is also when nothing registers
+/// the section, so the empty string is a guard, not a path in normal use.
+#[must_use]
+pub fn memory_write_instruction(preferences: bool, facts: bool) -> String {
+    let route = match (preferences, facts) {
+        (true, true) => "— `save_preference` for preferences, `memory_store` for everything else",
+        (true, false) => "with `save_preference`",
+        (false, true) => "with `memory_store`",
+        (false, false) => return String::new(),
+    };
+    format!(
+        "## Remembering\n\n\
+         When the user asks you to remember, note, or keep something — a date, \
+         plan, person, decision, or preference — write it before you confirm \
+         {route}. Never say saved, noted, or remembered unless that write \
+         succeeded in this turn; if it failed or was refused, say so instead."
+    )
+}
 
 impl PromptSection for MemoryWriteSection {
     fn name(&self) -> &str {
@@ -159,15 +187,21 @@ impl PromptSection for MemoryWriteSection {
     }
 
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
-        Ok(MEMORY_WRITE_INSTRUCTION.to_string())
+        Ok(memory_write_instruction(self.preferences, self.facts))
     }
 }
 
 /// The retrieval tools [`MemoryAccessSection`] is keyed on.
 pub const MEMORY_READ_TOOLS: [&str; 2] = ["memory_recall", "memory_search"];
 
+/// The tool a preference is written through.
+pub const SAVE_PREFERENCE_TOOL: &str = "save_preference";
+
+/// The tool every other remembered fact is written through.
+pub const MEMORY_STORE_TOOL: &str = "memory_store";
+
 /// The writing tools [`MemoryWriteSection`] is keyed on.
-pub const MEMORY_WRITE_TOOLS: [&str; 2] = ["memory_store", "save_preference"];
+pub const MEMORY_WRITE_TOOLS: [&str; 2] = [MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL];
 
 /// Whether any of `names` is registered on this session **and** survives tool
 /// filtering.
