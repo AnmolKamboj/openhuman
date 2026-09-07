@@ -19,7 +19,9 @@
 //! prior sessions. Registered after `LearnedContextSection` in the section chain.
 
 use crate::openhuman::agent::context::prompt::{PromptContext, PromptSection};
+use crate::openhuman::tools::traits::Tool;
 use anyhow::Result;
+use std::collections::HashSet;
 
 /// Injects recent observations and patterns from the learning subsystem.
 pub struct LearnedContextSection;
@@ -135,6 +137,102 @@ impl PromptSection for MemoryAccessSection {
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
         Ok(MEMORY_ACCESS_INSTRUCTION.to_string())
     }
+}
+
+// ── MemoryWriteSection ────────────────────────────────────────────────────────
+
+/// Instruction that turns "remember this" into a write before the reply.
+///
+/// The read-side rule above tells the model when to look. Nothing told it that
+/// an explicit request to remember must become a tool call, or that it may not
+/// say "saved" without one — so, left to itself, it narrated a save it never
+/// made and the next chat had nothing to find (#6048).
+///
+/// It names only the routes this session actually holds. Naming both
+/// unconditionally would point a profile that carries just one of them at a
+/// tool it cannot see — the failure [`any_tool_offered`] exists to prevent
+/// (review finding).
+pub struct MemoryWriteSection {
+    preferences: bool,
+    facts: bool,
+}
+
+impl MemoryWriteSection {
+    /// `preferences` = `save_preference` is offered here, `facts` =
+    /// `memory_store` is.
+    #[must_use]
+    pub fn new(preferences: bool, facts: bool) -> Self {
+        Self { preferences, facts }
+    }
+}
+
+/// The instruction for a session offering `save_preference` (`preferences`)
+/// and/or `memory_store` (`facts`).
+///
+/// Kept at ≤ 80 words in every variant (the composition test pins the ceiling).
+/// Empty when neither tool is offered — which is also when nothing registers
+/// the section, so the empty string is a guard, not a path in normal use.
+#[must_use]
+pub fn memory_write_instruction(preferences: bool, facts: bool) -> String {
+    let route = match (preferences, facts) {
+        (true, true) => "— `save_preference` for preferences, `memory_store` for everything else",
+        (true, false) => "with `save_preference`",
+        (false, true) => "with `memory_store`",
+        (false, false) => return String::new(),
+    };
+    format!(
+        "## Remembering\n\n\
+         When the user asks you to remember, note, or keep something — a date, \
+         plan, person, decision, or preference — write it before you confirm \
+         {route}. Never say saved, noted, or remembered unless that write \
+         succeeded in this turn; if it failed or was refused, say so instead."
+    )
+}
+
+impl PromptSection for MemoryWriteSection {
+    fn name(&self) -> &str {
+        "memory_write"
+    }
+
+    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+        Ok(memory_write_instruction(self.preferences, self.facts))
+    }
+}
+
+/// The retrieval tools [`MemoryAccessSection`] is keyed on.
+pub const MEMORY_READ_TOOLS: [&str; 2] = ["memory_recall", "memory_search"];
+
+/// The tool a preference is written through.
+pub const SAVE_PREFERENCE_TOOL: &str = "save_preference";
+
+/// The tool every other remembered fact is written through.
+pub const MEMORY_STORE_TOOL: &str = "memory_store";
+
+/// The writing tools [`MemoryWriteSection`] is keyed on.
+pub const MEMORY_WRITE_TOOLS: [&str; 2] = [MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL];
+
+/// Whether any of `names` is registered on this session **and** survives tool
+/// filtering.
+///
+/// Both are required: a tool can be registered but filtered out by the agent's
+/// scope, or allowed by the filter but never registered on this agent. An empty
+/// `visible` set means "no filter" (the wildcard / orchestrator path), so any
+/// registered tool is reachable. A section that tells the model to call a tool
+/// it cannot see would only teach it to apologise.
+pub fn any_tool_offered(
+    names: &[&str],
+    tools: &[Box<dyn Tool>],
+    delegation_tools: &[Box<dyn Tool>],
+    visible: &HashSet<String>,
+) -> bool {
+    names.iter().any(|name| {
+        let registered = tools
+            .iter()
+            .chain(delegation_tools)
+            .any(|tool| tool.name() == *name);
+        let allowed_by_filter = visible.is_empty() || visible.contains(*name);
+        registered && allowed_by_filter
+    })
 }
 
 // ── Cache-backed loader ───────────────────────────────────────────────────────
