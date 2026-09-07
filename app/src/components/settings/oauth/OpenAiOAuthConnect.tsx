@@ -44,6 +44,7 @@ const OpenAiOAuthConnect = ({
   const [callbackUrl, setCallbackUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const connectedRef = useRef(false);
+  const statusRevision = useRef(0);
   const onConnectedChangeRef = useRef(onConnectedChange);
   onConnectedChangeRef.current = onConnectedChange;
 
@@ -58,6 +59,7 @@ const OpenAiOAuthConnect = ({
     if (!isTauri()) {
       return;
     }
+    const revision = statusRevision.current;
     try {
       const res = await callCoreRpc<{ result: OpenAiOAuthStatus }>({
         method: 'openhuman.inference_openai_oauth_status',
@@ -66,10 +68,12 @@ const OpenAiOAuthConnect = ({
       console.debug('[ai-settings:openai-oauth] status check succeeded', {
         connected: Boolean(res?.result?.connected),
       });
-      applyConnected(Boolean(res?.result?.connected));
-    } catch (err) {
+      if (revision === statusRevision.current) {
+        applyConnected(Boolean(res?.result?.connected));
+      }
+    } catch {
       // Status is best-effort; a failed probe must not block the connect UI.
-      console.debug('[ai-settings:openai-oauth] status check failed', err);
+      console.debug('[ai-settings:openai-oauth] status check failed');
     }
   }, [applyConnected]);
 
@@ -82,6 +86,8 @@ const OpenAiOAuthConnect = ({
       setError(t('settings.ai.openaiOauthDesktopOnly'));
       return;
     }
+    // A status probe started before this explicit action must not overwrite it.
+    statusRevision.current += 1;
     setBusy(true);
     setError(null);
     try {
@@ -96,8 +102,8 @@ const OpenAiOAuthConnect = ({
       await openUrl(authUrl);
       console.debug('[ai-settings:openai-oauth] browser opened');
       setAwaitingCallback(true);
-    } catch (err) {
-      console.warn('[ai-settings:openai-oauth] start failed', err);
+    } catch {
+      console.warn('[ai-settings:openai-oauth] start failed');
       setError(t('settings.ai.openaiOauthStartError'));
     } finally {
       setBusy(false);
@@ -122,8 +128,9 @@ const OpenAiOAuthConnect = ({
       setCallbackUrl('');
       setAwaitingCallback(false);
       applyConnected(true);
-    } catch (err) {
-      console.warn('[ai-settings:openai-oauth] complete failed', err);
+    } catch {
+      // RPC errors can contain the callback URL, including its authorization code.
+      console.warn('[ai-settings:openai-oauth] complete failed');
       setError(t('settings.ai.openaiOauthCompleteError'));
     } finally {
       setBusy(false);
@@ -140,8 +147,8 @@ const OpenAiOAuthConnect = ({
       setAwaitingCallback(false);
       setCallbackUrl('');
       applyConnected(false);
-    } catch (err) {
-      console.warn('[ai-settings:openai-oauth] disconnect failed', err);
+    } catch {
+      console.warn('[ai-settings:openai-oauth] disconnect failed');
       setError(t('settings.ai.openaiOauthDisconnectError'));
     } finally {
       setBusy(false);
@@ -151,9 +158,9 @@ const OpenAiOAuthConnect = ({
   return (
     <div
       data-testid={`${testIdPrefix}-section`}
-      className="flex flex-col gap-2 rounded-xl border border-stone-200 dark:border-neutral-800 bg-stone-50 dark:bg-neutral-800/50 p-3">
+      className="flex flex-col gap-2 rounded-xl border border-line bg-surface-muted p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-content-muted">
           {t('settings.ai.openaiOauthTitle')}
         </span>
         {connected ? (
@@ -164,9 +171,7 @@ const OpenAiOAuthConnect = ({
           </span>
         ) : null}
       </div>
-      <p className="text-xs text-stone-500 dark:text-neutral-400">
-        {t('settings.ai.openaiOauthDescription')}
-      </p>
+      <p className="text-xs text-content-muted">{t('settings.ai.openaiOauthDescription')}</p>
 
       {connected ? (
         allowDisconnect ? (
@@ -175,7 +180,7 @@ const OpenAiOAuthConnect = ({
             data-testid={`${testIdPrefix}-disconnect`}
             disabled={busy}
             onClick={() => void handleDisconnect()}
-            className="self-start rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs font-medium text-stone-700 dark:text-neutral-200 hover:bg-stone-100 dark:hover:bg-neutral-800 disabled:opacity-50">
+            className="self-start rounded-lg border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-content-secondary hover:bg-surface-hover disabled:opacity-50">
             {t('settings.ai.openaiOauthDisconnect')}
           </button>
         ) : null
@@ -191,7 +196,7 @@ const OpenAiOAuthConnect = ({
           </button>
           {awaitingCallback ? (
             <div className="flex flex-col gap-1.5">
-              <p className="text-[11px] text-stone-500 dark:text-neutral-400">
+              <p className="text-[11px] text-content-muted">
                 {t('settings.ai.openaiOauthCallbackHint')}
               </p>
               <input
@@ -206,7 +211,7 @@ const OpenAiOAuthConnect = ({
                   setCallbackUrl(e.target.value);
                   setError(null);
                 }}
-                className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs text-stone-900 dark:text-neutral-100 placeholder-stone-400 dark:placeholder-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="rounded-lg border border-line-strong bg-surface px-3 py-2 text-xs text-content placeholder:text-content-muted focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
               <button
                 type="button"

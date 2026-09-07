@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { callCoreRpc } from '../../../../services/coreRpcClient';
@@ -137,6 +137,32 @@ describe('OpenAiOAuthConnect', () => {
     });
   });
 
+  it('does not let a delayed initial status overwrite a completed sign-in', async () => {
+    let resolveStatus!: (value: { result: { connected: boolean } }) => void;
+    vi.mocked(callCoreRpc)
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveStatus = resolve;
+          })
+      )
+      .mockResolvedValueOnce({ result: { authUrl: 'https://auth.openai.com/oauth?x=1' } })
+      .mockResolvedValueOnce({ result: {} });
+
+    renderWithProviders(<OpenAiOAuthConnect testIdPrefix={TID} />);
+    fireEvent.click(await screen.findByTestId(`${TID}-connect`));
+    fireEvent.change(await screen.findByTestId(`${TID}-callback-input`), {
+      target: { value: 'http://127.0.0.1:1455/auth/callback?code=test' },
+    });
+    fireEvent.click(screen.getByTestId(`${TID}-complete`));
+    expect(await screen.findByTestId(`${TID}-connected`)).toBeInTheDocument();
+
+    await act(async () => resolveStatus({ result: { connected: false } }));
+
+    expect(screen.getByTestId(`${TID}-connected`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`${TID}-connect`)).not.toBeInTheDocument();
+  });
+
   it('blocks sign-in outside the desktop app', async () => {
     vi.mocked(isTauri).mockReturnValue(false);
 
@@ -199,7 +225,7 @@ describe('OpenAiOAuthConnect', () => {
     vi.mocked(callCoreRpc)
       .mockResolvedValueOnce({ result: { connected: false } }) // status
       .mockResolvedValueOnce({ result: { authUrl: 'https://auth.openai.com/oauth?x=1' } }) // start
-      .mockRejectedValueOnce(new Error('boom')); // complete
+      .mockRejectedValueOnce(new Error('callback rejected: code=private-test-code')); // complete
 
     renderWithProviders(<OpenAiOAuthConnect testIdPrefix={TID} />);
 
@@ -210,6 +236,11 @@ describe('OpenAiOAuthConnect', () => {
 
     expect(await screen.findByTestId(`${TID}-error`)).toHaveTextContent(
       'ChatGPT sign-in did not complete.'
+    );
+    expect(console.warn).toHaveBeenCalledWith('[ai-settings:openai-oauth] complete failed');
+    expect(console.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.stringContaining('private-test-code') })
     );
   });
 

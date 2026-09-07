@@ -8,7 +8,6 @@ use crate::openhuman::agent::context::ContextManager;
 use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
 use crate::openhuman::config::ContextConfig;
-use crate::openhuman::memory::agent::memory_loader::DefaultMemoryLoader;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
 use crate::openhuman::tools::{Tool, ToolSpec};
@@ -25,9 +24,9 @@ impl AgentBuilder {
             subagent_tool_ceiling_names: None,
             memory: None,
             shared_experience_memory: None,
+            auto_recall: None,
             prompt_builder: None,
             tool_dispatcher: None,
-            memory_loader: None,
             config: None,
             context_config: None,
             model_name: None,
@@ -50,6 +49,7 @@ impl AgentBuilder {
             memory_subdir: None,
             session_raw_subdir: None,
             session_parent_prefix: None,
+            session_history_locator: None,
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
@@ -64,7 +64,7 @@ impl AgentBuilder {
     /// Sets an already-constructed TinyAgents chat model. This is the native
     /// injection seam for tests and embedders; no legacy `Provider` adapter is
     /// constructed.
-    pub fn chat_model(mut self, model: Arc<dyn tinyagents::harness::model::ChatModel<()>>) -> Self {
+    pub fn chat_model(mut self, model: Arc<dyn tinyinference::model::ChatModel<()>>) -> Self {
         self.turn_model_source =
             Some(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model));
         self
@@ -123,6 +123,16 @@ impl AgentBuilder {
         self
     }
 
+    /// Binds Lane C, the gated pre-turn auto-recall of facts about the user
+    /// (#6040). `None` leaves the lane out of the turn entirely.
+    pub fn auto_recall(
+        mut self,
+        auto_recall: Option<Arc<crate::openhuman::memory::auto_recall::AutoRecall>>,
+    ) -> Self {
+        self.auto_recall = auto_recall;
+        self
+    }
+
     /// Sets the system prompt builder for the agent.
     pub fn prompt_builder(
         mut self,
@@ -138,15 +148,6 @@ impl AgentBuilder {
         tool_dispatcher: Box<dyn crate::openhuman::agent::dispatcher::ToolDispatcher>,
     ) -> Self {
         self.tool_dispatcher = Some(tool_dispatcher);
-        self
-    }
-
-    /// Sets the memory loader for the agent.
-    pub fn memory_loader(
-        mut self,
-        memory_loader: Box<dyn crate::openhuman::memory::agent::memory_loader::MemoryLoader>,
-    ) -> Self {
-        self.memory_loader = Some(memory_loader);
         self
     }
 
@@ -201,7 +202,7 @@ impl AgentBuilder {
     /// tools resolve their default cwd to the profile's dedicated workspace.
     pub fn workspace_descriptor(
         mut self,
-        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+        descriptor: Option<tinyagents_harness::workspace::WorkspaceDescriptor>,
     ) -> Self {
         self.workspace_descriptor = descriptor;
         self
@@ -354,6 +355,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Substitute the transcript backing store for this session.
+    ///
+    /// The one injection point for the S4 seam: the locator resolves both
+    /// resume reads (`latest_for_agent` / `root_for_thread`) **and** binds the
+    /// session's write handle (`open_stem`), so a fake supplied here takes the
+    /// whole turn path off the filesystem. Leave unset in production — `None`
+    /// resolves lazily to a
+    /// [`FileTranscriptLocator`][super::super::transcript_history::FileTranscriptLocator]
+    /// over the agent's current workspace, which is behaviourally identical to
+    /// the pre-S4 free-function calls.
+    pub(crate) fn with_session_history_locator(
+        mut self,
+        locator: std::sync::Arc<dyn super::super::transcript_history::SessionHistoryLocator>,
+    ) -> Self {
+        self.session_history_locator = Some(locator);
+        self
+    }
+
     /// Forward the target agent definition's `omit_profile` flag so
     /// [`Agent::build_system_prompt`] can decide whether to inject
     /// `PROFILE.md`. Only opt-in agents (welcome, orchestrator, the
@@ -443,7 +462,26 @@ impl AgentBuilder {
             .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
         let tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
 
-        let visible_names = self.visible_tool_names.unwrap_or_default();
+        let mut visible_names = self.visible_tool_names.unwrap_or_default();
+        // Resolved here rather than at its historical position below: the pack
+        // withholding is per-agent (a pack is skipped for the specialist that
+        // owns its family), so the id has to exist before the strip.
+        let agent_definition_name = self
+            .agent_definition_name
+            .clone()
+            .unwrap_or_else(|| "main".to_string());
+        // On-demand tool disclosure: withhold packed tools' schemas from the
+        // provider and advertise `load_skill` / `use_skill` in their place. The
+        // tools stay in the registry below and stay executable — only the
+        // advertised surface shrinks. Applied here, before the policy filter,
+        // so the visible set and the policy session cannot disagree.
+        if visible_names.is_empty() {
+            visible_names = tools.iter().map(|tool| tool.name().to_string()).collect();
+        }
+        crate::openhuman::tools::toolpacks::strip_packed_from_visible(
+            &mut visible_names,
+            &agent_definition_name,
+        );
         let config = self.config.clone().unwrap_or_default();
         let event_session_id = self
             .event_session_id
@@ -453,10 +491,6 @@ impl AgentBuilder {
             .event_channel
             .clone()
             .unwrap_or_else(|| "internal".to_string());
-        let agent_definition_name = self
-            .agent_definition_name
-            .clone()
-            .unwrap_or_else(|| "main".to_string());
         let tool_policy_session = ToolPolicyEngine::build_session(
             &agent_definition_name,
             &event_channel,
@@ -467,10 +501,10 @@ impl AgentBuilder {
         );
 
         // A child agent inherits explicit profile and channel restrictions, but
-        // not the coordinator's own role-specific tool scope. For example, the
-        // orchestrator intentionally cannot call `file_write` directly while
-        // its code-executor specialist must be able to do so. Conflating those
-        // two surfaces silently stripped specialist tools (#5118 merge).
+        // not the primary agent's own role-specific tool scope. The Master Agent
+        // can write directly, while specialists may still need tools outside its
+        // intentionally compact default surface. Conflating those two surfaces
+        // silently strips specialist capabilities (#5118 merge).
         //
         // Build a second policy snapshot without the role visibility filter.
         // `tool_policy_session` marks both channel-blocked and role-hidden tools
@@ -563,9 +597,14 @@ impl AgentBuilder {
             .session_raw_subdir
             .unwrap_or_else(|| "session_raw".to_string());
 
+        let tools = Arc::new(tools);
+        // The pack tools live inside this registry, so they can only be pointed
+        // at it once it exists. Re-bind after any later rebuild of this `Arc`.
+        crate::openhuman::tools::toolpacks::bind_pack_registry(&tools);
+
         Ok(Agent {
             turn_model_source,
-            tools: Arc::new(tools),
+            tools,
             tool_specs: Arc::new(tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),
             visible_tool_names: visible_names,
@@ -575,13 +614,11 @@ impl AgentBuilder {
                 .memory
                 .ok_or_else(|| anyhow::anyhow!("memory is required"))?,
             shared_experience_memory: self.shared_experience_memory,
+            auto_recall: self.auto_recall,
             tool_dispatcher: std::sync::Arc::from(
                 self.tool_dispatcher
                     .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
             ),
-            memory_loader: self
-                .memory_loader
-                .unwrap_or_else(|| Box::new(DefaultMemoryLoader::default())),
             config,
             model_name,
             model_vision: self.model_vision.unwrap_or(false),
@@ -593,6 +630,7 @@ impl AgentBuilder {
             auto_save: self.auto_save.unwrap_or(false),
             last_memory_context: None,
             last_turn_citations: Vec::new(),
+            pending_citations: None,
             last_turn_usage_totals: None,
             last_turn_hit_cap: false,
             history: Vec::new(),
@@ -614,6 +652,8 @@ impl AgentBuilder {
             memory_subdir,
             session_raw_subdir,
             session_transcript_path: None,
+            session_history: None,
+            session_history_locator: self.session_history_locator,
             persisted_transcript_messages: Vec::new(),
             session_key: {
                 let unix_ts = std::time::SystemTime::now()
@@ -664,6 +704,7 @@ impl AgentBuilder {
             archivist_hook: self.archivist_hook,
             synthesized_tool_names: std::collections::HashSet::new(),
             pending_synthesized_tools_mask: std::collections::HashSet::new(),
+            pending_turn_overrides: super::super::types::TurnOverrides::default(),
         })
     }
 }
