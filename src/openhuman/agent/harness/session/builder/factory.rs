@@ -256,14 +256,9 @@ impl Agent {
         // raw SQLite handle the factory used to strip off the engine result.
         // That handle was the #5378 `:290` blocker: a concrete connection no
         // module or remote driver can supply. The engine's connection is now
-        // exclusively the engine's.
-        let archivist_provider = crate::openhuman::memory::binding::for_subtree(
-            &config.workspace_dir,
-            &memory_subdir,
-            &config.subsystems.memory,
-        )
-        .map(|binding| binding.provider().clone())
-        .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
+        // exclusively the engine's. Lane C (#6040) rides the same binding.
+        let (archivist_provider, auto_recall) =
+            super::helpers::bind_session_memory(config, &memory_subdir)?;
         // Dedicated profiles still recall unstamped experiences written by
         // pre-profile versions from the shared memory DB. Resolve that shared
         // store once, here, and hand it to the session rather than making the
@@ -982,7 +977,6 @@ impl Agent {
         // (#6048); both gates live in `helpers::add_memory_prompt_sections`.
         prompt_builder = super::helpers::add_memory_prompt_sections(
             prompt_builder,
-            config,
             &tools,
             &delegation_tools,
             &visible,
@@ -1197,6 +1191,7 @@ impl Agent {
             .visible_tool_names(visible)
             .memory(memory)
             .shared_experience_memory(shared_experience_memory)
+            .auto_recall(Some(auto_recall))
             .tool_dispatcher(tool_dispatcher)
             .prompt_builder(prompt_builder)
             .config(effective_agent_config)

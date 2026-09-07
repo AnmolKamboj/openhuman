@@ -17,14 +17,34 @@
 //! reached through this session's own `binding::for_subtree(..)`, which needs
 //! the subtree passed in rather than the memory object.
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::auto_recall::AutoRecall;
 use crate::openhuman::memory::tool_memory::{tool_memory_store, ToolMemoryRule};
 use crate::openhuman::memory::Memory;
 use std::sync::Arc;
 
 use crate::openhuman::agent::context::prompt::SystemPromptBuilder;
-use crate::openhuman::config::Config;
 use crate::openhuman::tools::traits::Tool;
 use std::collections::HashSet;
+
+/// Binds this session's memory subtree once and hands back the two handles
+/// the factory takes from it: the raw provider the archivist writes through,
+/// and Lane C (#6040) over the same binding's guard, so the auto-recall reads
+/// exactly the subtree the session chats against — a dedicated profile recalls
+/// its own facts, never the shared tree's.
+pub(super) fn bind_session_memory(
+    config: &crate::openhuman::config::Config,
+    memory_subdir: &str,
+) -> anyhow::Result<(Arc<dyn MemoryProvider>, Arc<AutoRecall>)> {
+    let binding = crate::openhuman::memory::binding::for_subtree(
+        &config.workspace_dir,
+        memory_subdir,
+        &config.subsystems.memory,
+    )
+    .map_err(|e| anyhow::anyhow!("archivist memory binding: {e}"))?;
+    let auto_recall = Arc::new(AutoRecall::from_guard(binding.guard()));
+    Ok((binding.provider().clone(), auto_recall))
+}
 
 /// (#1400) Best-effort synchronous prefetch of eager tool-scoped rules.
 ///
@@ -78,21 +98,22 @@ pub(super) fn prefetch_tool_memory_rules_blocking(
 
 /// Register the memory prompt sections a session should carry.
 ///
-/// Two independent gates, one per direction:
+/// One gate per direction, and neither consults `learning.enabled`: the
+/// instructions are about the memory *tools*, which exist whether or not the
+/// learning subsystem runs (#6040 untied the read side, #6048 the write side).
+/// A model holding those tools with no rule on when to use them is what
+/// produced both bugs — claiming absence unsearched, and "got it, saved" with
+/// zero tool calls.
 ///
-/// - `MemoryAccessSection` (read side, #566): only when `learning.enabled` and
-///   a retrieval tool is offered.
-/// - `MemoryWriteSection` (write side, #6048): whenever a writing tool is
-///   offered, regardless of `learning.enabled`. The tools are registered either
-///   way, and a model that holds them with no rule on when to use them narrates
-///   a save it never made — "got it, saved" with zero tool calls.
+/// - `MemoryAccessSection` (read side, #566/#6040): a retrieval tool is offered.
+/// - `MemoryWriteSection` (write side, #6048): a writing tool is offered, and it
+///   names only the write tools this session actually holds.
 ///
 /// Each gate needs the tool registered **and** visible after filtering
 /// (`any_tool_offered`): a rule about a tool the model cannot see would only
 /// teach it to apologise.
 pub(super) fn add_memory_prompt_sections(
     prompt_builder: SystemPromptBuilder,
-    config: &Config,
     tools: &[Box<dyn Tool>],
     delegation_tools: &[Box<dyn Tool>],
     visible: &HashSet<String>,
@@ -103,16 +124,14 @@ pub(super) fn add_memory_prompt_sections(
         MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL,
     };
     let mut prompt_builder = prompt_builder;
-    if config.learning.enabled {
-        if any_tool_offered(&MEMORY_READ_TOOLS, tools, delegation_tools, visible) {
-            prompt_builder = prompt_builder.add_section(Box::new(MemoryAccessSection));
-            log::debug!("[learning] memory_access prompt section registered");
-        } else {
-            log::debug!(
-                "[learning] skipping MemoryAccessSection — neither memory_recall nor \
-                 memory_search is registered+visible for agent={agent_id}"
-            );
-        }
+    if any_tool_offered(&MEMORY_READ_TOOLS, tools, delegation_tools, visible) {
+        prompt_builder = prompt_builder.add_section(Box::new(MemoryAccessSection));
+        log::debug!("[memory_access] prompt section registered");
+    } else {
+        log::debug!(
+            "[memory_access] skipping MemoryAccessSection — neither memory_recall nor \
+             memory_search is registered+visible for agent={agent_id}"
+        );
     }
     // Asked per tool, not once for the pair: the section names the routes it
     // is given, so a profile carrying only one write tool must not be told

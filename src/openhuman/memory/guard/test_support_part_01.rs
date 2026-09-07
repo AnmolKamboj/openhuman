@@ -77,6 +77,9 @@ pub struct RecordingProvider {
     calls: Mutex<Vec<Call>>,
     /// What `recall` returns, so budget tests can drive a known result set.
     recall_result: Mutex<Vec<MemoryEntry>>,
+    /// What `fast_retrieve` returns, so the auto-recall lane can be driven
+    /// through a real guard with known hits.
+    fast_retrieve_result: Mutex<RetrievalResponse>,
     /// What `recall_namespace_scored` returns, so the vector-floored recall
     /// paths (Lane B, the contradiction check) can be driven with known scores.
     namespace_hits: Mutex<Vec<NamespaceMemoryHit>>,
@@ -96,6 +99,7 @@ impl RecordingProvider {
         Self {
             calls: Mutex::new(Vec::new()),
             recall_result: Mutex::new(Vec::new()),
+            fast_retrieve_result: Mutex::new(RetrievalResponse::default()),
             namespace_hits: Mutex::new(Vec::new()),
             namespace_summaries: Mutex::new(Vec::new()),
         }
@@ -103,6 +107,11 @@ impl RecordingProvider {
 
     pub fn with_recall_result(self, entries: Vec<MemoryEntry>) -> Self {
         *self.recall_result.lock().unwrap() = entries;
+        self
+    }
+
+    pub fn with_fast_retrieve_result(self, response: RetrievalResponse) -> Self {
+        *self.fast_retrieve_result.lock().unwrap() = response;
         self
     }
 
