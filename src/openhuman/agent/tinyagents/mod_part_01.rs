@@ -326,6 +326,19 @@ pub(crate) struct TinyagentsTurnOutcome {
     /// should summarize a resumable checkpoint rather than treat `text` as a
     /// final answer — the tinyagents analogue of the legacy cap checkpoint seam.
     pub hit_cap: bool,
+    /// `true` when [`FinalCallWrapUpMiddleware`] turned this turn's last
+    /// permitted model call into its conclusion (issue #6014) — the tools were
+    /// withdrawn and the wrap-up instruction appended in the loop, so `text`
+    /// already **is** the capped turn's answer.
+    ///
+    /// Read alongside [`hit_cap`](Self::hit_cap) rather than folded into it,
+    /// because the caller's action differs: with this set there is nothing left
+    /// to ask the model for, while a cap reached without it (a run with the
+    /// middleware uninstalled, or one whose final call still came back empty)
+    /// keeps the out-of-band `summarize_turn_wrapup` path it always had. That
+    /// makes the in-loop conclusion strictly additive — no path loses the
+    /// behaviour it has today.
+    pub wrap_up_injected: bool,
     /// Set (with the root-cause halt summary) when the repeated-tool-failure /
     /// repeat-progress circuit breaker halted the run before a natural finish.
     /// The sub-agent runner surfaces this as `SubagentRunStatus::Incomplete`
@@ -477,6 +490,9 @@ pub(crate) async fn run_turn_via_tinyagents(
         ),
         early_exit_tool: None,
         hit_cap: false,
+        // The thin (test-only) variant installs no middleware, so nothing could
+        // have injected a conclusion.
+        wrap_up_injected: false,
         // This thin (test-only) variant does not install the breaker middleware.
         breaker_halt: None,
         // This thin variant carries no per-call outcome capture middleware.
