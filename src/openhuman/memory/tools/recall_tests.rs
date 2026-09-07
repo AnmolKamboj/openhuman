@@ -132,3 +132,12 @@ fn resolve_namespace_keeps_an_explicit_one_trimmed() {
 fn resolve_namespace_rejects_an_explicit_empty_one() {
     assert!(resolve_namespace(&json!({"namespace": "   ", "query": "x"})).is_err());
 }
+
+#[test]
+fn resolve_namespace_rejects_a_non_string_namespace() {
+    // Present but wrong-typed is a caller mistake, not a request for the
+    // default scope: a `null` or a number must not widen the search.
+    assert!(resolve_namespace(&json!({"namespace": null, "query": "x"})).is_err());
+    assert!(resolve_namespace(&json!({"namespace": 7, "query": "x"})).is_err());
+    assert!(resolve_namespace(&json!({"namespace": ["a"], "query": "x"})).is_err());
+}
