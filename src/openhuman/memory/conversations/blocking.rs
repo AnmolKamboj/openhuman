@@ -1,8 +1,24 @@
 //! Async wrappers that run the conversation store's **blocking** operations on
 //! tokio's blocking pool (#5156).
 //!
-//! Every `tinycortex::memory::conversations` entry point is synchronous, and
-//! each one takes the process-global `CONVERSATION_STORE_LOCK` — a
+//! # Why this lives here (#5560)
+//!
+//! It was `tinymemory_core::conversations::blocking`, and that crate's own
+//! module docs already called it *host-retained*: the conversation store is the
+//! engine's, but deciding which executor a host runs a blocking call on is the
+//! host's, and nothing inside `tinymemory` ever called these wrappers. So this
+//! is a move home rather than a re-routing — the same shape as
+//! `memory::rpc_models`, whose forty-five types were named only by this host.
+//!
+//! The store these wrappers address has since followed them home: `store` is
+//! now [`super`]'s own subtree rather than `tinycortex::memory::conversations`,
+//! and the import below is the only line that changed for it. The item set is
+//! the same one the engine exported, so function signatures, argument order,
+//! error strings and the `[conversations]` log prefix stay byte-identical —
+//! `web_chat::run_task` and the RPC layer read them.
+//!
+//! Every store entry point is synchronous, and each one takes the
+//! process-global `CONVERSATION_STORE_LOCK` — a
 //! `parking_lot::Mutex` — and then does fsync'd JSONL file IO while holding it.
 //! Calling one directly from an `async fn` therefore parks a tokio **worker**
 //! thread for the whole wait, and the wait is not short:
@@ -35,7 +51,7 @@
 
 use std::path::PathBuf;
 
-use tinycortex::memory::conversations as store;
+use crate::openhuman::memory::conversations as store;
 
 use super::{
     ConversationMessage, ConversationMessagePatch, ConversationPurgeStats, ConversationStore,

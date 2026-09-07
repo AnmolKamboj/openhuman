@@ -3,8 +3,10 @@ use once_cell::sync::Lazy;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
-use crate::core::event_bus::{DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::events::DomainEvent;
 use crate::core::socketio::WebChannelEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 static EVENT_BUS: Lazy<broadcast::Sender<WebChannelEvent>> = Lazy::new(|| {
     let (tx, _rx) = broadcast::channel(512);
@@ -25,7 +27,7 @@ pub fn register_approval_surface_subscriber() {
     if APPROVAL_SURFACE_HANDLE.get().is_some() {
         return;
     }
-    match crate::core::event_bus::subscribe_global(Arc::new(ApprovalSurfaceSubscriber)) {
+    match crate::core::bus::BUS.subscribe(Arc::new(ApprovalSurfaceSubscriber)) {
         Some(handle) => {
             let _ = APPROVAL_SURFACE_HANDLE.set(handle);
             log::info!(
@@ -46,7 +48,7 @@ pub fn register_artifact_surface_subscriber() {
     if ARTIFACT_SURFACE_HANDLE.get().is_some() {
         return;
     }
-    match crate::core::event_bus::subscribe_global(Arc::new(ArtifactSurfaceSubscriber)) {
+    match crate::core::bus::BUS.subscribe(Arc::new(ArtifactSurfaceSubscriber)) {
         Some(handle) => {
             let _ = ARTIFACT_SURFACE_HANDLE.set(handle);
             log::info!(
@@ -71,7 +73,7 @@ pub fn register_egress_surface_subscriber() {
     if EGRESS_SURFACE_HANDLE.get().is_some() {
         return;
     }
-    match crate::core::event_bus::subscribe_global(Arc::new(EgressSurfaceSubscriber)) {
+    match crate::core::bus::BUS.subscribe(Arc::new(EgressSurfaceSubscriber)) {
         Some(handle) => {
             let _ = EGRESS_SURFACE_HANDLE.set(handle);
             log::info!(
@@ -95,7 +97,7 @@ pub fn register_egress_surface_subscriber() {
 struct EgressSurfaceSubscriber;
 
 #[async_trait]
-impl EventHandler for EgressSurfaceSubscriber {
+impl EventHandler<DomainEvent> for EgressSurfaceSubscriber {
     fn name(&self) -> &str {
         "web_chat::egress_surface"
     }
@@ -152,7 +154,7 @@ impl EventHandler for EgressSurfaceSubscriber {
 struct ArtifactSurfaceSubscriber;
 
 #[async_trait]
-impl EventHandler for ArtifactSurfaceSubscriber {
+impl EventHandler<DomainEvent> for ArtifactSurfaceSubscriber {
     fn name(&self) -> &str {
         "web_chat::artifact_surface"
     }
@@ -294,13 +296,13 @@ pub fn fresh_approval_surface_subscription() -> Option<SubscriptionHandle> {
         "[web-channel] fresh_approval_surface_subscription — debug-only OnceLock bypass, \
          registering a per-runtime approval-surface bridge for tests"
     );
-    crate::core::event_bus::subscribe_global(Arc::new(ApprovalSurfaceSubscriber))
+    crate::core::bus::BUS.subscribe(Arc::new(ApprovalSurfaceSubscriber))
 }
 
 struct ApprovalSurfaceSubscriber;
 
 #[async_trait]
-impl EventHandler for ApprovalSurfaceSubscriber {
+impl EventHandler<DomainEvent> for ApprovalSurfaceSubscriber {
     fn name(&self) -> &str {
         "web_chat::approval_surface"
     }
@@ -383,143 +385,5 @@ impl EventHandler for ApprovalSurfaceSubscriber {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// `fresh_approval_surface_subscription` returns `Some` when the global event bus has
-    /// been initialised and `None` otherwise (bus not started).  It must never return `None`
-    /// after `init_global` has been called — the production path always initialises the bus
-    /// before the web channel starts handling requests.
-    #[tokio::test]
-    async fn fresh_approval_surface_subscription_returns_some_when_bus_is_ready() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let handle = fresh_approval_surface_subscription();
-        assert!(
-            handle.is_some(),
-            "fresh_approval_surface_subscription() must return Some when the global event bus \
-             is initialised"
-        );
-    }
-
-    /// Calling `fresh_approval_surface_subscription` multiple times returns independent
-    /// handles.  Each is backed by its own background task so multiple callers can bridge
-    /// independently (e.g. multiple integration tests running sequentially in the same
-    /// process, each on their own tokio runtime).
-    #[tokio::test]
-    async fn fresh_approval_surface_subscription_is_not_a_singleton() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let h1 = fresh_approval_surface_subscription();
-        let h2 = fresh_approval_surface_subscription();
-        assert!(h1.is_some(), "first subscription handle must be Some");
-        assert!(h2.is_some(), "second subscription handle must be Some");
-        // Both handles are alive — drop explicitly to show they're independent.
-        drop(h1);
-        drop(h2);
-    }
-
-    /// Drain the web-channel receiver until an `external_transfer_pending` event
-    /// whose `args.service` matches `marker` arrives (the bus is process-wide).
-    async fn find_egress_web_event(
-        rx: &mut broadcast::Receiver<WebChannelEvent>,
-        marker: &str,
-    ) -> WebChannelEvent {
-        loop {
-            match rx.recv().await {
-                Ok(ev)
-                    if ev.event == "external_transfer_pending"
-                        && ev
-                            .args
-                            .as_ref()
-                            .and_then(|a| a.get("service"))
-                            .and_then(|s| s.as_str())
-                            == Some(marker) =>
-                {
-                    return ev
-                }
-                Ok(_) => continue,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => {
-                    panic!("web-channel bus closed before external_transfer_pending arrived")
-                }
-            }
-        }
-    }
-
-    /// Egress-surface bridges an `ExternalTransferPending` that carries chat
-    /// routing into an `external_transfer_pending` web-channel event whose args
-    /// mirror the descriptor (privacy epic S2, #4436).
-    #[tokio::test]
-    async fn egress_surface_bridges_pending_with_chat_context() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let _handle = crate::core::event_bus::subscribe_global(Arc::new(EgressSurfaceSubscriber));
-        let mut web_rx = subscribe_web_channel_events();
-
-        let marker = "svc-bridge-with-context";
-        crate::core::event_bus::publish_global(DomainEvent::ExternalTransferPending {
-            descriptor: crate::openhuman::security::egress::EgressDescriptor::composio(marker),
-            thread_id: Some("thread-1".to_string()),
-            client_id: Some("client-1".to_string()),
-        });
-
-        let ev = find_egress_web_event(&mut web_rx, marker).await;
-        assert_eq!(ev.thread_id, "thread-1");
-        assert_eq!(ev.client_id, "client-1");
-        let args = ev.args.expect("args present");
-        assert_eq!(args["provider_slug"], "composio");
-        assert_eq!(args["reason"], "tool_call");
-        assert_eq!(args["is_external"], true);
-    }
-
-    /// A pending event with no chat routing is NOT surfaced to the web channel
-    /// (background/CLI/cron egress has no client to fan out to).
-    #[tokio::test]
-    async fn egress_surface_drops_pending_without_chat_context() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let _handle = crate::core::event_bus::subscribe_global(Arc::new(EgressSurfaceSubscriber));
-        let mut web_rx = subscribe_web_channel_events();
-
-        let dropped_marker = "svc-bridge-no-context";
-        let sentinel_marker = "svc-bridge-sentinel";
-        // No context → must be dropped. A following event WITH context must be
-        // surfaced; reaching the sentinel proves the first was suppressed.
-        crate::core::event_bus::publish_global(DomainEvent::ExternalTransferPending {
-            descriptor: crate::openhuman::security::egress::EgressDescriptor::composio(
-                dropped_marker,
-            ),
-            thread_id: None,
-            client_id: None,
-        });
-        crate::core::event_bus::publish_global(DomainEvent::ExternalTransferPending {
-            descriptor: crate::openhuman::security::egress::EgressDescriptor::composio(
-                sentinel_marker,
-            ),
-            thread_id: Some("thread-2".to_string()),
-            client_id: Some("client-2".to_string()),
-        });
-
-        loop {
-            match web_rx.recv().await {
-                Ok(ev) if ev.event == "external_transfer_pending" => {
-                    let svc = ev
-                        .args
-                        .as_ref()
-                        .and_then(|a| a.get("service"))
-                        .and_then(|s| s.as_str());
-                    assert_ne!(
-                        svc,
-                        Some(dropped_marker),
-                        "no-context transfer must not surface to the web channel"
-                    );
-                    if svc == Some(sentinel_marker) {
-                        break;
-                    }
-                }
-                Ok(_) => continue,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => {
-                    panic!("web-channel bus closed before sentinel arrived")
-                }
-            }
-        }
-    }
-}
+#[path = "event_bus_tests.rs"]
+mod tests;

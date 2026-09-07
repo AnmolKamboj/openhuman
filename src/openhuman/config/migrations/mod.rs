@@ -32,10 +32,11 @@ mod reconcile_orphaned_providers;
 mod remove_write_auto_approve;
 mod repair_http_request_limits;
 mod retire_chat_v1_model;
+mod retire_local_whisper_stt;
 mod unify_ai_provider_settings;
 
 /// Current target schema version. Bumped alongside every new migration.
-pub const CURRENT_SCHEMA_VERSION: u32 = 9;
+pub const CURRENT_SCHEMA_VERSION: u32 = 10;
 
 /// Run any migrations whose `schema_version` gate hasn't yet been
 /// crossed for this workspace.
@@ -460,6 +461,51 @@ pub async fn run_pending(config: &mut Config) {
             Err(err) => {
                 log::warn!(
                     "[migrations] enable_session_shadow_reads failed: {err:#} — \
+                     will retry on next launch"
+                );
+            }
+        }
+    }
+
+    // 9 -> 10: retire the removed local whisper.cpp STT provider. The bundled
+    // engine (in-process `whisper-rs` + the `whisper-cli` subprocess) and its
+    // model downloader are gone; `"whisper"` is no longer a sentinel in the
+    // voice factory, so a persisted `stt_provider = "whisper"` falls through to
+    // the third-party slug lookup and fails every transcription with "no voice
+    // provider with slug 'whisper'". Rewrite it to `"cloud"`, which defers to
+    // `voice_server.stt_engine`. Guard on `== 9` so an earlier failed step
+    // isn't skipped.
+    if config.schema_version == 9 {
+        let previous_stt_provider = config.stt_provider.clone();
+        let previous_legacy_stt_provider = config.local_ai.stt_provider.clone();
+        match retire_local_whisper_stt::run(config) {
+            Ok(stats) => {
+                let previous_version = config.schema_version;
+                config.schema_version = 10;
+                if let Err(err) = config.save().await {
+                    // Roll back BOTH the version and the rewritten fields so a
+                    // failed save doesn't leave `load_or_init` returning a
+                    // half-migrated in-memory config; next launch retries.
+                    config.stt_provider = previous_stt_provider;
+                    config.local_ai.stt_provider = previous_legacy_stt_provider;
+                    config.schema_version = previous_version;
+                    log::warn!(
+                        "[migrations] retire_local_whisper_stt ran but config.save failed: \
+                         {err:#} — rolled in-memory schema_version back to {previous_version}, \
+                         will retry on next launch"
+                    );
+                    return;
+                }
+                log::info!(
+                    "[migrations] schema_version bumped to 10 (retire_local_whisper_stt \
+                     stt_provider_migrated={} legacy_stt_provider_migrated={})",
+                    stats.stt_provider_migrated,
+                    stats.legacy_stt_provider_migrated,
+                );
+            }
+            Err(err) => {
+                log::warn!(
+                    "[migrations] retire_local_whisper_stt failed: {err:#} — \
                      will retry on next launch"
                 );
             }

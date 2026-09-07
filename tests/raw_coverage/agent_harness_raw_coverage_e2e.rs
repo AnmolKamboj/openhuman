@@ -18,10 +18,10 @@ use parking_lot::Mutex;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tinyagents::harness::message::{AssistantMessage, ContentBlock, Message};
-use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinyagents::harness::tool::ToolCall;
-use tinyagents::harness::usage::Usage;
+use tinyinference::message::{AssistantMessage, ContentBlock, Message};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 
 struct ScriptedModel {
     responses: Mutex<Vec<ModelResponse>>,
@@ -57,7 +57,7 @@ impl ChatModel<()> for ScriptedModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         self.requests.lock().push(request.messages);
         let mut responses = self.responses.lock();
         Ok(if responses.is_empty() {
@@ -191,6 +191,7 @@ fn response(
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -216,6 +217,7 @@ fn response_with_cached(
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -304,7 +306,6 @@ fn coverage_definition() -> AgentDefinition {
         omit_identity: true,
         omit_memory_context: false,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: Default::default(),
@@ -561,7 +562,6 @@ agent_tier = "chat"
 omit_identity = true
 omit_memory_context = true
 omit_safety_preamble = true
-omit_skills_catalog = true
 omit_profile = true
 omit_memory_md = true
 
@@ -583,7 +583,6 @@ max_iterations = 3
 omit_identity = true
 omit_memory_context = true
 omit_safety_preamble = true
-omit_skills_catalog = true
 omit_profile = true
 omit_memory_md = true
 

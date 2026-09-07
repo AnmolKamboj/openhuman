@@ -131,11 +131,8 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                     display_message
                 );
             } else if is_wallet_not_configured_error(&display_message) {
-                // A `tinyplace_*` RPC needs a wallet-derived signer but the user
-                // has not set one up. Expected user-state (the UI shows a
-                // "set up wallet" prompt), not an internal failure — skip Sentry
-                // here so the message is left untouched for direct (agent-tool)
-                // callers. See `is_wallet_not_configured_error`.
+                // A wallet-backed RPC cannot run before wallet setup. This is
+                // expected user state, not an internal failure.
                 tracing::info!(
                     method = %method,
                     "[rpc] wallet-not-configured (expected user-state) — skipping Sentry"
@@ -298,12 +295,10 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
             // `scheduler_gate::set_signed_out(false)`. Duplicating that check
             // here would pull a domain concern into the transport layer and would
             // add an extra config-load round-trip on every 401.
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
-                    source: format!("jsonrpc.invoke_method:{method}"),
-                    reason: sanitized_reason,
-                },
-            );
+            crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+                source: format!("jsonrpc.invoke_method:{method}"),
+                reason: sanitized_reason,
+            });
         } else if is_unconfirmed_unauthorized_error(msg) {
             log::info!(
                 "[jsonrpc] unconfirmed unauthorized error for method='{}' (not session expiry) — leaving session intact: {}",
@@ -428,17 +423,9 @@ fn is_param_validation_error(msg: &str) -> bool {
 
 /// Returns `true` when the error is the wallet's "not configured yet" message.
 ///
-/// Several `tinyplace_*` RPCs derive a signer seed from the wallet before they
-/// can run (the feed, signal/messaging, etc. — backend `GraphQLAuth::Agent`
-/// requires a signer). For a user who has not set up a wallet, the wallet layer
-/// returns [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`]. That is
-/// an expected user-state, not an internal failure: the UI already renders a
-/// "set up wallet" prompt, and there is no local lever to make the call succeed
-/// until the user creates a wallet. Classifying it here — at the single Sentry
-/// boundary — keeps it out of Sentry for *every* path that surfaces it (the
-/// shared client builder and the direct `signal_store` seed call alike) without
-/// the controllers returning a structured envelope, which would leak the raw
-/// sentinel string to agent tools that call those handlers directly.
+/// Wallet-backed RPCs return
+/// [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`] before
+/// setup. That is expected user state, not an internal failure.
 ///
 /// Matched against the shared wallet constant (exact equality) so a wording
 /// change in the wallet layer fails the coupling test in `jsonrpc_tests.rs`
@@ -1174,7 +1161,7 @@ const MAX_RPC_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// 3. `http_request_log_middleware` — logs non-RPC HTTP requests with timing
 #[cfg(feature = "http-server")]
 pub fn build_core_http_router(socketio_enabled: bool) -> Router {
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/schema", get(schema_handler))
@@ -1201,50 +1188,11 @@ pub fn build_core_http_router(socketio_enabled: bool) -> Router {
         .route("/oauth/mcp/callback", get(oauth_mcp_callback_handler))
         // OpenAI-compatible inference endpoint (/v1/chat/completions, /v1/models)
         .nest("/v1", crate::openhuman::inference::http::router())
-        // Apply `AppState` here (before any state-less sub-routers such as
-        // AgentBox are merged below) so the outer router becomes
-        // `Router<()>` and matches them.
+        // Apply `AppState` here so the outer router becomes `Router<()>` and
+        // matches any state-less sub-router merged into it.
         .with_state(AppState {
             core_version: env!("CARGO_PKG_VERSION").to_string(),
         });
-
-    // Mount AgentBox marketplace routes when explicitly enabled.
-    //
-    // Gate is strict literal "1" — "true"/"yes"/etc. do NOT enable it. Auth
-    // bypass for `/run` and `/jobs/{id}` is unconditional in
-    // [`crate::core::auth`]; the router-side gate is what actually exposes
-    // the handlers. The spawned sweep loop lives until process exit.
-    if crate::openhuman::agent::agentbox::agentbox_mode_enabled() {
-        let store =
-            crate::openhuman::agent::agentbox::JobStore::new(std::time::Duration::from_secs(3600));
-        let invoker: std::sync::Arc<dyn crate::openhuman::agent::agentbox::invoker::AgentInvoker> =
-            std::sync::Arc::new(crate::openhuman::agent::agentbox::invoker::CoreAgentInvoker);
-        let job_timeout = std::env::var("OPENHUMAN_AGENTBOX_JOB_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .map(std::time::Duration::from_secs)
-            .unwrap_or_else(|| std::time::Duration::from_secs(600));
-
-        // Spawn sweep loop — bounds memory under sustained traffic.
-        let sweep_store = store.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
-            loop {
-                tick.tick().await;
-                let evicted = sweep_store.sweep_now();
-                if evicted > 0 {
-                    log::info!("[agentbox] sweep evicted {} terminal jobs", evicted);
-                }
-            }
-        });
-
-        log::info!("[agentbox] enabled; public routes: POST /run, GET /jobs/{{id}}, GET /health");
-        router = router.merge(crate::openhuman::agent::agentbox::agentbox_router(
-            store,
-            invoker,
-            job_timeout,
-        ));
-    }
 
     let router = router
         .fallback(not_found_handler)
@@ -1631,7 +1579,7 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
             .into_response();
     }
 
-    let bus = match crate::core::event_bus::global() {
+    let bus = match crate::core::bus::BUS.get() {
         Some(bus) => bus,
         None => {
             log::warn!("[events/domain] event bus not initialized");
@@ -1645,35 +1593,88 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
 
     log::debug!("[events/domain] client connected, streaming domain events");
 
+    // The active workspace, resolved once here so a client that connects
+    // mid-life starts out knowing which rows are its own rather than
+    // waiting for the next event to tell it (#5966). This is the one place
+    // in this handler that can afford the authoritative read — it happens
+    // per connection, not per event — and it refills the cache the row
+    // stamping below relies on.
+    let active_workspace = crate::openhuman::config::active_workspace_dir()
+        .await
+        .map(|dir| crate::openhuman::config::workspace_handle(&dir))
+        .map_err(|error| {
+            log::warn!(
+                "[events/domain] could not resolve the active workspace ({error}); \
+                 the client will scope the log once an event says which workspace is active"
+            );
+        })
+        .ok();
+
     // Send config as first SSE event so frontend can apply settings.
     let config_event = Event::default().event("config").data(
         serde_json::to_string(&json!({
             "max_entries": es_cfg.max_entries,
             "new_entries": es_cfg.new_entries,
+            "active_workspace": active_workspace,
         }))
         .unwrap_or_default(),
     );
 
-    let rx = bus.raw_receiver();
-    let event_stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
-        |item| -> Option<Result<Event, std::convert::Infallible>> {
-            let event = match item {
-                Ok(ev) => ev,
-                Err(_) => return None,
-            };
-            let domain = event.domain().to_string();
-            let event_name = event.variant_name();
-            let agent = event.agent_hint().unwrap_or("").to_string();
-            let data = json!({
-                "domain": domain,
-                "event": event_name,
-                "agent": agent,
-                "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
-            });
-            let data_str = serde_json::to_string(&data).ok()?;
-            Some(Ok(Event::default().event(domain).data(data_str)))
-        },
-    );
+    // `BroadcastStream` wraps a raw `broadcast::Receiver`; tinybus hands back a
+    // decoding receiver instead, so the stream is built by unfolding it. Lag is
+    // already handled inside `recv`, which is why there is no error arm to
+    // filter out any more.
+    let event_stream = futures::stream::unfold(bus.receiver(), |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|event| (Ok::<_, std::convert::Infallible>(event), rx))
+    })
+    .filter_map(|item| -> Option<Result<Event, std::convert::Infallible>> {
+        let event = match item {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
+        let domain = event.domain().to_string();
+        let event_name = event.variant_name();
+        let agent = event.agent_hint().unwrap_or("").to_string();
+        // Most variants say everything in their name; the ones whose point is
+        // a failure *reason* would otherwise reach the log with the reason
+        // discarded, so they opt into one already-redacted line (#5931). It is
+        // `null` for every other variant, which renders as no change.
+        let detail = event.log_detail();
+        // Which workspace this row belongs to, and which one is current
+        // (#5966). One process serves more than one workspace over its life,
+        // so without these two a row left over from a workspace the user has
+        // switched away from is indistinguishable from one belonging to the
+        // workspace they are in.
+        //
+        // Both are *handles*, never `workspace_dir` itself: this envelope
+        // feeds a settings panel and its NDJSON download, and the path is
+        // under the user's home directory.
+        //
+        // `active` is read from the cache rather than resolved. This closure
+        // is synchronous — `tokio_stream`'s `filter_map` — so it could not
+        // await a resolve, and it runs for every domain event the process
+        // publishes, so it should not want to. `None` means "not resolved
+        // since the last workspace marker write", which the client treats as
+        // unknown rather than as a mismatch.
+        let workspace = event
+            .workspace_dir()
+            .map(crate::openhuman::config::workspace_handle);
+        let active = crate::openhuman::config::active_workspace_dir_cached()
+            .map(|dir| crate::openhuman::config::workspace_handle(&dir));
+        let data = json!({
+            "domain": domain,
+            "event": event_name,
+            "agent": agent,
+            "detail": detail,
+            "workspace": workspace,
+            "active_workspace": active,
+            "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
+        });
+        let data_str = serde_json::to_string(&data).ok()?;
+        Some(Ok(Event::default().event(domain).data(data_str)))
+    });
 
     let config_stream =
         futures::stream::once(async move { Ok::<_, std::convert::Infallible>(config_event) });
@@ -1910,8 +1911,6 @@ pub struct DomainSubscriberPlan {
     pub flows: bool,
     /// memory conversation-persistence + sync-stage bridge.
     pub memory: bool,
-    /// agent_meetings calendar + meeting-event subscribers.
-    pub meet: bool,
     /// agent handlers + background delivery + run-ledger finalizer + orchestration ingest.
     pub agent: bool,
     /// hosted orchestration ingest.
@@ -1933,7 +1932,6 @@ impl DomainSubscriberPlan {
             channels: domains.allows(DomainGroup::Channels),
             flows: domains.allows(DomainGroup::Flows),
             memory: domains.allows(DomainGroup::Memory),
-            meet: domains.allows(DomainGroup::Meet),
             agent: domains.allows(DomainGroup::Agent),
             hosted: domains.allows(DomainGroup::Hosted),
             mcp: domains.allows(DomainGroup::Mcp),
@@ -2054,12 +2052,6 @@ fn register_domain_subscribers(
         // battery-powered hosts).
         crate::openhuman::cron::scheduler_gate::init_global(&config);
 
-        // Install the TokenJuice content-router runtime config (compressor
-        // toggles + CCR cache limits + optional on-disk tier). Compaction runs on
-        // every agent's tool output, so this must be set before any agent loop
-        // executes a tool.
-        crate::openhuman::inference::tokenjuice::install_from_config(&config);
-
         // Seed the scheduler-gate signed-out override from the on-disk session.
         // Without this, a sidecar that boots with no stored JWT would happily
         // spin up cron / channel loops and fire LLM requests that all 401.
@@ -2090,7 +2082,7 @@ fn register_domain_subscribers(
         // Register the SessionExpired handler before any subscribers that might
         // publish 401-derived events, so the very first 401 is routed through
         // `clear_session` + the scheduler-gate override.
-        if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+        if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
             crate::openhuman::security::credentials::bus::SessionExpiredSubscriber::new(),
         )) {
             std::mem::forget(handle);
@@ -2121,7 +2113,7 @@ fn register_domain_subscribers(
     // composio + task-sources (Integrations), and device tunnel (Security).
     if plan.skills {
         if group_first_time(DomainGroup::Skills) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::skills::webhooks::bus::WebhookRequestSubscriber::new(),
             )) {
                 std::mem::forget(handle);
@@ -2200,7 +2192,7 @@ fn register_domain_subscribers(
     #[cfg(feature = "channels")]
     if plan.channels {
         if group_first_time(DomainGroup::Channels) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::channels::bus::ChannelInboundSubscriber::new(),
             )) {
                 std::mem::forget(handle);
@@ -2234,7 +2226,7 @@ fn register_domain_subscribers(
     #[cfg(feature = "flows")]
     if plan.flows {
         if group_first_time(DomainGroup::Flows) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::FlowTriggerSubscriber::new(Arc::new(config.clone())),
             )) {
                 std::mem::forget(handle);
@@ -2251,7 +2243,7 @@ fn register_domain_subscribers(
             // block as the trigger subscriber above — that guard only returns
             // `true` once per process, so a second, separate call here would
             // never register.
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::FlowRunDigestSubscriber::new(Arc::new(
                     config.clone(),
                 )),
@@ -2273,7 +2265,7 @@ fn register_domain_subscribers(
             // two flows subscribers above — see the digest subscriber's
             // comment just above for why a second `group_first_time` guard
             // here would be redundant.
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::DedupCommitSubscriber::new(Arc::new(config.clone())),
             )) {
                 std::mem::forget(handle);
@@ -2297,31 +2289,12 @@ fn register_domain_subscribers(
             crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
                 workspace_dir.clone(),
             );
-            crate::openhuman::memory::sync_events::register_sync_stage_bridge(&config);
+            crate::openhuman::memory::sync_events_bridge::register_sync_stage_bridge(&config);
         }
     } else {
         log::debug!(
             "[event_bus] memory conversation-persistence + sync bridge SKIPPED — Memory domain disabled"
         );
-    }
-
-    // Meet: calendar + meeting-event subscribers.
-    if plan.meet {
-        if group_first_time(DomainGroup::Meet) {
-            crate::openhuman::meet::backend_bot::calendar::register_meet_calendar_subscriber();
-            crate::openhuman::meet::backend_bot::bus::register_meeting_event_subscriber();
-        }
-    } else {
-        log::debug!("[event_bus] agent_meetings subscribers SKIPPED — Meet domain disabled");
-    }
-
-    // Hosted: ingest tiny.place harness session DMs off the stream bus.
-    if plan.hosted {
-        if group_first_time(DomainGroup::Hosted) {
-            crate::openhuman::hosted::orchestration::register_orchestration_ingest_subscriber();
-        }
-    } else {
-        log::debug!("[event_bus] orchestration ingest SKIPPED — Hosted domain disabled");
     }
 
     // Agent: native agent handlers + background-completion delivery +
@@ -2355,9 +2328,16 @@ fn register_domain_subscribers(
     // spawn of installed servers (boot::spawn_installed_servers) runs later in
     // bootstrap_core_runtime; this subscriber must be live before then so those
     // connect events are observed (issue #3039 gap A1).
+    //
+    // What bringing the domain up means is the domain's own; this only says
+    // when. The service it opens is wanted here rather than later for the same
+    // reason as the subscriber: every RPC handler in the domain reaches for it,
+    // and opening it from the boot-connect job would leave a window where a
+    // handler answers "still starting" to a caller whose domain is, as far as
+    // anything else can tell, already up.
     if plan.mcp {
         if group_first_time(DomainGroup::Mcp) {
-            crate::openhuman::mcp::registry::bus::init();
+            crate::openhuman::mcp::start(&config);
         }
     } else {
         log::debug!("[event_bus] mcp_registry bus init SKIPPED — Mcp domain disabled");
@@ -2394,7 +2374,7 @@ pub async fn bootstrap_core_runtime(
 
     // --- Event bus bootstrap ---
     // Ensure the global event bus is initialized (no-op if already done by start_channels).
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let agent_enabled = domains.allows(crate::core::all::DomainGroup::Agent);
     if agent_enabled {
         crate::openhuman::agent::file_state::init_global();
@@ -2412,6 +2392,14 @@ pub async fn bootstrap_core_runtime(
     // keeps reporting it after the loader heals the file on this same boot; the
     // frontend raises a one-shot "settings were reset" notice off it.
     crate::openhuman::desktop::app_state::latch_from_config(&cfg);
+
+    // --- Configurable hooks -------------------------------------------
+    // Read every `hooks.json` layer and, only if something is configured,
+    // install the harness bridge. Boot is the right moment: a hook that is
+    // meant to gate the first tool call of the first turn has to be loaded
+    // before any session exists, and the alternative — loading lazily on the
+    // first event — would let that first call through while the file is read.
+    crate::openhuman::hooks::init(&cfg).await;
 
     // --- Turn-state recovery -------------------------------------------
     // Any per-thread turn snapshots left on disk from a previous process
@@ -2441,7 +2429,7 @@ pub async fn bootstrap_core_runtime(
     // the finalizer never settled it. Stamp such rows `interrupted` so they stop
     // rendering as perpetual "running" timeline entries on thread reopen.
     if agent_enabled {
-        match crate::openhuman::agent::session_db::run_ledger::interrupt_orphaned_agent_runs(&cfg) {
+        match tinyagents_session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
             Ok(0) => {}
             Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
             Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
@@ -2604,8 +2592,8 @@ pub async fn bootstrap_core_runtime(
              gate is always on for the Tauri host (host={})",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateOverrideIgnored {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::ApprovalGateOverrideIgnored {
                 host: host_kind.tag().to_string(),
             },
         );
@@ -2652,12 +2640,10 @@ pub async fn bootstrap_core_runtime(
              Prompt-class external-effect tool calls run unprompted",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateDisabled {
-                host: host_kind.tag().to_string(),
-                reason: "env-override".to_string(),
-            },
-        );
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::ApprovalGateDisabled {
+            host: host_kind.tag().to_string(),
+            reason: "env-override".to_string(),
+        });
     }
     // Artifact surface bridges DomainEvent::ArtifactReady/Failed onto the web
     // channel ("Files in this chat" panel + ArtifactCard updates). This is
