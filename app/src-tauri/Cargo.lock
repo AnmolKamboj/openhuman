@@ -9543,11 +9543,3 @@ dependencies = [
  "syn 3.0.4",
  "winnow 1.0.4",
 ]
-
-[[patch.unused]]
-name = "tinycortex"
-version = "0.1.2"
-
-[[patch.unused]]
-name = "tinycortex-api"
-version = "0.1.1"
