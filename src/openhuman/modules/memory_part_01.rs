@@ -74,6 +74,14 @@ pub(crate) const ARTIFACT_CAPABILITIES: &[Capability] = &[
     // and embedder identification, served by the module's engine and forwarded
     // by `MemoryScoring for ModuleMemoryProvider` below.
     Capability::Scoring,
+    // Re-read at tag `v1.15.0` (tinymemory#141, openhuman#6025). The connector
+    // sink now embeds a whole `accept_source_items` batch together and the
+    // vendored engine claims a due `reembed_backfill` ahead of the extraction
+    // backlog (tinycortex#168). Behaviour inside `Sources`/`Maintenance`, no
+    // new bus member and no new family: `git diff v1.14.1..v1.15.0 --
+    // crates/tinymemory-bus/src/capabilities.rs crates/tinymemory-bus/src/names.rs`
+    // is empty, so the list below is unchanged and only the pin moves.
+    //
     // Re-read at tag `v1.14.1` (tinymemory#136 + #137, openhuman#6012). It adds a bus
     // *member*, `BackfillConnectorTrees`, and no capability: `Capability` is the
     // family enum, and the member is a method inside `Maintenance`, which this
