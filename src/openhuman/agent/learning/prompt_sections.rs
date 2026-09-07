@@ -19,7 +19,9 @@
 //! prior sessions. Registered after `LearnedContextSection` in the section chain.
 
 use crate::openhuman::agent::context::prompt::{PromptContext, PromptSection};
+use crate::openhuman::tools::traits::Tool;
 use anyhow::Result;
+use std::collections::HashSet;
 
 /// Injects recent observations and patterns from the learning subsystem.
 pub struct LearnedContextSection;
@@ -127,6 +129,68 @@ impl PromptSection for MemoryAccessSection {
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
         Ok(MEMORY_ACCESS_INSTRUCTION.to_string())
     }
+}
+
+// ── MemoryWriteSection ────────────────────────────────────────────────────────
+
+/// Static instruction that turns "remember this" into a write before the reply.
+///
+/// The read-side rule above tells the model when to look. Nothing told it that
+/// an explicit request to remember must become a tool call, or that it may not
+/// say "saved" without one — so, left to itself, it narrated a save it never
+/// made and the next chat had nothing to find (#6048). The text is frozen at
+/// compile time — no I/O at build time.
+pub struct MemoryWriteSection;
+
+/// The static prose injected whenever a memory-writing tool is offered. Kept
+/// at ≤ 80 words (the composition test pins the ceiling).
+pub const MEMORY_WRITE_INSTRUCTION: &str = "\
+## Remembering\n\
+\n\
+When the user asks you to remember, note, or keep something — a date, plan, \
+person, decision, or preference — write it before you confirm: `save_preference` \
+for preferences, `memory_store` for everything else. Never say saved, noted, or \
+remembered unless that write succeeded in this turn; if it failed or was refused, \
+say so instead.";
+
+impl PromptSection for MemoryWriteSection {
+    fn name(&self) -> &str {
+        "memory_write"
+    }
+
+    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+        Ok(MEMORY_WRITE_INSTRUCTION.to_string())
+    }
+}
+
+/// The retrieval tools [`MemoryAccessSection`] is keyed on.
+pub const MEMORY_READ_TOOLS: [&str; 2] = ["memory_recall", "memory_search"];
+
+/// The writing tools [`MemoryWriteSection`] is keyed on.
+pub const MEMORY_WRITE_TOOLS: [&str; 2] = ["memory_store", "save_preference"];
+
+/// Whether any of `names` is registered on this session **and** survives tool
+/// filtering.
+///
+/// Both are required: a tool can be registered but filtered out by the agent's
+/// scope, or allowed by the filter but never registered on this agent. An empty
+/// `visible` set means "no filter" (the wildcard / orchestrator path), so any
+/// registered tool is reachable. A section that tells the model to call a tool
+/// it cannot see would only teach it to apologise.
+pub fn any_tool_offered(
+    names: &[&str],
+    tools: &[Box<dyn Tool>],
+    delegation_tools: &[Box<dyn Tool>],
+    visible: &HashSet<String>,
+) -> bool {
+    names.iter().any(|name| {
+        let registered = tools
+            .iter()
+            .chain(delegation_tools)
+            .any(|tool| tool.name() == *name);
+        let allowed_by_filter = visible.is_empty() || visible.contains(*name);
+        registered && allowed_by_filter
+    })
 }
 
 // ── Cache-backed loader ───────────────────────────────────────────────────────

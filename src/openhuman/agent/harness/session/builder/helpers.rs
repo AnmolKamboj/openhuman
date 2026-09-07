@@ -21,6 +21,11 @@ use crate::openhuman::memory::tool_memory::{tool_memory_store, ToolMemoryRule};
 use crate::openhuman::memory::Memory;
 use std::sync::Arc;
 
+use crate::openhuman::agent::context::prompt::SystemPromptBuilder;
+use crate::openhuman::config::Config;
+use crate::openhuman::tools::traits::Tool;
+use std::collections::HashSet;
+
 /// (#1400) Best-effort synchronous prefetch of eager tool-scoped rules.
 ///
 /// `from_config_*` is sync but typically runs inside a multi-threaded
@@ -69,4 +74,54 @@ pub(super) fn prefetch_tool_memory_rules_blocking(
             }
         })
     })
+}
+
+/// Register the memory prompt sections a session should carry.
+///
+/// Two independent gates, one per direction:
+///
+/// - `MemoryAccessSection` (read side, #566): only when `learning.enabled` and
+///   a retrieval tool is offered.
+/// - `MemoryWriteSection` (write side, #6048): whenever a writing tool is
+///   offered, regardless of `learning.enabled`. The tools are registered either
+///   way, and a model that holds them with no rule on when to use them narrates
+///   a save it never made — "got it, saved" with zero tool calls.
+///
+/// Each gate needs the tool registered **and** visible after filtering
+/// (`any_tool_offered`): a rule about a tool the model cannot see would only
+/// teach it to apologise.
+pub(super) fn add_memory_prompt_sections(
+    prompt_builder: SystemPromptBuilder,
+    config: &Config,
+    tools: &[Box<dyn Tool>],
+    delegation_tools: &[Box<dyn Tool>],
+    visible: &HashSet<String>,
+    agent_id: &str,
+) -> SystemPromptBuilder {
+    use crate::openhuman::agent::learning::{
+        any_tool_offered, MemoryAccessSection, MemoryWriteSection, MEMORY_READ_TOOLS,
+        MEMORY_WRITE_TOOLS,
+    };
+    let mut prompt_builder = prompt_builder;
+    if config.learning.enabled {
+        if any_tool_offered(&MEMORY_READ_TOOLS, tools, delegation_tools, visible) {
+            prompt_builder = prompt_builder.add_section(Box::new(MemoryAccessSection));
+            log::debug!("[learning] memory_access prompt section registered");
+        } else {
+            log::debug!(
+                "[learning] skipping MemoryAccessSection — neither memory_recall nor \
+                 memory_search is registered+visible for agent={agent_id}"
+            );
+        }
+    }
+    if any_tool_offered(&MEMORY_WRITE_TOOLS, tools, delegation_tools, visible) {
+        prompt_builder = prompt_builder.add_section(Box::new(MemoryWriteSection));
+        log::debug!("[memory_write] prompt section registered for agent={agent_id}");
+    } else {
+        log::debug!(
+            "[memory_write] skipping MemoryWriteSection — neither memory_store nor \
+             save_preference is registered+visible for agent={agent_id}"
+        );
+    }
+    prompt_builder
 }

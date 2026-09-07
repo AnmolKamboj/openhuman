@@ -1,3 +1,4 @@
+use crate::openhuman::agent::tinyagents::host::agent_memory::DEFAULT_AGENT_MEMORY_NAMESPACE;
 use crate::openhuman::memory::api::provider::MemoryCore;
 use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
@@ -22,6 +23,68 @@ impl MemoryStoreTool {
     }
 }
 
+/// Words of the content a derived key is built from.
+const DERIVED_KEY_WORDS: usize = 6;
+
+/// Longest stem a derived key carries before its hash suffix.
+const DERIVED_KEY_STEM_CHARS: usize = 48;
+
+/// The namespace to write to: the caller's, or the assistant's own scope.
+///
+/// Absent means the default scope — the one `memory_recall` reads back from —
+/// so a one-line "remember X" needs no namespace at all (#6048). A value that
+/// is present but not a string is a caller mistake, not a request for the
+/// default: a `null` or a number must not silently widen the write. An explicit
+/// empty string is left for the caller to report, never defaulted.
+fn resolve_namespace(args: &serde_json::Value) -> anyhow::Result<String> {
+    match args.get("namespace") {
+        None => Ok(DEFAULT_AGENT_MEMORY_NAMESPACE.to_string()),
+        Some(serde_json::Value::String(namespace)) => Ok(namespace.trim().to_string()),
+        Some(other) => anyhow::bail!("'namespace' must be a string, got {other}"),
+    }
+}
+
+/// The key to file under: the caller's, or one derived from the content.
+///
+/// The model should not have to invent a key to honour "remember X". A derived
+/// key is deterministic for the same content, so re-saving the same sentence
+/// overwrites rather than duplicating, while different content lands under a
+/// different key. A present-but-non-string key is a caller mistake.
+fn resolve_key(args: &serde_json::Value, content: &str) -> anyhow::Result<String> {
+    match args.get("key") {
+        None => Ok(derive_key(content)),
+        Some(serde_json::Value::String(key)) => Ok(key.trim().to_string()),
+        Some(other) => anyhow::bail!("'key' must be a string, got {other}"),
+    }
+}
+
+/// A stable, readable key for `content`: its first few words as a snake_case
+/// stem, plus a short hash of the whole text so two notes that open the same
+/// way do not overwrite each other.
+fn derive_key(content: &str) -> String {
+    let stem = content
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .take(DERIVED_KEY_WORDS)
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("_");
+    let stem: String = if stem.is_empty() {
+        "note".to_string()
+    } else {
+        stem.chars().take(DERIVED_KEY_STEM_CHARS).collect()
+    };
+    format!("{stem}_{:06x}", fnv1a_32(content.trim()) & 0x00ff_ffff)
+}
+
+/// FNV-1a over the bytes — stable across builds and platforms, unlike
+/// `DefaultHasher`, so a derived key never changes under the caller.
+fn fnv1a_32(text: &str) -> u32 {
+    text.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
+    })
+}
+
 #[async_trait]
 impl Tool for MemoryStoreTool {
     fn name(&self) -> &str {
@@ -29,48 +92,41 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Store a general fact or note in an explicit namespace (e.g. global, background, autocomplete, skill-{id}). NOT for preferences — those go to `save_preference`, which writes the store the assistant actually reads. Check `memory_recall` for a near-duplicate first, and call `update_memory_md` afterwards, when you have those tools."
+        "Remember a fact, event, plan, or note the user asks you to keep — e.g. \"next scrum meeting on 10 September\". Call it BEFORE you confirm, whenever the user says remember, note, or keep in mind. NOT for preferences — those go to `save_preference`, which writes the store the assistant actually reads. `namespace` and `key` are optional: the default namespace is the assistant's own memory and the key is derived from the content. Check `memory_recall` for a near-duplicate first, and call `update_memory_md` afterwards, when you have those tools."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The information to remember, in plain language"
+                },
                 "key": {
                     "type": "string",
-                    "description": "Unique key for this memory (e.g. 'user_lang', 'project_stack')"
+                    "description": "Optional short snake_case slug (e.g. 'next_scrum_meeting'); derived from the content when absent. Re-using a key overwrites."
                 },
                 "namespace": {
                     "type": "string",
-                    "description": "Target namespace (e.g. 'global', 'background', 'autocomplete', or 'skill-{id}')"
-                },
-                "content": {
-                    "type": "string",
-                    "description": "The information to remember"
+                    "description": "Optional. Defaults to the assistant's own memory ('global'); name one only for a skill-scoped note ('skill-{id}')."
                 },
                 "category": {
                     "type": "string",
                     "description": "Memory category: 'core' (permanent), 'daily' (session), 'conversation' (chat), or a custom category name. Defaults to 'core'."
                 }
             },
-            "required": ["namespace", "key", "content"]
+            "required": ["content"]
         })
     }
 
     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
-        let namespace = args
-            .get("namespace")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'namespace' parameter"))?;
-        let key = args
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'key' parameter"))?;
-
         let content = args
             .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
+        let namespace = resolve_namespace(&args)?;
+        let key = resolve_key(&args, content)?;
 
         let category = match args.get("category").and_then(|v| v.as_str()) {
             Some("core") | None => MemoryCategory::Core,
@@ -95,11 +151,9 @@ impl Tool for MemoryStoreTool {
             return Ok(ToolResult::error(error));
         }
 
-        let namespace = namespace.trim();
         if namespace.is_empty() {
             return Ok(ToolResult::error("namespace cannot be empty".to_string()));
         }
-        let key = key.trim();
         if key.is_empty() {
             return Ok(ToolResult::error("key cannot be empty".to_string()));
         }
@@ -122,8 +176,8 @@ impl Tool for MemoryStoreTool {
             .map_err(|e| anyhow::anyhow!("memory_store: {e}"))?;
         match guard
             .store(
-                namespace,
-                key,
+                &namespace,
+                &key,
                 content,
                 category,
                 None,
