@@ -347,10 +347,12 @@ impl Agent {
             // critical path, and on a cold launch the memory module may still
             // be downloading behind it. A turn without a preference block is
             // an ordinary turn; a turn that waits minutes for one is the
-            // outage this bound exists to prevent. The citation and autosave
-            // work above is already spawned off the path.
+            // outage this bound exists to prevent. 5 s, not 3: the module's
+            // lookup (a query embed round trip, queued behind the citation and
+            // autosave calls spawned above) measured over 3 s on a live desktop
+            // and lost the block on both on-topic turns of the #6041 field test.
             const SITUATIONAL_RECALL_BUDGET: std::time::Duration =
-                std::time::Duration::from_secs(3);
+                std::time::Duration::from_secs(5);
             let situational = match tokio::time::timeout(
                 SITUATIONAL_RECALL_BUDGET,
                 crate::openhuman::memory::preferences::recall_situational_preferences_on(
