@@ -289,3 +289,127 @@ fn memory_access_section_present_in_system_prompt_compose() {
         "must render regardless of learned context"
     );
 }
+
+// ── MemoryWriteSection + tool gating (#6048) ─────────────────────────────────
+
+/// A tool that is nothing but a name: the gate reads names only.
+struct NamedTool(&'static str);
+
+#[async_trait]
+impl Tool for NamedTool {
+    fn name(&self) -> &str {
+        self.0
+    }
+
+    fn description(&self) -> &str {
+        "stub"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({})
+    }
+
+    async fn execute(
+        &self,
+        _args: serde_json::Value,
+    ) -> anyhow::Result<crate::openhuman::tools::traits::ToolResult> {
+        Ok(crate::openhuman::tools::traits::ToolResult::success(
+            String::new(),
+        ))
+    }
+}
+
+fn named(names: &[&'static str]) -> Vec<Box<dyn Tool>> {
+    names
+        .iter()
+        .map(|name| Box::new(NamedTool(name)) as Box<dyn Tool>)
+        .collect()
+}
+
+fn visible(names: &[&str]) -> HashSet<String> {
+    names.iter().map(|name| (*name).to_string()).collect()
+}
+
+#[test]
+fn memory_write_section_renders_the_frozen_instruction() {
+    let section = MemoryWriteSection;
+    assert_eq!(section.name(), "memory_write");
+    let rendered = section
+        .build(&prompt_context(LearnedContextData::default()))
+        .unwrap();
+    assert_eq!(rendered.trim(), MEMORY_WRITE_INSTRUCTION.trim());
+    assert!(rendered.contains("## Remembering"), "{rendered}");
+    // Both write tools are named, and the rule the bug needed is stated.
+    assert!(rendered.contains("`memory_store`") && rendered.contains("`save_preference`"));
+    assert!(
+        rendered.contains("Never say saved"),
+        "the instruction must forbid claiming a save that did not happen: {rendered}"
+    );
+    // Not context-gated: renders for an empty learned context too.
+    let word_count = rendered.split_whitespace().count();
+    assert!(
+        word_count <= 80,
+        "MemoryWriteSection is too long ({word_count} words, ceiling 80)"
+    );
+}
+
+#[test]
+fn write_tool_gate_needs_a_registered_and_visible_tool() {
+    let tools = named(&["shell", "memory_store"]);
+    let none: Vec<Box<dyn Tool>> = Vec::new();
+    // Registered, no filter (empty visible set = wildcard): offered.
+    assert!(any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &tools,
+        &none,
+        &visible(&[])
+    ));
+    // Registered and allowed by the filter: offered.
+    assert!(any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &tools,
+        &none,
+        &visible(&["memory_store"])
+    ));
+    // Registered but filtered out by the agent's scope: not offered.
+    assert!(!any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &tools,
+        &none,
+        &visible(&["shell"])
+    ));
+    // Allowed by the filter but never registered on this agent: not offered.
+    assert!(!any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &named(&["shell"]),
+        &none,
+        &visible(&["memory_store", "save_preference"])
+    ));
+}
+
+#[test]
+fn write_tool_gate_counts_delegation_tools_and_either_write_tool() {
+    let none: Vec<Box<dyn Tool>> = Vec::new();
+    // A write tool synthesised on the delegation side counts the same.
+    assert!(any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &none,
+        &named(&["save_preference"]),
+        &visible(&[])
+    ));
+    // The read-side list is disjoint: a session with only retrieval tools gets
+    // no write rule, and a session with only write tools gets no read rule.
+    let readers = named(&["memory_recall"]);
+    assert!(any_tool_offered(
+        &MEMORY_READ_TOOLS,
+        &readers,
+        &none,
+        &visible(&[])
+    ));
+    assert!(!any_tool_offered(
+        &MEMORY_WRITE_TOOLS,
+        &readers,
+        &none,
+        &visible(&[])
+    ));
+}

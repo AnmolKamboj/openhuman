@@ -619,3 +619,75 @@ async fn from_config_for_agent_synthesizes_custom_registry_entry_with_named_scop
         "a tool outside the custom agent's allowlist must not be visible: {visible:?}"
     );
 }
+
+// ── Memory-write instruction (#6048) ─────────────────────────────────────────
+//
+// "Please remember …" was answered with "saved" and zero tool calls. The rule
+// that a request to remember must become a write before the reply is keyed on
+// the write tools being offered — never on `learning.enabled`, which the
+// default install leaves off.
+
+#[tokio::test]
+async fn memory_write_instruction_is_present_with_learning_disabled() {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    use crate::openhuman::agent::context::prompt::LearnedContextData;
+    use crate::openhuman::agent::harness::session::types::Agent;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    assert!(
+        !config.learning.enabled,
+        "the default install has learning off; the write rule must not depend on it"
+    );
+    let orchestrator = builtin_def("orchestrator");
+    let agent = Agent::build_session_agent_inner(
+        &config,
+        "orchestrator",
+        Some(&orchestrator),
+        None,
+        false,
+        None,
+    )
+    .expect("build session");
+
+    let prompt = agent
+        .build_system_prompt(LearnedContextData::default())
+        .expect("build_system_prompt");
+    assert!(
+        prompt.contains("## Remembering"),
+        "a session offering memory_store / save_preference must carry the write rule"
+    );
+}
+
+#[tokio::test]
+async fn memory_write_instruction_is_absent_when_no_write_tool_is_visible() {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    use crate::openhuman::agent::context::prompt::LearnedContextData;
+    use crate::openhuman::agent::harness::session::types::Agent;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let orchestrator = builtin_def("orchestrator");
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
+    profile.id = "alice".to_string();
+    profile.built_in = false;
+    profile.allowed_tools = Some(vec!["file_read".to_string()]);
+
+    let agent = Agent::build_session_agent_inner(
+        &config,
+        "orchestrator",
+        Some(&orchestrator),
+        None,
+        false,
+        Some(&profile),
+    )
+    .expect("build profile-scoped session");
+
+    let prompt = agent
+        .build_system_prompt(LearnedContextData::default())
+        .expect("build_system_prompt");
+    assert!(
+        !prompt.contains("## Remembering"),
+        "a rule about tools the model cannot see would only teach it to apologise"
+    );
+}

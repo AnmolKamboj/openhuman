@@ -978,34 +978,16 @@ impl Agent {
             }
         }
 
-        // Phase 4 (#566): add the MemoryAccessSection bias instruction only
-        // when at least one retrieval tool is actually loaded AND survives
-        // filtering. We require both because:
-        //   - the tool may be filtered out by the agent's scope config
-        //   - the tool may not be registered at all on this agent (tool
-        //     listing is build-time configurable)
-        // An empty `visible` set means "no filter" (wildcard / orchestrator
-        // path); in that case any registered retrieval tool is reachable.
-        if config.learning.enabled {
-            let recall_tools = ["memory_recall", "memory_search"];
-            let has_retrieval = recall_tools.iter().any(|name| {
-                let registered = tools.iter().any(|t| t.name() == *name)
-                    || delegation_tools.iter().any(|t| t.name() == *name);
-                let allowed_by_filter = visible.is_empty() || visible.contains(*name);
-                registered && allowed_by_filter
-            });
-            if has_retrieval {
-                prompt_builder = prompt_builder.add_section(Box::new(
-                    crate::openhuman::agent::learning::MemoryAccessSection,
-                ));
-                log::debug!("[learning] memory_access prompt section registered");
-            } else {
-                log::debug!(
-                    "[learning] skipping MemoryAccessSection — neither memory_recall nor \
-                     memory_search is registered+visible for agent={agent_id}"
-                );
-            }
-        }
+        // Memory prompt sections — the read side (#566) and the write side
+        // (#6048); both gates live in `helpers::add_memory_prompt_sections`.
+        prompt_builder = super::helpers::add_memory_prompt_sections(
+            prompt_builder,
+            config,
+            &tools,
+            &delegation_tools,
+            &visible,
+            agent_id,
+        );
 
         // De-duplicate: some synthesised tool names may collide with
         // already-registered tools (unlikely for `delegate_*` names but

@@ -351,6 +351,7 @@ End-to-end coverage of the agent harness via the web-chat RPC surface against an
 | 8.4.4 | Same-Topic Contradiction (replace)         | RU    | `src/openhuman/agent/tools/save_preference_tests.rs::recategorising_moves_pref_between_namespaces`             | ✅     | `ON CONFLICT REPLACE`; a topic lives in exactly one scope               |
 | 8.4.5 | Cross-Topic Contradiction Surfacing        | RU    | `src/openhuman/agent/tools/save_preference_tests.rs::save_surfaces_related_preference_for_contradiction_check` | ✅     | Related prefs surfaced in the tool result for the chat agent to resolve |
 | 8.4.6 | vector_chunks Model-Signature Recall Guard | RU    | `src/openhuman/memory/store/namespace_store/query_tests.rs::vector_recall_excludes_other_model_signature`      | ✅     | Excludes cross-model vectors; dim-guards legacy rows                    |
+| 8.4.10 | Memory-Write Instruction + `memory_store` defaults | RU | `src/openhuman/agent/learning/prompt_sections_tests_2_tests.rs::memory_write_*`, `src/openhuman/agent/learning/prompt_sections_tests_2_tests.rs::write_tool_gate_*`, `src/openhuman/agent/harness/session/builder/builder_tests_part_01_tests.rs::memory_write_instruction_*`, `src/openhuman/memory/tools/store_tests.rs::resolve_*` | ✅ | #6048: "remember X" must be a write before the reply; section keyed on write-tool visibility, not `learning.enabled`; `memory_store` namespace/key optional |
 
 ### 8.5 Long-term Goals
 
