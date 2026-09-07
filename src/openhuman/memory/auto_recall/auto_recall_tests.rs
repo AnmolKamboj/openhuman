@@ -244,24 +244,47 @@ fn render_block_wraps_a_hit_with_no_tree_and_keeps_chat_bare() {
 }
 
 #[test]
-fn render_block_honours_the_recall_budget_exactly() {
-    let block = render_block(&[hit(&"y".repeat(300), 1.0)], Some(80));
-    assert_eq!(block.chars().count(), 80, "the cap includes the suffix");
-    assert!(block.ends_with("…\n\n"));
+fn render_block_spends_the_recall_budget_on_whole_hits() {
+    // Two hits; the cap fits the banner and the first line, not the second.
+    let first = hit("first fact", 0.9);
+    let second = hit("second fact that is a little longer", 0.8);
+    let one_line_block = render_block(&[first.clone()], None);
+    let cap = one_line_block.chars().count();
+    let block = render_block(&[first, second], Some(cap));
+    assert_eq!(
+        block, one_line_block,
+        "the second hit is left out whole, not cut"
+    );
+    assert!(block.chars().count() <= cap);
 }
 
 #[test]
 fn render_block_budget_boundaries() {
-    // A cap of zero yields nothing at all — no suffix past the ceiling.
+    // A cap that fits nothing yields nothing — no banner over an empty list.
     assert_eq!(render_block(&[hit("fact", 1.0)], Some(0)), "");
-    // A cap too small for the suffix yields a bare prefix of that length.
-    assert_eq!(
-        render_block(&[hit("fact", 1.0)], Some(2)).chars().count(),
-        2
-    );
+    assert_eq!(render_block(&[hit("fact", 1.0)], Some(2)), "");
     // A block that fits is untouched.
     let small = render_block(&[hit("fact", 1.0)], None);
     assert_eq!(render_block(&[hit("fact", 1.0)], Some(10_000)), small);
+}
+
+#[test]
+fn render_block_keeps_untrusted_markers_balanced_under_any_budget() {
+    let hits = vec![
+        source_hit("gmail:ca_1", &"first mail body ".repeat(10)),
+        source_hit("slack:#eng", &"second message body ".repeat(10)),
+        hit("said in chat", 0.7),
+    ];
+    let full = render_block(&hits, None).chars().count();
+    for cap in [0, 10, 60, 120, 200, 300, full - 1, full, full + 50] {
+        let block = render_block(&hits, Some(cap));
+        assert!(block.chars().count() <= cap.max(0), "cap {cap}: {block}");
+        assert_eq!(
+            block.matches("<untrusted-source ").count(),
+            block.matches("</untrusted-source>").count(),
+            "cap {cap} left the markers unbalanced: {block}"
+        );
+    }
 }
 
 #[test]
