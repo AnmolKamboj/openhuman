@@ -260,3 +260,122 @@ async fn wrap_up_does_not_rewrite_a_result_that_was_never_cleared() {
         "only a placeholder body may be replaced"
     );
 }
+
+// ── ArtifactIndexTocMiddleware (issue #6014) ─────────────────────────────────
+
+async fn ctx_with_artifacts(entries: &[(&str, &str, &str, u64)]) -> RunContext<()> {
+    use tinyagents_harness::store::StoreRegistry;
+    let index = std::sync::Arc::new(
+        crate::openhuman::agent::harness::tool_result_artifacts::ToolResultArtifactIndexStore::new(
+        ),
+    );
+    for (call_id, tool, path, bytes) in entries {
+        let mut fields = serde_json::Map::new();
+        fields.insert("tool".to_string(), (*tool).into());
+        fields.insert("call_id".to_string(), (*call_id).into());
+        fields.insert("artifact_path".to_string(), (*path).into());
+        fields.insert(
+            "original_bytes".to_string(),
+            serde_json::Value::from(*bytes),
+        );
+        tinyagents_harness::store::Store::put(
+            index.as_ref(),
+            "tool_results",
+            call_id,
+            fields.into(),
+        )
+        .await
+        .unwrap();
+    }
+    let mut registry = StoreRegistry::new();
+    registry.register(
+        crate::openhuman::agent::harness::tool_result_artifacts::TINYAGENTS_TOOL_RESULT_ARTIFACT_STORE,
+        index,
+    );
+    RunContext::new(RunConfig::new("mw-test"), ()).with_stores(registry)
+}
+
+/// Nothing offloaded → no message. The contents list must not spend context
+/// saying that there is nothing to point at.
+#[tokio::test]
+async fn toc_is_absent_when_no_result_was_offloaded() {
+    let mw = ArtifactIndexTocMiddleware;
+    let mut ctx = ctx_with_artifacts(&[]).await;
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("hi")],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    assert_eq!(request.messages.len(), 1, "no artifacts, no contents list");
+}
+
+/// The paths reach the model even though nothing in the transcript carries
+/// them — which is the whole point: the pointer's old home (the tool body) is
+/// what the reduction steps act on.
+#[tokio::test]
+async fn toc_lists_every_persisted_artifact_as_a_system_message() {
+    let mw = ArtifactIndexTocMiddleware;
+    let mut ctx = ctx_with_artifacts(&[
+        ("call-1", "fetch_issues", "outputs/issues-p1.json", 240_000),
+        ("call-2", "web_search", "outputs/search-2.json", 91_000),
+    ])
+    .await;
+    // A transcript that has already lost both pointers: one body blanked by
+    // microcompact, the other never present.
+    let mut request = ModelRequest {
+        messages: vec![
+            TaMessage::user("what did you find?"),
+            TaMessage::tool("call-1", CLEARED_PLACEHOLDER),
+        ],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let last = request.messages.last().expect("a contents list");
+    assert!(
+        matches!(last, TaMessage::System(_)),
+        "must be a system message — compression keeps those verbatim and the trim never drops \
+         one, so the pointer cannot be reduced away: {last:?}"
+    );
+    let text = last.text();
+    assert!(
+        text.contains("outputs/issues-p1.json"),
+        "missing path: {text}"
+    );
+    assert!(
+        text.contains("outputs/search-2.json"),
+        "missing path: {text}"
+    );
+    assert!(text.contains("fetch_issues"), "missing tool name: {text}");
+}
+
+/// Rendered fresh per request, so repeated passes cannot stack stale lists.
+#[tokio::test]
+async fn toc_does_not_accumulate_across_calls() {
+    let mw = ArtifactIndexTocMiddleware;
+    let mut ctx = ctx_with_artifacts(&[("call-1", "fetch", "outputs/a.json", 100)]).await;
+
+    let mut first = ModelRequest {
+        messages: vec![TaMessage::user("hi")],
+        ..Default::default()
+    };
+    mw.before_model(&mut ctx, &(), &mut first).await.unwrap();
+
+    // The loop rebuilds the request from its own transcript each iteration, so
+    // the second call starts from the same base — not from the mutated first.
+    let mut second = ModelRequest {
+        messages: vec![TaMessage::user("hi")],
+        ..Default::default()
+    };
+    mw.before_model(&mut ctx, &(), &mut second).await.unwrap();
+
+    assert_eq!(first.messages.len(), 2);
+    assert_eq!(
+        second.messages.len(),
+        2,
+        "exactly one contents list per request"
+    );
+}

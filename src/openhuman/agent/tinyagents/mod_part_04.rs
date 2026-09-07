@@ -626,6 +626,13 @@ fn assemble_turn_harness(
         harness.push_middleware(mw);
     }
 
+    // Issue #6014: say where the offloaded results went, from the index rather
+    // than from the transcript. Registered after the reduction steps above so it
+    // renders whatever survived them, and before the trim so its message is
+    // counted in that budget — the trim never drops a system message, so being
+    // counted costs nothing and being uncounted could push the request over.
+    harness.push_middleware(Arc::new(middleware::ArtifactIndexTocMiddleware));
+
     if let Some(window) = context_window.filter(|w| *w > 0) {
         // Deterministic hard-cap trim (issue #4462), last in the ladder: it drops
         // whole messages, so it runs only once summarizing and blanking have both

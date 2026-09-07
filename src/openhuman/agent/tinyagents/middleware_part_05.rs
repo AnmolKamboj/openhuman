@@ -706,3 +706,119 @@ fn self_outcome_for(
         .find(|outcome| outcome.call_id == call_id)
         .map(|outcome| outcome.content.clone())
 }
+
+// ── ArtifactIndexTocMiddleware (issue #6014) ─────────────────────────────────
+
+/// Namespace `ToolOutputMiddleware` writes each persisted artifact under.
+const ARTIFACT_INDEX_NAMESPACE: &str = "tool_results";
+
+/// Renders the run's persisted-artifact index into the request as a short
+/// contents list, so the model can always see what this turn has gathered and
+/// where the full copy lives.
+///
+/// # The reference used to live somewhere it could be destroyed
+///
+/// A tool result over the per-result budget is written to disk and replaced by
+/// a preview plus an `artifact_path` pointer (`apply_per_result_persistence`).
+/// That pointer's only home was the tool-result message itself — and tool-result
+/// messages are exactly what the two reduction steps act on. Microcompact
+/// replaces a body with `CLEARED_PLACEHOLDER`; compression folds the older slice
+/// into a summary that *should* carry paths forward ("prefer concrete facts —
+/// paths, names, values") but is a model call, not a guarantee.
+///
+/// Either way the outcome is the same and it is silent: the data sits intact on
+/// disk with nothing in context saying it exists. Every component did its job —
+/// the result was persisted, the transcript was reduced — and the turn quietly
+/// lost the ability to reach its own findings. No log fires, because nothing
+/// failed.
+///
+/// The index has been maintained all along (`ToolResultArtifactIndexStore`,
+/// registered on `RunContext.stores`, written on every persist). Nothing read
+/// it. This reads it.
+///
+/// # Why re-rendered rather than injected once
+///
+/// The contents list is built fresh into each request and never enters the
+/// loop's own transcript, which is what makes it un-destroyable rather than
+/// merely durable: there is no stored copy for a later pass to blank, fold or
+/// evict, and it cannot accumulate into a stack of stale lists. It is also
+/// always current — an artifact persisted on the previous round appears on the
+/// next call with no bookkeeping.
+///
+/// Emitted as a **system** message for the same reason: compression keeps every
+/// system message verbatim and the trim never drops one, so the one thing that
+/// says where the data went is the one thing the ladder may not take. It is
+/// appended at the tail rather than the head so the cacheable prompt prefix is
+/// untouched.
+pub(crate) struct ArtifactIndexTocMiddleware;
+
+#[async_trait]
+impl Middleware<()> for ArtifactIndexTocMiddleware {
+    fn name(&self) -> &str {
+        "artifact_index_toc"
+    }
+
+    async fn before_model(
+        &self,
+        ctx: &mut RunContext<()>,
+        _state: &(),
+        request: &mut ModelRequest,
+    ) -> TaResult<()> {
+        let Some(store) = ctx
+            .stores
+            .get(crate::openhuman::agent::harness::tool_result_artifacts::TINYAGENTS_TOOL_RESULT_ARTIFACT_STORE)
+        else {
+            return Ok(());
+        };
+        let keys = store
+            .list(ARTIFACT_INDEX_NAMESPACE)
+            .await
+            .unwrap_or_default();
+        if keys.is_empty() {
+            // No result has been offloaded, so there is nothing to point at and
+            // no reason to spend context saying so.
+            return Ok(());
+        }
+
+        let mut rows: Vec<String> = Vec::new();
+        for key in &keys {
+            let Ok(Some(entry)) = store.get(ARTIFACT_INDEX_NAMESPACE, key).await else {
+                continue;
+            };
+            let tool = entry
+                .get("tool")
+                .and_then(|v| v.as_str())
+                .unwrap_or("tool");
+            let Some(path) = entry.get("artifact_path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let bytes = entry
+                .get("original_bytes")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            rows.push(format!("- `{tool}` → `{path}` ({bytes} bytes)"));
+        }
+        if rows.is_empty() {
+            return Ok(());
+        }
+        // Sorted so the list is stable between calls when nothing was added —
+        // the index is a `HashMap`, whose iteration order is not. An unstable
+        // ordering would rewrite this message on every call for no reason,
+        // costing cache and making the diff unreadable in a trace.
+        rows.sort();
+        let count = rows.len();
+        tracing::debug!(
+            artifacts = count,
+            "[tinyagents::mw] rendering the persisted-artifact contents list"
+        );
+        request.messages.push(TaMessage::system(format!(
+            "## Stored results from this turn\n\n\
+             {count} tool result(s) were too large to keep inline and were written to disk. The \
+             text you saw for them is a preview; the full content is at the path below and can be \
+             read with the file-reading tool when you need detail the preview does not carry.\n\n\
+             {}",
+            rows.join("\n")
+        )));
+        Ok(())
+    }
+}
