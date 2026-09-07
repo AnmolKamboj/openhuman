@@ -468,7 +468,7 @@ impl MemoryRetrieval for RecordingProvider {
             taint: None,
             scoped: Some(scope.is_some()),
         });
-        Ok(RetrievalResponse::default())
+        Ok(self.fast_retrieve_result.lock().unwrap().clone())
     }
 
     async fn cover_window(
