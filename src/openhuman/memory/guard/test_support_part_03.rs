@@ -1,6 +1,15 @@
 // Fixtures for the retrieval family's scored answers. Included into
 // `test_support.rs` after the provider parts, so the imports there are in scope.
 
+/// A [`NamespaceSummary`] saying `namespace` holds `count` entries.
+pub fn namespace_summary(namespace: &str, count: usize) -> NamespaceSummary {
+    NamespaceSummary {
+        namespace: namespace.into(),
+        count,
+        last_updated: None,
+    }
+}
+
 /// A [`NamespaceMemoryHit`] with only the vector component set — the signal the
 /// vector-floored recall paths (Lane B, the contradiction check) filter on.
 pub fn namespace_hit(

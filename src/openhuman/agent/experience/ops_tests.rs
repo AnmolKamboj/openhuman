@@ -199,6 +199,46 @@ async fn recall_relevant_by_vector_asks_the_driver_not_the_trait_default() {
 }
 
 #[tokio::test]
+async fn recall_relevant_by_vector_forwards_namespace_and_limit_to_the_driver() {
+    use crate::openhuman::memory::guard::test_support::{namespace_hit, RecordingProvider};
+    let mut hits: Vec<_> = (0..7)
+        .map(|i| {
+            namespace_hit(
+                "user_pref_situational",
+                &format!("k{i}"),
+                &format!("pref {i}"),
+                0.9,
+            )
+        })
+        .collect();
+    hits.push(namespace_hit(
+        "user_pref_general",
+        "other",
+        "a general preference",
+        0.99,
+    ));
+    let provider = Arc::new(RecordingProvider::new().with_namespace_hits(hits));
+    let memory = DriverMemory::new(provider.clone() as Arc<dyn MemoryProvider>);
+
+    let out = memory
+        .recall_relevant_by_vector("user_pref_situational", "anything", 5, 0.35)
+        .await
+        .expect("a driver with retrieval answers");
+    assert_eq!(out.len(), 5, "the driver's page is the cap: {out:?}");
+    assert!(
+        out.iter().all(|(key, _)| key.starts_with('k')),
+        "a hit from another namespace must never come back: {out:?}"
+    );
+    let call = provider.only_call();
+    assert_eq!(call.method, "retrieval.recall_namespace_scored");
+    assert_eq!(
+        call.content.as_deref(),
+        Some("namespace=user_pref_situational limit=5"),
+        "the request must carry the caller's namespace and limit"
+    );
+}
+
+#[tokio::test]
 async fn recall_relevant_by_vector_over_a_driver_without_retrieval_answers_empty() {
     // The null driver advertises nothing, so there is no retrieval family to
     // ask: the documented degradation is an empty answer, not an error.

@@ -473,7 +473,9 @@ fn skill_retraction_note_names_removed_skills_and_warns_against_run_skill() {
 
 use crate::openhuman::agent::experience::ops::DriverMemory;
 use crate::openhuman::memory::api::provider::MemoryProvider;
-use crate::openhuman::memory::guard::test_support::{entry, namespace_hit, RecordingProvider};
+use crate::openhuman::memory::guard::test_support::{
+    namespace_hit, namespace_summary, RecordingProvider,
+};
 use crate::openhuman::memory::preferences::USER_PREF_SITUATIONAL_NAMESPACE;
 
 const PREFERENCES_BANNER: &str = "## Relevant preferences for this message";
@@ -527,11 +529,11 @@ async fn first_request_user_messages(provider: &SequenceProvider) -> Vec<String>
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn situational_preference_reaches_the_model_through_driver_memory() {
-    // The namespace must look populated (`list`) before Lane B pays for the
-    // vector recall; then the scored hits decide what is injected.
+    // The namespace must look populated (a non-zero count) before Lane B pays
+    // for the vector recall; then the scored hits decide what is injected.
     let driver = Arc::new(
         RecordingProvider::new()
-            .with_list_result(vec![entry("Prefers vim for editing code.")])
+            .with_namespace_summaries(vec![namespace_summary(USER_PREF_SITUATIONAL_NAMESPACE, 2)])
             .with_namespace_hits(vec![
                 namespace_hit(
                     USER_PREF_SITUATIONAL_NAMESPACE,
@@ -579,8 +581,8 @@ async fn situational_preference_reaches_the_model_through_driver_memory() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn no_situational_preference_means_no_block_and_no_embed_through_driver_memory() {
     // Nothing stored under the situational namespace: the lane must find that
-    // out from the cheap listing and never reach the vector recall, which is
-    // the call that embeds the message.
+    // out from the namespace counts and never reach the vector recall, which
+    // is the call that embeds the message.
     let driver = Arc::new(RecordingProvider::new());
     let provider_impl = scripted_reply("Sunny.");
     let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
@@ -597,8 +599,8 @@ async fn no_situational_preference_means_no_block_and_no_embed_through_driver_me
     );
     let methods: Vec<String> = driver.calls().into_iter().map(|c| c.method).collect();
     assert!(
-        methods.iter().any(|m| m == "core.list"),
-        "the lane must ask whether anything is stored: {methods:?}"
+        methods.iter().any(|m| m == "core.namespaces"),
+        "the lane must ask for the namespace counts: {methods:?}"
     );
     assert!(
         !methods
