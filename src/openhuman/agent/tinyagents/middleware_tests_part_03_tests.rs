@@ -127,3 +127,136 @@ async fn embedder_tool_hooks_post_use_without_pre_call_falls_back_to_null() {
     assert_eq!(post[0].1, serde_json::Value::Null);
     assert_eq!(post[0].2, Some(true));
 }
+
+// ── FinalCallWrapUpMiddleware (issue #6014) ──────────────────────────────────
+
+fn sink_with(entries: &[(&str, &str)]) -> crate::openhuman::agent::tinyagents::ToolOutcomeSink {
+    std::sync::Arc::new(std::sync::Mutex::new(
+        entries
+            .iter()
+            .map(
+                |(id, content)| crate::openhuman::agent::tinyagents::ToolCallOutcome {
+                    call_id: (*id).to_string(),
+                    name: "fetch".to_string(),
+                    success: true,
+                    content: (*content).to_string(),
+                },
+            )
+            .collect(),
+    ))
+}
+
+/// A run with calls left is untouched: no instruction, and the tool belt intact.
+#[tokio::test]
+async fn wrap_up_leaves_a_call_with_budget_remaining_alone() {
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]));
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(5), ());
+    ctx.limits.record_model_call().unwrap();
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("hi")],
+        tools: vec![ToolSchema::new("echo", "echo", serde_json::json!({}))],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    assert_eq!(
+        request.messages.len(),
+        1,
+        "no instruction should be appended"
+    );
+    assert_eq!(request.tools.len(), 1, "the belt must stay intact mid-turn");
+}
+
+/// On the last permitted call the tools are withdrawn — structurally, not by
+/// asking — and the wrap-up instruction is appended as the final turn.
+#[tokio::test]
+async fn wrap_up_withdraws_tools_and_appends_the_instruction_on_the_last_call() {
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]));
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap(); // now the final call
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("hi")],
+        tools: vec![ToolSchema::new("echo", "echo", serde_json::json!({}))],
+        tool_choice: tinyinference::model::ToolChoice::Required,
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    assert!(
+        request.tools.is_empty(),
+        "tools must be withdrawn, not discouraged"
+    );
+    assert!(
+        matches!(request.tool_choice, tinyinference::model::ToolChoice::None),
+        "a Required choice with no tools is a provider 400"
+    );
+    assert_eq!(
+        request.messages.last().map(|m| m.text()),
+        Some("CONCLUDE NOW".to_string()),
+        "the instruction must be the final turn of the request"
+    );
+    assert!(mw.fired().load(std::sync::atomic::Ordering::SeqCst));
+}
+
+/// The concluding call gets back the results microcompact blanked — otherwise
+/// it is asked to report findings it cannot read, which is the same
+/// empty-handed answer the whole mechanism exists to prevent.
+#[tokio::test]
+async fn wrap_up_restores_tool_results_microcompact_cleared() {
+    let mw = FinalCallWrapUpMiddleware::new(
+        "CONCLUDE NOW",
+        sink_with(&[
+            ("call-old", "issue #41: auth bypass"),
+            ("call-new", "issue #42: leak"),
+        ]),
+    );
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap();
+    let mut request = ModelRequest {
+        messages: vec![
+            // The shape microcompact leaves behind: an older result blanked to
+            // the placeholder, a recent one kept verbatim.
+            TaMessage::tool("call-old", CLEARED_PLACEHOLDER),
+            TaMessage::tool("call-new", "issue #42: leak"),
+        ],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let bodies: Vec<String> = request.messages.iter().map(|m| m.text()).collect();
+    assert!(
+        bodies.iter().any(|b| b.contains("issue #41: auth bypass")),
+        "the cleared result should be restored from the capture sink: {bodies:?}"
+    );
+    assert!(
+        !bodies.iter().any(|b| b.trim() == CLEARED_PLACEHOLDER),
+        "no placeholder should survive into the concluding call: {bodies:?}"
+    );
+}
+
+/// A result the model legitimately saw in full is never rewritten, even when
+/// the sink holds a different (e.g. later-truncated) copy for that id.
+#[tokio::test]
+async fn wrap_up_does_not_rewrite_a_result_that_was_never_cleared() {
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[("call-1", "FROM SINK")]));
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap();
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::tool("call-1", "IN THE TRANSCRIPT")],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    assert_eq!(
+        request.messages[0].text(),
+        "IN THE TRANSCRIPT",
+        "only a placeholder body may be replaced"
+    );
+}
