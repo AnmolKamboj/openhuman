@@ -29,8 +29,8 @@
 //!   [`AUTO_RECALL_RELATIVE_FLOOR`] of the best score are dropped (retrieval
 //!   scores are declared non-comparable across drivers, so the floor is
 //!   relative, not absolute); at most [`AUTO_RECALL_LIMIT`] survive, each
-//!   clipped to [`AUTO_RECALL_PER_HIT_CHARS`]; the whole block is clipped to
-//!   the guard's `recall_max_chars`; and the lookup is abandoned after
+//!   clipped to [`AUTO_RECALL_PER_HIT_CHARS`]; hits that would push the block past
+//!   the guard's `recall_max_chars` are left out whole, so no marker is ever cut; and the lookup is abandoned after
 //!   [`AUTO_RECALL_BUDGET`], so a memory module still downloading on a cold
 //!   launch cannot stall the turn.
 //!
@@ -239,50 +239,63 @@ pub(crate) fn select_hits(mut hits: Vec<RetrievalHit>) -> Vec<RetrievalHit> {
     hits
 }
 
-/// The block the turn prepends: the banner, one line per hit, clipped to
+/// The block the turn prepends: the banner, one line per hit, kept within
 /// `recall_max_chars` when the guard sets one.
+///
+/// The budget is spent on whole hit lines, never on characters: a hit that
+/// does not fit is left out, so an `<untrusted-source>` marker is never cut
+/// in half and every opening marker keeps its closing one. A cap that fits no
+/// hit at all yields an empty block — a banner over nothing would be noise.
 pub(crate) fn render_block(hits: &[RetrievalHit], recall_max_chars: Option<usize>) -> String {
-    let mut block = String::from(AUTO_RECALL_BANNER);
-    block.push_str("\n\n");
+    let banner = format!("{AUTO_RECALL_BANNER}\n\n");
+    let mut lines: Vec<String> = Vec::with_capacity(hits.len());
+    // Banner, lines, and the closing blank line all count against the cap.
+    let mut used = banner.chars().count() + 1;
     for hit in hits {
-        block.push_str("- ");
-        let content = one_line(&hit.content, AUTO_RECALL_PER_HIT_CHARS);
-        match untrusted_source_hint(hit) {
-            Some(hint) => block.push_str(&wrap_untrusted_for_agent(&content, &hint)),
-            None => block.push_str(&content),
+        let line = render_hit_line(hit);
+        let cost = line.chars().count();
+        if let Some(max_chars) = recall_max_chars {
+            if used + cost > max_chars {
+                log::debug!(
+                    "[auto_recall] hit omitted: {cost} chars would exceed recall_max_chars={max_chars}"
+                );
+                continue;
+            }
         }
-        // The scope is driver metadata (`folder:profile`, `slack:#eng`), but
-        // it lands in the prompt like the content does, so it gets the same
-        // one-line treatment and a short cap rather than a trusted pass-through.
-        let scope = one_line(&hit.tree_scope, AUTO_RECALL_SCOPE_CHARS);
-        if !scope.is_empty() {
-            block.push_str(" (from ");
-            block.push_str(&scope);
-            block.push(')');
-        }
-        block.push('\n');
+        used += cost;
+        lines.push(line);
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut block = banner;
+    for line in &lines {
+        block.push_str(line);
     }
     block.push('\n');
-    if let Some(max_chars) = recall_max_chars {
-        block = clip(&block, max_chars, "…\n\n");
-    }
     block
 }
 
-/// `text` clipped to at most `max_chars` characters **including** `suffix`,
-/// which marks the cut. A cap too small to hold the suffix yields a bare
-/// prefix of that length; a text that already fits is returned unchanged.
-fn clip(text: &str, max_chars: usize, suffix: &str) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
+/// One hit as a bullet line: the content (one line, capped, wrapped when it
+/// came from a source tree) and the scope label.
+fn render_hit_line(hit: &RetrievalHit) -> String {
+    let mut line = String::from("- ");
+    let content = one_line(&hit.content, AUTO_RECALL_PER_HIT_CHARS);
+    match untrusted_source_hint(hit) {
+        Some(hint) => line.push_str(&wrap_untrusted_for_agent(&content, &hint)),
+        None => line.push_str(&content),
     }
-    let suffix_len = suffix.chars().count();
-    if max_chars < suffix_len {
-        return text.chars().take(max_chars).collect();
+    // The scope is driver metadata (`folder:profile`, `slack:#eng`), but it
+    // lands in the prompt like the content does, so it gets the same one-line
+    // treatment and a short cap rather than a trusted pass-through.
+    let scope = one_line(&hit.tree_scope, AUTO_RECALL_SCOPE_CHARS);
+    if !scope.is_empty() {
+        line.push_str(" (from ");
+        line.push_str(&scope);
+        line.push(')');
     }
-    let mut out: String = text.chars().take(max_chars - suffix_len).collect();
-    out.push_str(suffix);
-    out
+    line.push('\n');
+    line
 }
 
 /// The source hint to wrap `hit` with, or `None` for content the user or the
@@ -311,6 +324,22 @@ fn untrusted_source_hint(hit: &RetrievalHit) -> Option<String> {
             .unwrap_or("external")
             .to_string(),
     )
+}
+
+/// `text` clipped to at most `max_chars` characters **including** `suffix`,
+/// which marks the cut. A cap too small to hold the suffix yields a bare
+/// prefix of that length; a text that already fits is returned unchanged.
+fn clip(text: &str, max_chars: usize, suffix: &str) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let suffix_len = suffix.chars().count();
+    if max_chars < suffix_len {
+        return text.chars().take(max_chars).collect();
+    }
+    let mut out: String = text.chars().take(max_chars - suffix_len).collect();
+    out.push_str(suffix);
+    out
 }
 
 /// `text` with its whitespace collapsed onto one line and clipped to
