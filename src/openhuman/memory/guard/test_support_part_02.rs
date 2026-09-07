@@ -532,13 +532,29 @@ impl MemoryRetrieval for RecordingProvider {
 
     async fn recall_namespace_scored(
         &self,
-        _namespace: &str,
+        namespace: &str,
         _query: &str,
-        _limit: usize,
+        limit: usize,
         _exclude_session_id: Option<&str>,
     ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
-        self.record(Call::plain("retrieval.recall_namespace_scored"));
-        Ok(vec![])
+        // Honours the two request parameters a caller can get wrong — the
+        // namespace it asks for and the page it accepts — and records them,
+        // so a test can assert both rather than only the content it got.
+        self.record(Call {
+            method: "retrieval.recall_namespace_scored".into(),
+            content: Some(format!("namespace={namespace} limit={limit}")),
+            taint: None,
+            scoped: None,
+        });
+        Ok(self
+            .namespace_hits
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|hit| hit.namespace == namespace)
+            .take(limit)
+            .cloned()
+            .collect())
     }
 
     async fn recall_namespace_recent(

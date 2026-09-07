@@ -49,7 +49,11 @@ pub(super) async fn append_recall_lanes(agent: &Agent, user_message: &str, conte
 
 /// Lane B: preferences semantically relevant to this message.
 async fn situational_preferences(agent: &Agent, user_message: &str) -> Vec<String> {
-    const SITUATIONAL_RECALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+    // 5 s, not 3: the module's lookup (a query embed round trip, queued behind
+    // the citation and autosave calls spawned off the turn) measured over 3 s
+    // on a live desktop and lost the block on both on-topic turns of the
+    // #6041 field test.
+    const SITUATIONAL_RECALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
     let started = Instant::now();
     let situational = match tokio::time::timeout(
         SITUATIONAL_RECALL_BUDGET,
