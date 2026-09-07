@@ -34,6 +34,14 @@
 //!   [`AUTO_RECALL_BUDGET`], so a memory module still downloading on a cold
 //!   launch cannot stall the turn.
 //!
+//! # Provenance
+//!
+//! A hit from a source tree — email, Slack, Notion, a web page, a folder — is
+//! third-party content that an author can fill with instructions, so it is
+//! rendered inside the `<untrusted-source>` marker the older recall path used,
+//! with the scope prefix as the hint. Chat-tree hits, which the user or the
+//! assistant wrote, are rendered bare.
+//!
 //! # Switch
 //!
 //! `[subsystems.memory.hooks] auto_recall` (env
@@ -55,9 +63,9 @@ pub mod warm;
 pub use gate::{gate_decision, GateDecision};
 pub use source::{AutoRecallSource, GuardSource};
 
+use crate::openhuman::agent::harness::memory_context_safety::wrap_untrusted_for_agent;
 use crate::openhuman::memory::api::provider::retrieval::{FastRetrieveQuery, RetrievalHit};
 use crate::openhuman::memory::guard::MemoryGuard;
-use std::cmp::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -213,9 +221,14 @@ impl AutoRecall {
 /// Ranks `hits` best-first, drops empty content and the weak tail below the
 /// relative floor, and keeps at most [`AUTO_RECALL_LIMIT`].
 pub(crate) fn select_hits(mut hits: Vec<RetrievalHit>) -> Vec<RetrievalHit> {
-    hits.retain(|hit| !hit.content.trim().is_empty());
-    // Best first; a NaN score sorts last rather than poisoning the order.
-    hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+    // A NaN or infinite score is a driver bug, not a ranking; it would either
+    // sort first (`total_cmp` places NaN above every real score) or defeat the
+    // relative floor (`NaN >= floor` is false), so it is dropped outright.
+    hits.retain(|hit| hit.score.is_finite() && !hit.content.trim().is_empty());
+    // Best first. `total_cmp` is a total order, so a NaN score — which
+    // `partial_cmp` cannot place — sorts deterministically (after every real
+    // score in descending order) instead of destabilising the sort.
+    hits.sort_by(|a, b| b.score.total_cmp(&a.score));
     if let Some(top) = hits.first().map(|hit| hit.score) {
         if top > 0.0 {
             let floor = top * AUTO_RECALL_RELATIVE_FLOOR;
@@ -233,7 +246,11 @@ pub(crate) fn render_block(hits: &[RetrievalHit], recall_max_chars: Option<usize
     block.push_str("\n\n");
     for hit in hits {
         block.push_str("- ");
-        block.push_str(&one_line(&hit.content, AUTO_RECALL_PER_HIT_CHARS));
+        let content = one_line(&hit.content, AUTO_RECALL_PER_HIT_CHARS);
+        match untrusted_source_hint(hit) {
+            Some(hint) => block.push_str(&wrap_untrusted_for_agent(&content, &hint)),
+            None => block.push_str(&content),
+        }
         // The scope is driver metadata (`folder:profile`, `slack:#eng`), but
         // it lands in the prompt like the content does, so it gets the same
         // one-line treatment and a short cap rather than a trusted pass-through.
@@ -247,23 +264,60 @@ pub(crate) fn render_block(hits: &[RetrievalHit], recall_max_chars: Option<usize
     }
     block.push('\n');
     if let Some(max_chars) = recall_max_chars {
-        if block.chars().count() > max_chars {
-            block = block.chars().take(max_chars).collect();
-            block.push_str("…\n\n");
-        }
+        block = clip(&block, max_chars, "…\n\n");
     }
     block
+}
+
+/// `text` clipped to at most `max_chars` characters **including** `suffix`,
+/// which marks the cut. A cap too small to hold the suffix yields a bare
+/// prefix of that length; a text that already fits is returned unchanged.
+fn clip(text: &str, max_chars: usize, suffix: &str) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let suffix_len = suffix.chars().count();
+    if max_chars < suffix_len {
+        return text.chars().take(max_chars).collect();
+    }
+    let mut out: String = text.chars().take(max_chars - suffix_len).collect();
+    out.push_str(suffix);
+    out
+}
+
+/// The source hint to wrap `hit` with, or `None` for content the user or the
+/// assistant authored in chat.
+///
+/// A source tree holds ingested content — email, Slack, Notion, a web page, a
+/// folder on disk — and an author of any of those can write instructions.
+/// Rendered bare, a chunk that says "ignore your earlier instructions" reads
+/// with the same authority as the user's own words; the same rule the older
+/// recall path applied (`memory_context_safety`) applies here: anything that
+/// is not a chat tree is wrapped in the `<untrusted-source>` marker. Default
+/// deny — a hit with no tree at all is wrapped too. The hint is the scope's
+/// prefix (`gmail`, `slack`, `folder`), sanitised by the wrapper.
+fn untrusted_source_hint(hit: &RetrievalHit) -> Option<String> {
+    if hit.tree_kind.as_deref() == Some("chat") {
+        return None;
+    }
+    let scope_prefix = hit
+        .tree_scope
+        .split_once(':')
+        .map(|(prefix, _)| prefix.trim())
+        .filter(|prefix| !prefix.is_empty());
+    Some(
+        scope_prefix
+            .or(hit.tree_kind.as_deref())
+            .unwrap_or("external")
+            .to_string(),
+    )
 }
 
 /// `text` with its whitespace collapsed onto one line and clipped to
 /// `max_chars`, so a multi-paragraph chunk stays one bullet.
 fn one_line(text: &str, max_chars: usize) -> String {
     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut out: String = collapsed.chars().take(max_chars).collect();
-    if collapsed.chars().count() > max_chars {
-        out.push('…');
-    }
-    out
+    clip(&collapsed, max_chars, "…")
 }
 
 #[cfg(test)]

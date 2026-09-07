@@ -34,6 +34,12 @@ const OPENS: &[&str] = &[
     "describe my ideal weekend based on what I've shared",
     "have I told you about my parents?",
     "list my favourite movies",
+    "please remind me what my sister's name is",
+    "Please tell me my favorite color",
+    "hey, what's my idol's name",
+    "ok so what do I usually order at cafés",
+    "yo bro, can you tell me what my timezone is",
+    "quick question, do I have any allergies",
 ];
 
 /// Messages that are not about the user: the gate must stay closed.
@@ -70,6 +76,8 @@ const CLOSES: &[(&str, &str)] = &[
     ("what's 2+2?", "no_first_person"),
     ("does this function handle null?", "no_first_person"),
     ("deploy my branch to staging", "not_a_question"),
+    ("please fix my code", "not_a_question"),
+    ("hey, please summarise this thread", "no_first_person"),
     ("", "empty"),
     ("   \n  ", "empty"),
 ];

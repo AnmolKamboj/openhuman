@@ -115,15 +115,20 @@ impl Tool for MemoryRecallTool {
 /// it names none. An explicit empty string is a caller mistake, not a request
 /// for the default — the model had a namespace in mind and lost it.
 pub(crate) fn resolve_namespace(args: &serde_json::Value) -> anyhow::Result<&str> {
-    match args
-        .get("namespace")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-    {
-        None => Ok(DEFAULT_AGENT_MEMORY_NAMESPACE),
-        Some("") => Err(anyhow::anyhow!("namespace cannot be empty")),
-        Some(namespace) => Ok(namespace),
+    // Presence first, then type: the tool path hands the model's arguments
+    // over without schema validation, so a `null` or numeric namespace must
+    // be refused rather than silently read as "search the default scope".
+    let Some(value) = args.get("namespace") else {
+        return Ok(DEFAULT_AGENT_MEMORY_NAMESPACE);
+    };
+    let namespace = value
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("namespace must be a string"))?
+        .trim();
+    if namespace.is_empty() {
+        return Err(anyhow::anyhow!("namespace cannot be empty"));
     }
+    Ok(namespace)
 }
 
 #[cfg(test)]
