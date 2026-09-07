@@ -463,84 +463,24 @@ fn skill_retraction_note_names_removed_skills_and_warns_against_run_skill() {
     );
 }
 
-// ── Lane C: auto-recall of facts about the user (#6040) ──────────────────────
+// ── Lane B through the production memory handle (#6041) ─────────────────────
 //
-// The lane is exercised through a real `turn()`: a scripted source stands in
-// for the memory driver, the scripted chat model records every request, and
-// the assertions read the user message the model was actually sent.
+// Every other turn test binds the embedded store, whose `Memory` impl answers
+// `recall_relevant_by_vector` itself. Production binds `DriverMemory`, which
+// sat on the trait's empty default — so Lane B never injected anything on a
+// module-backed install and no test noticed. These run the real `turn()` over
+// `DriverMemory` on a scripted driver.
 
-use crate::openhuman::memory::api::error::MemoryError;
-use crate::openhuman::memory::api::provider::retrieval::{
-    FastRetrieveQuery, RetrievalHit, RetrievalNodeKind, RetrievalResponse,
+use crate::openhuman::agent::experience::ops::DriverMemory;
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::guard::test_support::{
+    namespace_hit, namespace_summary, RecordingProvider,
 };
-use crate::openhuman::memory::auto_recall::{AutoRecall, AutoRecallSource, AUTO_RECALL_BANNER};
+use crate::openhuman::memory::preferences::USER_PREF_SITUATIONAL_NAMESPACE;
 
-const IDOL_QUESTION: &str = "who is my idol and why?";
-const IDOL_FACT: &str = "Idol: Virat Kohli, because of his dedication and consistency";
+const PREFERENCES_BANNER: &str = "## Relevant preferences for this message";
 
-struct ScriptedAutoRecallSource {
-    hits: Vec<RetrievalHit>,
-    delay: Duration,
-    calls: AtomicUsize,
-}
-
-impl ScriptedAutoRecallSource {
-    fn with_fact(content: &str) -> Arc<Self> {
-        Arc::new(Self {
-            hits: vec![RetrievalHit {
-                node_id: "leaf-1".into(),
-                node_kind: RetrievalNodeKind::Leaf,
-                tree_id: String::new(),
-                tree_kind: None,
-                tree_scope: "folder:profile".into(),
-                level: 0,
-                content: content.to_string(),
-                entities: Vec::new(),
-                topics: Vec::new(),
-                time_range_start: chrono::DateTime::<chrono::Utc>::default(),
-                time_range_end: chrono::DateTime::<chrono::Utc>::default(),
-                score: 0.9,
-                child_ids: Vec::new(),
-                source_ref: None,
-            }],
-            delay: Duration::ZERO,
-            calls: AtomicUsize::new(0),
-        })
-    }
-
-    fn slow(content: &str, delay: Duration) -> Arc<Self> {
-        let mut source = Arc::try_unwrap(Self::with_fact(content))
-            .ok()
-            .expect("fresh arc");
-        source.delay = delay;
-        Arc::new(source)
-    }
-
-    fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-}
-
-#[async_trait]
-impl AutoRecallSource for ScriptedAutoRecallSource {
-    async fn fast_retrieve(
-        &self,
-        _query: &str,
-        _options: FastRetrieveQuery,
-    ) -> Result<RetrievalResponse, MemoryError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        if !self.delay.is_zero() {
-            tokio::time::sleep(self.delay).await;
-        }
-        Ok(RetrievalResponse {
-            total: self.hits.len(),
-            hits: self.hits.clone(),
-            truncated: false,
-        })
-    }
-}
-
-fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
+pub(super) fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
     Arc::new(SequenceProvider {
         responses: AsyncMutex::new(vec![Ok(ChatResponse {
             text: Some(text.into()),
@@ -553,28 +493,20 @@ fn scripted_reply(text: &str) -> Arc<SequenceProvider> {
     })
 }
 
-/// A turn-capable agent with Lane C bound (or deliberately absent), over the
-/// same real embedded store the other turn tests use.
-fn make_agent_with_auto_recall(
+/// A turn-capable agent whose memory is the production adapter over `driver`.
+fn make_agent_over_driver(
     provider: Arc<dyn ChatModel<()>>,
-    auto_recall: Option<Arc<AutoRecall>>,
+    driver: Arc<RecordingProvider>,
 ) -> Agent {
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
-        backend: "none".into(),
-        ..crate::openhuman::config::MemoryConfig::default()
-    };
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = Arc::new(DriverMemory::new(driver as Arc<dyn MemoryProvider>));
 
     Agent::builder()
         .chat_model(provider)
         .tools(vec![])
         .memory(mem)
-        .auto_recall(auto_recall)
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .config(crate::openhuman::config::AgentConfig::default())
         .context_config(crate::openhuman::config::ContextConfig::default())
@@ -584,107 +516,96 @@ fn make_agent_with_auto_recall(
         .unwrap()
 }
 
-/// The messages the model was sent on the first (only) request, split by role.
-async fn first_request(provider: &SequenceProvider) -> (Vec<String>, Vec<String>) {
+/// The user messages the model was sent on the first (only) request.
+async fn first_request_user_messages(provider: &SequenceProvider) -> Vec<String> {
     let requests = provider.requests.lock().await;
     let request = requests.first().expect("the model was called once");
-    let system = request
-        .iter()
-        .filter(|m| m.role == "system")
-        .map(|m| m.content.clone())
-        .collect();
-    let user = request
+    request
         .iter()
         .filter(|m| m.role == "user")
         .map(|m| m.content.clone())
-        .collect();
-    (system, user)
+        .collect()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_recall_block_rides_the_user_message_for_a_personal_question() {
-    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
-    let lane = Arc::new(AutoRecall::new(source.clone(), true, None));
-    let provider_impl = scripted_reply("Virat Kohli, for his dedication and consistency.");
+async fn situational_preference_reaches_the_model_through_driver_memory() {
+    // The namespace must look populated (a non-zero count) before Lane B pays
+    // for the vector recall; then the scored hits decide what is injected.
+    let driver = Arc::new(
+        RecordingProvider::new()
+            .with_namespace_summaries(vec![namespace_summary(USER_PREF_SITUATIONAL_NAMESPACE, 2)])
+            .with_namespace_hits(vec![
+                namespace_hit(
+                    USER_PREF_SITUATIONAL_NAMESPACE,
+                    "editor",
+                    "Prefers vim for editing code.",
+                    0.9,
+                ),
+                namespace_hit(
+                    USER_PREF_SITUATIONAL_NAMESPACE,
+                    "lexical_only",
+                    "Shares words, means nothing.",
+                    0.1,
+                ),
+            ]),
+    );
+    let provider_impl = scripted_reply("vim it is.");
     let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
-    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+    let mut agent = make_agent_over_driver(provider, driver.clone());
 
-    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
-    assert!(reply.contains("Virat"));
-    assert_eq!(source.calls(), 1, "one bounded lookup for one gated turn");
+    agent
+        .turn("which editor should I use for this rust project?")
+        .await
+        .expect("turn succeeds");
 
-    let (system, user) = first_request(&provider_impl).await;
-    let last_user = user.last().expect("a user message");
     assert!(
-        last_user.contains(AUTO_RECALL_BANNER) && last_user.contains("Virat Kohli"),
-        "the block must ride the user message: {last_user}"
+        driver
+            .calls()
+            .iter()
+            .any(|c| c.method == "retrieval.recall_namespace_scored"),
+        "Lane B must ask the driver, not the trait default: {:?}",
+        driver.calls()
+    );
+    let user = first_request_user_messages(&provider_impl).await;
+    let last = user.last().expect("a user message");
+    assert!(
+        last.contains(PREFERENCES_BANNER) && last.contains("Prefers vim for editing code."),
+        "the situational preference must ride the user message: {last}"
     );
     assert!(
-        last_user.contains(IDOL_QUESTION),
-        "the user's own words must follow the block: {last_user}"
-    );
-    assert!(
-        system.iter().all(|s| !s.contains(AUTO_RECALL_BANNER)),
-        "the block must never land in the system prompt"
+        !last.contains("Shares words, means nothing."),
+        "a hit below the vector floor must not be injected: {last}"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_recall_stays_silent_and_costs_nothing_on_small_talk() {
-    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
-    let lane = Arc::new(AutoRecall::new(source.clone(), true, None));
-    let provider_impl = scripted_reply("Sunny, probably.");
+async fn no_situational_preference_means_no_block_and_no_embed_through_driver_memory() {
+    // Nothing stored under the situational namespace: the lane must find that
+    // out from the namespace counts and never reach the vector recall, which
+    // is the call that embeds the message.
+    let driver = Arc::new(RecordingProvider::new());
+    let provider_impl = scripted_reply("Sunny.");
     let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
-    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
+    let mut agent = make_agent_over_driver(provider, driver.clone());
 
     agent
         .turn("what's the weather today")
         .await
         .expect("turn succeeds");
-    assert_eq!(source.calls(), 0, "a closed gate never reaches the store");
-    let (_, user) = first_request(&provider_impl).await;
-    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_recall_disabled_by_the_hooks_switch_injects_nothing() {
-    let source = ScriptedAutoRecallSource::with_fact(IDOL_FACT);
-    let lane = Arc::new(AutoRecall::new(source.clone(), false, None));
-    let provider_impl = scripted_reply("I don't have that stored.");
-    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
-    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
-
-    agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
-    assert_eq!(source.calls(), 0);
-    let (_, user) = first_request(&provider_impl).await;
-    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_recall_timeout_yields_an_ordinary_turn() {
-    let source = ScriptedAutoRecallSource::slow(IDOL_FACT, Duration::from_millis(300));
-    let lane = Arc::new(
-        AutoRecall::new(source.clone(), true, None).with_budget(Duration::from_millis(20)),
+    let user = first_request_user_messages(&provider_impl).await;
+    assert!(
+        user.iter().all(|u| !u.contains(PREFERENCES_BANNER)),
+        "an empty answer must inject nothing: {user:?}"
     );
-    let provider_impl = scripted_reply("Still here.");
-    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
-    let mut agent = make_agent_with_auto_recall(provider, Some(lane));
-
-    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
-    assert_eq!(reply, "Still here.");
-    assert_eq!(source.calls(), 1);
-    let (_, user) = first_request(&provider_impl).await;
-    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_session_without_the_lane_turns_as_before() {
-    let provider_impl = scripted_reply("Hello.");
-    let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
-    let mut agent = make_agent_with_auto_recall(provider, None);
-
-    let reply = agent.turn(IDOL_QUESTION).await.expect("turn succeeds");
-    assert_eq!(reply, "Hello.");
-    let (_, user) = first_request(&provider_impl).await;
-    assert!(user.iter().all(|u| !u.contains(AUTO_RECALL_BANNER)));
+    let methods: Vec<String> = driver.calls().into_iter().map(|c| c.method).collect();
+    assert!(
+        methods.iter().any(|m| m == "core.namespaces"),
+        "the lane must ask for the namespace counts: {methods:?}"
+    );
+    assert!(
+        !methods
+            .iter()
+            .any(|m| m == "retrieval.recall_namespace_scored"),
+        "an empty namespace must not cost an embed round trip: {methods:?}"
+    );
 }
