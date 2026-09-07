@@ -592,7 +592,14 @@ fn assemble_turn_harness(
             }
             None => microcompact,
         };
-        harness.push_middleware(Arc::new(microcompact));
+        // Emit `AgentEvent::Compressed` when a body is cleared. Off by default —
+        // the middleware was built as "a silent transcript rewrite" — which is
+        // why blanking was, until now, the one reduction step nobody could see
+        // happening: compression logs its provenance, the trim warns on every
+        // eviction, and the per-result artifact store logs each persist. Only
+        // this one destroyed content without saying so, which is how it went
+        // unnoticed that it was doing it on every call.
+        harness.push_middleware(Arc::new(microcompact.with_events(true)));
     }
 
     // Issue #6014: make the last permitted model call the turn's conclusion,
