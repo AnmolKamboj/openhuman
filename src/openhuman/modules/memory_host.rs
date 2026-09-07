@@ -75,7 +75,18 @@ impl EmbeddingCallbacks {
             )
             .map_err(method_error)?;
         let borrowed: Vec<&str> = texts.iter().map(String::as_str).collect();
-        embedder.embed(&borrowed).await.map_err(method_error)
+        // Timed because this is one of the two host round trips behind every
+        // per-turn memory lookup (the other is `extract_spacy` below); the
+        // `[auto_recall]` line reports the total, these report the split.
+        let started = std::time::Instant::now();
+        let result = embedder.embed(&borrowed).await.map_err(method_error);
+        log::debug!(
+            "[memory_host] embed provider={provider} texts={} elapsed_ms={} ok={}",
+            borrowed.len(),
+            started.elapsed().as_millis(),
+            result.is_ok()
+        );
+        result
     }
 }
 
@@ -427,9 +438,22 @@ impl RuntimeCallbacks {
     }
 
     async fn extract_spacy(&self, text: String) -> tinybus::Result<SpacyResponse> {
+        // The module asks for this on every query it retrieves for, so its
+        // latency lands directly on the chat turn. Timed for the same reason
+        // `embed` above is; the first call after boot also carries the Python
+        // server start and the model load, which is what the boot warm-up in
+        // `memory::auto_recall::warm` exists to pay early.
+        let started = std::time::Instant::now();
         let response = crate::openhuman::runtime::python_server::extract_spacy(&self.0, &text)
             .await
-            .map_err(method_error)?;
+            .map_err(method_error);
+        log::debug!(
+            "[memory_host] extract_spacy chars={} elapsed_ms={} ok={}",
+            text.chars().count(),
+            started.elapsed().as_millis(),
+            response.is_ok()
+        );
+        let response = response?;
         serde_json::from_value(serde_json::to_value(response).map_err(method_error)?)
             .map_err(method_error)
     }
