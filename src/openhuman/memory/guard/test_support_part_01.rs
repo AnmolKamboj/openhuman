@@ -77,6 +77,12 @@ pub struct RecordingProvider {
     calls: Mutex<Vec<Call>>,
     /// What `recall` returns, so budget tests can drive a known result set.
     recall_result: Mutex<Vec<MemoryEntry>>,
+    /// What `recall_namespace_scored` returns, so the vector-floored recall
+    /// paths (Lane B, the contradiction check) can be driven with known scores.
+    namespace_hits: Mutex<Vec<NamespaceMemoryHit>>,
+    /// What `namespaces` returns, so a namespace can look populated (Lane B
+    /// asks for the count before it pays for an embed) without a real store.
+    namespace_summaries: Mutex<Vec<NamespaceSummary>>,
 }
 
 impl Default for RecordingProvider {
@@ -90,11 +96,23 @@ impl RecordingProvider {
         Self {
             calls: Mutex::new(Vec::new()),
             recall_result: Mutex::new(Vec::new()),
+            namespace_hits: Mutex::new(Vec::new()),
+            namespace_summaries: Mutex::new(Vec::new()),
         }
     }
 
     pub fn with_recall_result(self, entries: Vec<MemoryEntry>) -> Self {
         *self.recall_result.lock().unwrap() = entries;
+        self
+    }
+
+    pub fn with_namespace_hits(self, hits: Vec<NamespaceMemoryHit>) -> Self {
+        *self.namespace_hits.lock().unwrap() = hits;
+        self
+    }
+
+    pub fn with_namespace_summaries(self, summaries: Vec<NamespaceSummary>) -> Self {
+        *self.namespace_summaries.lock().unwrap() = summaries;
         self
     }
 
@@ -261,7 +279,7 @@ impl MemoryCore for RecordingProvider {
 
     async fn namespaces(&self) -> Result<Vec<NamespaceSummary>, MemoryError> {
         self.record(Call::plain("core.namespaces"));
-        Ok(vec![])
+        Ok(self.namespace_summaries.lock().unwrap().clone())
     }
 }
 
