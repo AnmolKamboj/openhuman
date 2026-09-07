@@ -19,6 +19,12 @@ fn assemble_turn_harness(
     tool_policy: Option<ToolPolicyEnforcement>,
     required_capabilities: Option<CapabilitySet>,
     deterministic_cacheable: bool,
+    // Whether this run pauses gracefully at its model-call cap (issue #6014).
+    // Only such a run gets the in-loop conclusion: a run that errors at its cap
+    // instead (the channel/CLI path, which maps the stop to
+    // `MaxIterationsExceeded`) must keep doing that, and handing it a wrap-up
+    // would silently convert a documented error into an answer.
+    pause_at_cap: bool,
 ) -> AssembledTurnHarness {
     let mut harness: AgentHarness<()> = AgentHarness::new();
     // Cross-route fallback ownership (issue #4249, Workstream 02.2): populate the
@@ -201,6 +207,36 @@ fn assemble_turn_harness(
             )));
         }
     }
+    // Issue #6014: make the last permitted model call the turn's conclusion,
+    // rather than leaving the answer to an extra out-of-band call after the loop
+    // has exited. Registered late so its `before_model` runs after the context
+    // middlewares have shaped the transcript — the instruction it appends is the
+    // final turn of the request and must not be what a trim evicts.
+    //
+    // **Top-level turns only**, the same cut `CapPauser`'s dispatch guard takes
+    // and for a related reason: a sub-agent reaching its own model-call cap is a
+    // routine outcome rather than a user-visible dead end. It summarises and
+    // hands the result back to its parent as a tool result, the parent keeps
+    // going, and `subagent_runner` already owns that checkpoint (including its
+    // own deterministic fallback). The problem this fixes — a person left with a
+    // status line where an answer should be — is a property of the turn that
+    // answers a human.
+    //
+    // Withholding it also leaves the child's budget arithmetic alone. The
+    // conclusion costs one model call, so installing this would silently convert
+    // a delegated run's N tool rounds into N-1; that is a fine trade to make
+    // once, deliberately, at the top level, and not one to impose on every child
+    // as a side effect.
+    let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
+        Arc::new(middleware::FinalCallWrapUpMiddleware::new(
+            crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
+        ))
+    });
+    let wrap_up_fired = wrap_up_mw.as_ref().map(|mw| mw.fired());
+    if let Some(mw) = wrap_up_mw {
+        harness.push_middleware(mw);
+    }
+
     let early_exit_set: HashSet<&str> = early_exit_tools.iter().copied().collect();
     // One hook per run, shared by every early-exit adapter (records the first
     // early-exit and pauses). Requires the steering handle.
@@ -636,6 +672,7 @@ fn assemble_turn_harness(
         tool_outcome_sink,
         handle,
         early_exit_hook,
+        wrap_up_fired,
         tool_count,
         registry_snapshot,
         registry_diagnostics,
