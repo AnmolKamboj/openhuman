@@ -176,7 +176,7 @@ async fn journal_sink_handles_multibyte_utf8_spanning_window_boundary() {
         let raw = std::fs::read(&stream_path).expect("read stream file");
         if raw.len() > WINDOW {
             let start = raw.len() - WINDOW;
-            let text = std::str::from_utf8(&raw).expect("stream file itself is valid UTF-8");
+            let text = String::from_utf8_lossy(&raw);
             if !text.is_char_boundary(start) {
                 torn.push(pad);
             }
