@@ -46,9 +46,9 @@ pub use cache::FacetCache;
 pub use candidate::{Buffer, CueFamily, EvidenceRef, FacetClass, LearningCandidate};
 pub use profile_md_renderer::ProfileMdRenderer;
 pub use prompt_sections::{
-    any_tool_offered, load_learned_from_cache, LearnedContextSection, MemoryAccessSection,
-    MemoryWriteSection, UserProfileSection, MEMORY_ACCESS_INSTRUCTION, MEMORY_READ_TOOLS,
-    MEMORY_WRITE_INSTRUCTION, MEMORY_WRITE_TOOLS,
+    any_tool_offered, load_learned_from_cache, memory_write_instruction, LearnedContextSection,
+    MemoryAccessSection, MemoryWriteSection, UserProfileSection, MEMORY_ACCESS_INSTRUCTION,
+    MEMORY_READ_TOOLS, MEMORY_STORE_TOOL, MEMORY_WRITE_TOOLS, SAVE_PREFERENCE_TOOL,
 };
 pub use reflection::ReflectionHook;
 pub use schemas::{

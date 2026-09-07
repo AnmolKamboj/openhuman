@@ -275,7 +275,11 @@ fn resolve_key_derives_one_from_the_content_when_absent() {
         "stem must come from the content's first words: {key}"
     );
     let suffix = key.rsplit('_').next().unwrap();
-    assert_eq!(suffix.len(), 6, "six hex digits of hash: {key}");
+    assert_eq!(
+        suffix.len(),
+        DERIVED_KEY_HASH_CHARS,
+        "the digest suffix is what keeps two notes with the same opening words apart: {key}"
+    );
     assert!(suffix.chars().all(|c| c.is_ascii_hexdigit()), "{key}");
 }
 
@@ -313,4 +317,24 @@ fn derive_key_caps_the_stem() {
     let key = derive_key(&content);
     let stem = key.rsplit_once('_').map(|(stem, _)| stem).unwrap();
     assert_eq!(stem.chars().count(), DERIVED_KEY_STEM_CHARS);
+}
+
+/// A shared stem is the normal case, so the suffix carries the whole burden of
+/// telling two notes apart — at 24 bits that failed within a few thousand
+/// writes, and the loser was silently overwritten (review finding).
+#[test]
+fn derive_key_suffix_is_wide_enough_to_separate_a_shared_stem() {
+    assert!(
+        DERIVED_KEY_HASH_CHARS >= 16,
+        "a derived key needs at least 64 bits of digest"
+    );
+    let a = derive_key("the meeting with sam is about the budget for next quarter");
+    let b = derive_key("the meeting with sam is about the roadmap for next quarter");
+    let stem = |key: &str| key.rsplit_once('_').map(|(s, _)| s.to_string()).unwrap();
+    assert_eq!(
+        stem(&a),
+        stem(&b),
+        "the fixture must share a stem to be meaningful"
+    );
+    assert_ne!(a, b, "a shared stem must still yield distinct keys");
 }

@@ -100,7 +100,7 @@ pub(super) fn add_memory_prompt_sections(
 ) -> SystemPromptBuilder {
     use crate::openhuman::agent::learning::{
         any_tool_offered, MemoryAccessSection, MemoryWriteSection, MEMORY_READ_TOOLS,
-        MEMORY_WRITE_TOOLS,
+        MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL,
     };
     let mut prompt_builder = prompt_builder;
     if config.learning.enabled {
@@ -114,9 +114,18 @@ pub(super) fn add_memory_prompt_sections(
             );
         }
     }
-    if any_tool_offered(&MEMORY_WRITE_TOOLS, tools, delegation_tools, visible) {
-        prompt_builder = prompt_builder.add_section(Box::new(MemoryWriteSection));
-        log::debug!("[memory_write] prompt section registered for agent={agent_id}");
+    // Asked per tool, not once for the pair: the section names the routes it
+    // is given, so a profile carrying only one write tool must not be told
+    // about the other (review finding).
+    let preferences = any_tool_offered(&[SAVE_PREFERENCE_TOOL], tools, delegation_tools, visible);
+    let facts = any_tool_offered(&[MEMORY_STORE_TOOL], tools, delegation_tools, visible);
+    if preferences || facts {
+        prompt_builder =
+            prompt_builder.add_section(Box::new(MemoryWriteSection::new(preferences, facts)));
+        log::debug!(
+            "[memory_write] prompt section registered for agent={agent_id} \
+             save_preference={preferences} memory_store={facts}"
+        );
     } else {
         log::debug!(
             "[memory_write] skipping MemoryWriteSection — neither memory_store nor \
