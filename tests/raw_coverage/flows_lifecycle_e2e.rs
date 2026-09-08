@@ -930,19 +930,22 @@ async fn flows_approval_manifest_classifies_every_gated_node_kind() {
             "a candidate graph joined against no flow holds no grants: {already:?}"
         );
     } else {
-        // Gate uninstalled: nothing ever parks, so `missing` is empty by
-        // definition. The approvable keys are currently routed into
-        // `already_trusted` instead of a third state, which claims grants the
-        // flow does not hold — see
-        // `~/tinyhuman/bugs/e2e-wave-flows-approval-manifest-already-trusted-without-gate.md`.
-        // Pinned as-is so the fix has to come past this assertion.
+        // Gate uninstalled: nothing ever parks, so nothing is `missing`; and no
+        // grant was ever made, so nothing is `already_trusted` either.
+        // `gate_installed: false` is the caller's only signal.
+        //
+        // This branch used to assert the opposite — the approvable keys landed
+        // in `already_trusted`, claiming grants the flow did not hold. openhuman#6093
+        // fixed that (`split_manifest_trust` returns two empty lists when the
+        // gate is absent), so the assertion is inverted to the fixed behaviour.
         assert!(
             missing.is_empty(),
             "with no gate installed nothing can park, so nothing is missing: {missing:?}"
         );
         assert!(
-            already.contains(&"flows_http_request") && already.contains(&"flows_code"),
-            "current behaviour: un-gated approvable keys land in already_trusted: {already:?}"
+            already.is_empty(),
+            "with no gate installed no grant was ever made, so nothing is already \
+             trusted either: {already:?}"
         );
     }
     for list in [&missing, &already] {
@@ -1070,12 +1073,9 @@ async fn flows_tool_catalog_surface_degrades_without_composio_credentials() {
         "an unreachable catalog contributes zero rows rather than erroring: {search}"
     );
 
-    // The `<TOOLKIT>_<ACTION>` shape diagnostic. `toolkit_from_slug` splits on
-    // `_` and falls back to the whole string, so the ONLY input that reaches
-    // this message is one that trims to empty — a single-token slug like
-    // `nodashhere` is accepted as its own toolkit and fails later, at the
-    // catalog, with a much less useful message. See
-    // `~/tinyhuman/bugs/e2e-wave-flows-tool-contract-slug-guard-unreachable.md`.
+    // The `<TOOLKIT>_<ACTION>` shape diagnostic, checked before any I/O.
+    // A slug that trims to empty has no toolkit segment, so it is refused here
+    // rather than at the catalog.
     let malformed = h
         .err(
             1802,
@@ -1088,8 +1088,15 @@ async fn flows_tool_catalog_surface_degrades_without_composio_credentials() {
         "the shape diagnostic names the expected form: {malformed}"
     );
 
-    // Current behaviour for a single-token slug: it is treated as a toolkit
-    // name rather than rejected, so the failure surfaces at the catalog.
+    // A single-token slug has no action segment, so it cannot name an action a
+    // contract fetch could return — it is refused by the same shape guard.
+    //
+    // This used to assert the opposite: `toolkit_from_slug` falls back to the
+    // whole string, so `nodashhere` was accepted as its own toolkit and failed
+    // later at the catalog with an unrelated message. openhuman#6093 added
+    // `toolkit_for_contract_slug`, which requires non-empty segments either
+    // side of the first `_` before delegating, so the assertion is inverted to
+    // the fixed behaviour.
     let single_token = h
         .err(
             1806,
@@ -1098,8 +1105,13 @@ async fn flows_tool_catalog_surface_degrades_without_composio_credentials() {
         )
         .await;
     assert!(
-        single_token.contains("nodashhere") && single_token.contains("catalog"),
-        "a dashless slug is not caught by the shape guard: {single_token}"
+        single_token.contains("nodashhere") && single_token.contains("GMAIL_SEND_EMAIL"),
+        "a dashless slug is caught by the shape guard, quoting the caller's own slug \
+         and the expected form: {single_token}"
+    );
+    assert!(
+        !single_token.contains("catalog"),
+        "and it is refused before any catalog round trip: {single_token}"
     );
 
     let unreachable = h
