@@ -852,6 +852,51 @@ async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
         );
     }
 
+    // Every *optional* enum field must advertise exactly the variants its wire
+    // type parses, and each must round-trip. The generated card above only
+    // populates required fields, so without this an optional enum declared as a
+    // free `Option(String)` — which `approvalMode` was — would let a
+    // catalog-valid value like "sometimes" through the schema and straight into
+    // an `invalid params` from the handler.
+    for name in ["approvalMode"] {
+        let field = card_fields
+            .iter()
+            .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("the card must declare `{name}`"));
+        let variants = field
+            .get("ty")
+            .and_then(|t| t.get("Option"))
+            .and_then(|inner| inner.get("Enum"))
+            .and_then(|e| e.get("variants"))
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{name}` is backed by a closed enum upstream, so the catalog \
+                     must declare its variants rather than a free string. \
+                     Declared ty was: {}",
+                    field.get("ty").unwrap_or(&Value::Null)
+                )
+            })
+            .clone();
+
+        for (i, variant) in variants.iter().enumerate() {
+            let mut probe = card.clone();
+            probe.insert("id".to_string(), Value::String(format!("enum-{name}-{i}")));
+            probe.insert(name.to_string(), variant.clone());
+            let response = rpc(
+                &harness.rpc_base,
+                90 + i as i64,
+                "openhuman.todos_replace",
+                json!({ "thread_id": thread, "cards": [Value::Object(probe)] }),
+            )
+            .await;
+            ok(
+                &response,
+                &format!("todos_replace with the declared `{name}` variant {variant}"),
+            );
+        }
+    }
+
     // Every advertised status variant must actually parse. Taking only the
     // first would let a misspelled later variant (`in-progress` for
     // `in_progress`, say) sit in the catalog undetected.
