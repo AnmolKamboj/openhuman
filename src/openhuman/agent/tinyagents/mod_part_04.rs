@@ -619,6 +619,15 @@ fn assemble_turn_harness(
         Arc::new(middleware::FinalCallWrapUpMiddleware::new(
             crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
             tool_outcome_sink.clone(),
+            // The same allowance the trim below enforces, so restoration stops
+            // short of provoking an eviction instead of relying on one to clean
+            // up after it. `0` when the model advertises no window, which
+            // disables the bound — there is no budget to measure against, and
+            // no trim installed either.
+            context_window
+                .filter(|w| *w > 0)
+                .map(|w| middleware::legacy_max_input_tokens(w).max(1))
+                .unwrap_or(0),
         ))
     });
     let wrap_up_fired = wrap_up_mw.as_ref().map(|mw| mw.fired());
@@ -631,7 +640,18 @@ fn assemble_turn_harness(
     // renders whatever survived them, and before the trim so its message is
     // counted in that budget — the trim never drops a system message, so being
     // counted costs nothing and being uncounted could push the request over.
-    harness.push_middleware(Arc::new(middleware::ArtifactIndexTocMiddleware));
+    harness.push_middleware(Arc::new(middleware::ArtifactIndexTocMiddleware::new(
+        // CodeRabbit on #6068: the contents list is a system message, and
+        // `ImageAwareMessageTrimMiddleware` never evicts one — the property that
+        // makes it survive the ladder also makes it the one message nothing can
+        // shrink. A turn that persists enough artifacts could therefore grow an
+        // unbounded, un-evictable message. It is bounded here instead, against
+        // the same allowance the trim enforces.
+        context_window
+            .filter(|w| *w > 0)
+            .map(|w| middleware::legacy_max_input_tokens(w).max(1))
+            .unwrap_or(0),
+    )));
 
     if let Some(window) = context_window.filter(|w| *w > 0) {
         // Deterministic hard-cap trim (issue #4462), last in the ladder: it drops
