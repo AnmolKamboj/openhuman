@@ -52,6 +52,12 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
+        // Belt-and-braces. A dispatched call has already been through
+        // `core::all::validate_params`, which refuses a missing `class`/`key`
+        // with its own wording (and the schema comment as a suffix), so these
+        // two refusals are reachable only by invoking this handler directly —
+        // which is how the `tests/raw_coverage` suites call it. See the
+        // `validate_params` docs for why they are kept (#6073).
         let class_str = params
             .get("class")
             .and_then(Value::as_str)

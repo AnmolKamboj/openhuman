@@ -242,6 +242,12 @@ struct ReflectParams {
     context: Option<String>,
 }
 
+/// Belt-and-braces deserialization for the goals handlers.
+///
+/// Its `invalid params: …` refusal is not what a dispatched caller sees: a
+/// missing or mistyped param is rejected earlier by `core::all::validate_params`,
+/// in that function's wording. This is reachable only by invoking a handler
+/// directly. See the `validate_params` docs for why it is kept (#6073).
 fn parse_value<T: DeserializeOwned>(v: Value) -> Result<T, String> {
     serde_json::from_value(v).map_err(|e| format!("invalid params: {e}"))
 }

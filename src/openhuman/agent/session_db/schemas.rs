@@ -249,6 +249,12 @@ fn handle_session_db_list(params: Map<String, Value>) -> ControllerFuture {
     })
 }
 
+// The `missing required param: …` refusals in the handlers below (and their
+// `run_ledger` siblings) are belt-and-braces: `core::all::validate_params` has
+// already rejected such a call before dispatch, in its own wording, so a caller
+// sees `missing required param 'id': Session ID.` and never these strings. They
+// remain reachable by invoking a handler directly. See the `validate_params`
+// docs for why they are kept (#6073).
 fn handle_session_db_get(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let cid = new_correlation_id();
