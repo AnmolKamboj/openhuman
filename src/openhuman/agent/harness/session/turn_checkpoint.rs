@@ -183,13 +183,31 @@ pub(super) fn build_deterministic_checkpoint(
     if results.is_empty() {
         out.push_str("\n- (no tools completed yet)\n");
     } else {
+        // Render each block before choosing, so the budget is charged what
+        // the checkpoint will actually contain (CodeRabbit on #6068). Walking
+        // `r.content` alone undercounts by the per-result header and the `"  > "`
+        // on every line — a newline-heavy result costs well over its body, and
+        // several of them overran the limit while the walk believed it had room.
+        let blocks: Vec<String> = results
+            .iter()
+            .map(|r| {
+                let status = if r.success { "ok" } else { "failed" };
+                let mut block = format!("\n- `{}` — {}\n", r.name, status);
+                for line in r.content.lines() {
+                    block.push_str("  > ");
+                    block.push_str(line);
+                    block.push('\n');
+                }
+                block
+            })
+            .collect();
         // Choose how far back the budget reaches by walking from the newest
         // result, then render in the original order — a checkpoint read
         // backwards is harder to follow than one that simply starts later.
         let mut budget = CHECKPOINT_TOTAL_CHARS;
         let mut first_shown = results.len();
-        for (idx, r) in results.iter().enumerate().rev() {
-            let cost = r.content.chars().count();
+        for (idx, block) in blocks.iter().enumerate().rev() {
+            let cost = block.chars().count();
             if cost > budget && idx + 1 < results.len() {
                 // The newest result is always shown, however long, so a single
                 // oversized payload cannot empty the checkpoint entirely; every
@@ -204,16 +222,8 @@ pub(super) fn build_deterministic_checkpoint(
                 "\n_({first_shown} earlier tool result(s) omitted for length — the most recent are shown.)_\n"
             ));
         }
-        for r in &results[first_shown..] {
-            let status = if r.success { "ok" } else { "failed" };
-            out.push_str(&format!("\n- `{}` — {}\n", r.name, status));
-            if !r.content.is_empty() {
-                for line in r.content.lines() {
-                    out.push_str("  > ");
-                    out.push_str(line);
-                    out.push('\n');
-                }
-            }
+        for block in &blocks[first_shown..] {
+            out.push_str(block);
         }
     }
     out.push_str(
