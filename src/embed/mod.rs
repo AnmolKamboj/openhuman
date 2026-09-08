@@ -68,8 +68,8 @@ pub use harness::{Access, Harness, HarnessBuilder, HarnessError, Provider, Works
 pub use harness::{HttpHeader, McpAuthConfig, McpServer};
 #[cfg(feature = "medulla")]
 pub use medulla::{
-    AbortResult, EventEnvelope, Medulla, MedullaStatus, Message, RosterWorker, SendResult,
-    SessionCreated, SessionDetail, SessionSummary,
+    AbortResult, Medulla, MedullaStatus, Message, RosterWorker, SendResult, SessionCreated,
+    SessionDetail, SessionSummary, WireEventEnvelope,
 };
 
 use std::sync::Arc;
