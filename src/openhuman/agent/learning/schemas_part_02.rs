@@ -52,6 +52,12 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
+        // These refusals are reachable from a dispatched call, not only from a
+        // direct one. An *absent* `class`/`key` is refused earlier by
+        // `core::all::validate_params`, in its own wording — but an explicit
+        // `{"class": null}` passes that gate (the required check tests key
+        // presence, and its type check returns early on null), so on that path
+        // this is the only guard. See the `validate_params` docs (#6073).
         let class_str = params
             .get("class")
             .and_then(Value::as_str)
