@@ -10,8 +10,24 @@
 //! ## What this migration does
 //!
 //! 1. **Merges new commands** into `config.autonomy.allowed_commands`. Only
-//!    commands not already present are added, so any user customisation
-//!    (e.g. additional entries, deliberate removals) is fully preserved.
+//!    commands not already present are added, so additional entries a user has
+//!    made are preserved.
+//!
+//!    ⚠️ **A deliberate removal is NOT preserved, and cannot be.** The merge is
+//!    additive and has no record of what the v3 default contained, so it cannot
+//!    tell "absent because the user removed it" from "absent because it
+//!    post-dates this config". A narrowed `allowed_commands` is therefore
+//!    widened back. This doc previously claimed removals were "fully
+//!    preserved"; that was false in the one direction that matters for a
+//!    command allowlist.
+//!
+//!    This bites hardest on a **hand-written** `config.toml`: `schema_version`
+//!    is `#[serde(default)]`, so a file without the field loads as version `0`
+//!    and runs the whole 0→10 chain including this migration — even though it
+//!    was never a v3 config. A config this code writes is stamped with
+//!    `CURRENT_SCHEMA_VERSION` on creation (`schema/load/impl_load.rs`), so the
+//!    fresh-install path is unaffected. Set `schema_version` explicitly to opt
+//!    out.
 //! 2. **Merges new auto-approve tools** into `config.autonomy.auto_approve`
 //!    with the same additive-only merge logic.
 //! 3. **Bumps `max_actions_per_hour`** from 20 (the old hard-coded default)
@@ -78,6 +94,8 @@ pub fn run(config: &mut Config) -> anyhow::Result<MigrationStats> {
     );
 
     // Merge new commands (additive only — never remove user entries).
+    let commands_before = config.autonomy.allowed_commands.clone();
+    let mut added_commands: Vec<&str> = Vec::new();
     for &cmd in NEW_COMMANDS {
         if !config.autonomy.allowed_commands.iter().any(|c| c == cmd) {
             log::debug!(
@@ -85,8 +103,27 @@ pub fn run(config: &mut Config) -> anyhow::Result<MigrationStats> {
                 cmd
             );
             config.autonomy.allowed_commands.push(cmd.to_string());
+            added_commands.push(cmd);
             stats.commands_added += 1;
         }
+    }
+
+    // Widening a command allowlist is a security-relevant change, and until now
+    // it happened at DEBUG — invisible on a default log level, and invisible in
+    // the file on disk, which still shows the narrow list the user wrote. Say it
+    // at WARN, and name what was added, whenever the list being widened was not
+    // empty: an empty list is a config that never expressed an opinion, but a
+    // non-empty one is a list somebody chose.
+    if !added_commands.is_empty() && !commands_before.is_empty() {
+        log::warn!(
+            "[migrations][expand-autonomy-defaults] widened a non-empty allowed_commands \
+             from {} to {} entries; added: {}. If this list was curated deliberately, the \
+             removals are NOT preserved — set `schema_version` in config.toml to opt out \
+             of this migration.",
+            commands_before.len(),
+            config.autonomy.allowed_commands.len(),
+            added_commands.join(", ")
+        );
     }
 
     // Merge new auto-approve tools (additive only).

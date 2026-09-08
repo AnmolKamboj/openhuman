@@ -492,3 +492,77 @@ async fn run_pending_v3_to_v4_preserves_custom_max_actions() {
         "user-customised max_actions_per_hour must not be overwritten"
     );
 }
+
+/// The coverage gap that let the allowlist-widening ship unnoticed.
+///
+/// Existing tests start at v3 (a real migration) or at a fresh install (already
+/// stamped `CURRENT_SCHEMA_VERSION`). Neither covers the case a user actually
+/// hits: a **hand-written** `config.toml` with a deliberately narrow
+/// `allowed_commands` and no `schema_version` field, which `#[serde(default)]`
+/// loads as version `0`.
+///
+/// This test documents what happens today rather than what should. It is not an
+/// endorsement: an additive merge structurally cannot tell "absent because the
+/// user removed it" from "absent because it post-dates this config", so
+/// deciding whether a v0 config with an explicit allowlist should be migrated at
+/// all is a product ruling, not a refactor. Pinning current behaviour means that
+/// ruling, when it comes, has to walk past this assertion.
+#[tokio::test]
+async fn run_pending_widens_a_hand_written_v0_allowlist_and_that_is_visible() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    // A hand-written file: no `schema_version` key at all -> serde default 0.
+    config.schema_version = 0;
+    config.autonomy.allowed_commands = vec!["ls".to_string(), "cat".to_string()];
+
+    run_pending(&mut config).await;
+
+    assert_eq!(
+        config.schema_version, CURRENT_SCHEMA_VERSION,
+        "the whole 0 -> current chain runs against a config that was never at v3"
+    );
+
+    // The user's own entries survive — the merge is additive.
+    for kept in &["ls", "cat"] {
+        assert!(
+            config.autonomy.allowed_commands.iter().any(|c| c == kept),
+            "{kept} was configured explicitly and must survive"
+        );
+    }
+
+    // …and so do 28 commands the user never asked for, five of which mutate the
+    // filesystem. This is the security-relevant half.
+    for added in &["mkdir", "touch", "cp", "mv", "ln"] {
+        assert!(
+            config.autonomy.allowed_commands.iter().any(|c| c == added),
+            "current behaviour: the v3->v4 migration adds {added} to a hand-written \
+             allowlist that never contained it"
+        );
+    }
+    assert!(
+        config.autonomy.allowed_commands.len() > 2,
+        "the configured list of 2 is widened, not preserved: {:?}",
+        config.autonomy.allowed_commands
+    );
+}
+
+/// Setting `schema_version` explicitly is the documented opt-out, and it works.
+#[tokio::test]
+async fn an_explicit_schema_version_stops_the_allowlist_being_widened() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = CURRENT_SCHEMA_VERSION;
+    config.autonomy.allowed_commands = vec!["ls".to_string(), "cat".to_string()];
+
+    run_pending(&mut config).await;
+
+    assert_eq!(
+        config.autonomy.allowed_commands,
+        vec!["ls".to_string(), "cat".to_string()],
+        "with the gate satisfied no migration runs, so the curated list is untouched"
+    );
+}
