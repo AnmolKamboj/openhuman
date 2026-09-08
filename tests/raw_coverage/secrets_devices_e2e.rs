@@ -367,17 +367,28 @@ async fn keyring_consent_status_decide_and_retry_probe() {
         "the backend must be named so the settings panel can show it: {status}"
     );
     if available {
-        // NOT `== "os_keyring"`. That was the #6076 defect this test was written
-        // beside: every working backend reported itself as the OS keyring, so a
-        // plaintext dev-keychain looked like the OS credential store. #6096 made
-        // `activeMode` describe the backend that is actually in use, and the
-        // schema now documents `available` as "the active backend is usable,
-        // which is true for the file backends". What a usable backend implies is
-        // that no consent decision is outstanding — not which backend it is.
-        assert!(
-            !matches!(mode, "consent_pending" | "declined"),
-            "a usable backend means no consent decision is outstanding; \
-             got {mode:?}: {status}"
+        // Assert the BACKEND -> MODE pairing, not merely that the mode is in the
+        // enum. #6076 was exactly a mismatched pair — `backendName: "file"` with
+        // `activeMode: "os_keyring"` — so a predicate that only rejects
+        // `consent_pending`/`declined` would let that regression back in while a
+        // comment claimed to guard it. Mirrors `active_mode_for` in
+        // `security/keyring_consent/policy.rs:125-146`.
+        let backend = status
+            .get("backendName")
+            .and_then(Value::as_str)
+            .expect("backendName asserted non-empty above");
+        let expected = match backend {
+            "os" => "os_keyring",
+            "encrypted_file" => "local_encrypted_file",
+            "file" | "mock" => "local_plaintext_file",
+            // An unrecognised backend reports `consent_pending` rather than
+            // guessing — the deliberate fallback in `policy.rs`.
+            _ => "consent_pending",
+        };
+        assert_eq!(
+            mode, expected,
+            "a usable `{backend}` backend must report `{expected}`; reporting anything \
+             else is the #6076 mismatch this test exists to catch: {status}"
         );
         assert!(
             status.get("failureReason").is_none(),
