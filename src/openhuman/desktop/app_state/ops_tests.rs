@@ -491,23 +491,73 @@ async fn current_user_fetch_carries_the_product_identity() {
 // can't race each other on the process-global var.
 static WORKSPACE_ENV_TEST_LOCK: TestLazy<TestMutex<()>> = TestLazy::new(|| TestMutex::new(()));
 
-/// The #6079 twin: `config_dir_for_workspace_env` must resolve
-/// `~/.openhuman/workspace` to `~/.openhuman` (the real config dir), NOT the
-/// doubled `~/.openhuman/.openhuman`. The private reimplementation this replaced
-/// produced the doubled path, so `config_is_workspace_env_scoped` disagreed with
-/// the loader and mis-scoped credentials on session revalidation. Delegating to
-/// the shared `resolve_config_dir_for_workspace` keeps the two in lockstep.
+/// RAII guard for `OPENHUMAN_WORKSPACE`. Captures the prior value on
+/// construction and restores it (set or remove) on drop, so a test that panics
+/// between the mutation and the end of the test can't leak the override into a
+/// sibling test. Must be constructed while holding `WORKSPACE_ENV_TEST_LOCK`:
+/// mutating a process env var while another thread reads it is unsafe, and the
+/// lock serialises every test in this group.
+struct WorkspaceEnvGuard {
+    prior: Option<std::ffi::OsString>,
+}
+
+impl WorkspaceEnvGuard {
+    fn set(value: &std::path::Path) -> Self {
+        let prior = std::env::var_os("OPENHUMAN_WORKSPACE");
+        std::env::set_var("OPENHUMAN_WORKSPACE", value);
+        Self { prior }
+    }
+
+    fn set_empty() -> Self {
+        let prior = std::env::var_os("OPENHUMAN_WORKSPACE");
+        std::env::set_var("OPENHUMAN_WORKSPACE", "");
+        Self { prior }
+    }
+
+    fn unset() -> Self {
+        let prior = std::env::var_os("OPENHUMAN_WORKSPACE");
+        std::env::remove_var("OPENHUMAN_WORKSPACE");
+        Self { prior }
+    }
+}
+
+impl Drop for WorkspaceEnvGuard {
+    fn drop(&mut self) {
+        match &self.prior {
+            Some(value) => std::env::set_var("OPENHUMAN_WORKSPACE", value),
+            None => std::env::remove_var("OPENHUMAN_WORKSPACE"),
+        }
+    }
+}
+
+/// The #6079 twin: `config_dir_for_workspace_env` must resolve the modern
+/// `<root>/.openhuman/workspace` layout to its parent `<root>/.openhuman` (the
+/// real config dir), NOT the doubled `<root>/.openhuman/.openhuman`. The private
+/// reimplementation this replaced produced the doubled path, so
+/// `config_is_workspace_env_scoped` disagreed with the loader and mis-scoped
+/// credentials on session revalidation. Delegating to the shared
+/// `resolve_config_dir_for_workspace` keeps the two in lockstep.
+///
+/// The workspace root is named `default_root_dir_name()` (`.openhuman` /
+/// `.openhuman-staging`) so the modern-layout arm — which keys on that name —
+/// fires regardless of the ambient `OPENHUMAN_APP_ENV`, and a temp dir isolates
+/// it from any real `.openhuman` on the host.
 #[test]
 fn config_dir_for_workspace_env_modern_layout_does_not_double_openhuman() {
     let _g = WORKSPACE_ENV_TEST_LOCK.lock();
-    std::env::set_var("OPENHUMAN_WORKSPACE", "/home/test/.openhuman/workspace");
-    let resolved = config_dir_for_workspace_env();
-    std::env::remove_var("OPENHUMAN_WORKSPACE");
+    let tmp = tempdir().unwrap();
+    let root = tmp
+        .path()
+        .join(crate::openhuman::config::default_root_dir_name());
+    let workspace = root.join("workspace");
+    let _env = WorkspaceEnvGuard::set(&workspace);
 
-    assert_eq!(resolved, Some(PathBuf::from("/home/test/.openhuman")));
+    let resolved = config_dir_for_workspace_env();
+
+    assert_eq!(resolved, Some(root.clone()));
     assert_ne!(
         resolved,
-        Some(PathBuf::from("/home/test/.openhuman/.openhuman")),
+        Some(root.join(crate::openhuman::config::default_root_dir_name())),
         "must never return the doubled .openhuman/.openhuman path"
     );
 }
@@ -519,13 +569,16 @@ fn config_dir_for_workspace_env_modern_layout_does_not_double_openhuman() {
 #[test]
 fn config_dir_for_workspace_env_fresh_legacy_resolves_to_sibling() {
     let _g = WORKSPACE_ENV_TEST_LOCK.lock();
-    std::env::set_var("OPENHUMAN_WORKSPACE", "/home/test/some-project/workspace");
+    let tmp = tempdir().unwrap();
+    let project = tmp.path().join("some-project");
+    let workspace = project.join("workspace");
+    let _env = WorkspaceEnvGuard::set(&workspace);
+
     let resolved = config_dir_for_workspace_env();
-    std::env::remove_var("OPENHUMAN_WORKSPACE");
 
     assert_eq!(
         resolved,
-        Some(PathBuf::from("/home/test/some-project/.openhuman")),
+        Some(project.join(".openhuman")),
         "a fresh legacy workspace must resolve to its sibling .openhuman"
     );
 }
@@ -535,14 +588,15 @@ fn config_dir_for_workspace_env_fresh_legacy_resolves_to_sibling() {
 #[test]
 fn config_dir_for_workspace_env_none_when_unset_or_empty() {
     let _g = WORKSPACE_ENV_TEST_LOCK.lock();
-    std::env::remove_var("OPENHUMAN_WORKSPACE");
-    assert_eq!(config_dir_for_workspace_env(), None);
+    {
+        let _env = WorkspaceEnvGuard::unset();
+        assert_eq!(config_dir_for_workspace_env(), None);
+    }
 
-    std::env::set_var("OPENHUMAN_WORKSPACE", "");
-    let resolved = config_dir_for_workspace_env();
-    std::env::remove_var("OPENHUMAN_WORKSPACE");
+    let _env = WorkspaceEnvGuard::set_empty();
     assert_eq!(
-        resolved, None,
+        config_dir_for_workspace_env(),
+        None,
         "an empty override must not be treated as a path"
     );
 }
