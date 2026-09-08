@@ -265,18 +265,42 @@ pub(crate) fn resolve_config_dir_for_workspace(workspace_dir: &Path) -> (PathBuf
         );
     }
 
-    let legacy_config_dir = workspace_dir
-        .parent()
-        .map(|parent| parent.join(".openhuman"));
+    let has_workspace_basename = workspace_dir
+        .file_name()
+        .is_some_and(|name| name == std::ffi::OsStr::new("workspace"));
+    let parent = workspace_dir.parent();
+
+    // Modern default layout: the workspace lives *inside* the `.openhuman`
+    // config dir (`~/.openhuman/workspace`), so the parent IS the config dir.
+    // `default_config_and_workspace_dirs` produces exactly this shape. This is
+    // a pure path-structure decision — no `.exists()` probe — so pointing
+    // `OPENHUMAN_WORKSPACE` at `~/.openhuman/workspace` resolves to
+    // `~/.openhuman` and loads the real `~/.openhuman/config.toml` instead of
+    // the doubled, non-existent `~/.openhuman/.openhuman` (#6079).
+    if has_workspace_basename {
+        if let Some(parent) = parent {
+            if parent
+                .file_name()
+                .is_some_and(|name| name == std::ffi::OsStr::new(default_root_dir_name()))
+            {
+                return (parent.to_path_buf(), workspace_config_dir);
+            }
+        }
+    }
+
+    let legacy_config_dir = parent.map(|parent| parent.join(".openhuman"));
     if let Some(legacy_dir) = legacy_config_dir {
+        // Legacy sibling layout: `<something>/workspace` with config living in a
+        // sibling `<something>/.openhuman`.
         if legacy_dir.join("config.toml").exists() {
             return (legacy_dir, workspace_config_dir);
         }
 
-        if workspace_dir
-            .file_name()
-            .is_some_and(|name| name == std::ffi::OsStr::new("workspace"))
-        {
+        // Same layout without a config.toml yet, but only when the sibling
+        // `.openhuman` actually exists — never return a non-existent doubled
+        // path (the original #6079 bug: this arm fired for any `workspace`
+        // basename, so `~/.openhuman/workspace` produced `~/.openhuman/.openhuman`).
+        if has_workspace_basename && legacy_dir.exists() {
             return (legacy_dir, workspace_config_dir);
         }
     }
@@ -387,6 +411,27 @@ pub(crate) async fn resolve_runtime_config_dirs_with(
         if !custom_workspace.is_empty() {
             let (openhuman_dir, workspace_dir) =
                 resolve_config_dir_for_workspace(&PathBuf::from(custom_workspace));
+            // A misresolved config dir (e.g. `OPENHUMAN_WORKSPACE` pointing
+            // inside `.openhuman`, #6079) silently reverts every setting to
+            // schema defaults, and the resolved workspace_dir stays correct so
+            // the mistake is otherwise invisible. Name the chosen config dir and
+            // whether it holds a `config.toml`: warn when it does not (the
+            // fall-to-defaults case), debug on the happy path.
+            let config_found = openhuman_dir.join("config.toml").exists();
+            if config_found {
+                tracing::debug!(
+                    config_dir = %openhuman_dir.display(),
+                    workspace_dir = %workspace_dir.display(),
+                    "OPENHUMAN_WORKSPACE resolved config dir; config.toml present"
+                );
+            } else {
+                tracing::warn!(
+                    config_dir = %openhuman_dir.display(),
+                    workspace_dir = %workspace_dir.display(),
+                    "OPENHUMAN_WORKSPACE resolved to a config dir with no config.toml; \
+                     settings will fall back to schema defaults (see #6079)"
+                );
+            }
             return Ok((
                 openhuman_dir,
                 workspace_dir,
