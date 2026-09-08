@@ -9,7 +9,6 @@ use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use axum::http::header::AUTHORIZATION;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
@@ -184,7 +183,6 @@ async fn rpc(rpc_base: &str, id: i64, method: &str, params: Value) -> Value {
     let response = client
         .post(rpc_base)
         .bearer_auth(rpc_bearer())
-        .header(AUTHORIZATION, format!("Bearer {}", rpc_bearer()))
         .json(&json!({
             "jsonrpc": "2.0",
             "id": id,
