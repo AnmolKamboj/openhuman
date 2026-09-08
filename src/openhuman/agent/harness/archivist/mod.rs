@@ -18,7 +18,7 @@
 
 pub mod boundary;
 mod events_heuristic;
-mod helpers;
+pub(crate) mod helpers;
 mod hook_impl;
 mod lifecycle;
 mod recap;
