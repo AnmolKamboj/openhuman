@@ -963,7 +963,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Security,
         crate::openhuman::security::devices::all_devices_registered_controllers(),
     );
-    // Durable agent session database — queryable index over transcripts, lineage, tool calls
+    // Durable agent/workflow run ledger — read surface over run state, lineage, events, telemetry
     push(
         &mut controllers,
         DomainGroup::Agent,
