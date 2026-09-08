@@ -23,7 +23,8 @@
 //! bytes, which is the whole point.
 
 use crate::openhuman::agent::context::channels_prompt::{
-    build_system_prompt_with_identity, PromptIdentityOverride,
+    build_system_prompt_with_identity, render_project_context, ProjectContextPlacement,
+    PromptIdentityOverride,
 };
 use crate::openhuman::agent::profiles::{
     self, AgentProfile, AgentProfileStore, DEFAULT_PROFILE_ID,
@@ -67,9 +68,13 @@ pub(crate) struct ChannelIdentity {
     pub(crate) soul_md: Option<String>,
     /// The profile's own memory, replacing root `MEMORY.md`; `None` renders the root file.
     pub(crate) memory_md: Option<String>,
-    /// An external soul file the profile names (`soul_md_path`); watched by
-    /// the fingerprint so edits to it are picked up too.
+    /// The workspace file the profile's `soul_md_path` resolves to (safe,
+    /// absolute — see `profiles::paths::soul_md_file_path`); watched by the
+    /// fingerprint so edits to it are picked up too.
     pub(crate) soul_md_path: Option<PathBuf>,
+    /// The profile's `system_prompt_suffix`, rendered as the same
+    /// `## Agent profile` block desktop chat appends (trimmed, non-empty).
+    pub(crate) prompt_suffix: Option<String>,
 }
 
 impl ChannelIdentity {
@@ -80,6 +85,7 @@ impl ChannelIdentity {
             soul_md: None,
             memory_md: None,
             soul_md_path: None,
+            prompt_suffix: None,
         }
     }
 
@@ -88,12 +94,13 @@ impl ChannelIdentity {
             profile_id: profile.id.clone(),
             soul_md: profiles::paths::resolve_personality_soul(workspace_dir, profile),
             memory_md: profiles::paths::resolve_personality_memory_md(workspace_dir, profile),
-            soul_md_path: profile
-                .soul_md_path
+            soul_md_path: profiles::paths::soul_md_file_path(workspace_dir, profile),
+            prompt_suffix: profile
+                .system_prompt_suffix
                 .as_deref()
                 .map(str::trim)
-                .filter(|path| !path.is_empty())
-                .map(PathBuf::from),
+                .filter(|suffix| !suffix.is_empty())
+                .map(str::to_string),
         }
     }
 }
@@ -297,6 +304,10 @@ fn render(inputs: &ChannelPromptInputs, identity: &ChannelIdentity) -> String {
         .iter()
         .map(|(name, desc)| (name.as_str(), desc.as_str()))
         .collect();
+    let identity_override = PromptIdentityOverride {
+        soul_md: identity.soul_md.as_deref(),
+        memory_md: identity.memory_md.as_deref(),
+    };
     // `channel_name = None`: the runtime wires up several providers at once,
     // so the capability block keeps its platform-agnostic phrasing.
     let mut prompt = build_system_prompt_with_identity(
@@ -306,13 +317,43 @@ fn render(inputs: &ChannelPromptInputs, identity: &ChannelIdentity) -> String {
         &inputs.skills,
         inputs.bootstrap_max_chars,
         None,
-        PromptIdentityOverride {
-            soul_md: identity.soul_md.as_deref(),
-            memory_md: identity.memory_md.as_deref(),
-        },
+        identity_override,
+        ProjectContextPlacement::Omitted,
     );
     prompt.push_str(&inputs.suffix);
+    // Identity after the tool schemas and the access context: a one-line
+    // soul followed by ~140k chars of schemas was not honoured by the model,
+    // while the same soul near the end of the prompt is (#6027).
+    ensure_blank_line(&mut prompt);
+    render_project_context(
+        &mut prompt,
+        &inputs.workspace_dir,
+        inputs.bootstrap_max_chars,
+        identity_override,
+    );
+    // The profile's own instructions come last, as the block desktop chat
+    // renders through `AgentProfilePromptSection` (#6027: both paths agree).
+    if let Some(suffix) = identity.prompt_suffix.as_deref() {
+        ensure_blank_line(&mut prompt);
+        prompt.push_str(&profiles::prompt_section::render_agent_profile_block(
+            suffix, None,
+        ));
+        prompt.push_str("\n\n");
+    }
     prompt
+}
+
+/// Ends `prompt` with exactly one blank line so the next `##` section is
+/// separated the way the builder separates its own.
+fn ensure_blank_line(prompt: &mut String) {
+    if prompt.is_empty() || prompt.ends_with("\n\n") {
+        return;
+    }
+    if prompt.ends_with('\n') {
+        prompt.push('\n');
+    } else {
+        prompt.push_str("\n\n");
+    }
 }
 
 /// Names the profile and which files were inlined — never their contents.
@@ -329,11 +370,17 @@ fn log_render(workspace_dir: &Path, identity: &ChannelIdentity, rendered: &str, 
     } else {
         "none"
     };
+    let suffix = if identity.prompt_suffix.is_some() {
+        "profile"
+    } else {
+        "none"
+    };
     tracing::info!(
         target: "openhuman::channels",
         profile_id = %identity.profile_id,
         soul,
         memory,
+        suffix,
         chars = rendered.chars().count(),
         reason,
         "[channels][prompt] rendered system prompt"

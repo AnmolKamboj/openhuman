@@ -45,6 +45,34 @@ pub struct PromptIdentityOverride<'a> {
     pub memory_md: Option<&'a str>,
 }
 
+/// Where [`build_system_prompt_with_identity`] puts the `## Project Context`
+/// block — the identity files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectContextPlacement {
+    /// Between the Workspace and Date & Time sections: the historical layout,
+    /// and what [`build_system_prompt`] renders.
+    Inline,
+    /// Not rendered here; the caller appends [`render_project_context`] where
+    /// it wants it. The channel runtime puts the persona *after* its tool
+    /// schemas — a one-line soul followed by ~140k chars of schemas was not
+    /// being honoured, while the same soul near the end of the prompt is
+    /// (#6027).
+    Omitted,
+}
+
+/// Appends the `## Project Context` block — the identity files, with a
+/// profile's soul / memory substituted per `identity` — to `prompt`.
+pub fn render_project_context(
+    prompt: &mut String,
+    workspace_dir: &Path,
+    bootstrap_max_chars: Option<usize>,
+    identity: PromptIdentityOverride<'_>,
+) {
+    prompt.push_str("## Project Context\n\n");
+    let max_chars = bootstrap_max_chars.unwrap_or(BOOTSTRAP_MAX_CHARS);
+    load_openclaw_bootstrap_files(prompt, workspace_dir, max_chars, identity);
+}
+
 /// Load OpenClaw format bootstrap files into the prompt.
 fn load_openclaw_bootstrap_files(
     prompt: &mut String,
@@ -121,11 +149,13 @@ pub fn build_system_prompt(
         bootstrap_max_chars,
         channel_name,
         PromptIdentityOverride::default(),
+        ProjectContextPlacement::Inline,
     )
 }
 
 /// [`build_system_prompt`] with the active profile's identity substituted
-/// into the bootstrap section (see [`PromptIdentityOverride`]).
+/// into the bootstrap section (see [`PromptIdentityOverride`]) and that
+/// section rendered per `placement`.
 pub fn build_system_prompt_with_identity(
     workspace_dir: &Path,
     model_name: &str,
@@ -134,6 +164,7 @@ pub fn build_system_prompt_with_identity(
     bootstrap_max_chars: Option<usize>,
     channel_name: Option<&str>,
     identity: PromptIdentityOverride<'_>,
+    placement: ProjectContextPlacement,
 ) -> String {
     use std::fmt::Write;
     let mut prompt = String::with_capacity(8192);
@@ -207,9 +238,9 @@ pub fn build_system_prompt_with_identity(
     );
 
     // ── 5. Bootstrap files (injected into context) ──────────────
-    prompt.push_str("## Project Context\n\n");
-    let max_chars = bootstrap_max_chars.unwrap_or(BOOTSTRAP_MAX_CHARS);
-    load_openclaw_bootstrap_files(&mut prompt, workspace_dir, max_chars, identity);
+    if placement == ProjectContextPlacement::Inline {
+        render_project_context(&mut prompt, workspace_dir, bootstrap_max_chars, identity);
+    }
 
     // ── 6. Date & Time ──────────────────────────────────────────
     let now = chrono::Local::now();
