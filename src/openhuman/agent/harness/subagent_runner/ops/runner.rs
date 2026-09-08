@@ -32,7 +32,7 @@ use crate::openhuman::agent::harness::subagent_runner::handoff::ResultHandoffCac
 use crate::openhuman::agent::harness::subagent_runner::subagent_iter_cap_with_autonomous_lift;
 use crate::openhuman::agent::harness::subagent_runner::tool_prep::{
     build_text_mode_tool_instructions, filter_tool_indices, is_subagent_spawn_tool,
-    load_prompt_source, top_k_for_toolkit,
+    load_prompt_source, select_actions_with_essentials, top_k_for_toolkit,
 };
 use crate::openhuman::agent::harness::subagent_runner::types::{
     SubagentMode, SubagentRunError, SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus,
@@ -1072,15 +1072,26 @@ async fn run_typed_mode(
                 let selected: Vec<
                     &crate::openhuman::agent::context::prompt::ConnectedIntegrationTool,
                 > = if filter_hits.len() >= super::super::super::tool_filter::MIN_CONFIDENT_HITS {
+                    // The ranker's verb gate can drop every content-returning
+                    // action for a find/search prompt, so the toolkit's
+                    // essentials are reserved inside the same budget (#6033).
+                    let kept_idx =
+                        select_actions_with_essentials(tk, &integration.tools, &filter_hits, top_k);
+                    let kept: Vec<_> = kept_idx.iter().map(|&i| &integration.tools[i]).collect();
                     tracing::info!(
                         agent_id = %definition.id,
                         toolkit = %tk,
                         total = integration.tools.len(),
-                        kept = filter_hits.len(),
+                        kept = kept.len(),
                         top_k = top_k,
+                        kept_actions = %kept
+                            .iter()
+                            .map(|a| a.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(","),
                         "[subagent_runner:typed] fuzzy tool filter narrowed toolkit"
                     );
-                    filter_hits.iter().map(|&i| &integration.tools[i]).collect()
+                    kept
                 } else {
                     tracing::info!(
                         agent_id = %definition.id,

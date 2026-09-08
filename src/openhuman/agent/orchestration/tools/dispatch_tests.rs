@@ -205,3 +205,65 @@ fn the_question_in_an_unpersisted_pause_failure_is_encoded_not_interpolated() {
         "the question should appear JSON-escaped rather than raw: {out}"
     );
 }
+
+// ── Unexecuted tool-call stubs + inline-result framing (#6033) ──────────
+
+#[test]
+fn a_tool_call_stub_is_recognised_as_unexecuted() {
+    assert!(super::is_unexecuted_tool_call_stub(
+        "<tool_call>{\"name\": \"GMAIL_LIST_MESSAGES\", \"arguments\": {}}</tool_call>"
+    ));
+    assert!(super::is_unexecuted_tool_call_stub(
+        "{\"tool_calls\": [{\"name\": \"GMAIL_FETCH_EMAILS\"}]}"
+    ));
+}
+
+#[test]
+fn a_real_answer_that_mentions_a_tool_call_is_not_a_stub() {
+    assert!(!super::is_unexecuted_tool_call_stub(
+        "I found 3 job emails. I used <tool_call>GMAIL_FETCH_EMAILS</tool_call> to read them."
+    ));
+    assert!(!super::is_unexecuted_tool_call_stub(
+        "Here are the emails from the last 5 days: Acme, Globex, Initech."
+    ));
+    assert!(
+        !super::is_unexecuted_tool_call_stub(""),
+        "empty output carries no markup, so it is not a stub"
+    );
+}
+
+#[test]
+fn a_blocking_delegation_says_its_result_is_inline() {
+    let framed = super::with_inline_result_note(
+        "the emails are …".to_string(),
+        super::DispatchMode::Blocking,
+    );
+    assert!(framed.starts_with("the emails are …"));
+    assert!(framed.contains("[INLINE_RESULT]"));
+    assert!(framed.contains("no sub-agent worker"));
+    assert!(framed.contains("wait_subagent"));
+}
+
+#[test]
+fn an_async_delegation_keeps_its_output_untouched() {
+    let output = "the emails are …".to_string();
+    assert_eq!(
+        super::with_inline_result_note(output.clone(), super::DispatchMode::PreferAsync),
+        output,
+        "only a blocking dispatch may claim there is no worker"
+    );
+}
+
+#[test]
+fn the_incomplete_envelope_frames_a_stub_without_claiming_success() {
+    let envelope = super::incomplete_envelope(
+        "delegate_to_integrations_agent",
+        "returned an unexecuted tool call instead of a result",
+        "<tool_call>GMAIL_LIST_MESSAGES</tool_call>",
+        super::DispatchMode::Blocking,
+    );
+    assert!(envelope.starts_with("[SUBAGENT_INCOMPLETE]"));
+    assert!(envelope.contains("do NOT report it as done"));
+    assert!(envelope.contains("returned an unexecuted tool call"));
+    assert!(envelope.contains("[INLINE_RESULT]"));
+}
