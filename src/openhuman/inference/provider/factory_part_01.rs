@@ -327,9 +327,14 @@ pub(crate) fn role_uses_implicit_cloud_fallback(role: &str, config: &Config) -> 
 
 /// Return the configured provider string for a named workload role.
 ///
-/// Empty / `"cloud"` resolves to `primary_cloud`. **Every** role behaves this
-/// way: a route that is not set falls through to the managed backend, and no
-/// role uses a sibling's BYOK provider as a fallback.
+/// Empty / `"cloud"` resolves through `primary_cloud`. **Every** role behaves
+/// this way, and no role uses a sibling's BYOK provider as a fallback.
+///
+/// "Resolves through `primary_cloud`" is not the same as "goes to the managed
+/// backend": [`resolve_primary_cloud_provider_string`] may yield a legacy
+/// external `inference_url` (see below), or the fail-closed sentinel for a
+/// half-migrated BYOK config. The guarantee here is narrower and exact — an
+/// unset route does not borrow a *sibling's* configured provider.
 ///
 /// The deliberate *aliases* in [`configured_route_for_role`] are unaffected and
 /// remain: `burst` reads `agentic_provider` and `summarization` reads
