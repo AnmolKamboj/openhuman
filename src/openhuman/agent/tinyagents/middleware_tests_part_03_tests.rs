@@ -149,7 +149,7 @@ fn sink_with(entries: &[(&str, &str)]) -> crate::openhuman::agent::tinyagents::T
 /// A run with calls left is untouched: no instruction, and the tool belt intact.
 #[tokio::test]
 async fn wrap_up_leaves_a_call_with_budget_remaining_alone() {
-    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]));
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]), 0);
     let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(5), ());
     ctx.limits.record_model_call().unwrap();
     let mut request = ModelRequest {
@@ -172,7 +172,7 @@ async fn wrap_up_leaves_a_call_with_budget_remaining_alone() {
 /// asking — and the wrap-up instruction is appended as the final turn.
 #[tokio::test]
 async fn wrap_up_withdraws_tools_and_appends_the_instruction_on_the_last_call() {
-    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]));
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[]), 0);
     let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
     ctx.limits.record_model_call().unwrap();
     ctx.limits.record_model_call().unwrap(); // now the final call
@@ -212,6 +212,9 @@ async fn wrap_up_restores_tool_results_microcompact_cleared() {
             ("call-old", "issue #41: auth bypass"),
             ("call-new", "issue #42: leak"),
         ]),
+        // Unbounded: this case is about restoring what was cleared, not about
+        // the budget that stops it (covered by its own test below).
+        0,
     );
     let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
     ctx.limits.record_model_call().unwrap();
@@ -243,7 +246,8 @@ async fn wrap_up_restores_tool_results_microcompact_cleared() {
 /// the sink holds a different (e.g. later-truncated) copy for that id.
 #[tokio::test]
 async fn wrap_up_does_not_rewrite_a_result_that_was_never_cleared() {
-    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[("call-1", "FROM SINK")]));
+    let mw =
+        FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&[("call-1", "FROM SINK")]), 0);
     let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
     ctx.limits.record_model_call().unwrap();
     ctx.limits.record_model_call().unwrap();
@@ -299,7 +303,7 @@ async fn ctx_with_artifacts(entries: &[(&str, &str, &str, u64)]) -> RunContext<(
 /// saying that there is nothing to point at.
 #[tokio::test]
 async fn toc_is_absent_when_no_result_was_offloaded() {
-    let mw = ArtifactIndexTocMiddleware;
+    let mw = ArtifactIndexTocMiddleware::new(0);
     let mut ctx = ctx_with_artifacts(&[]).await;
     let mut request = ModelRequest {
         messages: vec![TaMessage::user("hi")],
@@ -316,7 +320,7 @@ async fn toc_is_absent_when_no_result_was_offloaded() {
 /// what the reduction steps act on.
 #[tokio::test]
 async fn toc_lists_every_persisted_artifact_as_a_system_message() {
-    let mw = ArtifactIndexTocMiddleware;
+    let mw = ArtifactIndexTocMiddleware::new(0);
     let mut ctx = ctx_with_artifacts(&[
         ("call-1", "fetch_issues", "outputs/issues-p1.json", 240_000),
         ("call-2", "web_search", "outputs/search-2.json", 91_000),
@@ -355,7 +359,7 @@ async fn toc_lists_every_persisted_artifact_as_a_system_message() {
 /// Rendered fresh per request, so repeated passes cannot stack stale lists.
 #[tokio::test]
 async fn toc_does_not_accumulate_across_calls() {
-    let mw = ArtifactIndexTocMiddleware;
+    let mw = ArtifactIndexTocMiddleware::new(0);
     let mut ctx = ctx_with_artifacts(&[("call-1", "fetch", "outputs/a.json", 100)]).await;
 
     let mut first = ModelRequest {
@@ -377,5 +381,102 @@ async fn toc_does_not_accumulate_across_calls() {
         second.messages.len(),
         2,
         "exactly one contents list per request"
+    );
+}
+
+// ── the bounds CodeRabbit asked for on #6068 ────────────────────────────────
+
+/// Restoration stops at the input allowance instead of overflowing it.
+///
+/// It runs after compression and before the trim, so an unbounded restore
+/// pushes the request over and the trim evicts whole messages — strictly more
+/// destructive than the blanking being undone, and able to discard the very
+/// results just restored. Preventing the overflow beats repairing it.
+#[tokio::test]
+async fn wrap_up_stops_restoring_at_the_input_budget() {
+    let big = "x".repeat(4_000);
+    let mw = FinalCallWrapUpMiddleware::new(
+        "CONCLUDE NOW",
+        sink_with(&[("call-1", &big), ("call-2", &big), ("call-3", &big)]),
+        // Room for roughly one of them, not three.
+        1_200,
+    );
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap();
+    let mut request = ModelRequest {
+        messages: vec![
+            TaMessage::tool("call-1", CLEARED_PLACEHOLDER),
+            TaMessage::tool("call-2", CLEARED_PLACEHOLDER),
+            TaMessage::tool("call-3", CLEARED_PLACEHOLDER),
+        ],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let restored = request
+        .messages
+        .iter()
+        .filter(|m| m.text().starts_with("xxx"))
+        .count();
+    assert!(
+        restored >= 1 && restored < 3,
+        "some restored, not all — budget 1200 cannot hold three 4k bodies, got {restored}"
+    );
+    // Newest-first: the last tool result is the one the model never saw (the
+    // cap is checked before the request is built). Not `messages.last()` —
+    // that is the wrap-up instruction this middleware just appended.
+    let newest_tool = request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| matches!(m, TaMessage::Tool(_)))
+        .map(|m| m.text())
+        .unwrap_or_default();
+    assert!(
+        newest_tool.starts_with("xxx"),
+        "the newest cleared result is restored first, got: {}",
+        &newest_tool[..newest_tool.len().min(60)]
+    );
+}
+
+/// The contents list is capped, and says how many it left out.
+///
+/// It is a system message so the ladder cannot take it — which also means
+/// nothing downstream can shrink it, so it has to bound itself.
+#[tokio::test]
+async fn toc_is_capped_and_reports_what_it_omitted() {
+    let entries: Vec<(String, String, String, u64)> = (0..200)
+        .map(|i| {
+            (
+                format!("call-{i}"),
+                format!("tool_with_a_long_name_{i}"),
+                format!("outputs/a-fairly-long-artifact-path-{i}.json"),
+                1_000,
+            )
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str, &str, u64)> = entries
+        .iter()
+        .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
+        .collect();
+    let mut ctx = ctx_with_artifacts(&borrowed).await;
+    let mw = ArtifactIndexTocMiddleware::new(2_000);
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("what did you find?")],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let text = request.messages.last().expect("a contents list").text();
+    assert!(
+        text.contains("not listed here"),
+        "an omitted count must be disclosed, not silently dropped: {text}"
+    );
+    assert!(
+        estimate_text_tokens(&text) < 2_000,
+        "the list must stay inside the allowance it was given"
     );
 }

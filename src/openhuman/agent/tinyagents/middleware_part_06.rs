@@ -58,6 +58,10 @@ pub(crate) struct FinalCallWrapUpMiddleware {
     /// Every tool call's captured outcome, so the concluding call can be given
     /// back the results microcompact blanked (see `before_model`).
     outcomes: crate::openhuman::agent::tinyagents::ToolOutcomeSink,
+    /// The input-token allowance the trim downstream enforces, so restoration
+    /// can stay under it rather than provoking an eviction. `0` disables the
+    /// bound (a model advertising no context window).
+    input_budget: u64,
     /// Set when the injection fires, so the caller can report the turn as
     /// capped. Necessary because this turn now ends *naturally* — the model
     /// returns text and requests no tools, which is the loop's ordinary
@@ -70,10 +74,12 @@ impl FinalCallWrapUpMiddleware {
     pub(crate) fn new(
         instruction: &'static str,
         outcomes: crate::openhuman::agent::tinyagents::ToolOutcomeSink,
+        input_budget: u64,
     ) -> Self {
         Self {
             instruction,
             outcomes,
+            input_budget,
             fired: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -145,10 +151,36 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
         // the one this call wants — everything when it fits, an LLM summary of
         // the older slice when it does not, and oldest-first eviction only in
         // extremis. What it never does again is silently blank the middle.
+        // Restore newest-first, and only while the request still fits.
+        //
+        // CodeRabbit on #6068: restoration runs AFTER `ContextCompressionMiddleware`
+        // and before `ImageAwareMessageTrimMiddleware`, so an unbounded restore can
+        // push the request over the window and the trim then evicts whole
+        // messages — which is strictly more destructive than the blanking being
+        // undone, and can discard the very results just restored.
+        //
+        // The review suggested a compression phase after restoration. That is a
+        // second summarizer model call on the one call already about to produce
+        // the conclusion, and it is avoidable: the overflow is preventable
+        // rather than repairable. Restoring under the same budget the trim
+        // enforces means the trim never has cause to fire, so nothing is
+        // evicted and nothing needs re-summarising.
+        //
+        // Newest-first because recency is relevance here: the last rounds'
+        // results are the ones the model has not seen (the cap is checked
+        // before the request is built), and the earliest ones are most likely
+        // already reflected in the compression summary above.
+        let budget = self.input_budget;
+        let mut used: u64 = request
+            .messages
+            .iter()
+            .map(estimate_message_tokens)
+            .sum();
         let restored = match self.outcomes.lock() {
             Ok(outcomes) => {
                 let mut restored = 0usize;
-                for message in request.messages.iter_mut() {
+                let mut skipped = 0usize;
+                for message in request.messages.iter_mut().rev() {
                     let TaMessage::Tool(tool) = message else {
                         continue;
                     };
@@ -172,8 +204,31 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
                     if outcome.trim().is_empty() {
                         continue;
                     }
+                    // What restoring this body would add, against what the
+                    // placeholder already costs.
+                    let added = estimate_text_tokens(&outcome)
+                        .saturating_sub(estimate_text_tokens(CLEARED_PLACEHOLDER));
+                    if budget > 0 && used.saturating_add(added) > budget {
+                        // Everything older is at least as likely to overflow, but
+                        // keep counting so the log reports the true shortfall
+                        // rather than stopping at the first one that did not fit.
+                        skipped += 1;
+                        continue;
+                    }
+                    used = used.saturating_add(added);
                     tool.content = vec![ContentBlock::Text(outcome)];
                     restored += 1;
+                }
+                if skipped > 0 {
+                    tracing::info!(
+                        skipped,
+                        restored,
+                        budget,
+                        used,
+                        "[tinyagents::mw] left some cleared tool results cleared: restoring them \
+                         would have pushed the concluding call past its input budget, and an \
+                         eviction there costs whole messages rather than one body"
+                    );
                 }
                 restored
             }
@@ -257,7 +312,18 @@ const ARTIFACT_INDEX_NAMESPACE: &str = "tool_results";
 /// says where the data went is the one thing the ladder may not take. It is
 /// appended at the tail rather than the head so the cacheable prompt prefix is
 /// untouched.
-pub(crate) struct ArtifactIndexTocMiddleware;
+pub(crate) struct ArtifactIndexTocMiddleware {
+    /// The input-token allowance the trim enforces, so the contents list can be
+    /// capped against it. `0` disables the cap (no advertised window, and no
+    /// trim installed either).
+    input_budget: u64,
+}
+
+impl ArtifactIndexTocMiddleware {
+    pub(crate) fn new(input_budget: u64) -> Self {
+        Self { input_budget }
+    }
+}
 
 #[async_trait]
 impl Middleware<()> for ArtifactIndexTocMiddleware {
@@ -313,7 +379,38 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
         // ordering would rewrite this message on every call for no reason,
         // costing cache and making the diff unreadable in a trace.
         rows.sort();
-        let count = rows.len();
+        let total = rows.len();
+        // Cap the list against the input allowance (CodeRabbit on #6068).
+        //
+        // This message is a system message precisely so the ladder cannot take
+        // it — compression keeps system messages verbatim and the trim never
+        // evicts one — which means nothing downstream can shrink it either. A
+        // turn that persisted enough oversized results would otherwise grow an
+        // un-evictable message without limit, and the guarantee that made the
+        // pointers safe would be the thing that broke the request.
+        //
+        // A tenth of the input allowance: generous for the realistic case (a
+        // handful of artifacts is a few hundred bytes) and firm about the
+        // pathological one. The omitted count is reported rather than the list
+        // silently ending, so the model knows more exist — the same disclosure
+        // rule the rest of this ladder follows, and the reason the artifacts are
+        // findable at all.
+        if self.input_budget > 0 {
+            let cap = (self.input_budget / 10).max(1);
+            let mut used: u64 = 0;
+            let mut kept = 0usize;
+            for row in &rows {
+                used = used.saturating_add(estimate_text_tokens(row));
+                if used > cap {
+                    break;
+                }
+                kept += 1;
+            }
+            rows.truncate(kept.max(1));
+        }
+        let shown = rows.len();
+        let omitted = total - shown;
+        let count = total;
         tracing::debug!(
             artifacts = count,
             "[tinyagents::mw] rendering the persisted-artifact contents list"
@@ -323,8 +420,16 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
              {count} tool result(s) were too large to keep inline and were written to disk. The \
              text you saw for them is a preview; the full content is at the path below and can be \
              read with the file-reading tool when you need detail the preview does not carry.\n\n\
-             {}",
-            rows.join("\n")
+             {}{}",
+            rows.join("\n"),
+            if omitted > 0 {
+                format!(
+                    "\n\n_({omitted} more stored result(s) not listed here — ask for the one you \
+                     need by tool name and it can be located.)_"
+                )
+            } else {
+                String::new()
+            }
         )));
         Ok(())
     }
