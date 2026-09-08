@@ -411,19 +411,19 @@ async fn socket_connect_then_disconnect_round_trips_state() {
     let result = peel(assert_no_jsonrpc_error(&connected, "socket_connect"));
     assert_eq!(
         result.get("status").and_then(Value::as_str),
-        Some("Connecting"),
-        "connect returns as soon as the loop is spawned, in the Connecting state. NOTE the \
-         capitalisation: this handler formats the status with `{{:?}}` while `socket_state` \
-         serialises it through serde (lowercase `connecting`). See \
-         bugs/e2e-wave-socket-status-casing-split.md: {result}"
+        Some("connecting"),
+        "connect returns as soon as the loop is spawned, in the Connecting state. The spelling \
+         is the serde one (`rename_all = \"lowercase\"`), the same encoding `socket_state` and \
+         `connectivity_diag` publish — this handler used to emit Rust's `Debug` \
+         (`\"Connecting\"`) and the split was #6111: {result}"
     );
 
     let disconnected = post_json_rpc(&h.rpc_base, 8102, "openhuman.socket_disconnect", json!({})).await;
     let result = peel(assert_no_jsonrpc_error(&disconnected, "socket_disconnect"));
     assert_eq!(
         result.get("status").and_then(Value::as_str),
-        Some("Disconnected"),
-        "disconnect must report the manager back at rest: {result}"
+        Some("disconnected"),
+        "disconnect must report the manager back at rest, in the serde spelling (#6111): {result}"
     );
 
     let state = post_json_rpc(&h.rpc_base, 8103, "openhuman.socket_state", json!({})).await;
@@ -431,7 +431,8 @@ async fn socket_connect_then_disconnect_round_trips_state() {
     assert_eq!(
         result.get("status").and_then(Value::as_str),
         Some("disconnected"),
-        "state must agree with disconnect's own report (modulo the casing split): {result}"
+        "state must agree with disconnect's own report exactly — one namespace, one status \
+         vocabulary (#6111): {result}"
     );
     assert!(
         result.get("socket_id").map(Value::is_null).unwrap_or(false),
@@ -500,8 +501,9 @@ async fn socket_connect_with_session_requires_a_stored_session() {
     ));
     assert_eq!(
         result.get("status").and_then(Value::as_str),
-        Some("Connecting"),
-        "a stored session must get past the guard and start the loop: {result}"
+        Some("connecting"),
+        "a stored session must get past the guard and start the loop, reporting the serde \
+         spelling (#6111): {result}"
     );
 
     let stopped = post_json_rpc(&h.rpc_base, 8205, "openhuman.socket_disconnect", json!({})).await;
@@ -509,7 +511,7 @@ async fn socket_connect_with_session_requires_a_stored_session() {
         peel(assert_no_jsonrpc_error(&stopped, "socket_disconnect"))
             .get("status")
             .and_then(Value::as_str),
-        Some("Disconnected")
+        Some("disconnected")
     );
 
     manager.disconnect().await.expect("teardown disconnect");
