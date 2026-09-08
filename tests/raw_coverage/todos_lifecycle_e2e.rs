@@ -220,6 +220,29 @@ async fn rpc(base: &str, id: i64, method: &str, params: Value) -> Value {
         .unwrap_or_else(|err| panic!("json for {method}: {err}"))
 }
 
+/// The `/schema` controller catalog, as the frontend and the CLI/RPC
+/// smoke-test generator consume it.
+async fn schema_catalog(base: &str) -> Value {
+    let url = format!("{}/schema", base.trim_end_matches('/'));
+    reqwest::get(&url)
+        .await
+        .unwrap_or_else(|err| panic!("GET {url}: {err}"))
+        .json::<Value>()
+        .await
+        .unwrap_or_else(|err| panic!("schema json: {err}"))
+}
+
+/// One method's declared entry from the catalog.
+fn catalog_entry<'a>(catalog: &'a Value, method: &str) -> &'a Value {
+    catalog
+        .get("methods")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("catalog has no methods array: {catalog}"))
+        .iter()
+        .find(|m| m.get("method").and_then(Value::as_str) == Some(method))
+        .unwrap_or_else(|| panic!("catalog does not advertise {method}"))
+}
+
 fn ok<'a>(value: &'a Value, context: &str) -> &'a Value {
     if let Some(error) = value.get("error") {
         panic!("{context}: unexpected JSON-RPC error: {error}");
@@ -612,26 +635,26 @@ async fn todos_run_records_and_reclaim_report_an_honest_empty_state() {
     harness.join.abort();
 }
 
-/// `todos_replace`'s declared contract cannot be satisfied from the schema.
+/// `todos_replace` refuses a card missing any of the mandatory trio.
 ///
-/// The controller catalog declares one input — `cards: Json`, commented
-/// *"Array of card objects (id may be empty — server generates)"* — and names
-/// no field of a card anywhere. The handler deserializes each entry into
-/// `TaskBoardCard`, whose `id`, `title` and `status` all lack
-/// `#[serde(default)]`, so every one of them must be **present**. Two
-/// consequences a caller reading the schema walks straight into, both pinned
-/// below:
+/// These three refusals are the *handler's* behaviour and are unchanged by
+/// #6087, which corrected the schema rather than the handler. What changed is
+/// that they are now **documented**: the catalog spells `id`, `title` and
+/// `status` as required (see `replace_cards_input`), so a caller can no longer
+/// walk into them by reading the schema. They are pinned here because the
+/// refusals themselves are the contract — `TaskBoardCard`'s `id`, `title` and
+/// `status` carry no `#[serde(default)]`, so every one of them must be
+/// **present**. Two consequences, both pinned below:
 ///
 /// 1. The obvious spelling — `content`, which is what the sibling `todos_add`
 ///    and `todos_edit` inputs call the very same text — is rejected outright.
 /// 2. "id may be empty" is about the string, not the key: omitting `status`
 ///    fails even with a well-formed title.
 ///
-/// This is a documentation defect in the schema, not behaviour to change here.
-/// See `~/tinyhuman/bugs/e2e-wave-todos-replace-undocumented-card-shape.md`.
-/// The assertions are written against what the code *does*, so the day the
-/// schema and the handler are reconciled this case fails and gets updated
-/// deliberately rather than silently drifting.
+/// The assertions are written against what the code *does*. The companion
+/// case `todos_replace_accepts_a_card_built_only_from_its_declared_schema`
+/// proves the other half: that the catalog now carries enough to build a card
+/// that these refusals let through.
 #[tokio::test]
 async fn todos_replace_rejects_the_card_shape_its_own_schema_implies() {
     let _lock = env_lock();
@@ -699,6 +722,126 @@ async fn todos_replace_rejects_the_card_shape_its_own_schema_implies() {
         )
         .is_empty(),
         "a rejected replace must leave the board untouched: {listed}"
+    );
+
+    harness.join.abort();
+}
+
+/// A card built **only** from what the catalog declares is accepted (#6087).
+///
+/// This is the regression test for the schema defect, and it is deliberately
+/// written so that it cannot pass by accident. Rather than hard-coding a card
+/// that happens to work, it *reads the declared schema* and constructs the card
+/// from it: every field the catalog marks `required` is populated, and the
+/// `status` value is taken from the declared enum's own variant list. If the
+/// declaration goes back to a bare `TypeSchema::Json`, or names a field the
+/// handler does not deserialize, or spells `title` as `content`, or offers a
+/// `status` variant `TaskCardStatus` will not parse, this fails — because the
+/// card it builds is only ever as correct as the schema it read.
+#[tokio::test]
+async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
+    let _lock = env_lock();
+    let harness = setup(Vec::new()).await;
+    let thread = "todos-e2e-thread-from-schema";
+
+    let catalog = schema_catalog(&harness.rpc_base).await;
+    let entry = catalog_entry(&catalog, "openhuman.todos_replace");
+
+    let cards_input = entry
+        .get("inputs")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("todos_replace declares no inputs: {entry}"))
+        .iter()
+        .find(|i| i.get("name").and_then(Value::as_str) == Some("cards"))
+        .unwrap_or_else(|| panic!("todos_replace declares no `cards` input: {entry}"));
+
+    // The declaration must describe an array of objects, not an opaque blob.
+    // `TypeSchema::Json` serialises as the bare string "Json", which is exactly
+    // what this controller used to publish and what made it unconstructible.
+    let card_fields = cards_input
+        .get("ty")
+        .and_then(|t| t.get("Array"))
+        .and_then(|a| a.get("Object"))
+        .and_then(|o| o.get("fields"))
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| {
+            panic!(
+                "`cards` must declare an array of objects with named fields; \
+                 an opaque type cannot be built from. Got ty = {}",
+                cards_input.get("ty").unwrap_or(&Value::Null)
+            )
+        });
+
+    // Build a card from the declaration alone.
+    let mut card = serde_json::Map::new();
+    let mut required_seen: Vec<String> = Vec::new();
+    for field in card_fields {
+        if field.get("required").and_then(Value::as_bool) != Some(true) {
+            continue;
+        }
+        let name = field
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("declared field without a name: {field}"))
+            .to_string();
+        let ty = field.get("ty").unwrap_or(&Value::Null);
+        let value = if let Some(variants) = ty.get("Enum").and_then(|e| e.get("variants")) {
+            // Take the enum's own first variant — if the schema advertises a
+            // value the wire type cannot parse, the dispatch below fails.
+            variants
+                .as_array()
+                .and_then(|v| v.first())
+                .cloned()
+                .unwrap_or_else(|| panic!("declared enum with no variants: {field}"))
+        } else if name == "id" {
+            // The one documented special case: the key is required, the string
+            // may be empty, and the server then generates the id.
+            Value::String(String::new())
+        } else {
+            Value::String(format!("built from the schema: {name}"))
+        };
+        required_seen.push(name.clone());
+        card.insert(name, value);
+    }
+
+    assert!(
+        required_seen.iter().any(|n| n == "id")
+            && required_seen.iter().any(|n| n == "title")
+            && required_seen.iter().any(|n| n == "status"),
+        "the catalog must mark `id`, `title` and `status` required — those are \
+         the three `TaskBoardCard` fields with no serde default. Got: {required_seen:?}"
+    );
+
+    let replaced = rpc(
+        &harness.rpc_base,
+        60,
+        "openhuman.todos_replace",
+        json!({ "thread_id": thread, "cards": [Value::Object(card)] }),
+    )
+    .await;
+    let result = ok(
+        &replaced,
+        "todos_replace with a card built from its own schema",
+    );
+
+    // It was accepted AND stored — a schema that merely deserializes but drops
+    // the card would be no better than the old one.
+    let titles = card_titles(result, "replace built from schema");
+    assert_eq!(
+        titles,
+        vec!["built from the schema: title".to_string()],
+        "the card built from the declared schema must land on the board: {result:?}"
+    );
+
+    // The server generated an id for the empty one, as the comment promises.
+    let stored = cards(result, "replace built from schema");
+    let id = stored[0]
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("stored card carries no id: {stored:?}"));
+    assert!(
+        !id.is_empty(),
+        "an empty `id` must be server-generated, got an empty string back"
     );
 
     harness.join.abort();
