@@ -161,10 +161,7 @@ async fn grep_excludes_an_oversized_file_and_does_not_count_it_scanned() {
     tokio::fs::write(dir.join("huge.txt"), &huge).await.unwrap();
 
     let tool = GrepTool::new(test_security(dir.clone()));
-    let result = tool
-        .execute(json!({"pattern": "needle"}))
-        .await
-        .unwrap();
+    let result = tool.execute(json!({"pattern": "needle"})).await.unwrap();
     assert!(!result.is_error, "{}", result.output());
     assert!(
         result.output().contains("small.txt"),
