@@ -226,10 +226,28 @@ pub async fn mcp_setup_test_connection(
 /// than assumed connected: the install is confirmed either way, and claiming a
 /// connection we did not observe is the failure mode this change exists to
 /// remove (#6110).
-fn classify_install_connect(status: Option<&ConnStatus>) -> (&'static str, Option<String>) {
+///
+/// The three inputs are deliberately distinct, because they are three different
+/// facts and a caller acts on them differently:
+///
+/// - `Ok(Some(entry))` — the registry answered and knows this server.
+/// - `Ok(None)` — the registry answered but has no row for it.
+/// - `Err(reason)` — the status query itself failed. The reason is carried into
+///   the message rather than being left in a log line the user never sees:
+///   "the registry could not be asked" is not the same fact as "the server is
+///   not connected", and a transient store error must not read as the latter.
+fn classify_install_connect(
+    status: Result<Option<&ConnStatus>, &str>,
+) -> (&'static str, Option<String>) {
     match status {
-        Some(entry) if matches!(entry.status, ServerStatus::Connected) => ("connected", None),
-        Some(entry) => (
+        Ok(Some(entry)) if matches!(entry.status, ServerStatus::Connected) => ("connected", None),
+        // `last_error` is the connect failure the registry recorded, not a
+        // description of some later state: `connections::connect` builds a
+        // `ConnectFailure` from the original error and stores it, and
+        // `classify` surfaces it here. The synthetic arm below is reached only
+        // when a non-connected server has no recorded failure at all (a
+        // `Disabled` install, say), where naming the state is the whole answer.
+        Ok(Some(entry)) => (
             "installed_disconnected",
             Some(entry.last_error.clone().unwrap_or_else(|| {
                 format!(
@@ -238,9 +256,15 @@ fn classify_install_connect(status: Option<&ConnStatus>) -> (&'static str, Optio
                 )
             })),
         ),
-        None => (
+        Ok(None) => (
             "installed_disconnected",
-            Some("installed, but the server's connection state could not be read back".to_string()),
+            Some("installed, but the registry reported no status row for this server".to_string()),
+        ),
+        Err(reason) => (
+            "installed_disconnected",
+            Some(format!(
+                "installed, but the server's connection state could not be read back: {reason}"
+            )),
         ),
     }
 }
@@ -287,19 +311,22 @@ pub async fn mcp_setup_install_and_connect(
         .map_err(|error| error.to_string())?;
 
     let server_id = outcome.server_id.clone();
-    let connection = host
-        .dynamic()
-        .status()
-        .await
-        .map_err(|error| {
+    let connection = match host.dynamic().status().await {
+        Ok(all) => Ok(all.into_iter().find(|entry| entry.server_id == server_id)),
+        Err(error) => {
             log::warn!(
                 "[mcp_setup] install_and_connect could not read back status for \
                  server_id={server_id}: {error}"
             );
-        })
-        .ok()
-        .and_then(|all| all.into_iter().find(|entry| entry.server_id == server_id));
-    let (status, error) = classify_install_connect(connection.as_ref());
+            Err(error.to_string())
+        }
+    };
+    let (status, error) = classify_install_connect(
+        connection
+            .as_ref()
+            .map(Option::as_ref)
+            .map_err(String::as_str),
+    );
     let connected = status == "connected";
 
     let tools = super::tools_safe_for_agent(&server_id, outcome.tools);
