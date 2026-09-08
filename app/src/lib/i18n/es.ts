@@ -6351,6 +6351,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Modo de almacenamiento de secretos',
   'keyring.settings.mode.osKeychain': 'Llavero del SO',
   'keyring.settings.mode.encryptedFile': 'Local cifrado',
+  'keyring.settings.mode.localEncryptedFile': 'Archivo cifrado',
+  'keyring.settings.mode.localPlaintextFile': 'Archivo sin cifrar',
   'keyring.settings.mode.consentPending': 'No configurado',
   'keyring.settings.mode.declined': 'Rechazado',
   'keyring.settings.availability': 'Disponibilidad del llavero',

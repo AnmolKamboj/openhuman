@@ -6254,6 +6254,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Mode penyimpanan rahasia',
   'keyring.settings.mode.osKeychain': 'Keychain OS',
   'keyring.settings.mode.encryptedFile': 'Lokal terenkripsi',
+  'keyring.settings.mode.localEncryptedFile': 'Berkas terenkripsi',
+  'keyring.settings.mode.localPlaintextFile': 'Berkas tanpa enkripsi',
   'keyring.settings.mode.consentPending': 'Belum dikonfigurasi',
   'keyring.settings.mode.declined': 'Ditolak',
   'keyring.settings.availability': 'Ketersediaan keychain',

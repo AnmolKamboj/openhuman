@@ -6153,6 +6153,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': '비밀 저장 모드',
   'keyring.settings.mode.osKeychain': 'OS 키체인',
   'keyring.settings.mode.encryptedFile': '로컬 암호화',
+  'keyring.settings.mode.localEncryptedFile': '암호화된 파일',
+  'keyring.settings.mode.localPlaintextFile': '암호화되지 않은 파일',
   'keyring.settings.mode.consentPending': '구성되지 않음',
   'keyring.settings.mode.declined': '거부됨',
   'keyring.settings.availability': '키체인 가용성',

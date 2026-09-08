@@ -2,12 +2,41 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Where the process's secrets actually live.
+///
+/// The first two variants are **consent outcomes** — the OS keyring was the
+/// intended store, it could not be used, and the user answered the consent
+/// prompt. The next two are **operator-configured backends**: nobody was asked
+/// anything, `OPENHUMAN_KEYRING_BACKEND` (or the staging/production default)
+/// simply selected a different store. Keeping those apart matters because they
+/// are not the same storage: a consented `LocalEncrypted` fallback means
+/// per-field `SecretStore` encryption inside the config, while
+/// `LocalEncryptedFile` means the `encrypted_file` backend's single
+/// `{workspace}/secrets.enc`.
+///
+/// Read [`KeyringStatus::backend_name`] alongside this — the two answer
+/// different questions and must never contradict each other (#6076: every
+/// non-OS backend reported `OsKeyring` while `backend_name` said otherwise).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageMode {
+    /// The `os` backend, probed and working: macOS Keychain, Windows
+    /// Credential Manager, or Linux Secret Service.
     OsKeyring,
+    /// Consent outcome: the OS keyring failed and the user agreed to the
+    /// local encrypted fallback.
     LocalEncrypted,
+    /// Operator-configured `encrypted_file` backend — one ChaCha20-Poly1305
+    /// `{workspace}/secrets.enc`, unlocked by a master key held in the OS
+    /// keychain. The staging/production default.
+    LocalEncryptedFile,
+    /// Operator-configured `file` (or test-only `mock`) backend. `file` is a
+    /// **plaintext** `{workspace}/dev-keychain.json` with no encryption and no
+    /// OS keychain involvement at all — dev/test only.
+    LocalPlaintextFile,
+    /// The OS keyring is unavailable and the user has not answered yet.
     ConsentPending,
+    /// Consent outcome: the user refused local storage.
     Declined,
 }
 
@@ -16,6 +45,8 @@ impl std::fmt::Display for StorageMode {
         match self {
             Self::OsKeyring => write!(f, "os_keyring"),
             Self::LocalEncrypted => write!(f, "local_encrypted"),
+            Self::LocalEncryptedFile => write!(f, "local_encrypted_file"),
+            Self::LocalPlaintextFile => write!(f, "local_plaintext_file"),
             Self::ConsentPending => write!(f, "consent_pending"),
             Self::Declined => write!(f, "declined"),
         }
