@@ -192,3 +192,44 @@ async fn class_taking_handlers_keep_presence_check_before_value_check() {
         .expect_err("missing class must error");
     assert!(err.contains("missing required `class`"), "got: {err}");
 }
+
+// ── #6108: the forget_facet log must describe what actually happened ─────────
+
+/// The line was previously built unconditionally, before the read that decides
+/// whether there is anything to drop. A typo'd key therefore produced a log
+/// asserting `state=dropped user_state=forgotten` for a row that was never
+/// touched. The RPC contract itself is unchanged and deliberately idempotent —
+/// `{"facet": null}`, no error — so the log is the only thing that can tell the
+/// two outcomes apart.
+#[test]
+fn forget_facet_log_claims_a_drop_only_when_a_row_was_written() {
+    let dropped = forget_facet_log("style/observed_key", true);
+    assert_eq!(dropped.len(), 1);
+    assert!(
+        dropped[0].contains("state=dropped") && dropped[0].contains("user_state=forgotten"),
+        "a real drop must still record the state change: {dropped:?}"
+    );
+    assert!(
+        dropped[0].contains("style/observed_key"),
+        "the log must name the key it dropped: {dropped:?}"
+    );
+}
+
+#[test]
+fn forget_facet_log_does_not_claim_a_drop_for_an_absent_key() {
+    let absent = forget_facet_log("style/never_observed", false);
+    assert_eq!(absent.len(), 1);
+    assert!(
+        !absent[0].contains("state=dropped"),
+        "an absent key must not be logged as a state change — this is the #6108 \
+         defect, where the claim was made before the row was read: {absent:?}"
+    );
+    assert!(
+        !absent[0].contains("user_state=forgotten"),
+        "nor may it claim the user forgot something that was never there: {absent:?}"
+    );
+    assert!(
+        absent[0].contains("style/never_observed") && absent[0].contains("not present"),
+        "it must still name the key and say plainly that nothing changed: {absent:?}"
+    );
+}
