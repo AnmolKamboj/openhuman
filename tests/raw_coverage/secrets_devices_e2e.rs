@@ -305,7 +305,8 @@ allowed_commands = ["ls", "cat"]
 /// All three keyring-consent controllers.
 ///
 /// The anchor is the **persisted file**, not `activeMode`. `policy::current_status`
-/// reports `os_keyring` whenever *any* backend probes as available — and the
+/// reported `os_keyring` whenever *any* backend probes as available (fixed by
+/// #6096; `activeMode` now names the backend actually in use) — and the
 /// `file` dev backend always does — so `activeMode` cannot witness a consent
 /// decision in a test process. `ops::keyring_consent_decide` documents that the
 /// in-memory cache is only updated *after* a successful persist, so proving the
@@ -341,9 +342,22 @@ async fn keyring_consent_status_decide_and_retry_probe() {
         .get("activeMode")
         .and_then(Value::as_str)
         .unwrap_or_else(|| panic!("status must report an `activeMode`: {status}"));
+    // Mirrors `StorageMode`'s `Display` impl (`security/keyring_consent/types.rs`),
+    // which is the source of truth. #6096 added the two `*_file` variants when it
+    // stopped the file backends reporting themselves as `os_keyring` (#6076) — this
+    // list is the whole enum, so a new variant fails here rather than silently
+    // widening what the RPC may return.
     assert!(
-        ["os_keyring", "local_encrypted", "consent_pending", "declined"].contains(&mode),
-        "activeMode must be one of the four documented storage modes; got {mode:?}"
+        [
+            "os_keyring",
+            "local_encrypted",
+            "local_encrypted_file",
+            "local_plaintext_file",
+            "consent_pending",
+            "declined",
+        ]
+        .contains(&mode),
+        "activeMode must be one of the six documented storage modes; got {mode:?}"
     );
     assert!(
         status
@@ -353,10 +367,17 @@ async fn keyring_consent_status_decide_and_retry_probe() {
         "the backend must be named so the settings panel can show it: {status}"
     );
     if available {
-        assert_eq!(
-            mode, "os_keyring",
-            "with a working backend no consent is needed, so the mode must be \
-             `os_keyring` and no failure reason may be attached: {status}"
+        // NOT `== "os_keyring"`. That was the #6076 defect this test was written
+        // beside: every working backend reported itself as the OS keyring, so a
+        // plaintext dev-keychain looked like the OS credential store. #6096 made
+        // `activeMode` describe the backend that is actually in use, and the
+        // schema now documents `available` as "the active backend is usable,
+        // which is true for the file backends". What a usable backend implies is
+        // that no consent decision is outstanding — not which backend it is.
+        assert!(
+            !matches!(mode, "consent_pending" | "declined"),
+            "a usable backend means no consent decision is outstanding; \
+             got {mode:?}: {status}"
         );
         assert!(
             status.get("failureReason").is_none(),
@@ -500,8 +521,15 @@ async fn keyring_consent_status_decide_and_retry_probe() {
         probe
             .get("activeMode")
             .and_then(Value::as_str)
-            .is_some_and(|m| ["os_keyring", "local_encrypted", "consent_pending", "declined"]
-                .contains(&m)),
+            .is_some_and(|m| [
+                "os_keyring",
+                "local_encrypted",
+                "local_encrypted_file",
+                "local_plaintext_file",
+                "consent_pending",
+                "declined",
+            ]
+            .contains(&m)),
         "the probe must return a valid storage mode: {probe}"
     );
 }
