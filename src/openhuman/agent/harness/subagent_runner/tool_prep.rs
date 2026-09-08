@@ -54,6 +54,16 @@ const TOOL_FILTER_TOP_K_HEAVY: usize = 12;
 /// produced a 276k-token first-iteration prompt, so an essential displaces
 /// the lowest-ranked hit rather than growing the surface.
 ///
+/// **Every entry must be read-only.** These actions are forced onto a
+/// delegation whatever it asked for, so a write action here would hand a
+/// "read my email" task an unrequested side-effecting capability — and a
+/// `ComposioActionTool` does not override `external_effect`, so the
+/// approval middleware (which gates on `external_effect_with_args`) would
+/// not stop it. Prompt-injected instructions inside a fetched email could
+/// then act on the mailbox with no human in the loop. Send and the rest of
+/// the write surface stay where they were: reachable when the prompt
+/// actually asks for them, via the ranker.
+///
 /// Only Gmail is seeded, deliberately. A wrong entry spends a slot on
 /// every prompt for that toolkit, so add one only with a fixture-backed
 /// repro — the ranker's general behaviour is the upstream fix.
@@ -64,8 +74,6 @@ const TOOLKIT_ESSENTIAL_ACTIONS: &[(&str, &[&str])] = &[(
         "GMAIL_FETCH_EMAILS",
         // The follow-up once `GMAIL_LIST_MESSAGES` has handed back bare ids.
         "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-        // Keeps the write path reachable when a read prompt wins the ranking.
-        "GMAIL_SEND_EMAIL",
     ],
 )];
 
