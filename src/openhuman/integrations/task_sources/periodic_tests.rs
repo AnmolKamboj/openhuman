@@ -87,27 +87,89 @@ fn no_provider_can_fetch_today() {
     }
 }
 
-/// The gate the periodic loop applies, asserted on the same predicate the
-/// loop reads. An unfetchable source is skipped before `run_source_once` can
-/// record a `store::record_fetch` row or publish `TaskSourceFetchFailed`.
-#[test]
-fn scheduler_skips_a_source_whose_provider_cannot_fetch() {
-    for provider in [
+/// Drives a real `run_one_tick` over a persisted, enabled, due source whose
+/// provider cannot fetch, and asserts the tick recorded **nothing**.
+///
+/// The observable is the source row itself: the failure arm of
+/// `pipeline::run_source_once` calls `store::record_fetch`, which stamps
+/// `last_fetch_at` and `last_status`. Both staying `None` after a tick is
+/// proof the source was skipped before `run_source_once` ran.
+///
+/// This asserts through the scheduler rather than on the predicate, on
+/// purpose: a test that only checked `can_fetch()` would still pass if the
+/// guard were deleted from `run_one_tick`, which is the exact regression this
+/// PR exists to prevent.
+///
+/// The config is scoped onto the embedder seam that `load_config_with_timeout`
+/// prefers, so the tick reads this workspace instead of doing live, racy disk
+/// I/O against `~/.openhuman` — the same approach as `sandbox/schemas_tests.rs`.
+#[tokio::test]
+async fn a_tick_over_an_unfetchable_source_records_nothing() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let workspace = tmp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).expect("workspace");
+    let config = crate::openhuman::config::Config {
+        workspace_dir: workspace.clone(),
+        action_dir: workspace,
+        config_path: tmp.path().join("config.toml"),
+        ..Default::default()
+    };
+    assert!(
+        config.task_sources.enabled,
+        "precondition: the domain must be on, or the tick returns before the loop"
+    );
+
+    // `add_source` mints the id, and it is fresh per run — so the
+    // process-global last-poll map cannot make this source look recently
+    // polled because of another test.
+    let stored = super::super::store::add_source(
+        &config,
         ProviderSlug::Github,
-        ProviderSlug::Notion,
-        ProviderSlug::Linear,
-        ProviderSlug::Clickup,
-    ] {
-        let s = source_for("ts-gate-xyz", 1800, provider);
-        assert!(
-            s.enabled && is_due(&s),
-            "precondition: this source would otherwise be polled"
-        );
-        assert!(
-            !s.provider.can_fetch(),
-            "so the ONLY thing standing between it and a recorded failure is the gate"
-        );
-    }
+        None,
+        None,
+        FilterSpec::Github {
+            repo: None,
+            labels: vec![],
+            assignee_is_me: true,
+            state: None,
+            fetch_mode: Default::default(),
+            extra: json!({}),
+        },
+        1800,
+        SourceTarget::TodoOnly,
+        25,
+    )
+    .expect("persist the source");
+    let id = stored.id.clone();
+
+    assert!(stored.enabled, "precondition: the source is enabled");
+    assert!(is_due(&stored), "precondition: the source is due");
+    assert!(
+        !stored.provider.can_fetch(),
+        "precondition: its provider has no fetch path, so the gate must skip it"
+    );
+
+    CoreContext::scope(
+        CoreContext::for_test_with_config(DomainSet::full(), config.clone()),
+        run_one_tick(),
+    )
+    .await
+    .expect("a tick must not fail");
+
+    let after = super::super::store::get_source(&config, &id).expect("re-read the source");
+    assert!(
+        after.last_fetch_at.is_none(),
+        "the tick must not have stamped a fetch time: {:?}",
+        after.last_fetch_at
+    );
+    assert!(
+        after.last_status.is_none(),
+        "and must not have recorded a status — a recorded failure is the bug: {:?}",
+        after.last_status
+    );
 }
 
 /// The other half: the manual path is untouched. `run_source_once` — which the
