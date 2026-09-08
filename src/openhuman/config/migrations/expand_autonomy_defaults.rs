@@ -119,15 +119,24 @@ pub fn run(config: &mut Config) -> anyhow::Result<MigrationStats> {
     // curated choice there is, so suppressing the warning silenced exactly the
     // users with the most to lose.
     if !added_commands.is_empty() {
-        // The remediation has to be honest about ordering. `run_pending`
-        // persists this mutated config and bumps `schema_version` immediately
-        // after this returns, so by the time anyone reads the warning the
-        // widening is already on disk. Setting `schema_version` now prevents a
-        // re-run; it does not undo this one.
+        // The remediation has to be honest about ordering, in both directions.
+        //
+        // The widening is already in effect for THIS process: the mutation
+        // above is what `SecurityPolicy` reads for the rest of the session,
+        // whatever happens next. Whether it reaches disk is a separate
+        // question — `run_pending` bumps `schema_version` and calls
+        // `Config::save`, and on a save failure it rolls the *version* back and
+        // retries next launch (`migrations/mod.rs:196-207`). It does not roll
+        // back the widened list, so a failed save leaves this run widened and
+        // the next launch widening it again.
+        //
+        // So: do not claim it is persisted (it may not be), and do not imply it
+        // is harmless until it is (it is not).
         log::warn!(
             "[migrations][expand-autonomy-defaults] widened allowed_commands from {} to {} \
-             entries; added: {}. This is already being persisted — if the previous list was \
-             curated, restore it in config.toml (the removals were NOT preserved) and set \
+             entries; added: {}. This is in force for this session already, and is written to \
+             config.toml if the migration's save succeeds. If the previous list was curated, \
+             restore it in config.toml (the removals were NOT preserved) and set \
              `schema_version = {}` to keep this migration from running again.",
             commands_before.len(),
             config.autonomy.allowed_commands.len(),
