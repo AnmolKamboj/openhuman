@@ -104,6 +104,16 @@ fn parse_facet_class_name_rejects_unknown_class() {
     );
 }
 
+#[test]
+fn parse_facet_class_name_rejects_a_name_with_a_slash() {
+    // `"style/"` shares a first `/`-segment with a real class, so a bare
+    // `class_from_key` would accept it and then compose an unmatchable key —
+    // the silent-empty behaviour #6077 removes. The slash guard rejects it.
+    let err =
+        parse_facet_class_name("style/").expect_err("a slash in a class name must be rejected");
+    assert!(err.contains("invalid class `style/`"), "got: {err}");
+}
+
 // ── class filter is column-only (#6077) ───────────────────────────────────────
 //
 // `list_facets` filters on the `class` column alone; the redundant
