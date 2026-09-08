@@ -171,11 +171,17 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
         // before the request is built), and the earliest ones are most likely
         // already reflected in the compression summary above.
         let budget = self.input_budget;
+        // Seeded with the instruction this middleware appends unconditionally
+        // below, not just with what the request already holds (CodeRabbit on
+        // #6068). Restoration fills the budget to its boundary, so an
+        // unaccounted fixed addition after it is exactly the overshoot the
+        // budget exists to prevent.
         let mut used: u64 = request
             .messages
             .iter()
             .map(estimate_message_tokens)
-            .sum();
+            .sum::<u64>()
+            .saturating_add(estimate_text_tokens(self.instruction));
         let restored = match self.outcomes.lock() {
             Ok(outcomes) => {
                 let mut restored = 0usize;
@@ -292,6 +298,10 @@ const NO_WINDOW_ALLOWANCE: u64 = 5_120;
 /// still yields a cap rather than collapsing to `0` — which both middlewares
 /// read as "unbounded".
 const TOC_ALLOWANCE_MIN: u64 = 64;
+
+/// Reserved for the omitted-count line, which cannot be measured before the
+/// row cap decides how many rows were dropped. One short sentence.
+const FOOTER_ALLOWANCE: u64 = 48;
 
 /// Split a turn's input allowance between the two things that add to the
 /// request: the artifact contents list and the wrap-up's result restoration.
@@ -442,12 +452,26 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
         // silently ending, so the model knows more exist — the same disclosure
         // rule the rest of this ladder follows, and the reason the artifacts are
         // findable at all.
+        let header = format!(
+            "## Stored results from this turn\n\n\
+             {total} tool result(s) were too large to keep inline and were written to disk. The \
+             text you saw for them is a preview; the full content is at the path below and can be \
+             read with the file-reading tool when you need detail the preview does not carry.\n\n"
+        );
         if self.input_budget > 0 {
             // Already this middleware's share of the turn's allowance — the
             // split happens once, at the install site, so the two things that
             // add to the request cannot each spend the whole of it.
             let cap = self.input_budget.max(1);
-            let mut used: u64 = 0;
+            // Seeded with the fixed text, so the cap bounds the whole message
+            // rather than the rows alone (CodeRabbit on #6068). The header is a
+            // paragraph; against the 64-token floor a small window gets, it is
+            // comparable to the rows it introduces. `FOOTER_ALLOWANCE` stands in
+            // for the omitted-count line, which cannot be measured before the
+            // count is known — it is one short sentence, and reserving it when
+            // nothing is omitted only spends a row.
+            let mut used: u64 =
+                estimate_text_tokens(&header).saturating_add(FOOTER_ALLOWANCE);
             let mut kept = 0usize;
             for row in &rows {
                 used = used.saturating_add(estimate_text_tokens(row));
@@ -466,11 +490,7 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
             "[tinyagents::mw] rendering the persisted-artifact contents list"
         );
         request.messages.push(TaMessage::system(format!(
-            "## Stored results from this turn\n\n\
-             {count} tool result(s) were too large to keep inline and were written to disk. The \
-             text you saw for them is a preview; the full content is at the path below and can be \
-             read with the file-reading tool when you need detail the preview does not carry.\n\n\
-             {}{}",
+            "{header}{}{}",
             rows.join("\n"),
             if omitted > 0 {
                 format!(

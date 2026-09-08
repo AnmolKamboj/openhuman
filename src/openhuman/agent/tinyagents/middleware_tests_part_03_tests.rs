@@ -268,6 +268,13 @@ async fn wrap_up_does_not_rewrite_a_result_that_was_never_cleared() {
 // ── ArtifactIndexTocMiddleware (issue #6014) ─────────────────────────────────
 
 async fn ctx_with_artifacts(entries: &[(&str, &str, &str, u64)]) -> RunContext<()> {
+    ctx_with_artifacts_and_config(entries, RunConfig::new("mw-test")).await
+}
+
+async fn ctx_with_artifacts_and_config(
+    entries: &[(&str, &str, &str, u64)],
+    config: RunConfig,
+) -> RunContext<()> {
     use tinyagents_harness::store::StoreRegistry;
     let index = std::sync::Arc::new(
         crate::openhuman::agent::harness::tool_result_artifacts::ToolResultArtifactIndexStore::new(
@@ -296,7 +303,7 @@ async fn ctx_with_artifacts(entries: &[(&str, &str, &str, u64)]) -> RunContext<(
         crate::openhuman::agent::harness::tool_result_artifacts::TINYAGENTS_TOOL_RESULT_ARTIFACT_STORE,
         index,
     );
-    RunContext::new(RunConfig::new("mw-test"), ()).with_stores(registry)
+    RunContext::new(config, ()).with_stores(registry)
 }
 
 /// Nothing offloaded → no message. The contents list must not spend context
@@ -477,9 +484,13 @@ async fn toc_is_capped_and_reports_what_it_omitted() {
         text.contains("not listed here"),
         "an omitted count must be disclosed, not silently dropped: {text}"
     );
+    // The nominal share, not a loose multiple of it: the cap now seeds `used`
+    // with the header and the reserved footer, so it bounds the whole message
+    // rather than the rows alone (CodeRabbit on #6068).
     assert!(
-        estimate_text_tokens(&text) < 400,
-        "the list must stay inside the share it was given (200, plus the header)"
+        estimate_text_tokens(&text) <= 200,
+        "the list must stay inside the share it was given: {}",
+        estimate_text_tokens(&text)
     );
 }
 
@@ -546,8 +557,8 @@ async fn the_contents_list_stays_bounded_when_no_window_is_advertised() {
         "an omitted count must be disclosed, not silently dropped: {text}"
     );
     assert!(
-        estimate_text_tokens(&text) < 1_024,
-        "the no-window fallback must bound the list: {}",
+        estimate_text_tokens(&text) <= split_input_allowance(0).0,
+        "the no-window fallback must bound the whole list message: {}",
         estimate_text_tokens(&text)
     );
 }
@@ -594,5 +605,80 @@ async fn wrap_up_restoration_stays_bounded_when_no_window_is_advertised() {
     assert!(
         restored >= 1 && restored < 40,
         "some restored, not all 40 — got {restored}"
+    );
+}
+
+/// The two consumers share one allowance, so the bound that matters is the one
+/// on the request they *both* wrote to (CodeRabbit on #6068). Runs them in
+/// registration order — wrap-up, then contents list — on the no-window path,
+/// where nothing downstream would trim what they overshoot by.
+#[tokio::test]
+async fn both_middlewares_together_stay_inside_the_no_window_allowance() {
+    let big = "x".repeat(8_000);
+    let outcomes: Vec<(String, String)> = (0..40)
+        .map(|i| (format!("call-{i}"), big.clone()))
+        .collect();
+    let borrowed: Vec<(&str, &str)> = outcomes
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    let artifacts: Vec<(String, String, String, u64)> = (0..400)
+        .map(|i| {
+            (
+                format!("call-{i}"),
+                "file_read".to_string(),
+                format!("outputs/a-fairly-long-artifact-path-{i}.json"),
+                1_000,
+            )
+        })
+        .collect();
+    let artifact_refs: Vec<(&str, &str, &str, u64)> = artifacts
+        .iter()
+        .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
+        .collect();
+
+    let mut ctx = ctx_with_artifacts_and_config(
+        &artifact_refs,
+        RunConfig::new("mw-test").with_max_model_calls(2),
+    )
+    .await;
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap();
+
+    let (toc_allowance, restore_allowance) = split_input_allowance(0);
+    let mut request = ModelRequest {
+        messages: borrowed
+            .iter()
+            .map(|(id, _)| TaMessage::tool(*id, CLEARED_PLACEHOLDER))
+            .collect(),
+        ..Default::default()
+    };
+
+    // Registration order at the install site: wrap-up first, contents list after.
+    FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&borrowed), restore_allowance)
+        .before_model(&mut ctx, &(), &mut request)
+        .await
+        .unwrap();
+    ArtifactIndexTocMiddleware::new(toc_allowance)
+        .before_model(&mut ctx, &(), &mut request)
+        .await
+        .unwrap();
+
+    let used: u64 = request.messages.iter().map(estimate_message_tokens).sum();
+    assert!(
+        used <= NO_WINDOW_ALLOWANCE,
+        "the combined request must stay inside the shared allowance: {used} > {NO_WINDOW_ALLOWANCE}"
+    );
+    // Both actually contributed — otherwise the bound is met vacuously.
+    assert!(
+        request.messages.iter().any(|m| m.text().starts_with("xxx")),
+        "the wrap-up restored nothing, so the bound proves nothing"
+    );
+    assert!(
+        request
+            .messages
+            .iter()
+            .any(|m| m.text().contains("Stored results from this turn")),
+        "the contents list is absent, so the bound proves nothing"
     );
 }
