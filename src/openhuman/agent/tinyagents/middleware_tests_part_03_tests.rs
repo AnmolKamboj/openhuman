@@ -508,9 +508,19 @@ fn neither_share_is_ever_the_unbounded_sentinel() {
             restore > 0,
             "allowance {trim_allowance} left restoration unbounded"
         );
+        // The same effective total the function computes — not
+        // `trim_allowance.max(NO_WINDOW_ALLOWANCE)`, which accepted any
+        // over-split below 5_120 (and whose `.min(u64::MAX)` was a no-op).
+        let total = if trim_allowance == 0 {
+            NO_WINDOW_ALLOWANCE
+        } else {
+            trim_allowance
+        };
+        // `1` stays excluded: the function deliberately keeps both shares
+        // positive, which costs one token at that degenerate size.
         if trim_allowance > 1 {
             assert!(
-                toc + restore <= trim_allowance.max(NO_WINDOW_ALLOWANCE.min(u64::MAX)),
+                toc + restore <= total,
                 "allowance {trim_allowance} split into more than it had: {toc} + {restore}"
             );
         }
