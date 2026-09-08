@@ -10,16 +10,65 @@
 //!
 //! The fix is for every suite to send `get_rpc_token()` — the token the process
 //! actually validates — rather than the literal it hoped to install. This scans
-//! the sibling sources for the literal form so a *new* suite cannot reintroduce
-//! it, which a runtime assertion in one file could not do.
+//! the sibling sources so a *new* suite cannot reintroduce the literal, which a
+//! runtime assertion in one file could not do: that assertion passes whenever its
+//! own file happens to win the scheduling race.
 
 use std::path::Path;
 
-/// Substrings that mean "this suite sends its own literal".
-const FORBIDDEN: &[&str] = &[
-    "bearer_auth(TEST_RPC_TOKEN)",
-    "Bearer {TEST_RPC_TOKEN}",
-];
+/// Does this line send the suite's own `TEST_RPC_TOKEN` as a bearer?
+///
+/// Matches on the *combination* rather than on fixed spellings. An earlier
+/// version listed two literal forms and missed `format!("Bearer {}",
+/// TEST_RPC_TOKEN)` and `bearer_auth(&TEST_RPC_TOKEN)`, which send the same
+/// wrong token (thanks to CodeRabbit on #6124 for catching it). Any line that
+/// names the suite-local constant *and* an authorization-sending construct is
+/// the bug, however it is spelled — including spellings nobody has invented yet.
+///
+/// Comments are exempt: several suites legitimately explain the hazard in prose.
+fn line_sends_local_token(line: &str) -> bool {
+    let code = line.trim_start();
+    if code.starts_with("//") {
+        return false;
+    }
+    code.contains("TEST_RPC_TOKEN") && (code.contains("Bearer") || code.contains("bearer_auth"))
+}
+
+#[test]
+fn the_detector_catches_every_spelling_of_the_bug() {
+    // The two forms the original guard caught.
+    assert!(line_sends_local_token(
+        r#"        .bearer_auth(TEST_RPC_TOKEN)"#
+    ));
+    assert!(line_sends_local_token(
+        r#"        .header(AUTHORIZATION, format!("Bearer {TEST_RPC_TOKEN}"))"#
+    ));
+    // The two it missed.
+    assert!(line_sends_local_token(
+        r#"        .header(AUTHORIZATION, format!("Bearer {}", TEST_RPC_TOKEN))"#
+    ));
+    assert!(line_sends_local_token(
+        r#"        .bearer_auth(&TEST_RPC_TOKEN)"#
+    ));
+    // And a spelling none of the suites use today.
+    assert!(line_sends_local_token(
+        r#"        let h = String::from("Bearer ") + TEST_RPC_TOKEN;"#
+    ));
+
+    // Must NOT fire: the correct call, the seed, the declaration, and prose.
+    assert!(!line_sends_local_token(
+        r#"        .header(AUTHORIZATION, format!("Bearer {}", rpc_bearer()))"#
+    ));
+    assert!(!line_sends_local_token(
+        r#"        std::env::set_var(CORE_TOKEN_ENV_VAR, TEST_RPC_TOKEN);"#
+    ));
+    assert!(!line_sends_local_token(
+        r#"const TEST_RPC_TOKEN: &str = "connectivity-raw-coverage-e2e-token";"#
+    ));
+    assert!(!line_sends_local_token(
+        r#"/// suite sending its own TEST_RPC_TOKEN as a Bearer gets a 401."#
+    ));
+}
 
 #[test]
 fn no_raw_coverage_suite_sends_a_hard_coded_bearer() {
@@ -32,17 +81,19 @@ fn no_raw_coverage_suite_sends_a_hard_coded_bearer() {
         if path.extension().and_then(|e| e.to_str()) != Some("rs") {
             continue;
         }
-        if path.file_name().and_then(|n| n.to_str()) == Some("rpc_bearer_hygiene_e2e.rs") {
-            continue; // this file names the literals on purpose
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if name == "rpc_bearer_hygiene_e2e.rs" {
+            continue; // this file names the forbidden forms on purpose
         }
         let source = std::fs::read_to_string(&path).expect("suite source must be readable");
         scanned += 1;
-        for needle in FORBIDDEN {
-            if source.contains(needle) {
-                offenders.push(format!(
-                    "{}: sends {needle} — use the process token instead",
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("?")
-                ));
+        for (i, line) in source.lines().enumerate() {
+            if line_sends_local_token(line) {
+                offenders.push(format!("{name}:{}: {}", i + 1, line.trim()));
             }
         }
     }
