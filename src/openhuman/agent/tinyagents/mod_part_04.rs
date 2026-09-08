@@ -565,14 +565,12 @@ fn assemble_turn_harness(
     if microcompact_keep_recent > 0 {
         // The token-budget gate the crate added for this (#4755) and this call
         // site never used. Constructed bare, microcompact blanks on EVERY call
-        // once past `keep_recent` — not only under pressure — so a ten-call turn
-        // answered from the last five results while sitting well inside a window
-        // with room for all ten. Not a capped-turn problem: every turn.
-        //
-        // The budget matches the trim's allowance, which is what puts
-        // microcompact strictly behind compression. With no advertised window
-        // there is nothing to size against and nothing else bounding the
-        // transcript, so the legacy always-blank behaviour stays as the backstop.
+        // past `keep_recent` — not only under pressure — so a ten-call turn
+        // answered from the last five results while well inside a window with
+        // room for all ten. Not a capped-turn problem: every turn. The budget
+        // matches the trim's allowance, putting microcompact strictly behind
+        // compression. With no window there is nothing to size against and
+        // nothing else bounding growth, so always-blank stays as the backstop.
         let microcompact = tinyagents_harness::middleware::MicrocompactMiddleware::new(
             microcompact_keep_recent,
             crate::openhuman::agent::context::CLEARED_PLACEHOLDER,
@@ -605,17 +603,24 @@ fn assemble_turn_harness(
     // turn that answers a human. It also leaves a child's budget alone: the
     // conclusion costs a call, and turning every delegated run's N tool rounds
     // into N-1 is not a trade to impose as a side effect.
+    // One allowance, split between the two things that add to the request
+    // (CodeRabbit on #6068). Computed independently they were each bounded and
+    // the pair was not: restoration could fill the whole allowance and the
+    // contents list add its tenth on top. `0` when no window is advertised.
+    let trim_allowance = context_window
+        .filter(|w| *w > 0)
+        .map(|w| middleware::legacy_max_input_tokens(w).max(1))
+        .unwrap_or(0);
+    let toc_allowance = trim_allowance / 10;
+    let restore_allowance = trim_allowance.saturating_sub(toc_allowance);
+
     let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
         Arc::new(middleware::FinalCallWrapUpMiddleware::new(
             crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
             tool_outcome_sink.clone(),
-            // The trim's own allowance, so restoration stops short of
-            // provoking an eviction (see the middleware). `0` = no window
-            // advertised, so no bound and no trim either.
-            context_window
-                .filter(|w| *w > 0)
-                .map(|w| middleware::legacy_max_input_tokens(w).max(1))
-                .unwrap_or(0),
+            // What is left after the contents list's share, so restoration
+            // stops short of provoking an eviction (see the middleware).
+            restore_allowance,
         ))
     });
     let wrap_up_fired = wrap_up_mw.as_ref().map(|mw| mw.fired());
@@ -624,17 +629,12 @@ fn assemble_turn_harness(
     }
 
     // Issue #6014: say where the offloaded results went, from the index rather
-    // than from the transcript. Registered after the reduction steps above so it
-    // renders whatever survived them, and before the trim so its message is
-    // counted in that budget — the trim never drops a system message, so being
-    // counted costs nothing and being uncounted could push the request over.
+    // than the transcript. After the reduction steps so it renders what
+    // survived them, before the trim so its message is counted in that budget.
+    // Its share of the allowance split above: the list is a system message, so
+    // nothing downstream can shrink it (see the middleware).
     harness.push_middleware(Arc::new(middleware::ArtifactIndexTocMiddleware::new(
-        // Bounded against the trim's own allowance: the list is a system
-        // message, so nothing downstream can shrink it (see the middleware).
-        context_window
-            .filter(|w| *w > 0)
-            .map(|w| middleware::legacy_max_input_tokens(w).max(1))
-            .unwrap_or(0),
+        toc_allowance,
     )));
 
     if let Some(window) = context_window.filter(|w| *w > 0) {
