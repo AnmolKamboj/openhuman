@@ -8,7 +8,9 @@
 //! twice through `run_dispatch_harness` with one shared prompt and edits
 //! `SOUL.md` in between — the reproduction in the issue, as a test.
 
-use super::super::runtime::test_support::{run_dispatch_harness, DispatchHarnessOptions};
+use super::super::runtime::test_support::{
+    run_dispatch_harness, DispatchHarnessOptions, HarnessSystemPrompt,
+};
 use super::common::make_workspace;
 use crate::openhuman::agent::profiles::home::profile_home;
 use crate::openhuman::agent::profiles::store::built_in_default_profile;
@@ -80,7 +82,7 @@ async fn channel_reply_follows_soul_edit_without_restart() {
 
     let first = run_dispatch_harness(DispatchHarnessOptions {
         workspace_dir: Some(ws.path().to_path_buf()),
-        system_prompt: Some(prompt.clone()),
+        system_prompt: HarnessSystemPrompt::new(prompt.clone()),
         content: "hi".to_string(),
         ..Default::default()
     })
@@ -94,7 +96,7 @@ async fn channel_reply_follows_soul_edit_without_restart() {
 
     let second = run_dispatch_harness(DispatchHarnessOptions {
         workspace_dir: Some(ws.path().to_path_buf()),
-        system_prompt: Some(prompt.clone()),
+        system_prompt: HarnessSystemPrompt::new(prompt.clone()),
         content: "hi again".to_string(),
         ..Default::default()
     })
@@ -116,7 +118,7 @@ async fn fixed_prompt_seeds_every_turn_unchanged() {
     let ws = make_workspace();
     let observed = run_dispatch_harness(DispatchHarnessOptions {
         workspace_dir: Some(ws.path().to_path_buf()),
-        system_prompt: Some(ChannelSystemPrompt::fixed("pinned prompt")),
+        system_prompt: HarnessSystemPrompt::new(ChannelSystemPrompt::fixed("pinned prompt")),
         ..Default::default()
     })
     .await;
