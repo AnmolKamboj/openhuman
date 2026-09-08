@@ -19,7 +19,9 @@
 
 use serde_json::{json, Map};
 
-use openhuman_core::core::all::{all_registered_controllers, rpc_method_name, schema_for_rpc_method};
+use openhuman_core::core::all::{
+    all_registered_controllers, rpc_method_name, schema_for_rpc_method,
+};
 use openhuman_core::core::dispatch::dispatch;
 use openhuman_core::core::types::AppState;
 
@@ -33,8 +35,8 @@ fn state() -> AppState {
 /// wording — which is what makes the two impossible to mistake for each other.
 #[tokio::test]
 async fn missing_required_param_is_refused_with_the_schema_comment() {
-    let schema = schema_for_rpc_method("openhuman.session_db_get")
-        .expect("session_db_get is registered unconditionally");
+    let schema = schema_for_rpc_method("openhuman.run_ledger_get")
+        .expect("run_ledger_get is registered unconditionally");
     let comment = schema
         .inputs
         .iter()
@@ -42,13 +44,13 @@ async fn missing_required_param_is_refused_with_the_schema_comment() {
         .expect("`id` input")
         .comment;
 
-    let err = dispatch(state(), "openhuman.session_db_get", json!({}))
+    let err = dispatch(state(), "openhuman.run_ledger_get", json!({}))
         .await
         .expect_err("`id` is required");
 
     assert_eq!(err, format!("missing required param 'id': {comment}"));
 
-    // `handle_session_db_get` refuses with `missing required param: id`. If that
+    // `handle_run_ledger_get` refuses with `missing required param: id`. If that
     // ever starts matching, validation has moved into the handler and the shape
     // of what callers see has changed with it.
     assert!(!err.contains("missing required param: id"), "got: {err}");
