@@ -6379,6 +6379,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Mode de stockage des secrets',
   'keyring.settings.mode.osKeychain': 'Trousseau du système',
   'keyring.settings.mode.encryptedFile': 'Local chiffré',
+  'keyring.settings.mode.localEncryptedFile': 'Fichier chiffré',
+  'keyring.settings.mode.localPlaintextFile': 'Fichier non chiffré',
   'keyring.settings.mode.consentPending': 'Non configuré',
   'keyring.settings.mode.declined': 'Refusé',
   'keyring.settings.availability': 'Disponibilité du trousseau',

@@ -6224,6 +6224,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'रहस्य भंडारण मोड',
   'keyring.settings.mode.osKeychain': 'OS कीचेन',
   'keyring.settings.mode.encryptedFile': 'स्थानीय एन्क्रिप्टेड',
+  'keyring.settings.mode.localEncryptedFile': 'एन्क्रिप्टेड फ़ाइल',
+  'keyring.settings.mode.localPlaintextFile': 'बिना एन्क्रिप्शन वाली फ़ाइल',
   'keyring.settings.mode.consentPending': 'कॉन्फ़िगर नहीं किया गया',
   'keyring.settings.mode.declined': 'अस्वीकृत',
   'keyring.settings.availability': 'कीचेन उपलब्धता',

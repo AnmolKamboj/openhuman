@@ -6080,6 +6080,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'وضع تخزين الأسرار',
   'keyring.settings.mode.osKeychain': 'سلسلة مفاتيح النظام',
   'keyring.settings.mode.encryptedFile': 'مشفَّر محلياً',
+  'keyring.settings.mode.localEncryptedFile': 'ملف مشفَّر',
+  'keyring.settings.mode.localPlaintextFile': 'ملف غير مشفَّر',
   'keyring.settings.mode.consentPending': 'غير مُهيَّأ',
   'keyring.settings.mode.declined': 'مرفوض',
   'keyring.settings.availability': 'توفّر سلسلة المفاتيح',
