@@ -522,6 +522,33 @@ impl CoreContext {
             embedder_config: None,
         })
     }
+
+    /// Test-only constructor that carries an embedder-supplied config, so a
+    /// cross-module test can exercise the `load_config_with_timeout()` read
+    /// path (which prefers [`CoreContext::current_embedder_config`]) without a
+    /// full boot or a racy on-disk `config.toml`.
+    ///
+    /// Distinct from [`CoreContext::for_test`] — which always sets
+    /// `embedder_config: None` — so the ~30 existing `for_test` call sites are
+    /// unaffected. The workspace binding is anchored to the config's
+    /// `workspace_dir`, matching how [`CoreContext::init`] wires an
+    /// embedder-supplied config.
+    #[cfg(test)]
+    pub(crate) fn for_test_with_config(
+        domains: crate::core::runtime::DomainSet,
+        config: crate::openhuman::config::Config,
+    ) -> Arc<CoreContext> {
+        Arc::new(CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(config.workspace_dir.clone()),
+                memory_subsystem: Default::default(),
+            }),
+            domains,
+            tool_groups: Default::default(),
+            embedder_config: Some(config),
+        })
+    }
 }
 
 /// Bind the memory driver for this workspace and initialize the other
