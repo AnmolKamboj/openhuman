@@ -226,3 +226,22 @@ async fn execute_rejects_allowlist_miss() {
     assert!(result.is_error);
     assert!(result.output().contains("allowed websites"));
 }
+
+/// The downloads root cannot be created (a plain file already occupies its
+/// path) — `create_dir_all` must be reported as a tool error, never a panic,
+/// and no network request is attempted before that check runs.
+#[tokio::test]
+async fn execute_reports_a_create_dir_all_failure_rather_than_panicking() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("downloads"), b"not a directory").unwrap();
+    let t = tool(&tmp, vec!["example.com"]);
+    let result = t
+        .execute(serde_json::json!({"url": "https://example.com/x", "dest_path": "sub/file.txt"}))
+        .await
+        .unwrap();
+    assert!(
+        result.is_error,
+        "an unwritable downloads root must be reported, not panic: {}",
+        result.output()
+    );
+}
