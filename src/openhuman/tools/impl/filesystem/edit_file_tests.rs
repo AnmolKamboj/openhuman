@@ -155,3 +155,42 @@ async fn edit_rejects_identical_strings() {
 
     let _ = tokio::fs::remove_dir_all(&dir).await;
 }
+
+#[tokio::test]
+#[cfg(unix)]
+async fn edit_reports_an_os_write_failure_rather_than_a_silent_success() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join("openhuman_test_edit_os_write_fail");
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+    let file = dir.join("f.txt");
+    tokio::fs::write(&file, "abc").await.unwrap();
+    // SecurityPolicy is `Supervised` (can_act), so the tool's own gate lets
+    // this through; the failure comes from the OS `write` call itself.
+    tokio::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444))
+        .await
+        .unwrap();
+
+    let tool = EditFileTool::new(test_security(dir.clone()));
+    let result = tool
+        .execute(json!({"path": "f.txt", "old_string": "abc", "new_string": "xyz"}))
+        .await
+        .unwrap();
+
+    tokio::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644))
+        .await
+        .unwrap();
+    assert!(
+        result.is_error,
+        "an OS-level write failure must surface as an error, not a fabricated success"
+    );
+    assert!(result.output().contains("Failed to write file"));
+    assert_eq!(
+        tokio::fs::read_to_string(&file).await.unwrap(),
+        "abc",
+        "the file must be left untouched when the write itself failed"
+    );
+
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+}
