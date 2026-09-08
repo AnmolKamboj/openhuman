@@ -458,11 +458,29 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
              text you saw for them is a preview; the full content is at the path below and can be \
              read with the file-reading tool when you need detail the preview does not carry.\n\n"
         );
+        // One line that still names the count, for a share too small to hold
+        // the header at all (CodeRabbit on #6068). Truncating to zero rows was
+        // half the fix: the fixed text is ~118 tokens and the floor a small
+        // window gets is 64, so the message still cleared its share with no
+        // rows in it.
+        let compact =
+            format!("_{total} tool result(s) were written to disk — ask by tool name to locate one._");
         if self.input_budget > 0 {
+            let cap = self.input_budget.max(1);
+            let fixed = estimate_text_tokens(&header).saturating_add(FOOTER_ALLOWANCE);
+            if fixed > cap {
+                // Even the compact line has to fit. Saying nothing loses the
+                // pointer, which is bad; pushing an unshrinkable system message
+                // over the bound makes the trim evict transcript instead, which
+                // is worse.
+                if estimate_text_tokens(&compact) <= cap {
+                    request.messages.push(TaMessage::system(compact));
+                }
+                return Ok(());
+            }
             // Already this middleware's share of the turn's allowance — the
             // split happens once, at the install site, so the two things that
             // add to the request cannot each spend the whole of it.
-            let cap = self.input_budget.max(1);
             // Seeded with the fixed text, so the cap bounds the whole message
             // rather than the rows alone (CodeRabbit on #6068). The header is a
             // paragraph; against the 64-token floor a small window gets, it is

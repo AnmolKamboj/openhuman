@@ -719,13 +719,17 @@ async fn a_share_smaller_than_the_header_renders_no_rows() {
         "no row fits the share, so none may be forced: {text}"
     );
     assert!(
-        text.contains("10 more stored result(s) not listed here"),
-        "every result was omitted and that must be disclosed: {text}"
+        text.contains("10 tool result(s) were written to disk"),
+        "the count must still be named so the results stay findable: {text}"
     );
-    // Nothing beyond the fixed text was spent.
+    // The bound that matters: the whole rendered message inside the share.
+    // Truncating to zero rows was not enough — the header and footer alone are
+    // ~118 tokens against this 64-token floor, and the earlier form of this
+    // assertion (`< 64 + FOOTER_ALLOWANCE + 64`) was loose enough to accept
+    // exactly that overshoot (CodeRabbit on #6068).
     assert!(
-        estimate_text_tokens(&text) < 64 + FOOTER_ALLOWANCE + 64,
-        "the message must carry the fixed text and nothing more: {}",
+        estimate_text_tokens(&text) <= 64,
+        "the message must fit the share it was given: {}",
         estimate_text_tokens(&text)
     );
 }
