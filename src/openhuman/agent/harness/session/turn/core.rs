@@ -171,6 +171,21 @@ fn short_failure_detail(content: &str) -> Option<String> {
 /// row is touched — when the tail is not an assistant `Chat` (defensive; a clean
 /// finish, a cap checkpoint, and the #4093 close all end on one) a fresh
 /// assistant message is appended rather than mutating an older entry.
+#[cfg(test)]
+#[path = "core_tests.rs"]
+mod tests;
+
+/// Whether a history row is an assistant `Chat` with nothing in it.
+///
+/// The cap path's concluding call can answer with empty text, and that message
+/// is folded into the history before the out-of-band wrap-up builds its request
+/// from it. Anthropic rejects a message with empty content, so it has to go
+/// (CodeRabbit on #6068).
+pub(super) fn is_empty_assistant_chat(message: &ConversationMessage) -> bool {
+    matches!(message, ConversationMessage::Chat(chat)
+        if chat.role == "assistant" && chat.content.trim().is_empty())
+}
+
 fn replace_last_assistant_reply(history: &mut Vec<ConversationMessage>, text: &str) {
     match history.last_mut() {
         Some(ConversationMessage::Chat(chat)) if chat.role == "assistant" => {

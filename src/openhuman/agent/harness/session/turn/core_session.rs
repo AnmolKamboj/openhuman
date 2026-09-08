@@ -252,6 +252,13 @@ impl Agent {
             // back empty: a run with the middleware uninstalled, a budget of one
             // model call, or a concluding call that answered with nothing. Kept
             // intact so no path loses the behaviour it had before #6014.
+            // The concluding call answered with nothing, and the `extend` above
+            // folded that empty assistant message into `self.history`. Anthropic
+            // rejects empty content, so sending it would turn "the model said
+            // nothing" into a failed turn (CodeRabbit on #6068).
+            if self.history.last().is_some_and(is_empty_assistant_chat) {
+                self.history.pop();
+            }
             let base = self.tool_dispatcher.to_provider_messages(&self.history);
             let (summary, summary_usage) = self
                 .summarize_turn_wrapup(
