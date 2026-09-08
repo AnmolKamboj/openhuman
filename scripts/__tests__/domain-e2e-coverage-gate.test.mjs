@@ -71,10 +71,15 @@ function fixture(t, options = {}) {
     productFeatures = [],
     featureGraph = {},
     withExcludedNamespaces = true,
+    declareExcludedFeatures = true,
   } = options;
   const root = fs.mkdtempSync(join(tmpdir(), 'domain-e2e-gate-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  write(root, 'Cargo.toml', cargoToml(defaultFeatures, featureGraph));
+  // The manifest must DECLARE each exclusion's gate even when nothing enables
+  // it — an undeclared gate is a rename the table missed, not a disabled one,
+  // and the gate refuses it.
+  const features = declareExcludedFeatures ? { 'e2e-test-support': [], ...featureGraph } : featureGraph;
+  write(root, 'Cargo.toml', cargoToml(defaultFeatures, features));
   write(root, 'scripts/ci/product-features.txt', `${productFeatures.join('\n')}\n`);
   if (withExcludedNamespaces) {
     write(
@@ -328,5 +333,52 @@ test('refuses to run when the feature table cannot be parsed', (t) => {
     result.stderr,
     /no `\[features\] default` in Cargo\.toml/,
     `the failure must name what could not be resolved; got:\n${result.stderr}`,
+  );
+});
+
+// Codex, PR #6092. The subtlest way this list rots: a gate is renamed, every
+// `#[cfg]` site is updated, and only this table is missed. The old name is then
+// absent from the feature graph — so it is absent from the enabled set too, and
+// the reachability check reads that as "safely disabled". The namespace still
+// exists and is not in MODULES, so nothing else fires, and a reachable family
+// leaves the denominator without a word. "Not enabled" and "not a gate at all"
+// must be different answers.
+test('fails when an excluded namespace names a gate the manifest does not declare', (t) => {
+  const root = fixture(t, { declareExcludedFeatures: false });
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `an undeclared gate must fail the gate; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /name a feature the `\[features\]` table does not declare/,
+    `the failure must distinguish a renamed gate from a disabled one; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stderr,
+    /test \(gated on "e2e-test-support"\)/,
+    `the offending entry must be named; got:\n${result.stderr}`,
+  );
+});
+
+// CodeRabbit, PR #6092. TOML has two single-line string forms and cargo accepts
+// both. Reading only `"…"` made `default = ['e2e-test-support']` parse as an
+// empty array, so the gate saw the feature as OFF and accepted the exclusion
+// for controllers the measured build actually compiles in.
+test('reads a single-quoted TOML feature array', (t) => {
+  const root = fixture(t);
+  write(root, 'Cargo.toml', "[features]\ndefault = ['e2e-test-support']\ne2e-test-support = []\n");
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `a literal-string default list must still be read; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /excluded namespace\(s\) are reachable in the measured configuration/,
+    `a gate enabled through a literal string must count as enabled; got:\n${result.stderr}`,
   );
 });
