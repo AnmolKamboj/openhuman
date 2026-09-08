@@ -129,6 +129,38 @@ async fn handle_status_honors_loaded_docker_runtime() {
     );
 }
 
+/// #6081 (F2) — `sandbox_resolve_policy` must use the loaded config's
+/// already-resolved `action_dir`, not recompute it from `action_dir_override`
+/// alone. An embedder sets `Config.action_dir` directly via
+/// `CoreBuilder::action_dir(..)` and leaves `action_dir_override` at `None`;
+/// `resolve_action_dir(&None)` would have ignored that and returned the default
+/// projects dir, so the resolved policy would have pointed the sandbox at the
+/// wrong root. This pins that the handler honors the embedder's programmatic
+/// `action_dir`.
+#[tokio::test]
+async fn handle_resolve_policy_uses_loaded_action_dir() {
+    let embedder_action_dir = std::path::PathBuf::from("/tmp/openhuman-6081-action-dir");
+    let mut config = crate::openhuman::config::Config::default();
+    // The embedder-shaped case: `action_dir` set directly, override untouched.
+    config.action_dir = embedder_action_dir.clone();
+    config.action_dir_override = None;
+    let ctx = scoped_ctx(config);
+
+    let mut params = Map::new();
+    params.insert("sandbox_mode".into(), Value::String("none".into()));
+
+    let val = CoreContext::scope(ctx, async { handle_resolve_policy(params).await })
+        .await
+        .expect("resolve_policy should succeed under the scoped config");
+
+    assert_eq!(
+        val.get("workspace_root").and_then(|w| w.as_str()),
+        Some(embedder_action_dir.to_str().unwrap()),
+        "policy workspace_root must use the loaded config.action_dir, not a \
+         recomputed default; got {val:?}"
+    );
+}
+
 #[tokio::test]
 async fn handle_validate_policy_valid() {
     let policy = super::super::types::SandboxPolicy {

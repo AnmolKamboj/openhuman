@@ -4,7 +4,6 @@ use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
-use crate::openhuman::config::resolve_action_dir;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
@@ -48,7 +47,13 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 FieldSchema {
                     name: "backend",
                     ty: TypeSchema::String,
-                    comment: "Backend kind to check: 'docker', 'local', or 'none'.",
+                    comment: "Sandbox MODE to resolve, not the backend that is \
+                              reported: 'docker'/'local' both map to the sandboxed \
+                              mode, 'none' to no sandbox. The ACTUAL backend is \
+                              resolved from the loaded runtime config (`[runtime] \
+                              kind`) plus `is_remote`, so it reflects what an agent \
+                              session would really get — e.g. 'docker' on a \
+                              native-config host reports the Local backend.",
                     required: false,
                 },
                 FieldSchema {
@@ -144,6 +149,15 @@ pub fn schemas(function: &str) -> ControllerSchema {
     }
 }
 
+/// `sandbox.status` — report the backend an agent session would actually get.
+///
+/// The `backend` param selects the sandbox MODE to resolve, not the backend to
+/// report: `"docker"`/`"local"` both mean "resolve the sandboxed mode" and
+/// `"none"` means "no sandbox". The concrete backend is then derived from the
+/// loaded runtime config (`[runtime] kind`) plus `is_remote` — never from the
+/// requested name — so `backend:"docker"` on a native-config host reports Local,
+/// matching what a real session on that host would run. Reporting the requested
+/// backend instead was the conflation fixed in #6081.
 fn handle_status(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let backend_str = params
@@ -221,11 +235,19 @@ fn handle_resolve_policy(params: Map<String, Value>) -> ControllerFuture {
             }
         };
 
-        // Honor the env `OPENHUMAN_ACTION_DIR` > persisted `action_dir_override`
-        // > default precedence, matching how acting tools resolve their root.
-        let action_dir = resolve_action_dir(&config.action_dir_override);
-        let policy =
-            super::ops::resolve_sandbox_policy(mode, &action_dir, &config.runtime, is_remote);
+        // Use the already-resolved `config.action_dir`. The loader fully
+        // resolves this field on every path: `load_or_init` sets it from the
+        // env `OPENHUMAN_ACTION_DIR` > persisted `action_dir_override` > default
+        // precedence (`resolve_action_dir` + `apply_env_overrides`), and an
+        // embedder-supplied config carries whatever `CoreBuilder::action_dir(..)`
+        // set directly. Re-deriving it here from `action_dir_override` alone
+        // would silently ignore an embedder's programmatic `action_dir` (#6081).
+        let policy = super::ops::resolve_sandbox_policy(
+            mode,
+            &config.action_dir,
+            &config.runtime,
+            is_remote,
+        );
         to_json(RpcOutcome::new(policy, vec![]))
     })
 }
