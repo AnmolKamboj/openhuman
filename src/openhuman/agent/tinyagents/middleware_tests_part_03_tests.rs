@@ -462,7 +462,9 @@ async fn toc_is_capped_and_reports_what_it_omitted() {
         .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
         .collect();
     let mut ctx = ctx_with_artifacts(&borrowed).await;
-    let mw = ArtifactIndexTocMiddleware::new(2_000);
+    // This middleware's share of the allowance, already split at the install
+    // site — not the whole turn allowance.
+    let mw = ArtifactIndexTocMiddleware::new(200);
     let mut request = ModelRequest {
         messages: vec![TaMessage::user("what did you find?")],
         ..Default::default()
@@ -476,7 +478,7 @@ async fn toc_is_capped_and_reports_what_it_omitted() {
         "an omitted count must be disclosed, not silently dropped: {text}"
     );
     assert!(
-        estimate_text_tokens(&text) < 2_000,
-        "the list must stay inside the allowance it was given"
+        estimate_text_tokens(&text) < 400,
+        "the list must stay inside the share it was given (200, plus the header)"
     );
 }

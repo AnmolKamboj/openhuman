@@ -313,9 +313,10 @@ const ARTIFACT_INDEX_NAMESPACE: &str = "tool_results";
 /// appended at the tail rather than the head so the cacheable prompt prefix is
 /// untouched.
 pub(crate) struct ArtifactIndexTocMiddleware {
-    /// The input-token allowance the trim enforces, so the contents list can be
-    /// capped against it. `0` disables the cap (no advertised window, and no
-    /// trim installed either).
+    /// This middleware's share of the turn's input allowance (a tenth, split at
+    /// the install site so restoration and this list cannot each claim the
+    /// whole). `0` disables the cap — no advertised window, and no trim
+    /// installed either.
     input_budget: u64,
 }
 
@@ -396,7 +397,10 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
         // rule the rest of this ladder follows, and the reason the artifacts are
         // findable at all.
         if self.input_budget > 0 {
-            let cap = (self.input_budget / 10).max(1);
+            // Already this middleware's share of the turn's allowance — the
+            // split happens once, at the install site, so the two things that
+            // add to the request cannot each spend the whole of it.
+            let cap = self.input_budget.max(1);
             let mut used: u64 = 0;
             let mut kept = 0usize;
             for row in &rows {
