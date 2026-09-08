@@ -418,7 +418,7 @@ async fn ws_loop_completes_handshake_and_shuts_down_cleanly() {
             emit_rx,
             shutdown_rx,
             internal_tx,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Mutex::new(false)),
         )
         .await;
     });
@@ -477,7 +477,7 @@ async fn ws_loop_handles_connect_error_and_shutdown() {
             emit_rx,
             shutdown_rx,
             internal_tx,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Mutex::new(false)),
         )
         .await;
     });
@@ -512,7 +512,7 @@ async fn ws_loop_handles_bad_eio_open_and_shutdown() {
             emit_rx,
             shutdown_rx,
             internal_tx,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Mutex::new(false)),
         )
         .await;
     });
@@ -568,7 +568,7 @@ async fn ws_loop_refuses_to_start_with_empty_token() {
             emit_rx,
             shutdown_rx,
             internal_tx,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Mutex::new(false)),
         )
         .await;
     });
@@ -605,7 +605,7 @@ async fn ws_loop_exits_cleanly_when_provider_returns_error() {
             emit_rx,
             shutdown_rx,
             internal_tx,
-            Arc::new(AtomicBool::new(false)),
+            Arc::new(Mutex::new(false)),
         )
         .await;
     });

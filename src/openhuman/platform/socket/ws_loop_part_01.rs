@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
@@ -69,7 +70,7 @@ pub(super) async fn ws_loop(
     mut emit_rx: mpsc::UnboundedReceiver<String>,
     mut shutdown_rx: watch::Receiver<bool>,
     internal_tx: mpsc::UnboundedSender<String>,
-    emit_ready: Arc<AtomicBool>,
+    emit_ready: Arc<Mutex<bool>>,
 ) {
     let mut backoff = Duration::from_millis(1000);
     let max_backoff = Duration::from_secs(30);
@@ -158,13 +159,29 @@ pub(super) async fn ws_loop(
         )
         .await;
 
-        // The connection is over. Clear this connection's readiness flag
-        // *before* draining so a concurrent `emit` cannot pass its readiness
-        // check and enqueue a message this connection is about to discard.
-        // `run_connection` only ever sets it `true` after the CONNECT ACK, so
-        // clearing here also covers a connection that never handshook. It is a
-        // no-op on a `Failed` attempt that never flipped it.
-        emit_ready.store(false, Ordering::Release);
+        // The connection is over. Clear this connection's readiness flag and
+        // drain whatever is still queued, both under the `emit_ready` lock so a
+        // concurrent `emit` cannot slip between them: without the shared lock,
+        // `emit` could observe `ready == true`, this teardown could clear+drain,
+        // and `emit`'s `tx.send` could then land a message in the just-emptied
+        // channel — where the next reconnect (a fresh sid, whose roster the
+        // backend has cleared) would forward it. `emit` takes the same lock
+        // across its check+send, so that interleaving cannot occur.
+        //
+        // Clearing also covers a connection that never handshook (`run_connection`
+        // only sets `true` after the CONNECT ACK), and draining is the backstop
+        // for anything already queued: `emit_rx` is owned by this loop, not by
+        // the connection, so a leftover message would otherwise be flushed onto
+        // the next socket. It is a no-op on a `Failed` attempt that never flipped
+        // the flag or queued anything.
+        let dropped = {
+            let mut ready = emit_ready.lock();
+            *ready = false;
+            drain_pending_emits(&mut emit_rx)
+        };
+        if dropped > 0 {
+            log::warn!("[socket] Dropped {dropped} queued emit(s) on disconnect");
+        }
 
         // The connection attempt has ended (lost, failed, or shutdown), so any
         // in-flight `emit_with_ack` waiter can never receive its ACK now. Cancel
@@ -173,18 +190,6 @@ pub(super) async fn ws_loop(
         // `SocketManager::disconnect()` (CodeRabbit #4355).
         shared.ack_registry.cancel_all();
         super::medulla::workflows::end_connection_generation();
-
-        // Backstop for anything that was already queued when the connection
-        // ended. `emit_rx` is owned by this loop, not by the connection, so
-        // without this a message sitting in the channel is flushed onto the
-        // *next* socket — a different sid, whose roster the backend has already
-        // cleared. The per-handler guard in `event_handlers` closes the common
-        // case; this covers the window between an emit being queued and the
-        // generation being cancelled.
-        let dropped = drain_pending_emits(&mut emit_rx);
-        if dropped > 0 {
-            log::warn!("[socket] Dropped {dropped} queued emit(s) on disconnect");
-        }
 
         match outcome {
             ConnectionOutcome::Shutdown => {
@@ -460,7 +465,7 @@ async fn run_connection(
     emit_rx: &mut mpsc::UnboundedReceiver<String>,
     shutdown_rx: &mut watch::Receiver<bool>,
     internal_tx: &mpsc::UnboundedSender<String>,
-    emit_ready: &AtomicBool,
+    emit_ready: &Mutex<bool>,
 ) -> ConnectionOutcome {
     log::info!("[socket] WS URL: {}", ws_url);
 
@@ -534,7 +539,7 @@ async fn run_connection(
     // stays set — emits keep flowing until the connection is actually torn down.
     *shared.status.write() = ConnectionStatus::Connected;
     *shared.socket_id.write() = sio_sid;
-    emit_ready.store(true, Ordering::Release);
+    *emit_ready.lock() = true;
     emit_state_change(shared);
 
     // 7. Main event loop
