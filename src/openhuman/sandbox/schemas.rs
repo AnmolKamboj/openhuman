@@ -4,6 +4,8 @@ use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
+use crate::openhuman::config::resolve_action_dir;
+use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
@@ -42,12 +44,22 @@ pub fn schemas(function: &str) -> ControllerSchema {
             namespace: "sandbox",
             function: "status",
             description: "Return sandbox backend status and availability.",
-            inputs: vec![FieldSchema {
-                name: "backend",
-                ty: TypeSchema::String,
-                comment: "Backend kind to check: 'docker', 'local', or 'none'.",
-                required: false,
-            }],
+            inputs: vec![
+                FieldSchema {
+                    name: "backend",
+                    ty: TypeSchema::String,
+                    comment: "Backend kind to check: 'docker', 'local', or 'none'.",
+                    required: false,
+                },
+                FieldSchema {
+                    name: "is_remote",
+                    ty: TypeSchema::Bool,
+                    comment: "Whether this is a remote/channel session. When true, a \
+                              sandboxed session resolves to the Docker backend even if \
+                              the runtime is not configured for Docker. Defaults to false.",
+                    required: false,
+                },
+            ],
             outputs: vec![FieldSchema {
                 name: "status",
                 ty: TypeSchema::Json,
@@ -138,6 +150,15 @@ fn handle_status(params: Map<String, Value>) -> ControllerFuture {
             .get("backend")
             .and_then(|v| v.as_str())
             .unwrap_or("none");
+        // `is_remote` is an explicit caller-supplied flag, matching
+        // `handle_resolve_policy`. It must NOT be inferred from `backend_str`:
+        // naming the docker backend to check its availability is not the same
+        // as running a remote/channel session, and conflating the two forced
+        // Docker resolution for a local status probe (#6081).
+        let is_remote = params
+            .get("is_remote")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let mode = match backend_str {
             "docker" | "local" => {
@@ -146,12 +167,23 @@ fn handle_status(params: Map<String, Value>) -> ControllerFuture {
             _ => crate::openhuman::agent::harness::definition::SandboxMode::None,
         };
 
-        let config = crate::openhuman::config::RuntimeConfig::default();
-        let is_remote = backend_str == "docker";
+        // Load the user's live config so the reported policy reflects the
+        // configured runtime (`[runtime] kind` + `[runtime.docker]` overrides)
+        // and the mounted workspace, not the compiled-in `RuntimeConfig::default()`
+        // (#6081). A failed config load surfaces to the caller rather than
+        // silently answering from defaults.
+        let config = match config_rpc::load_config_with_timeout().await {
+            Ok(config) => config,
+            Err(err) => {
+                log::warn!("[sandbox] handle_status config load failed error={err}");
+                return Err(err);
+            }
+        };
+
         let policy = super::ops::resolve_sandbox_policy(
             mode,
-            std::path::Path::new("/tmp"),
-            &config,
+            &config.workspace_dir,
+            &config.runtime,
             is_remote,
         );
         let handle = super::ops::create_sandbox_backend(&policy).await;
@@ -176,9 +208,24 @@ fn handle_resolve_policy(params: Map<String, Value>) -> ControllerFuture {
             _ => crate::openhuman::agent::harness::definition::SandboxMode::None,
         };
 
-        let config = crate::openhuman::config::RuntimeConfig::default();
-        let action_dir = crate::openhuman::config::default_action_dir();
-        let policy = super::ops::resolve_sandbox_policy(mode, &action_dir, &config, is_remote);
+        // Load the user's live config so the resolved policy honors the
+        // configured runtime (`[runtime] kind` + `[runtime.docker]` overrides)
+        // and the user's action dir, not the compiled-in `RuntimeConfig::default()`
+        // and `default_action_dir()` (#6081). A failed config load surfaces to
+        // the caller rather than silently answering from defaults.
+        let config = match config_rpc::load_config_with_timeout().await {
+            Ok(config) => config,
+            Err(err) => {
+                log::warn!("[sandbox] handle_resolve_policy config load failed error={err}");
+                return Err(err);
+            }
+        };
+
+        // Honor the env `OPENHUMAN_ACTION_DIR` > persisted `action_dir_override`
+        // > default precedence, matching how acting tools resolve their root.
+        let action_dir = resolve_action_dir(&config.action_dir_override);
+        let policy =
+            super::ops::resolve_sandbox_policy(mode, &action_dir, &config.runtime, is_remote);
         to_json(RpcOutcome::new(policy, vec![]))
     })
 }
