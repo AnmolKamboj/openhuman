@@ -72,7 +72,7 @@ function fixture(t, options = {}) {
     featureGraph = {},
     withExcludedNamespaces = true,
     declareExcludedFeatures = true,
-    gateExcludedModule = true,
+    excludedModuleCfg = '#[cfg(feature = "e2e-test-support")]',
   } = options;
   const root = fs.mkdtempSync(join(tmpdir(), 'domain-e2e-gate-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -88,15 +88,16 @@ function fixture(t, options = {}) {
       'src/openhuman/test_support/schemas.rs',
       controller('test', 'reset') + controller('test_support', 'workspace_root'),
     );
-    // The `#[cfg]` the exclusion claims. It lives on the `mod` declaration in
-    // the PARENT, which is where the gate looks for it — a fixture without this
-    // is a module that compiles unconditionally.
+    // A faithful module tree: `schemas.rs` is reached through `mod schemas;`,
+    // and `test_support` through the declaration in its parent. The `#[cfg]`
+    // the exclusion claims lives on the SECOND of those — which is the whole
+    // reason the gate walks the chain instead of reading the file it found the
+    // controller in.
+    write(root, 'src/openhuman/test_support/mod.rs', 'mod schemas;\n');
     write(
       root,
       'src/openhuman/mod.rs',
-      gateExcludedModule
-        ? '#[cfg(feature = "e2e-test-support")]\npub mod test_support;\n'
-        : 'pub mod test_support;\n',
+      `${excludedModuleCfg ? `${excludedModuleCfg}\n` : ''}pub mod test_support;\n`,
     );
   }
   return root;
@@ -400,7 +401,7 @@ test('reads a single-quoted TOML feature array', (t) => {
 // module now compiles unconditionally and its controllers dispatch. An
 // exclusion is a claim about the source, so it is checked against the source.
 test('fails when the module is no longer behind the #[cfg] the exclusion claims', (t) => {
-  const root = fixture(t, { gateExcludedModule: false });
+  const root = fixture(t, { excludedModuleCfg: null });
   write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
   write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
 
@@ -425,7 +426,6 @@ test('fails when the module is no longer behind the #[cfg] the exclusion claims'
 // in between — the arrangement `src/openhuman/test_support/` actually has.
 test('finds the gate on an ancestor mod declaration, not just the immediate parent', (t) => {
   const root = fixture(t);
-  write(root, 'src/openhuman/test_support/mod.rs', 'mod schemas;\n');
   write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
   write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
 
@@ -472,3 +472,63 @@ test('resolves the gate for a namespace declared in mod.rs itself', (t) => {
     `the exclusion must still apply; got:\n${result.stdout}`,
   );
 });
+
+// Codex and CodeRabbit, PR #6092, independently. A `#[cfg]` that CONTAINS the
+// feature name does not necessarily REQUIRE it, and the containing-the-name
+// reading is wrong in the most dangerous direction — `not(feature = "x")`
+// compiles precisely when the feature is OFF, so a namespace that is always
+// present would have been accepted as always absent.
+const NOT_A_GATE = [
+  ['a negated feature', '#[cfg(not(feature = "e2e-test-support"))]'],
+  ['an any() with an unrelated true branch', '#[cfg(any(feature = "e2e-test-support", unix))]'],
+  ['an any() with another feature', '#[cfg(any(feature = "e2e-test-support", feature = "other"))]'],
+  ['a negation nested in an all()', '#[cfg(all(unix, not(feature = "e2e-test-support")))]'],
+];
+
+for (const [description, attribute] of NOT_A_GATE) {
+  test(`rejects ${description} as proof of the claimed gate`, (t) => {
+    const root = fixture(t, { excludedModuleCfg: attribute });
+    write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+    write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+    const result = runGate(root);
+
+    assert.match(
+      result.stderr,
+      /no longer behind the gate they claim/,
+      `${attribute} does not require the feature and must not count as a gate; got:\n${result.stderr}`,
+    );
+  });
+}
+
+// The other direction: a predicate whose truth genuinely implies the feature
+// must still be accepted, or the check would fail every real gate that is not
+// spelled in the simplest possible form.
+const IS_A_GATE = [
+  ['a bare feature', '#[cfg(feature = "e2e-test-support")]'],
+  ['an all() alongside an unrelated term', '#[cfg(all(feature = "e2e-test-support", unix))]'],
+  ['an any() where every branch requires it', '#[cfg(any(all(feature = "e2e-test-support", unix), all(feature = "e2e-test-support", windows)))]'],
+  ['an attribute split across lines', '#[cfg(all(\n    feature = "e2e-test-support",\n    unix\n))]'],
+  ['a cfg below a doc comment', '/// Gated.\n#[cfg(feature = "e2e-test-support")]'],
+];
+
+for (const [description, attribute] of IS_A_GATE) {
+  test(`accepts ${description} as proof of the claimed gate`, (t) => {
+    const root = fixture(t, { excludedModuleCfg: attribute });
+    write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+    write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+    const result = runGate(root);
+
+    assert.doesNotMatch(
+      result.stderr,
+      /no longer behind the gate they claim/,
+      `${attribute} does require the feature and must count as a gate; got:\n${result.stderr}`,
+    );
+    assert.match(
+      result.stdout,
+      /Excluded 2 controller\(s\)/,
+      `the exclusion must still apply; got:\n${result.stdout}`,
+    );
+  });
+}

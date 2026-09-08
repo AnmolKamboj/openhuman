@@ -209,7 +209,7 @@ function collectInvokedMethods() {
 function collectSchemaMethods() {
   const methodsByNamespace = new Map();
   // Which file declared each namespace, so an exclusion can be checked against
-  // the `#[cfg]` chain that actually reaches it — see `moduleGatesFor`.
+  // the `#[cfg]` chain that actually reaches it — see `moduleGateProves`.
   const filesByNamespace = new Map();
 
   for (const root of SCHEMA_ROOTS) {
@@ -235,8 +235,140 @@ function collectSchemaMethods() {
 }
 
 /**
- * The Cargo gates on the chain of `mod` declarations that must compile for
- * `file` to exist in the build.
+ * Parse the inside of a `cfg(...)` predicate into `all` / `any` / `not` / atom.
+ *
+ * Deliberately a parser and not a regex. `#[cfg(not(feature = "x"))]` and
+ * `#[cfg(any(feature = "x", unix))]` both CONTAIN the feature name while
+ * neither requires it — the first compiles precisely when the feature is OFF —
+ * so anything that only looks for the name reads them backwards.
+ */
+function parseCfgPredicate(text) {
+  let at = 0;
+  const skipSpace = () => {
+    while (at < text.length && /\s/.test(text[at])) at++;
+  };
+
+  function parseNode() {
+    skipSpace();
+    const start = at;
+    while (at < text.length && /[A-Za-z0-9_]/.test(text[at])) at++;
+    const ident = text.slice(start, at);
+    skipSpace();
+
+    if (text[at] === '(') {
+      at++;
+      const children = [];
+      for (;;) {
+        skipSpace();
+        if (at >= text.length || text[at] === ')') {
+          at++;
+          break;
+        }
+        children.push(parseNode());
+        skipSpace();
+        if (text[at] === ',') at++;
+      }
+      return { kind: ident, children };
+    }
+
+    if (text[at] === '=') {
+      at++;
+      skipSpace();
+      const quote = text[at];
+      if (quote === '"' || quote === "'") {
+        at++;
+        const from = at;
+        while (at < text.length && text[at] !== quote) at++;
+        const value = text.slice(from, at);
+        at++;
+        return { kind: 'atom', key: ident, value };
+      }
+    }
+
+    // A bare atom such as `unix` or `test`: true or false on its own terms,
+    // and never a statement about a feature.
+    return { kind: 'atom', key: ident };
+  }
+
+  return parseNode();
+}
+
+/**
+ * Does this predicate being TRUE prove `feature` is enabled?
+ *
+ * Conservative by construction — it answers "no" whenever it cannot prove
+ * "yes", which is the safe direction here: a gate wrongly believed to protect a
+ * namespace is what removes reachable controllers from the denominator.
+ *
+ *  - `all(...)`: true means every child is true, so ONE child requiring the
+ *    feature is enough.
+ *  - `any(...)`: true means at least one child is true, so the feature is
+ *    implied only if EVERY branch requires it. `any(feature = "x", unix)` is
+ *    satisfied on unix with `x` off.
+ *  - `not(...)`: proves nothing about the feature being on, and
+ *    `not(feature = "x")` is true exactly when it is off.
+ */
+function cfgProvesFeature(node, feature) {
+  if (!node) return false;
+  switch (node.kind) {
+    case 'atom':
+      return node.key === 'feature' && node.value === feature;
+    case 'all':
+      return node.children.some((child) => cfgProvesFeature(child, feature));
+    case 'any':
+      return node.children.length > 0 && node.children.every((child) => cfgProvesFeature(child, feature));
+    default:
+      // `not`, and anything unrecognised, prove nothing.
+      return false;
+  }
+}
+
+/**
+ * The `#[...]` attribute bodies attached to the item starting at `index`.
+ *
+ * Walks backwards over stacked attributes and any doc comments between them,
+ * matching brackets rather than reading a line at a time — a `#[cfg(all(
+ * feature = "x",
+ * unix))]` split across lines is one attribute, and a line-based scan would
+ * see only its last line and parse nothing.
+ */
+function attributesBefore(text, index) {
+  const attributes = [];
+  let end = index;
+
+  for (;;) {
+    let cursor = end - 1;
+    for (;;) {
+      while (cursor >= 0 && /\s/.test(text[cursor])) cursor--;
+      const lineStart = text.lastIndexOf('\n', cursor) + 1;
+      if (/^\s*\/\//.test(text.slice(lineStart, cursor + 1))) {
+        cursor = lineStart - 1;
+        continue;
+      }
+      break;
+    }
+
+    if (cursor < 0 || text[cursor] !== ']') break;
+    let depth = 0;
+    let open = cursor;
+    for (; open >= 0; open--) {
+      if (text[open] === ']') depth++;
+      else if (text[open] === '[') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (open <= 0 || text[open - 1] !== '#') break;
+
+    attributes.push(text.slice(open + 1, cursor));
+    end = open - 1;
+  }
+
+  return attributes;
+}
+
+/**
+ * Is `file` reachable only when `feature` is enabled?
  *
  * `#[cfg]` sits on the `mod` declaration in the PARENT, never in the file
  * itself, so this walks upward: `src/openhuman/test_support/schemas.rs` is
@@ -244,10 +376,9 @@ function collectSchemaMethods() {
  * `pub mod test_support;` in `openhuman/mod.rs` — and only the second carries
  * the gate. A file pulled in by `include!` has no `mod` of its own and simply
  * contributes nothing at its own level, which is why a missing declaration is
- * not itself an error here.
+ * not an error here; one gated ancestor anywhere on the chain is enough.
  */
-function moduleGatesFor(file) {
-  const gates = new Set();
+function moduleGateProves(file, feature) {
   let segments = path.relative(ROOT, file).split(path.sep);
 
   while (segments.length > 1) {
@@ -260,13 +391,13 @@ function moduleGatesFor(file) {
     const declaringFile = path.join(ROOT, ...parentDir, 'mod.rs');
 
     if (fs.existsSync(declaringFile)) {
-      const lines = read(declaringFile).split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (!new RegExp(`^\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+${name}\\s*;`).test(lines[i])) continue;
-        // Attributes stack above the declaration; read back through all of them.
-        for (let j = i - 1; j >= 0 && /^\s*#\[/.test(lines[j]); j--) {
-          const gate = lines[j].match(/#\[cfg\(.*?feature\s*=\s*"([a-z0-9-]+)"/)?.[1];
-          if (gate) gates.add(gate);
+      const text = read(declaringFile);
+      const declaration = new RegExp(`^[ \\t]*(?:pub(?:\\([^)]*\\))?[ \\t]+)?mod[ \\t]+${name}[ \\t]*;`, 'm');
+      const found = declaration.exec(text);
+      if (found) {
+        for (const attribute of attributesBefore(text, found.index)) {
+          const inner = attribute.match(/^\s*cfg\s*\(([\s\S]*)\)\s*$/)?.[1];
+          if (inner && cfgProvesFeature(parseCfgPredicate(inner), feature)) return true;
         }
       }
     }
@@ -275,7 +406,7 @@ function moduleGatesFor(file) {
     if (segments[segments.length - 1] === 'src') break;
   }
 
-  return gates;
+  return false;
 }
 
 /**
@@ -389,7 +520,7 @@ function checkExclusions(discovered, declaringFiles, labelForNamespace) {
     const files = declaringFiles.get(namespace);
     if (!files) continue; // Already reported by (2); nothing to check against.
     const unguarded = [...files]
-      .filter((file) => !moduleGatesFor(file).has(entry.feature))
+      .filter((file) => !moduleGateProves(file, entry.feature))
       .map((file) => path.relative(ROOT, file))
       .sort();
     if (unguarded.length > 0) {
