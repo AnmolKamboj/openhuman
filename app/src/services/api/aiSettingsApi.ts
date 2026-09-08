@@ -315,10 +315,12 @@ export async function loadAISettings(): Promise<AISettings> {
 
   // Diagnostic: detect partial BYOK routing — some workloads have a BYOK cloud
   // provider configured while others are left at default/openhuman. Each route
-  // is independent (#6109): an unset workload stays on the managed backend and
-  // does NOT pick up a sibling's BYOK provider. This log makes the split state
-  // easy to trace from the frontend side, which is the common source of "why is
-  // this workload not using my key?".
+  // is independent (#6109): an unset workload does NOT pick up a sibling's BYOK
+  // provider. It resolves through `primary_cloud` instead — usually the managed
+  // backend, though a legacy external `inference_url` still takes precedence
+  // there, so this deliberately does not claim where it lands. This log makes
+  // the split state easy to trace from the frontend side, which is the common
+  // source of "why is this workload not using my key?".
   const byokProvider = (['chat', 'reasoning', 'agentic', 'coding'] as const).find(w => {
     const ref_ = routing[w];
     return ref_.kind === 'cloud';
@@ -333,7 +335,7 @@ export async function loadAISettings(): Promise<AISettings> {
     console.debug(
       '[ai-settings] partial BYOK routing detected — ' +
         byokSlug +
-        ' is configured for one workload; the unset chat-tier workloads stay on the managed backend'
+        ' is configured for one workload; the unset chat-tier workloads do not inherit it'
     );
   }
 
