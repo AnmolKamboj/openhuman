@@ -46,9 +46,43 @@ function runGate(root, threshold = '90') {
   });
 }
 
-function fixture(t) {
+/** A `[features]` table in the shape `parseCoreFeatureGraph` reads. */
+function cargoToml(defaultFeatures, extraFeatures) {
+  const quote = (items) => items.map((item) => `"${item}"`).join(', ');
+  const lines = ['[features]', `default = [${quote(defaultFeatures)}]`];
+  for (const [name, deps] of Object.entries(extraFeatures)) lines.push(`${name} = [${quote(deps)}]`);
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * A fixture world.
+ *
+ * Two things every fixture needs that a bare temp dir does not have. The gate
+ * hard-requires `Cargo.toml` and `scripts/ci/product-features.txt`, because
+ * that pair is what `scripts/test-rust-e2e.sh` builds its `--features` string
+ * from and therefore the only honest answer to "which configuration is being
+ * measured". And — unless a test is proving the stale-entry guard — it needs a
+ * declaration for every `UNREACHABLE_NAMESPACES` entry, so a run is not
+ * tripping over an exclusion that names nothing in this world.
+ */
+function fixture(t, options = {}) {
+  const {
+    defaultFeatures = [],
+    productFeatures = [],
+    featureGraph = {},
+    withExcludedNamespaces = true,
+  } = options;
   const root = fs.mkdtempSync(join(tmpdir(), 'domain-e2e-gate-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  write(root, 'Cargo.toml', cargoToml(defaultFeatures, featureGraph));
+  write(root, 'scripts/ci/product-features.txt', `${productFeatures.join('\n')}\n`);
+  if (withExcludedNamespaces) {
+    write(
+      root,
+      'src/openhuman/test_support/schemas.rs',
+      controller('test', 'reset') + controller('test_support', 'workspace_root'),
+    );
+  }
   return root;
 }
 
@@ -133,5 +167,166 @@ test('measures a discovered namespace that MODULES does not name', (t) => {
     result.stdout,
     /openhuman\.widgets_purge/,
     `the uncovered controller must be reported as missing; got:\n${result.stdout}`,
+  );
+});
+
+// #6069: the gate demanded coverage of methods that are not compiled into the
+// build it measures. `test` / `test_support` sit behind `e2e-test-support`,
+// which is in neither `[features] default` nor product-features.txt, so the
+// only ways to satisfy those rows were a bespoke feature string or naming the
+// method in a string literal that never calls it — the exact gaming the
+// `collectInvokedMethods` header warns about. The honest answer (0%,
+// unreachable) and the dishonest one (0%, nobody bothered) looked identical.
+test('excludes namespaces compiled out of the measured configuration', (t) => {
+  const root = fixture(t);
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.doesNotMatch(
+    result.stdout,
+    /^\| test \|/m,
+    `an unreachable namespace must not be billed as an uncovered obligation; got:\n${result.stdout}`,
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /^\| test_support \|/m,
+    `an unreachable namespace must not be billed as an uncovered obligation; got:\n${result.stdout}`,
+  );
+  // The denominator must shrink with the rows. A row hidden from the table but
+  // still counted would be a worse report than the bug.
+  assert.match(
+    result.stdout,
+    /Discovered 1 controllers across 1 namespaces/,
+    `excluded controllers must leave the denominator; got:\n${result.stdout}`,
+  );
+});
+
+// Excluded is not the same as forgotten. The report has to show the claim —
+// "nothing here can be dispatched" — or nobody ever reviews it.
+test('reports what it excluded, with the gate and the reason', (t) => {
+  const root = fixture(t);
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.match(
+    result.stdout,
+    /Excluded 2 controller\(s\) in 2 namespace\(s\) as unreachable/,
+    `the exclusion must be stated, not silent; got:\n${result.stdout}`,
+  );
+  assert.match(
+    result.stdout,
+    /test \(1\) — compiled out by `e2e-test-support`:/,
+    `each exclusion must name its gate; got:\n${result.stdout}`,
+  );
+  assert.match(
+    result.stdout,
+    /test_support \(1\) — compiled out by `e2e-test-support`:/,
+    `each exclusion must name its gate; got:\n${result.stdout}`,
+  );
+});
+
+// The guard that makes the list safe to keep. An exclusion is a claim about the
+// measured build, and if that build starts compiling the family in, the claim
+// deletes real obligations from the denominator and reports the smaller world
+// as success — strictly worse than the bug #6069 fixed.
+test('fails when an excluded namespace becomes reachable in the product set', (t) => {
+  const root = fixture(t, { productFeatures: ['e2e-test-support'] });
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `a stale exclusion must fail the gate; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /excluded namespace\(s\) are reachable in the measured configuration/,
+    `the failure must say the exclusion no longer holds; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stderr,
+    /test \(gated on "e2e-test-support"\)/,
+    `the offending namespace and gate must be named; got:\n${result.stderr}`,
+  );
+});
+
+// Cargo features are transitive, so "is the gate in `default` or the product
+// list" is the wrong question — `documents = ["modules", …]` turns `modules` on
+// for anyone enabling `documents`. A direct-membership check passes this
+// fixture while cargo compiles the family in, which is why the gate resolves
+// the graph instead.
+test('fails when an excluded namespace is reachable only transitively', (t) => {
+  const root = fixture(t, {
+    defaultFeatures: ['bundle'],
+    featureGraph: { bundle: ['e2e-test-support'], 'e2e-test-support': [] },
+  });
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `a transitively-enabled gate must fail the gate; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /excluded namespace\(s\) are reachable in the measured configuration/,
+    `following the feature graph is the point of this test; got:\n${result.stderr}`,
+  );
+});
+
+// The other way the list rots: the namespace is renamed or deleted and the
+// entry silently stops referring to anything. Same failure `declaredButMissing`
+// catches for MODULES, applied to the exclusion list.
+test('fails when an excluded namespace no longer exists', (t) => {
+  const root = fixture(t, { withExcludedNamespaces: false });
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `an exclusion naming nothing must fail the gate; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /UNREACHABLE_NAMESPACES names 2 namespace\(s\) with no discovered controllers: test, test_support/,
+    `the stale entries must be named; got:\n${result.stderr}`,
+  );
+});
+
+// Without both files the gate cannot say which configuration it is measuring,
+// and an exclusion nothing verifies is the silent hole the list exists to
+// close. Refusing is the only honest answer — exit 2, the same usage-error
+// status as a bad threshold.
+test('refuses to run without the files the measured feature set comes from', (t) => {
+  const root = fixture(t);
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  fs.rmSync(join(root, 'scripts', 'ci', 'product-features.txt'));
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 2, `a world with no product feature list must be refused; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /product-features\.txt not found/,
+    `the failure must name the missing file; got:\n${result.stderr}`,
+  );
+});
+
+// Guarding the guard. A `[features]` table the parser cannot see does not fail
+// on its own — it reports every gate as OFF, which is exactly the answer that
+// makes every exclusion look earned. Silence there would undo the check.
+test('refuses to run when the feature table cannot be parsed', (t) => {
+  const root = fixture(t);
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'Cargo.toml', '[package]\nname = "openhuman"\n');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 2, `an unparseable feature table must be refused; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /no `\[features\] default` in Cargo\.toml/,
+    `the failure must name what could not be resolved; got:\n${result.stderr}`,
   );
 });

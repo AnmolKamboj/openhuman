@@ -2,6 +2,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {
+  parseCoreFeatureGraph,
+  parseProductFeatures,
+  resolveEnabledFeatures,
+} from './lib/feature-forwarding.mjs';
+
 const ROOT = process.cwd();
 
 function usage() {
@@ -63,6 +69,57 @@ const MODULES = [
   { label: 'composio', namespaces: ['composio'] },
   { label: 'threads', namespaces: ['threads'] },
 ];
+
+// Namespaces whose controllers are COMPILED OUT of the configuration this gate
+// measures, with the gate that removes them and the reason beside each — the
+// shape `INTENTIONALLY_NOT_FORWARDED` uses in scripts/lib/feature-forwarding.mjs.
+//
+// A method that cannot be dispatched cannot be reached by a `tests/**/*_e2e.rs`
+// target, so listing it as an uncovered obligation asks for something
+// impossible. The only two ways to satisfy such a row are a bespoke feature
+// string (which invalidates the shared target dir for every parallel worker) or
+// naming the method in a string literal that never calls it — the exact gaming
+// `collectInvokedMethods` warns about above. Worse, the honest answer (0%,
+// unreachable) and the dishonest one (0%, nobody bothered) look identical in
+// the report.
+//
+// This has to live HERE and not in Rust. The schemas are already `#[cfg]`-
+// correct — `src/openhuman/mod.rs` gates the whole `test_support` module — but
+// discovery reads source text off disk and would find these literals even if
+// every line were `#[cfg(never)]`. There is no Rust-side edit that changes what
+// a text scan sees.
+//
+// Excluding is the dangerous direction: a wrong entry hides real work. So each
+// one is checked against the feature set the measured build actually enables
+// (`checkExclusions` below), not merely against this comment. #6069.
+const UNREACHABLE_NAMESPACES = {
+  test: {
+    feature: 'e2e-test-support',
+    reason:
+      '`openhuman.test_reset` wipes sidecar state in place, and src/core/all.rs registers it behind ' +
+      '`#[cfg(feature = "e2e-test-support")]` precisely so a shipped binary never carries the destructive RPC. ' +
+      'Only app/scripts/e2e-build.sh turns that gate on; under the feature string scripts/test-rust-e2e.sh ' +
+      'builds every e2e target with, dispatching it answers `unknown method`.',
+  },
+  test_support: {
+    feature: 'e2e-test-support',
+    reason:
+      'Same gate as `test`: src/openhuman/mod.rs declares the whole `test_support` module behind ' +
+      '`#[cfg(feature = "e2e-test-support")]`, so these workspace- and chat-introspection helpers exist only in ' +
+      'the E2E build produced by app/scripts/e2e-build.sh.',
+  },
+};
+
+// The two files scripts/test-rust-e2e.sh derives its `--features` string from.
+//
+// It runs every suite with `--features "$(scripts/ci/product-features.sh)"` and
+// does NOT pass `--no-default-features`, so the measured configuration is
+// `default` UNION the product set — not the product set alone. The distinction
+// decides real cases: `medulla` is absent from product-features.txt but present
+// in `[features] default`, so its nine controllers ARE dispatchable in an e2e
+// build and are genuine obligations, not exclusions.
+const CORE_MANIFEST = path.join(ROOT, 'Cargo.toml');
+const PRODUCT_FEATURES_FILE = path.join(ROOT, 'scripts', 'ci', 'product-features.txt');
 
 // Where `ControllerSchema` literals live.
 //
@@ -172,6 +229,103 @@ function collectSchemaMethods() {
   return methodsByNamespace;
 }
 
+/**
+ * The gates cargo has ON in the build `scripts/test-rust-e2e.sh` produces.
+ *
+ * Resolved from the same two files that script reads, and through the feature
+ * graph rather than by direct membership: a gate can be enabled transitively
+ * (`documents = ["modules", …]`), and reading such a gate as OFF would let an
+ * exclusion look earned when cargo compiles the family in.
+ *
+ * Both files are REQUIRED. Without them this gate cannot say which controllers
+ * are reachable, and an exclusion nothing verifies is precisely the silent hole
+ * `UNREACHABLE_NAMESPACES` exists to close.
+ */
+function measuredFeatures() {
+  for (const file of [CORE_MANIFEST, PRODUCT_FEATURES_FILE]) {
+    if (fs.existsSync(file)) continue;
+    console.error(
+      `check-domain-e2e-coverage: ${path.relative(ROOT, file) || file} not found under ${ROOT}.\n` +
+        'The gate resolves which controllers are reachable in the configuration it measures from\n' +
+        'Cargo.toml and scripts/ci/product-features.txt, so it must run from the repository root.',
+    );
+    process.exit(2);
+  }
+  const graph = parseCoreFeatureGraph(read(CORE_MANIFEST));
+  // Guard the guard. An empty graph is what a moved `[features]` table or a
+  // parser regression looks like, and it does not fail — it quietly reports
+  // every gate as OFF, which is the answer that makes every exclusion look
+  // earned. Refuse instead: this check is only worth having if it can be wrong.
+  if (!graph.has('default')) {
+    console.error(
+      `check-domain-e2e-coverage: no \`[features] default\` in ${path.relative(ROOT, CORE_MANIFEST)}.\n` +
+        'Without it the measured feature set cannot be resolved, and every exclusion in\n' +
+        'UNREACHABLE_NAMESPACES would be accepted unchecked.',
+    );
+    process.exit(2);
+  }
+  const product = parseProductFeatures(read(PRODUCT_FEATURES_FILE));
+  return resolveEnabledFeatures(graph, ['default', ...product]);
+}
+
+/**
+ * The three ways an `UNREACHABLE_NAMESPACES` entry can stop being true.
+ *
+ * Returns one message per problem; empty means every exclusion is still earned.
+ * This exists because the MODULES comment above is right — a list you must
+ * remember to maintain is a list that silently stops covering things — and an
+ * exclusion that rots is worse than a stale MODULES line: it does not merely
+ * fail to measure something, it deletes a real obligation from the denominator
+ * and reports the smaller world as success.
+ */
+function checkExclusions(discovered, labelForNamespace) {
+  const enabled = measuredFeatures();
+  const problems = [];
+
+  // (1) The gate came back. If the feature is enabled in the measured build,
+  // the controllers dispatch and excluding them hides work that is now real.
+  const reachable = Object.entries(UNREACHABLE_NAMESPACES)
+    .filter(([, entry]) => enabled.has(entry.feature))
+    .map(([namespace, entry]) => `${namespace} (gated on "${entry.feature}")`)
+    .sort();
+  if (reachable.length > 0) {
+    problems.push(
+      `${reachable.length} excluded namespace(s) are reachable in the measured configuration: ${reachable.join(', ')}.` +
+        '\nTheir gate is enabled by `[features] default` or scripts/ci/product-features.txt, so their controllers' +
+        '\ndo dispatch and must be covered. Drop the UNREACHABLE_NAMESPACES entry.',
+    );
+  }
+
+  // (2) The namespace is gone, or discovery stopped seeing it. Same failure
+  // `declaredButMissing` catches for MODULES, applied to the other list.
+  const missing = Object.keys(UNREACHABLE_NAMESPACES)
+    .filter((namespace) => !discovered.has(namespace))
+    .sort();
+  if (missing.length > 0) {
+    problems.push(
+      `UNREACHABLE_NAMESPACES names ${missing.length} namespace(s) with no discovered controllers: ${missing.join(', ')}.` +
+        '\nEither the namespace was removed (drop the entry) or schema discovery has stopped seeing it' +
+        '\n(fix SCHEMA_ROOTS / the match).',
+    );
+  }
+
+  // (3) Naming one namespace in both lists is a contradiction: MODULES asks for
+  // a coverage row, UNREACHABLE_NAMESPACES says there is nothing to cover.
+  // Unchecked, the exclusion wins and the namespace vanishes from the report
+  // without a word — which is how a MODULES entry stops meaning anything.
+  const contradictory = Object.keys(UNREACHABLE_NAMESPACES)
+    .filter((namespace) => labelForNamespace.has(namespace))
+    .sort();
+  if (contradictory.length > 0) {
+    problems.push(
+      `${contradictory.length} namespace(s) appear in BOTH MODULES and UNREACHABLE_NAMESPACES: ${contradictory.join(', ')}.` +
+        '\nMODULES asks for a coverage row; UNREACHABLE_NAMESPACES says there is nothing to cover. Resolve one.',
+    );
+  }
+
+  return problems;
+}
+
 const invoked = collectInvokedMethods();
 const schemas = collectSchemaMethods();
 
@@ -187,9 +341,20 @@ const declaredButMissing = [...labelForNamespace.keys()]
   .filter((namespace) => !schemas.has(namespace))
   .sort();
 
+const exclusionProblems = checkExclusions(schemas, labelForNamespace);
+
+// Reported below rather than dropped in silence: an excluded namespace is a
+// claim ("nothing here can be dispatched"), and a claim the report does not
+// show is a claim nobody reviews.
+const excluded = [...schemas]
+  .filter(([namespace]) => Object.hasOwn(UNREACHABLE_NAMESPACES, namespace))
+  .map(([namespace, methods]) => ({ namespace, count: methods.size, ...UNREACHABLE_NAMESPACES[namespace] }))
+  .sort((a, b) => a.namespace.localeCompare(b.namespace));
+
 // One row per namespace that actually exists, grouped where MODULES says so.
 const rows = new Map();
 for (const [namespace, methods] of schemas) {
+  if (Object.hasOwn(UNREACHABLE_NAMESPACES, namespace)) continue;
   const label = labelForNamespace.get(namespace) ?? namespace;
   if (!rows.has(label)) rows.set(label, { label, namespaces: [], expected: new Set() });
   const row = rows.get(label);
@@ -234,6 +399,23 @@ console.log('');
 console.log(
   `Discovered ${totalExpected} controllers across ${rows.size} namespaces; ${totalCovered} invoked by a tests/**/*_e2e.rs target.`,
 );
+
+if (excluded.length > 0) {
+  const totalExcluded = excluded.reduce((sum, entry) => sum + entry.count, 0);
+  console.log('');
+  console.log(
+    `Excluded ${totalExcluded} controller(s) in ${excluded.length} namespace(s) as unreachable in the measured` +
+      ' configuration (`[features] default` + scripts/ci/product-features.txt):',
+  );
+  for (const entry of excluded) {
+    console.log(`  ${entry.namespace} (${entry.count}) — compiled out by \`${entry.feature}\`: ${entry.reason}`);
+  }
+}
+
+if (exclusionProblems.length > 0) {
+  failed = true;
+  for (const problem of exclusionProblems) console.error(`\n${problem}`);
+}
 
 if (declaredButMissing.length > 0) {
   failed = true;
