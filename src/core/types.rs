@@ -4,7 +4,6 @@
 //! responses, as well as maintaining application state across subsystems.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// Standard response structure for commands that include execution logs.
 ///
@@ -65,11 +64,12 @@ impl InvocationResult {
 /// - `logs.is_empty()` -> `inv.value`
 /// - `!logs.is_empty()` -> `{ "result": inv.value, "logs": inv.logs }`
 pub fn invocation_to_rpc_json(inv: InvocationResult) -> serde_json::Value {
-    if inv.logs.is_empty() {
-        inv.value
-    } else {
-        json!({ "result": inv.value, "logs": inv.logs })
-    }
+    // Delegates rather than repeating the rule. This function and
+    // `RpcOutcome::into_cli_compatible_json` are the two ways a controller
+    // result reaches a caller, and they carried independent copies of the same
+    // six lines — so a fix to one would have silently left the other on the old
+    // shape. See `crate::rpc::apply_log_envelope` (#6080).
+    crate::rpc::apply_log_envelope(inv.value, inv.logs)
 }
 
 /// Standard JSON-RPC 2.0 request format.
@@ -286,6 +286,48 @@ mod tests {
         assert!(json.get("logs").is_some());
         assert_eq!(json["result"], json!({"data": true}));
         assert_eq!(json["logs"][0], "info");
+    }
+
+    /// The two controller return paths must produce byte-identical JSON for the
+    /// same (value, logs) pair.
+    ///
+    /// `RpcOutcome::into_cli_compatible_json` (the registry path, 152 call
+    /// sites) and `invocation_to_rpc_json` (the dynamic-dispatch path) used to
+    /// carry independent copies of the same envelope rule. Nothing linked them,
+    /// so a fix or a normalisation applied to one would have left the other
+    /// answering the old shape — the divergence would have been invisible until
+    /// a caller hit the wrong path. Both now delegate to
+    /// `rpc::apply_log_envelope`; this asserts they still agree, so a future
+    /// edit cannot re-fork them without failing here.
+    ///
+    /// It deliberately asserts *agreement*, not a particular shape: the shape
+    /// itself is the open question in #6080, and pinning it here would enshrine
+    /// the defect as intended behaviour.
+    #[test]
+    fn both_controller_return_paths_apply_the_same_log_envelope() {
+        for (value, logs) in [
+            (json!({ "data": true }), Vec::<String>::new()),
+            (json!({ "data": true }), vec!["one".to_string()]),
+            (json!(null), vec!["log on a null value".to_string()]),
+            (json!([1, 2, 3]), Vec::<String>::new()),
+            // A value that already carries a `result` key: the envelope must
+            // treat it as opaque data, not as an envelope to flatten.
+            (json!({ "result": "inner", "logs": ["not mine"] }), vec![]),
+        ] {
+            let via_dispatch = invocation_to_rpc_json(InvocationResult {
+                value: value.clone(),
+                logs: logs.clone(),
+            });
+            let via_registry = crate::rpc::RpcOutcome::new(value.clone(), logs.clone())
+                .into_cli_compatible_json()
+                .expect("a serde_json::Value always serializes");
+
+            assert_eq!(
+                via_dispatch, via_registry,
+                "the dispatch and registry paths disagreed for value={value} logs={logs:?}; \
+                 both must go through rpc::apply_log_envelope"
+            );
+        }
     }
 
     #[test]
