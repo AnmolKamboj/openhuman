@@ -496,18 +496,35 @@ async fn cron_run_response_conforms_to_its_declared_schema() {
         );
     }
 
+    // A present field must also match its declared *type*. Skipping a
+    // non-string value here would let `{"job_id": 1, "status": 0}` pass the
+    // two loops above, which is the same class of silent divergence this test
+    // exists to catch.
     for field in fields {
-        let TypeSchema::Enum { variants } = &field.ty else {
-            continue;
+        let Some(value) = result.get(field.name) else {
+            continue; // absence is the required-field loop's business
         };
-        let Some(value) = result.get(field.name).and_then(|v| v.as_str()) else {
-            continue;
-        };
-        assert!(
-            variants.contains(&value),
-            "cron_run returned '{value}' for '{}', not among the declared variants {variants:?}",
-            field.name
-        );
+        match &field.ty {
+            TypeSchema::String => assert!(
+                value.is_string(),
+                "cron_run returned {value} for '{}', which is declared String",
+                field.name
+            ),
+            TypeSchema::Enum { variants } => {
+                let text = value.as_str().unwrap_or_else(|| {
+                    panic!(
+                        "cron_run returned {value} for '{}', which is declared an enum of {variants:?}",
+                        field.name
+                    )
+                });
+                assert!(
+                    variants.contains(&text),
+                    "cron_run returned '{text}' for '{}', not among the declared variants {variants:?}",
+                    field.name
+                );
+            }
+            _ => {}
+        }
     }
 }
 
