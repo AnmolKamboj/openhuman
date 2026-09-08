@@ -1,16 +1,21 @@
 //! What a caller actually observes when a dispatched call carries bad params.
 //!
 //! `core::all::validate_params` is the single pre-dispatch gate for every
-//! registered controller, so a handler's own "missing required param" string can
-//! never reach a caller. Plenty of handlers keep such a check anyway, worded
-//! differently, and those are reachable only by invoking the handler directly —
-//! which is exactly what most suites in this directory do. That makes it easy to
-//! write a test that looks like it covers the dispatch path and does not: the
-//! assertion passes on the handler's string while a real caller would have been
-//! refused earlier, by a different message.
+//! registered controller, so for an *absent*, *unknown* or *wrong-typed* param a
+//! handler's own "missing required param" string never reaches a caller — the
+//! gate refuses first, in different wording.
 //!
-//! These tests pin the observable behaviour so that the distinction cannot be
-//! erased silently (#6073).
+//! It is not a total shield. The gate accepts an explicit JSON `null` for any
+//! declared type: the required check tests key *presence*, and its type check
+//! returns early on null. So a dispatched `{"class": null}` runs the handler and
+//! the handler's own refusal is what comes back. That is why #6073 keeps the
+//! handler-side checks instead of deleting them — on the null path they are the
+//! only guard.
+//!
+//! Most suites in this directory invoke controllers directly
+//! (`(controller.handler)(params).await`), skipping validation altogether, so it
+//! is easy to write a test that looks like it covers the dispatch path and does
+//! not. These tests pin the observable behaviour on both sides of that line.
 
 use serde_json::{json, Map};
 
@@ -84,11 +89,12 @@ async fn mistyped_param_is_refused_with_the_declared_type() {
     assert!(!err.contains("invalid params:"), "got: {err}");
 }
 
-/// The handler-side checks are real and they do fire — just never for a caller.
-/// Reaching one takes a direct handler invocation, the way the suites in this
+/// For an *absent* param the two refusals are different strings, and the
+/// dispatcher's is the one a caller gets. The handler's own check still fires —
+/// it just takes a direct invocation to see it, the way the suites in this
 /// directory call controllers.
 #[tokio::test]
-async fn handler_checks_are_reachable_only_by_calling_the_handler_directly() {
+async fn handler_refusal_differs_from_the_dispatcher_refusal_for_an_absent_param() {
     let dispatched = dispatch(state(), "openhuman.learning_get_facet", json!({}))
         .await
         .expect_err("`class` is required");
@@ -111,5 +117,28 @@ async fn handler_checks_are_reachable_only_by_calling_the_handler_directly() {
         dispatched, direct,
         "the two refusals must stay distinguishable: a test written against the \
          handler's wording is testing the handler, not the dispatch path (#6073)"
+    );
+}
+
+/// An explicit `null` satisfies the gate and reaches the handler, so here the
+/// handler's own refusal *is* what the caller sees. This is the case that makes
+/// the handler-side checks load-bearing rather than redundant, and the reason
+/// #6073 documents them instead of removing them.
+#[tokio::test]
+async fn explicit_null_passes_the_gate_and_the_handler_refuses_instead() {
+    let err = dispatch(
+        state(),
+        "openhuman.learning_get_facet",
+        json!({ "class": null, "key": "verbosity" }),
+    )
+    .await
+    .expect_err("`class` is null, so the handler refuses");
+
+    // The handler's wording, not the dispatcher's — the mirror image of
+    // `missing_required_param_is_refused_with_the_schema_comment`.
+    assert_eq!(err, "missing required `class`");
+    assert!(
+        !err.starts_with("missing required param 'class'"),
+        "the gate must NOT have refused this: {err}"
     );
 }
