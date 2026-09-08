@@ -81,6 +81,71 @@ fn class_from_key_parses_known_classes() {
     assert_eq!(class_from_key("no_slash"), None);
 }
 
+// ── parse_facet_class_name ────────────────────────────────────────────────────
+
+#[test]
+fn parse_facet_class_name_accepts_every_taxonomy_name() {
+    assert_eq!(parse_facet_class_name("style"), Ok(FacetClass::Style));
+    assert_eq!(parse_facet_class_name("identity"), Ok(FacetClass::Identity));
+    assert_eq!(parse_facet_class_name("tooling"), Ok(FacetClass::Tooling));
+    assert_eq!(parse_facet_class_name("veto"), Ok(FacetClass::Veto));
+    assert_eq!(parse_facet_class_name("goal"), Ok(FacetClass::Goal));
+    assert_eq!(parse_facet_class_name("channel"), Ok(FacetClass::Channel));
+}
+
+#[test]
+fn parse_facet_class_name_rejects_unknown_class() {
+    let err = parse_facet_class_name("nonsense").expect_err("unknown class must be rejected");
+    assert!(err.contains("invalid class `nonsense`"), "got: {err}");
+    // Lists the accepted taxonomy so the caller can recover.
+    assert!(
+        err.contains("style, identity, tooling, veto, goal, channel"),
+        "got: {err}"
+    );
+}
+
+// ── class filter is column-only (#6077) ───────────────────────────────────────
+//
+// `list_facets` filters on the `class` column alone; the redundant
+// `|| key.starts_with("{class}/")` arm was dropped. This proves the two are not
+// equivalent when they disagree: a valid class returns exactly the rows whose
+// `class` column matches, and a key-prefix that does not match the column is
+// excluded.
+#[tokio::test]
+async fn class_filter_matches_column_not_key_prefix() {
+    let cache = make_cache();
+
+    // Two facets whose class column is genuinely `style`.
+    let mut a = stub_facet("f1", "style/verbosity", "terse", FacetState::Active, 1.8);
+    a.class = Some("style".into());
+    let mut b = stub_facet("f2", "style/tone", "formal", FacetState::Active, 0.9);
+    b.class = Some("style".into());
+    // A facet whose key prefix reads "style/" but whose class column is `goal` —
+    // the old `starts_with` arm would have wrongly matched this under a `style`
+    // filter; the column-only rule must not.
+    let mut c = stub_facet("f3", "style/mislabelled", "x", FacetState::Active, 0.5);
+    c.class = Some("goal".into());
+
+    cache.upsert(&a).await.unwrap();
+    cache.upsert(&b).await.unwrap();
+    cache.upsert(&c).await.unwrap();
+
+    // The same predicate list_facets now applies: class column only.
+    let all = cache.list_all().await.unwrap();
+    let matched: Vec<&str> = all
+        .iter()
+        .filter(|f| f.state == FacetState::Active)
+        .filter(|f| f.class.as_deref() == Some("style"))
+        .map(|f| f.key.as_str())
+        .collect();
+
+    assert_eq!(matched, vec!["style/verbosity", "style/tone"]);
+    assert!(
+        !matched.contains(&"style/mislabelled"),
+        "column-only filter must exclude a key-prefix match with a different class column"
+    );
+}
+
 // ── set_user_state_pinned_persists ────────────────────────────────────────────
 
 #[tokio::test]

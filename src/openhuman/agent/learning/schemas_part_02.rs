@@ -12,6 +12,13 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .map(str::to_string);
 
+        // Reject an unknown class before touching the store, so a filter that
+        // could never match a facet is surfaced as an error instead of an
+        // empty result the caller cannot distinguish from "nothing learned".
+        if let Some(cls) = &class_filter {
+            crate::openhuman::agent::learning::cache::parse_facet_class_name(cls)?;
+        }
+
         let cache = get_cache().await?;
 
         // list_all returns all states (active + provisional + candidate + dropped).
@@ -27,11 +34,12 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
                 f.state == FacetState::Active || f.state == FacetState::Provisional
             })
             .filter(|f| {
-                if let Some(cls) = &class_filter {
-                    f.class.as_deref() == Some(cls.as_str())
-                        || f.key.starts_with(&format!("{cls}/"))
-                } else {
-                    true
+                // Filter on the class column only — it is always derived from
+                // the key prefix, so the old `|| key.starts_with(...)` arm was
+                // redundant.
+                match &class_filter {
+                    Some(cls) => f.class.as_deref() == Some(cls.as_str()),
+                    None => true,
                 }
             })
             .map(facet_to_json)
@@ -62,6 +70,8 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.get_facet] key={fk}");
@@ -104,6 +114,8 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `value`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.update_facet] key={fk} value={new_value}");
@@ -156,6 +168,8 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
 
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
+
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.pin_facet] key={fk}");
 
@@ -198,6 +212,8 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
 
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
+
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.unpin_facet] key={fk}");
 
@@ -239,6 +255,8 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.forget_facet] key={fk}");
