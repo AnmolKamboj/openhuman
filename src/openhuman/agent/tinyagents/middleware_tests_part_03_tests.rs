@@ -483,28 +483,34 @@ async fn toc_is_capped_and_reports_what_it_omitted() {
     );
 }
 
-/// The share must never be `0`, because `0` is the sentinel that disables the
-/// cap — so the two allowances that round down to it are the ones to pin
-/// (CodeRabbit on #6068). A model advertising no window is the sharper of the
-/// two: no window means no `ImageAwareMessageTrimMiddleware` either, so the
-/// contents list is the one message that nothing downstream would shrink.
+/// Neither share may ever be `0`, because `0` is the sentinel both middlewares
+/// read as "unbounded" — so the allowances that round down into it are the ones
+/// to pin (CodeRabbit on #6068, twice). A model advertising no window is the
+/// sharp case: no window means no `ImageAwareMessageTrimMiddleware` either, so
+/// these two additions are the ones nothing downstream would shrink.
 #[test]
-fn a_small_or_absent_allowance_still_yields_a_cap() {
-    assert!(
-        toc_allowance_share(0) > 0,
-        "no window must still bound the list, not disable the cap"
-    );
-    for allowance in [1_u64, 5, 9, 99] {
-        let share = toc_allowance_share(allowance);
-        assert!(share > 0, "a {allowance}-token allowance rounded to no cap");
+fn neither_share_is_ever_the_unbounded_sentinel() {
+    for trim_allowance in [0_u64, 1, 5, 9, 99, 100, 2_000, 100_000] {
+        let (toc, restore) = split_input_allowance(trim_allowance);
+        assert!(toc > 0, "allowance {trim_allowance} disabled the TOC cap");
         assert!(
-            share <= allowance,
-            "a {allowance}-token allowance yielded a larger share: {share}"
+            restore > 0,
+            "allowance {trim_allowance} left restoration unbounded"
         );
+        if trim_allowance > 1 {
+            assert!(
+                toc + restore <= trim_allowance.max(NO_WINDOW_ALLOWANCE.min(u64::MAX)),
+                "allowance {trim_allowance} split into more than it had: {toc} + {restore}"
+            );
+        }
     }
+    // With no window the split is taken from the fallback total, not from zero.
+    let (toc, restore) = split_input_allowance(0);
+    assert_eq!(toc, 512);
+    assert_eq!(toc + restore, NO_WINDOW_ALLOWANCE);
     // Proportional sizing is untouched where there is something to divide.
-    assert_eq!(toc_allowance_share(2_000), 200);
-    assert_eq!(toc_allowance_share(100_000), 10_000);
+    assert_eq!(split_input_allowance(2_000), (200, 1_800));
+    assert_eq!(split_input_allowance(100_000), (10_000, 90_000));
 }
 
 /// The end of the same argument: with no window, a run holding far more
@@ -526,7 +532,7 @@ async fn the_contents_list_stays_bounded_when_no_window_is_advertised() {
         .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
         .collect();
     let mut ctx = ctx_with_artifacts(&borrowed).await;
-    let mw = ArtifactIndexTocMiddleware::new(toc_allowance_share(0));
+    let mw = ArtifactIndexTocMiddleware::new(split_input_allowance(0).0);
     let mut request = ModelRequest {
         messages: vec![TaMessage::user("what did you find?")],
         ..Default::default()
@@ -543,5 +549,50 @@ async fn the_contents_list_stays_bounded_when_no_window_is_advertised() {
         estimate_text_tokens(&text) < 1_024,
         "the no-window fallback must bound the list: {}",
         estimate_text_tokens(&text)
+    );
+}
+
+/// The other half of the no-window split: restoration must stop too. Without a
+/// window there is no trim middleware behind it, so an unbounded wrap-up would
+/// hand the provider a request it rejects — losing the in-loop conclusion the
+/// whole cap-checkpoint path exists to deliver (CodeRabbit on #6068).
+#[tokio::test]
+async fn wrap_up_restoration_stays_bounded_when_no_window_is_advertised() {
+    let big = "x".repeat(8_000);
+    let entries: Vec<(String, String)> = (0..40)
+        .map(|i| (format!("call-{i}"), big.clone()))
+        .collect();
+    let borrowed: Vec<(&str, &str)> = entries
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    let (_toc, restore) = split_input_allowance(0);
+    let mw = FinalCallWrapUpMiddleware::new("CONCLUDE NOW", sink_with(&borrowed), restore);
+    let mut ctx = RunContext::new(RunConfig::new("mw-test").with_max_model_calls(2), ());
+    ctx.limits.record_model_call().unwrap();
+    ctx.limits.record_model_call().unwrap();
+    let mut request = ModelRequest {
+        messages: borrowed
+            .iter()
+            .map(|(id, _)| TaMessage::tool(*id, CLEARED_PLACEHOLDER))
+            .collect(),
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let used: u64 = request.messages.iter().map(estimate_message_tokens).sum();
+    assert!(
+        used <= NO_WINDOW_ALLOWANCE,
+        "the no-window fallback must bound the whole request, not just the list: {used}"
+    );
+    let restored = request
+        .messages
+        .iter()
+        .filter(|m| m.text().starts_with("xxx"))
+        .count();
+    assert!(
+        restored >= 1 && restored < 40,
+        "some restored, not all 40 — got {restored}"
     );
 }
