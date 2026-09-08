@@ -400,10 +400,23 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
         else {
             return Ok(());
         };
-        let keys = store
-            .list(ARTIFACT_INDEX_NAMESPACE)
-            .await
-            .unwrap_or_default();
+        // A read failure and an empty index produce the same contents list —
+        // none — but they are not the same event: the second is the ordinary
+        // case, the first means every persisted result is unreachable for this
+        // call with nothing said about it. Degrading is still right (a contents
+        // list is not worth failing a turn over), so the difference has to show
+        // up in the log or it shows up nowhere (CodeRabbit on #6068).
+        let keys = match store.list(ARTIFACT_INDEX_NAMESPACE).await {
+            Ok(keys) => keys,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "[tinyagents::mw] could not read the persisted-artifact index; this call gets \
+                     no contents list and cannot see what was offloaded"
+                );
+                return Ok(());
+            }
+        };
         if keys.is_empty() {
             // No result has been offloaded, so there is nothing to point at and
             // no reason to spend context saying so.
