@@ -480,7 +480,14 @@ impl Middleware<()> for ArtifactIndexTocMiddleware {
                 }
                 kept += 1;
             }
-            rows.truncate(kept.max(1));
+            // No `max(1)`: once `used` is seeded with the fixed text, a share
+            // smaller than that text leaves `kept == 0`, and forcing a row then
+            // puts the whole message over a bound nothing downstream can shrink
+            // — this is a system message, so compression keeps it and the trim
+            // never evicts it, and the overshoot is charged against the
+            // transcript instead (CodeRabbit on #6068). The header and the
+            // omitted count still say the results exist and how to ask for one.
+            rows.truncate(kept);
         }
         let shown = rows.len();
         let omitted = total - shown;
