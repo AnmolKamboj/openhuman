@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc, OnceLock,
 };
 
@@ -64,6 +64,22 @@ pub(super) struct SharedState {
     pub(super) error: RwLock<Option<String>>,
 }
 
+/// The connection's readiness flag, guarded by a lock so a reader can hold the
+/// flag `true` across the send it authorises.
+///
+/// A bare `AtomicBool` cannot express that: `emit` would load `true`, and the
+/// background loop's teardown could then clear the flag *and* drain the emit
+/// queue in the gap before `emit`'s `tx.send` runs, so the message lands in the
+/// just-drained channel and rides the *next* reconnect's socket (a fresh sid
+/// whose roster the backend has already cleared). Both critical sections —
+/// `emit`'s "is-ready? then send" and teardown's "clear then drain" — take this
+/// lock, so they are mutually exclusive and that interleaving cannot happen. The
+/// guard is a leaf: it is only ever held for a synchronous flag read/write plus
+/// a non-blocking channel `send`/`try_recv`, never across an `.await` and never
+/// while another socket lock is held, so it introduces no lock-ordering hazard
+/// with `emit_tx` or the `status` `RwLock`.
+pub(super) type EmitReady = Arc<Mutex<bool>>;
+
 /// The outbound emit channel bundled with the readiness flag of the **same**
 /// connection that owns it.
 ///
@@ -76,11 +92,16 @@ pub(super) struct SharedState {
 /// A reconnect therefore swaps the sender and its flag together — an `emit`
 /// holding the lock can never pair a live-looking status with a stale
 /// pre-handshake channel (the reverse of the TOCTOU the status-only gate had).
+///
+/// `ready` is additionally the serialization point between `emit` and teardown:
+/// see [`EmitReady`] for why the flag is a `Mutex<bool>` rather than an atomic.
 pub(super) struct EmitChannel {
     /// Sender into the background loop's outbound queue.
     pub(super) tx: mpsc::UnboundedSender<String>,
-    /// `true` only between this connection's CONNECT ACK and its teardown.
-    pub(super) ready: Arc<AtomicBool>,
+    /// `true` only between this connection's CONNECT ACK and its teardown, and
+    /// the lock that makes `emit`'s check+send exclusive with teardown's
+    /// clear+drain (see [`EmitReady`]).
+    pub(super) ready: EmitReady,
 }
 
 pub(super) struct AckRegistry {
@@ -136,8 +157,11 @@ pub struct SocketManager {
     /// Shared state accessible from both the manager and the background loop.
     pub(super) shared: Arc<SharedState>,
     /// Channel for sending outgoing messages to the background loop, bundled
-    /// with the readiness flag of the connection that owns it so `emit` reads
-    /// both atomically under one lock (see [`EmitChannel`]).
+    /// with the readiness flag of the connection that owns it. `emit` selects the
+    /// channel under this lock, then gates its check+send on the channel's own
+    /// `ready` lock, so a reconnect can never swap the channel out mid-emit nor
+    /// let teardown drain between the readiness check and the send
+    /// (see [`EmitChannel`] and [`EmitReady`]).
     emit_tx: tokio::sync::Mutex<Option<EmitChannel>>,
     /// Channel for signaling the background loop to shut down.
     shutdown_tx: tokio::sync::Mutex<Option<watch::Sender<bool>>>,
@@ -288,8 +312,10 @@ impl SocketManager {
         // Per-connection readiness flag: starts `false` (pre-handshake) and is
         // flipped by `ws_loop` at CONNECT ACK. Bundled with the sender so `emit`
         // reads the flag belonging to exactly this channel, not a flag a later
-        // reconnect may have swapped underneath it.
-        let emit_ready = Arc::new(AtomicBool::new(false));
+        // reconnect may have swapped underneath it. It is a `Mutex<bool>` rather
+        // than an atomic so `emit`'s check+send and the loop's clear+drain can be
+        // made mutually exclusive (see [`EmitReady`]).
+        let emit_ready: EmitReady = Arc::new(Mutex::new(false));
         let loop_ready = Arc::clone(&emit_ready);
 
         *self.emit_tx.lock().await = Some(EmitChannel {
@@ -359,15 +385,29 @@ impl SocketManager {
     /// `error` event that leaves the socket live), a still-connected socket
     /// keeps accepting emits. A pre-handshake or disconnected emit returns the
     /// same `"Not connected"` error as an emit before `connect` was ever called.
+    ///
+    /// The readiness check and the `tx.send` it authorises are performed under
+    /// the `ready` lock (see [`EmitReady`]), so the background loop's teardown
+    /// cannot clear the flag and drain the queue in the gap between them — which
+    /// would otherwise let this method return `Ok(())` for a message that lands
+    /// in the just-drained channel and rides the *next* reconnect's socket.
     pub async fn emit(&self, event: &str, data: serde_json::Value) -> Result<(), String> {
+        // Encode outside the readiness lock: it is fallible and touches neither
+        // the flag nor the channel, so there is no reason to widen the critical
+        // section around it.
+        let msg = encode_sio_event(event, data, None)?;
         let guard = self.emit_tx.lock().await;
         let Some(channel) = guard.as_ref() else {
             return Err("Not connected".to_string());
         };
-        if !channel.ready.load(Ordering::Acquire) {
+        // Hold `ready` across the check *and* the send so teardown's clear+drain
+        // (which takes the same lock) cannot interleave between them. `send` on an
+        // unbounded channel does not block, so this leaf lock is never held over
+        // an `.await`.
+        let ready = channel.ready.lock();
+        if !*ready {
             return Err("Not connected".to_string());
         }
-        let msg = encode_sio_event(event, data, None)?;
         channel
             .tx
             .send(msg)
