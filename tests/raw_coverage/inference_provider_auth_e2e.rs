@@ -419,15 +419,21 @@ async fn inference_resolve_model_maps_hints_and_tiers_to_the_routed_model() {
         );
     }
 
-    // The part that is easy to get wrong, and the reason this is two phases:
-    // `provider_for_role` lets the **three chat-tier roles** (chat, reasoning,
-    // coding) inherit any configured BYOK route via
-    // `resolve_byok_fallback_provider_string`. So pinning *only* `coding` also
-    // moves chat and reasoning off the managed backend. Asserting it here means
-    // a change to that scoping is a test failure rather than a silent re-route
-    // of the user's conversations.
-    for (id, hint) in [(71_013, "hint:reasoning"), (71_014, "hint:chat")] {
-        let inherited = harness
+    // The part that is easy to get wrong, and the reason this is two phases.
+    //
+    // This block used to assert the opposite: `provider_for_role` let the three
+    // chat-tier roles inherit any configured BYOK route from a sibling, so
+    // pinning *only* `coding` also moved chat and reasoning off the managed
+    // backend — the user's ordinary conversations silently billed to their own
+    // key, with no setting saying so. #6109 removed that inheritance; each route
+    // now stands alone. The assertion is inverted rather than deleted, because
+    // "setting one route does not move the others" is precisely the property
+    // that needs a guard.
+    for (id, hint, tier) in [
+        (71_013, "hint:reasoning", "reasoning-v1"),
+        (71_014, "hint:chat", "chat-v1"),
+    ] {
+        let sibling = harness
             .rpc(
                 id,
                 "openhuman.inference_resolve_model",
@@ -435,16 +441,16 @@ async fn inference_resolve_model_maps_hints_and_tiers_to_the_routed_model() {
             )
             .await;
         assert_eq!(
-            payload(&inherited, hint).get("model"),
-            Some(&json!("zai/glm-4.7")),
-            "{hint} inherits the BYOK route configured for a sibling chat-tier \
-             role — setting one of chat/reasoning/coding moves all three"
+            payload(&sibling, hint).get("model"),
+            Some(&json!(tier)),
+            "{hint} was never configured, so it must stay on the managed backend \
+             rather than inherit the BYOK route pinned for `coding` (#6109)"
         );
     }
 
-    // …and the inheritance stops there. Agentic, burst, vision and the
-    // background workloads stay on the managed backend, because they run
-    // tier-specific models a BYOK provider does not serve.
+    // Agentic, burst, vision and the background workloads stay on the managed
+    // backend for the same reason, and always did — they run tier-specific
+    // models a BYOK provider does not serve.
     for (id, hint, tier) in [
         (71_015, "hint:agentic", "agentic-v1"),
         (71_016, "hint:burst", "burst-v1"),
