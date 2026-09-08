@@ -449,3 +449,30 @@ b = ["a"]
 
   assert.deepEqual([...enabled].sort(), ['a', 'b', 'default']);
 });
+
+test('reads TOML literal strings, not just basic strings', () => {
+  // Both forms are valid TOML and cargo accepts either. Matching only `"…"`
+  // reported these arrays as EMPTY, and empty is the answer that makes every
+  // consumer here pass vacuously. (CodeRabbit, PR #6092.)
+  assert.deepEqual(parseCoreDefaultFeatures("[features]\ndefault = ['voice', \"media\"]\n"), [
+    'voice',
+    'media',
+  ]);
+  assert.deepEqual(parseCoreFeatureGraph("[features]\ndefault = ['documents']\ndocuments = ['modules']\n").get('documents'), ['modules']);
+  assert.deepEqual(
+    parseShellForwardedFeatures(
+      "openhuman_core = { path = \"../..\", default-features = false, features = ['voice'] }\n",
+    ).features,
+    ['voice'],
+  );
+});
+
+test('an apostrophe inside a basic string does not open a literal string', () => {
+  // Alternation order is load-bearing: `"…"` is tried first at each position,
+  // so the `'` in `don't` is consumed as part of the basic string rather than
+  // starting a literal one and swallowing the rest of the array.
+  assert.deepEqual(parseCoreDefaultFeatures('[features]\ndefault = ["don\'t", "media"]\n'), [
+    "don't",
+    'media',
+  ]);
+});

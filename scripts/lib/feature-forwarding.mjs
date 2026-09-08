@@ -96,10 +96,21 @@ function readArray(text, open) {
   return null;
 }
 
-/** Pull the quoted string items out of a raw TOML array body. */
+/**
+ * Pull the quoted string items out of a raw TOML array body.
+ *
+ * TOML has two single-line string forms and both are valid in a manifest:
+ * basic `"voice"` and literal `'voice'`. Matching only the first reported
+ * `default = ['voice']` as an EMPTY array — and empty is the answer that makes
+ * every caller here pass vacuously, which is the failure mode this module
+ * exists to prevent (`checkProductForwarding` has nothing to compare, and the
+ * e2e coverage gate reads every feature as OFF and accepts its exclusions
+ * unchecked). Basic strings are tried first at each position, so an apostrophe
+ * inside `"don't"` cannot be mistaken for the start of a literal string.
+ */
 function arrayItems(raw) {
   if (raw === null) return [];
-  return [...raw.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+  return [...raw.matchAll(/"([^"]+)"|'([^']+)'/g)].map(m => m[1] ?? m[2]);
 }
 
 /**

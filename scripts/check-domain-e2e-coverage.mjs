@@ -265,7 +265,7 @@ function measuredFeatures() {
     process.exit(2);
   }
   const product = parseProductFeatures(read(PRODUCT_FEATURES_FILE));
-  return resolveEnabledFeatures(graph, ['default', ...product]);
+  return { graph, enabled: resolveEnabledFeatures(graph, ['default', ...product]) };
 }
 
 /**
@@ -279,8 +279,27 @@ function measuredFeatures() {
  * and reports the smaller world as success.
  */
 function checkExclusions(discovered, labelForNamespace) {
-  const enabled = measuredFeatures();
+  const { graph, enabled } = measuredFeatures();
   const problems = [];
+
+  // (0) The gate no longer exists. A rename that updated the `#[cfg]` sites but
+  // missed this table leaves a feature name no `[features]` entry declares —
+  // absent from the graph, so absent from `enabled`, which check (1) below
+  // reads as "safely disabled". The namespace still exists and is not in
+  // MODULES, so neither of the other checks fires either, and the renamed
+  // family's controllers leave the denominator in silence. "Not enabled" and
+  // "not a gate at all" have to be different answers.
+  const undeclared = Object.entries(UNREACHABLE_NAMESPACES)
+    .filter(([, entry]) => !graph.has(entry.feature))
+    .map(([namespace, entry]) => `${namespace} (gated on "${entry.feature}")`)
+    .sort();
+  if (undeclared.length > 0) {
+    problems.push(
+      `${undeclared.length} excluded namespace(s) name a feature the \`[features]\` table does not declare: ${undeclared.join(', ')}.` +
+        '\nA renamed or deleted gate reads as disabled here, which would accept the exclusion unchecked.' +
+        '\nPoint the UNREACHABLE_NAMESPACES entry at the current gate name, or drop it.',
+    );
+  }
 
   // (1) The gate came back. If the feature is enabled in the measured build,
   // the controllers dispatch and excluding them hides work that is now real.
