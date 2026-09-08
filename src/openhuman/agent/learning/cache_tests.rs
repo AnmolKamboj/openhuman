@@ -156,6 +156,56 @@ async fn class_filter_matches_column_not_key_prefix() {
     );
 }
 
+// ── classless rows fall back to the key prefix (#6104) ────────────────────────
+//
+// `class` is `Option`: a facet can carry a canonical key like `style/verbosity`
+// with `class: None`. The column-only filter that #6077 introduced hid such
+// rows entirely. `list_facets` therefore keeps the class column authoritative
+// but falls back to the key prefix **only when the column is absent** — the
+// same predicate both `handle_list_facets` and `LearningListFacetsTool` apply.
+// This proves the fallback restores a legitimate classless row without
+// reopening the leak: the row is returned for its own class and for no other.
+#[tokio::test]
+async fn class_filter_falls_back_to_key_prefix_for_classless_rows() {
+    let cache = make_cache();
+
+    // A facet whose class column is absent but whose canonical key names the
+    // class. `stub_facet` already defaults `class` to `None`.
+    let classless = stub_facet("f1", "style/verbosity", "terse", FacetState::Active, 1.8);
+    assert!(
+        classless.class.is_none(),
+        "precondition: the row under test has no class column"
+    );
+    cache.upsert(&classless).await.unwrap();
+
+    // The exact predicate list_facets applies (both the schema handler and the
+    // tool mirror): class column authoritative, key-prefix fallback only when
+    // the column is None.
+    let all = cache.list_all().await.unwrap();
+    let matched = |cls: &str| -> Vec<&str> {
+        all.iter()
+            .filter(|f| f.state == FacetState::Active)
+            .filter(|f| {
+                f.class.as_deref() == Some(cls)
+                    || (f.class.is_none() && f.key.starts_with(&format!("{cls}/")))
+            })
+            .map(|f| f.key.as_str())
+            .collect()
+    };
+
+    // Included under its own class via the key-prefix fallback…
+    assert_eq!(
+        matched("style"),
+        vec!["style/verbosity"],
+        "a classless row must be matched by the class its key prefix names"
+    );
+    // …and never leaks into a different class.
+    assert!(
+        matched("goal").is_empty(),
+        "the key-prefix fallback must not match a different class"
+    );
+}
+
 // ── set_user_state_pinned_persists ────────────────────────────────────────────
 
 #[tokio::test]
