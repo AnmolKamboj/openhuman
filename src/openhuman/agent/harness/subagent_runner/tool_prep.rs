@@ -36,6 +36,39 @@ const HEAVY_SCHEMA_TOOLKITS: &[&str] = &[
 const TOOL_FILTER_TOP_K_DEFAULT: usize = 25;
 const TOOL_FILTER_TOP_K_HEAVY: usize = 12;
 
+/// Actions a toolkit must keep on the sub-agent's surface even when the
+/// fuzzy ranker does not pick them.
+///
+/// The ranker (`tinyagents_harness::tool::select`) derives an intent verb
+/// from the prompt and then **drops** every tool whose own name-verb
+/// conflicts with it. `FETCH`/`GET` are the `Read` verb and `find`/`search`
+/// are `List`, so a plain "find the emails about X" prompt removes
+/// `GMAIL_FETCH_EMAILS` and both `GMAIL_FETCH_MESSAGE_BY_*` before scoring
+/// even starts. A flat verb-alignment bonus then lets zero-overlap tools
+/// fill the budget, so the surviving surface can be twelve `GMAIL_LIST_*`
+/// actions — ids and settings, nothing that returns a message body. The
+/// sub-agent burns its iterations and answers without the email (#6033).
+///
+/// These names are **reserved inside** the top-K budget, never appended
+/// past it: [`TOOL_FILTER_TOP_K_HEAVY`] exists because Gmail at top-K=25
+/// produced a 276k-token first-iteration prompt, so an essential displaces
+/// the lowest-ranked hit rather than growing the surface.
+///
+/// Only Gmail is seeded, deliberately. A wrong entry spends a slot on
+/// every prompt for that toolkit, so add one only with a fixture-backed
+/// repro — the ranker's general behaviour is the upstream fix.
+const TOOLKIT_ESSENTIAL_ACTIONS: &[(&str, &[&str])] = &[(
+    "gmail",
+    &[
+        // The only action that returns message *content* for a search.
+        "GMAIL_FETCH_EMAILS",
+        // The follow-up once `GMAIL_LIST_MESSAGES` has handed back bare ids.
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+        // Keeps the write path reachable when a read prompt wins the ranking.
+        "GMAIL_SEND_EMAIL",
+    ],
+)];
+
 /// Pick a top-K budget for the fuzzy filter based on how dense the
 /// toolkit's action schemas tend to be. Match is case-insensitive so
 /// we don't care whether the caller passed `"Gmail"` or `"gmail"`.
@@ -48,6 +81,78 @@ pub(super) fn top_k_for_toolkit(toolkit: &str) -> usize {
     } else {
         TOOL_FILTER_TOP_K_DEFAULT
     }
+}
+
+/// Actions [`TOOLKIT_ESSENTIAL_ACTIONS`] reserves for `toolkit`, or an
+/// empty slice when the toolkit has no entry. Case-insensitive, matching
+/// [`top_k_for_toolkit`].
+pub(super) fn essential_actions_for_toolkit(toolkit: &str) -> &'static [&'static str] {
+    TOOLKIT_ESSENTIAL_ACTIONS
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(toolkit))
+        .map(|(_, actions)| *actions)
+        .unwrap_or(&[])
+}
+
+/// Pick the action indices the sub-agent will actually see: the toolkit's
+/// essentials first, then the ranker's hits in rank order, deduplicated and
+/// truncated to `top_k`.
+///
+/// An essential that the connected toolkit does not actually expose is
+/// skipped rather than guessed at, so a stale table entry costs nothing and
+/// can never produce an out-of-range index. A toolkit with no entry returns
+/// the ranker's hits unchanged (capped at `top_k`), which is what every
+/// call site did before the essentials existed.
+pub(super) fn select_actions_with_essentials(
+    toolkit: &str,
+    actions: &[crate::openhuman::agent::context::prompt::ConnectedIntegrationTool],
+    filter_hits: &[usize],
+    top_k: usize,
+) -> Vec<usize> {
+    let essentials = essential_actions_for_toolkit(toolkit);
+    if essentials.is_empty() || top_k == 0 {
+        return filter_hits.iter().take(top_k).copied().collect();
+    }
+
+    let mut selected: Vec<usize> = Vec::with_capacity(top_k.min(actions.len()));
+    let mut reserved: Vec<&str> = Vec::new();
+    for essential in essentials {
+        if selected.len() >= top_k {
+            break;
+        }
+        let found = actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(essential));
+        if let Some(idx) = found {
+            if !selected.contains(&idx) {
+                selected.push(idx);
+                reserved.push(essential);
+            }
+        }
+    }
+
+    let ranked_before = filter_hits.len().min(top_k);
+    for &idx in filter_hits {
+        if selected.len() >= top_k {
+            break;
+        }
+        if !selected.contains(&idx) {
+            selected.push(idx);
+        }
+    }
+
+    // A reserved action the ranker had already chosen costs nothing; the
+    // rest displace the lowest-ranked hits that no longer fit.
+    let ranked_kept = filter_hits.iter().filter(|i| selected.contains(i)).count();
+    tracing::debug!(
+        toolkit = %toolkit,
+        reserved = %reserved.join(","),
+        kept = selected.len(),
+        top_k = top_k,
+        dropped_ranked = ranked_before.saturating_sub(ranked_kept),
+        "[subagent_runner:tools] reserved essential actions inside the top-K budget"
+    );
+    selected
 }
 
 // ── Text-mode protocol block ────────────────────────────────────────────

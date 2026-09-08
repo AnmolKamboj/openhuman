@@ -368,7 +368,18 @@ async fn skill_delegation_tool_runs_integrations_agent_e2e() {
     .expect("tool execution");
 
     assert!(!result.is_error, "{}", result.output());
-    assert_eq!(result.output(), "skill-delegation-child-answer");
+    // The sub-agent's answer comes back verbatim, followed by the
+    // inline-result note: this delegation is blocking and registers no
+    // worker, so the orchestrator must not go hunting for one (#6033).
+    let output = result.output();
+    assert!(
+        output.starts_with("skill-delegation-child-answer"),
+        "the child's answer must lead the result: {output}"
+    );
+    assert!(
+        output.contains("[INLINE_RESULT]") && output.contains("no sub-agent worker"),
+        "a blocking delegation must say its result is inline: {output}"
+    );
     assert!(provider.saw(SKILL_DELEGATION_CANARY));
     assert!(provider.saw("gmail"));
 }
