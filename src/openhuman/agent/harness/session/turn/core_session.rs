@@ -221,11 +221,44 @@ impl Agent {
         let mut cached_input_tokens = outcome.cached_input_tokens;
         let mut charged_amount_usd = outcome.charged_amount_usd;
 
-        let reply = if outcome.hit_cap {
+        let reply = if outcome.hit_cap && outcome.wrap_up_injected && !outcome.text.trim().is_empty()
+        {
+            // The conclusion was produced INSIDE the loop (issue #6014):
+            // `FinalCallWrapUpMiddleware` withdrew the tools on the last
+            // permitted model call and appended the wrap-up instruction, so this
+            // turn's own final response already is the capped turn's answer.
+            // There is nothing left to ask for, and asking anyway would spend a
+            // second call to re-summarise text the model has just written.
+            //
+            // No `history.push` either: unlike the out-of-band path below, this
+            // response came from the loop, so it was already folded into
+            // `self.history` by the `extend(outcome.conversation)` above. Pushing
+            // it again would duplicate the assistant turn in the transcript and
+            // in the next request's prefix.
+            log::info!(
+                "[agent_loop] turn capped at {} model call(s); the loop's final call produced the \
+                 conclusion ({} chars) — no out-of-band wrap-up needed",
+                outcome.model_calls,
+                outcome.text.chars().count()
+            );
+            outcome.text.clone()
+        } else if outcome.hit_cap {
             // The loop paused at the tool-call cap. Ask the model for a resumable
             // checkpoint (tools disabled), falling back to a deterministic
             // done/next summary so the thread never ends on a dangling tool
             // cycle. Fold the extra call's usage into the turn accounting.
+            //
+            // Reached when the in-loop conclusion above did not happen or came
+            // back empty: a run with the middleware uninstalled, a budget of one
+            // model call, or a concluding call that answered with nothing. Kept
+            // intact so no path loses the behaviour it had before #6014.
+            // The concluding call answered with nothing, and the `extend` above
+            // folded that empty assistant message into `self.history`. Anthropic
+            // rejects empty content, so sending it would turn "the model said
+            // nothing" into a failed turn (CodeRabbit on #6068).
+            if self.history.last().is_some_and(is_empty_assistant_chat) {
+                self.history.pop();
+            }
             let base = self.tool_dispatcher.to_provider_messages(&self.history);
             let (summary, summary_usage) = self
                 .summarize_turn_wrapup(
@@ -243,7 +276,10 @@ impl Agent {
             }
             let checkpoint = if summary.trim().is_empty() {
                 super::super::turn_checkpoint::build_deterministic_checkpoint(
-                    &tool_records_from_conversation(&outcome.conversation, &outcome.tool_outcomes),
+                    &checkpoint_results_from_conversation(
+                        &outcome.conversation,
+                        &outcome.tool_outcomes,
+                    ),
                     max_iterations,
                 )
             } else {
