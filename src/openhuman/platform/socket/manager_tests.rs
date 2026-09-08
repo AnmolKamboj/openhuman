@@ -59,11 +59,15 @@ async fn emit_without_connection_errors_without_panic() {
 #[tokio::test]
 async fn emit_while_connecting_errors_even_with_emit_channel_present() {
     // Arrange: mirror `spawn_loop`'s pre-handshake state — the emit channel is
-    // installed (so the old channel-only guard would pass) but the socket has
-    // not finished the SIO handshake yet.
+    // installed (so the old channel-only guard would pass) but the connection's
+    // readiness flag is still `false` because the SIO handshake has not
+    // completed.
     let mgr = SocketManager::new();
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    *mgr.emit_tx.lock().await = Some(tx);
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx,
+        ready: Arc::new(AtomicBool::new(false)),
+    });
     *mgr.shared.status.write() = ConnectionStatus::Connecting;
 
     // Act
@@ -77,27 +81,124 @@ async fn emit_while_connecting_errors_even_with_emit_channel_present() {
     assert_eq!(err, "Not connected");
     assert!(
         rx.try_recv().is_err(),
-        "emit must not queue a message before the socket is Connected"
+        "emit must not queue a message before the connection is ready"
     );
 }
 
 #[tokio::test]
 async fn emit_when_connected_queues_the_encoded_event() {
-    // Arrange
+    // Arrange: a handshaked connection — its readiness flag is set, mirroring
+    // what `run_connection` does after the SIO CONNECT ACK.
     let mgr = SocketManager::new();
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    *mgr.emit_tx.lock().await = Some(tx);
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx,
+        ready: Arc::new(AtomicBool::new(true)),
+    });
     *mgr.shared.status.write() = ConnectionStatus::Connected;
 
     // Act
     mgr.emit("test.event", json!({ "k": "v" }))
         .await
-        .expect("emit must succeed once the socket is Connected");
+        .expect("emit must succeed once the connection is ready");
 
     // Assert: the encoded Socket.IO event lands on the outbound channel.
     let queued = rx
         .try_recv()
         .expect("expected the emitted event to be queued");
+    assert_eq!(queued, r#"42["test.event",{"k":"v"}]"#);
+}
+
+/// F2 (TOCTOU with reconnect): a reconnect that swaps in a fresh, not-yet-ready
+/// channel while an `emit` is in flight must not let that `emit` succeed onto
+/// the new pre-handshake channel. The readiness flag travels with the channel,
+/// so replacing the channel replaces its flag too — a `status`-only gate would
+/// have enqueued onto the new channel and returned `Ok`, then `drain_pending_emits`
+/// would have discarded it (the exact false success #6084 targets).
+#[tokio::test]
+async fn emit_does_not_land_on_a_reconnects_pre_handshake_channel() {
+    let mgr = SocketManager::new();
+
+    // Old, live connection: ready channel + Connected status.
+    let (_old_tx, mut old_rx) = mpsc::unbounded_channel::<String>();
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx: _old_tx,
+        ready: Arc::new(AtomicBool::new(true)),
+    });
+    *mgr.shared.status.write() = ConnectionStatus::Connected;
+
+    // A reconnect begins: `spawn_loop` would flip status→Connecting and install
+    // a fresh channel whose readiness flag is still `false` (handshake pending).
+    // We reproduce exactly that swap.
+    let (new_tx, mut new_rx) = mpsc::unbounded_channel::<String>();
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx: new_tx,
+        ready: Arc::new(AtomicBool::new(false)),
+    });
+    // Status may still read Connected in the narrow window before the loop
+    // updates it — leaving it Connected here is the adversarial case a
+    // `status`-only gate would have failed.
+    *mgr.shared.status.write() = ConnectionStatus::Connected;
+
+    // Act
+    let err = mgr
+        .emit("test.event", json!({ "k": "v" }))
+        .await
+        .unwrap_err();
+
+    // Assert: rejected, and nothing queued onto either channel.
+    assert_eq!(err, "Not connected");
+    assert!(
+        new_rx.try_recv().is_err(),
+        "emit must not enqueue onto a reconnect's pre-handshake channel"
+    );
+    assert!(
+        old_rx.try_recv().is_err(),
+        "emit must not enqueue onto the replaced channel either"
+    );
+}
+
+/// F1 (server `error` on a still-live socket): a server-emitted `error` event
+/// flips the presentation status to `Error` but does not tear down the
+/// transport, so the connection is still live and its readiness flag is
+/// untouched. `emit` must therefore keep succeeding — a gate that rejected on
+/// `status != Connected` would wedge every subsequent emit forever.
+#[tokio::test]
+async fn emit_still_succeeds_after_server_error_on_live_connection() {
+    let mgr = SocketManager::new();
+
+    // Live, handshaked connection.
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx,
+        ready: Arc::new(AtomicBool::new(true)),
+    });
+    *mgr.shared.status.write() = ConnectionStatus::Connected;
+
+    // Drive the real handler for a server `error` event. It sets status=Error
+    // on the same live socket without closing the transport — and has no access
+    // to the readiness flag, which is owned by the connection loop.
+    let (sink_tx, _sink_rx) = mpsc::unbounded_channel::<String>();
+    super::super::event_handlers::handle_sio_event(
+        "error",
+        json!({ "message": "boom" }),
+        &sink_tx,
+        &mgr.shared,
+    );
+    assert_eq!(
+        *mgr.shared.status.read(),
+        ConnectionStatus::Error,
+        "server error event must flip presentation status to Error"
+    );
+
+    // Act: the socket is still live, so emit must still be delivered.
+    mgr.emit("test.event", json!({ "k": "v" }))
+        .await
+        .expect("emit must still succeed on a live socket after a server error");
+
+    let queued = rx
+        .try_recv()
+        .expect("the event must be queued for the live connection");
     assert_eq!(queued, r#"42["test.event",{"k":"v"}]"#);
 }
 
@@ -113,9 +214,15 @@ async fn emit_with_ack_without_connection_errors_without_waiting() {
 
 #[tokio::test]
 async fn emit_with_ack_uses_emit_queue_while_connecting() {
+    // `emit_with_ack` deliberately does not gate on readiness (its delivery is
+    // confirmed by the ack), so a pre-handshake channel (`ready = false`) must
+    // still enqueue the frame.
     let mgr = SocketManager::new();
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    *mgr.emit_tx.lock().await = Some(tx);
+    *mgr.emit_tx.lock().await = Some(EmitChannel {
+        tx,
+        ready: Arc::new(AtomicBool::new(false)),
+    });
     *mgr.shared.status.write() = ConnectionStatus::Connecting;
 
     let result = mgr

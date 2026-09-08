@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, OnceLock,
 };
 
@@ -62,6 +62,25 @@ pub(super) struct SharedState {
     /// (e.g. "backend redirected ws→wss; update BACKEND_URL"). Cleared on every
     /// successful handshake and on disconnect.
     pub(super) error: RwLock<Option<String>>,
+}
+
+/// The outbound emit channel bundled with the readiness flag of the **same**
+/// connection that owns it.
+///
+/// Readiness travels with the channel so `emit` can decide "is this message
+/// deliverable?" atomically with picking the channel it would send on: both are
+/// read under the single `emit_tx` lock. `spawn_loop` installs a fresh
+/// `EmitChannel` (fresh sender + fresh `ready = false` flag) for every
+/// connection, and the background loop flips *this connection's* `ready` to
+/// `true` only after the Socket.IO CONNECT ACK and back to `false` on teardown.
+/// A reconnect therefore swaps the sender and its flag together — an `emit`
+/// holding the lock can never pair a live-looking status with a stale
+/// pre-handshake channel (the reverse of the TOCTOU the status-only gate had).
+pub(super) struct EmitChannel {
+    /// Sender into the background loop's outbound queue.
+    pub(super) tx: mpsc::UnboundedSender<String>,
+    /// `true` only between this connection's CONNECT ACK and its teardown.
+    pub(super) ready: Arc<AtomicBool>,
 }
 
 pub(super) struct AckRegistry {
@@ -116,8 +135,10 @@ impl AckRegistry {
 pub struct SocketManager {
     /// Shared state accessible from both the manager and the background loop.
     pub(super) shared: Arc<SharedState>,
-    /// Channel for sending outgoing messages to the background loop.
-    emit_tx: tokio::sync::Mutex<Option<mpsc::UnboundedSender<String>>>,
+    /// Channel for sending outgoing messages to the background loop, bundled
+    /// with the readiness flag of the connection that owns it so `emit` reads
+    /// both atomically under one lock (see [`EmitChannel`]).
+    emit_tx: tokio::sync::Mutex<Option<EmitChannel>>,
     /// Channel for signaling the background loop to shut down.
     shutdown_tx: tokio::sync::Mutex<Option<watch::Sender<bool>>>,
     /// Join handle for the background connection loop.
@@ -264,14 +285,33 @@ impl SocketManager {
         let internal_tx = emit_tx.clone();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        *self.emit_tx.lock().await = Some(emit_tx);
+        // Per-connection readiness flag: starts `false` (pre-handshake) and is
+        // flipped by `ws_loop` at CONNECT ACK. Bundled with the sender so `emit`
+        // reads the flag belonging to exactly this channel, not a flag a later
+        // reconnect may have swapped underneath it.
+        let emit_ready = Arc::new(AtomicBool::new(false));
+        let loop_ready = Arc::clone(&emit_ready);
+
+        *self.emit_tx.lock().await = Some(EmitChannel {
+            tx: emit_tx,
+            ready: emit_ready,
+        });
         *self.shutdown_tx.lock().await = Some(shutdown_tx);
 
         let url = url.to_string();
         let shared = Arc::clone(&self.shared);
 
         let handle = tokio::spawn(async move {
-            ws_loop(url, provider, shared, emit_rx, shutdown_rx, internal_tx).await;
+            ws_loop(
+                url,
+                provider,
+                shared,
+                emit_rx,
+                shutdown_rx,
+                internal_tx,
+                loop_ready,
+            )
+            .await;
         });
 
         *self.loop_handle.lock().await = Some(handle);
@@ -299,24 +339,39 @@ impl SocketManager {
 
     /// Emit a Socket.IO event to the server.
     ///
-    /// Gated on connection **readiness**, not merely on the emit channel
-    /// existing. `spawn_loop` installs `emit_tx` while the status is still
-    /// `Connecting` (before the Engine.IO / Socket.IO handshake completes), so a
-    /// channel-only guard would report success for a message that `ws_loop`'s
-    /// `drain_pending_emits` silently discards if the handshake then fails
-    /// (#4355). Callers must be told the truth, so an emit before the socket is
-    /// `Connected` returns the same `"Not connected"` error as an emit before
-    /// `connect` was ever called.
+    /// Gated on the **owning connection's** readiness flag, not on the emit
+    /// channel merely existing nor on the presentation-layer `status`. Two races
+    /// motivate this:
+    ///
+    /// - `spawn_loop` installs `emit_tx` while the handshake is still in flight,
+    ///   so a channel-only guard would report success for a message that
+    ///   `ws_loop`'s `drain_pending_emits` silently discards if the handshake
+    ///   then fails (#4355 / #6084 pre-handshake false success).
+    /// - Reading `status` and then acquiring the `emit_tx` lock are two separate
+    ///   steps; a reconnect in between could flip `status` and swap in a fresh
+    ///   pre-handshake channel, so a `status`-only gate could enqueue onto the
+    ///   *new* channel and return `Ok` for a message that channel then drops.
+    ///
+    /// The flag is created with, owned by, and flipped for a single connection,
+    /// and it is read here under the same lock that hands us the channel — so
+    /// status and channel can never be swapped mid-emit. Because readiness is
+    /// cleared only on that connection's teardown (not on a presentation-layer
+    /// `error` event that leaves the socket live), a still-connected socket
+    /// keeps accepting emits. A pre-handshake or disconnected emit returns the
+    /// same `"Not connected"` error as an emit before `connect` was ever called.
     pub async fn emit(&self, event: &str, data: serde_json::Value) -> Result<(), String> {
-        if !self.is_connected() {
+        let guard = self.emit_tx.lock().await;
+        let Some(channel) = guard.as_ref() else {
+            return Err("Not connected".to_string());
+        };
+        if !channel.ready.load(Ordering::Acquire) {
             return Err("Not connected".to_string());
         }
-        if let Some(ref tx) = *self.emit_tx.lock().await {
-            let msg = encode_sio_event(event, data, None)?;
-            tx.send(msg).map_err(|_| "Socket not connected".to_string())
-        } else {
-            Err("Not connected".to_string())
-        }
+        let msg = encode_sio_event(event, data, None)?;
+        channel
+            .tx
+            .send(msg)
+            .map_err(|_| "Socket not connected".to_string())
     }
 
     /// Emit a Socket.IO event and wait for the backend ACK callback.
@@ -338,7 +393,8 @@ impl SocketManager {
             .emit_tx
             .lock()
             .await
-            .clone()
+            .as_ref()
+            .map(|c| c.tx.clone())
             .ok_or_else(|| "Not connected".to_string())?;
         let (ack_id, ack_rx) = self.shared.ack_registry.register();
         let msg = encode_sio_event(event, data, Some(ack_id))?;
