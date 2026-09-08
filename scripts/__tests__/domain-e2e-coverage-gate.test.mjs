@@ -532,3 +532,70 @@ for (const [description, attribute] of IS_A_GATE) {
     );
   });
 }
+
+// Codex, PR #6092 (fourth round). A module can be declared more than once under
+// mutually exclusive predicates, and it then exists in BOTH configurations:
+//
+//   #[cfg(feature = "x")]      mod test_support;
+//   #[cfg(not(feature = "x"))] mod test_support;
+//
+// Reading only the first declaration sees the gate and calls the module absent
+// when it is in fact always present.
+test('fails when a second declaration makes the module reachable anyway', (t) => {
+  const root = fixture(t, { withExcludedNamespaces: false });
+  write(
+    root,
+    'src/openhuman/test_support/schemas.rs',
+    controller('test', 'reset') + controller('test_support', 'workspace_root'),
+  );
+  write(root, 'src/openhuman/test_support/mod.rs', 'mod schemas;\n');
+  write(
+    root,
+    'src/openhuman/mod.rs',
+    '#[cfg(feature = "e2e-test-support")]\npub mod test_support;\n' +
+      '#[cfg(not(feature = "e2e-test-support"))]\npub mod test_support;\n',
+  );
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.match(
+    result.stderr,
+    /no longer behind the gate they claim/,
+    `a module declared in both configurations is always present; got:\n${result.stderr}`,
+  );
+});
+
+// The same shape where both declarations DO require the feature stays accepted
+// — otherwise the rule would reject every legitimate platform split.
+test('accepts repeated declarations when every one of them requires the gate', (t) => {
+  const root = fixture(t, { withExcludedNamespaces: false });
+  write(
+    root,
+    'src/openhuman/test_support/schemas.rs',
+    controller('test', 'reset') + controller('test_support', 'workspace_root'),
+  );
+  write(root, 'src/openhuman/test_support/mod.rs', 'mod schemas;\n');
+  write(
+    root,
+    'src/openhuman/mod.rs',
+    '#[cfg(all(feature = "e2e-test-support", unix))]\npub mod test_support;\n' +
+      '#[cfg(all(feature = "e2e-test-support", windows))]\npub mod test_support;\n',
+  );
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.doesNotMatch(
+    result.stderr,
+    /no longer behind the gate they claim/,
+    `a per-platform split that always requires the feature is still a gate; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stdout,
+    /Excluded 2 controller\(s\)/,
+    `the exclusion must still apply; got:\n${result.stdout}`,
+  );
+});
