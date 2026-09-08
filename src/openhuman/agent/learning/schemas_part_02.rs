@@ -1,4 +1,3 @@
-
 // ── list_facets ───────────────────────────────────────────────────────────────
 
 fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
@@ -11,6 +10,13 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
             .get("class")
             .and_then(Value::as_str)
             .map(str::to_string);
+
+        // Reject an unknown class before touching the store, so a filter that
+        // could never match a facet is surfaced as an error instead of an
+        // empty result the caller cannot distinguish from "nothing learned".
+        if let Some(cls) = &class_filter {
+            crate::openhuman::agent::learning::cache::parse_facet_class_name(cls)?;
+        }
 
         let cache = get_cache().await?;
 
@@ -27,11 +33,20 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
                 f.state == FacetState::Active || f.state == FacetState::Provisional
             })
             .filter(|f| {
-                if let Some(cls) = &class_filter {
-                    f.class.as_deref() == Some(cls.as_str())
-                        || f.key.starts_with(&format!("{cls}/"))
-                } else {
-                    true
+                // Match on the class column when it is set — that stays
+                // authoritative, so a row explicitly tagged with another class
+                // can never match `cls` via its key prefix (the #6077 leak
+                // stays closed). A row with no class column falls back to its
+                // key prefix, which is where a canonical key like
+                // `style/verbosity` carries the class the column omits — the
+                // behaviour the dropped `|| key.starts_with(...)` arm provided
+                // for legitimate classless rows.
+                match &class_filter {
+                    Some(cls) => {
+                        f.class.as_deref() == Some(cls.as_str())
+                            || (f.class.is_none() && f.key.starts_with(&format!("{cls}/")))
+                    }
+                    None => true,
                 }
             })
             .map(facet_to_json)
@@ -68,6 +83,8 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.get_facet] key={fk}");
@@ -110,6 +127,8 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `value`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.update_facet] key={fk} value={new_value}");
@@ -162,6 +181,8 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
 
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
+
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.pin_facet] key={fk}");
 
@@ -204,6 +225,8 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
 
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
+
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.unpin_facet] key={fk}");
 
@@ -245,6 +268,8 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .ok_or_else(|| "missing required `key`".to_string())?
             .to_string();
+
+        crate::openhuman::agent::learning::cache::parse_facet_class_name(&class_str)?;
 
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.forget_facet] key={fk}");
