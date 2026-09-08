@@ -1,6 +1,6 @@
 //! JSON-RPC E2E coverage for the session / artifact / compression store domains:
-//! `session_db`, `session_import`, `tokenjuice` (compress + retrieve), `ai`
-//! (artifact CRUD) and `test_support`.
+//! `session_import`, `tokenjuice` (compress + retrieve), `ai` (artifact CRUD)
+//! and `test_support`.
 //!
 //! Every case boots the real axum JSON-RPC router (`build_core_http_router`)
 //! against a per-test temp workspace, dispatches over HTTP, and
@@ -17,21 +17,13 @@
 //! crate-wide `SHARED_ENV_LOCK` around each case and reads the live RPC bearer
 //! back rather than assuming its own — see `env_lock` and `rpc_bearer`.
 //!
-//! ## Two things this file documents rather than asserts as correct
+//! ## One thing this file documents rather than asserts as correct
 //!
-//! 1. **`session_db` reads a table the product never writes.** Nothing under
-//!    `src/` calls `tinyagents_session::record_session_start` / `record_message`
-//!    / `record_tool_call`; the host only uses the sibling `run_ledger`. So the
-//!    six `session_db.*` controllers are permanently empty in production. The
-//!    cases below therefore assert the empty-store contract and the failure
-//!    paths, which is the whole of the behaviour that is reachable.
-//!    See `~/tinyhuman/bugs/e2e-wave-session_db-never-written.md`.
-//!
-//! 2. **`test_support.*` is gated behind `e2e-test-support`,** which is not in
-//!    `scripts/ci/product-features.sh`. Under the product feature set those
-//!    five controllers must be *absent* — that gate is the reason the
-//!    destructive `test_reset` never ships — so the case here asserts the
-//!    absence, and the positive path is compiled in only when the feature is.
+//! **`test_support.*` is gated behind `e2e-test-support`,** which is not in
+//! `scripts/ci/product-features.sh`. Under the product feature set those
+//! five controllers must be *absent* — that gate is the reason the
+//! destructive `test_reset` never ships — so the case here asserts the
+//! absence, and the positive path is compiled in only when the feature is.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -166,7 +158,8 @@ async fn serve_rpc() -> (
         .await
         .expect("bind rpc listener");
     let addr = listener.local_addr().expect("rpc listener addr");
-    let join = tokio::spawn(async move { axum::serve(listener, build_core_http_router(false)).await });
+    let join =
+        tokio::spawn(async move { axum::serve(listener, build_core_http_router(false)).await });
     (addr, join)
 }
 
@@ -279,151 +272,6 @@ fn error_message(value: &Value, context: &str) -> String {
         .to_string()
 }
 
-// ── session_db ────────────────────────────────────────────────────────────
-
-/// The six `session_db.*` reads over a workspace with no session database yet.
-///
-/// This is the only state the product ever puts them in — see the module docs
-/// and the bug file — so the empty-store contract *is* the contract: the schema
-/// is created on first read, `list`/`search` answer a well-formed empty page
-/// rather than erroring, and the per-session reads answer empty collections for
-/// an id that does not exist.
-#[tokio::test]
-async fn session_db_reads_answer_a_wellformed_empty_store() {
-    let _lock = env_lock();
-    let harness = setup().await;
-
-    let list = rpc(&harness.rpc_base, 30_001, "openhuman.session_db_list", json!({})).await;
-    let list = payload(&list, "session_db_list");
-    assert_eq!(
-        list.get("sessions").and_then(Value::as_array).map(Vec::len),
-        Some(0),
-        "a fresh workspace has no sessions: {list}"
-    );
-    assert_eq!(
-        list.get("total").and_then(Value::as_u64),
-        Some(0),
-        "total must be present and zero: {list}"
-    );
-
-    // The read created the database — proof the handler reached storage and
-    // applied migrations rather than short-circuiting on a missing file. The
-    // path is `tinyagents_session::store::db_path`'s, spelled out because that
-    // crate is a normal dependency and an integration test cannot name it.
-    let db = harness.workspace.join("session_db").join("sessions.db");
-    assert!(
-        db.exists(),
-        "a session-db read must materialise {:?}; workspace holds: {:?}",
-        db,
-        std::fs::read_dir(&harness.workspace)
-            .map(|rd| rd
-                .filter_map(Result::ok)
-                .map(|e| e.file_name())
-                .collect::<Vec<_>>())
-            .unwrap_or_default()
-    );
-
-    let search = rpc(
-        &harness.rpc_base,
-        30_002,
-        "openhuman.session_db_search",
-        json!({ "query": "nothing-matches-this", "limit": 10 }),
-    )
-    .await;
-    let search = payload(&search, "session_db_search");
-    assert_eq!(
-        search.get("sessions").and_then(Value::as_array).map(Vec::len),
-        Some(0),
-        "search over an empty store returns no rows: {search}"
-    );
-    assert_eq!(search.get("total").and_then(Value::as_u64), Some(0));
-
-    // The per-session reads take an unknown id and answer empty collections,
-    // NOT an error — the store has no row to refuse over.
-    for (id, method, context) in [
-        (30_003_i64, "openhuman.session_db_get_messages", "get_messages"),
-        (30_004, "openhuman.session_db_get_tool_calls", "get_tool_calls"),
-    ] {
-        let response = rpc(
-            &harness.rpc_base,
-            id,
-            method,
-            json!({ "sessionId": "no-such-session" }),
-        )
-        .await;
-        let body = payload(&response, context);
-        let rows = body
-            .as_array()
-            .unwrap_or_else(|| panic!("{context} must return an array, got: {body}"));
-        assert!(rows.is_empty(), "{context} for an unknown session: {body}");
-    }
-
-    let children = rpc(
-        &harness.rpc_base,
-        30_005,
-        "openhuman.session_db_get_children",
-        json!({ "sessionId": "no-such-session" }),
-    )
-    .await;
-    let children = payload(&children, "session_db_get_children");
-    assert_eq!(
-        children.as_array().map(Vec::len),
-        Some(0),
-        "an unknown parent has no children: {children}"
-    );
-
-    harness.join.abort();
-}
-
-/// Failure paths: a missing required param is refused by name, and `get` for an
-/// absent id is an error rather than a null row.
-///
-/// The wording is `core::all::validate_params`' — the schema gate at
-/// `src/core/all.rs:1334` refuses on required-presence and declared type before
-/// any handler body runs, so the handlers' own "missing required param: id"
-/// strings never reach a caller over RPC.
-#[tokio::test]
-async fn session_db_rejects_missing_params_and_unknown_ids() {
-    let _lock = env_lock();
-    let harness = setup().await;
-
-    let no_id = rpc(&harness.rpc_base, 30_101, "openhuman.session_db_get", json!({})).await;
-    assert!(
-        error_message(&no_id, "session_db_get without id").contains("missing required param 'id'"),
-        "the refusal must name the param: {no_id}"
-    );
-
-    let no_session_id = rpc(
-        &harness.rpc_base,
-        30_102,
-        "openhuman.session_db_get_messages",
-        json!({ "limit": 5 }),
-    )
-    .await;
-    assert!(
-        error_message(&no_session_id, "get_messages without sessionId")
-            .contains("missing required param 'sessionId'"),
-        "the refusal must name the param: {no_session_id}"
-    );
-
-    // `get` is the one read that resolves a single row, so absence is an error.
-    let missing = rpc(
-        &harness.rpc_base,
-        30_103,
-        "openhuman.session_db_get",
-        json!({ "id": "session-that-was-never-recorded" }),
-    )
-    .await;
-    let message = error_message(&missing, "session_db_get for an unknown id");
-    assert!(
-        message.to_lowercase().contains("not found")
-            || message.contains("session-that-was-never-recorded"),
-        "the error must identify the missing session, got: {message}"
-    );
-
-    harness.join.abort();
-}
-
 // ── session_import ────────────────────────────────────────────────────────
 
 /// `session_import.run` over a seeded legacy `session_raw/` directory:
@@ -515,7 +363,10 @@ async fn session_import_plans_imports_then_skips_on_rerun() {
     )
     .await;
     let imported = payload(&imported, "session_import_run");
-    assert_eq!(imported.get("dry_run").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        imported.get("dry_run").and_then(Value::as_bool),
+        Some(false)
+    );
     assert_eq!(
         imported.get("imported").and_then(Value::as_u64),
         Some(1),
@@ -703,7 +554,9 @@ async fn tokenjuice_compress_agrees_with_detect_and_never_loses_content() {
     let applied = compressed
         .get("applied")
         .and_then(Value::as_bool)
-        .unwrap_or_else(|| panic!("compress must report whether it changed the content: {compressed}"));
+        .unwrap_or_else(|| {
+            panic!("compress must report whether it changed the content: {compressed}")
+        });
     let lossy = compressed
         .get("lossy")
         .and_then(Value::as_bool)
@@ -742,7 +595,9 @@ async fn tokenjuice_compress_agrees_with_detect_and_never_loses_content() {
             .get("ccrToken")
             .and_then(Value::as_str)
             .unwrap_or_else(|| {
-                panic!("a lossy compaction over the CCR threshold must be recoverable: {compressed}")
+                panic!(
+                    "a lossy compaction over the CCR threshold must be recoverable: {compressed}"
+                )
             })
             .to_string();
 
@@ -972,7 +827,10 @@ async fn ai_artifacts_list_filter_get_and_delete() {
     .await;
     let got = payload(&got, "ai_get_artifact");
     assert_eq!(got.get("title").and_then(Value::as_str), Some("Q2 deck"));
-    assert_eq!(got.get("kind").and_then(Value::as_str), Some("presentation"));
+    assert_eq!(
+        got.get("kind").and_then(Value::as_str),
+        Some("presentation")
+    );
     let absolute = got
         .get("absolute_path")
         .and_then(Value::as_str)
@@ -1196,7 +1054,10 @@ async fn test_support_introspection_reads_the_live_workspace() {
     )
     .await;
     let listing = payload(&listing, "test_support_list_workspace_files");
-    assert_eq!(listing.get("truncated").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        listing.get("truncated").and_then(Value::as_bool),
+        Some(false)
+    );
     let entries = listing
         .get("entries")
         .and_then(Value::as_array)
@@ -1231,8 +1092,14 @@ async fn test_support_introspection_reads_the_live_workspace() {
     )
     .await;
     let clipped = payload(&clipped, "test_support_read_workspace_file clipped");
-    assert_eq!(clipped.get("truncated").and_then(Value::as_bool), Some(true));
-    assert_eq!(clipped.get("returned_bytes").and_then(Value::as_u64), Some(5));
+    assert_eq!(
+        clipped.get("truncated").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        clipped.get("returned_bytes").and_then(Value::as_u64),
+        Some(5)
+    );
     assert_eq!(
         clipped.get("content_utf8").and_then(Value::as_str),
         Some("hello")
