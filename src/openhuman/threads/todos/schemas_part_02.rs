@@ -148,10 +148,22 @@ fn replace_cards_input() -> FieldSchema {
                     TypeSchema::Array(Box::new(TypeSchema::String)),
                     "Tools the assigned agent may use. Omit to default to []; `null` is rejected.",
                 ),
-                optional_string(
-                    "approvalMode",
-                    "Plan-approval mode, when the card is gated.",
-                ),
+                FieldSchema {
+                    name: "approvalMode",
+                    // `TaskApprovalMode` is a two-variant enum, not a free
+                    // string: declaring `Option(String)` advertised every
+                    // string as valid, so a catalog-conforming `"sometimes"`
+                    // would come back `invalid params`. Wrapped in `Option`
+                    // because the field really is `Option<TaskApprovalMode>`
+                    // upstream, so `null` genuinely is accepted here — unlike
+                    // the `defaulted_field` group above.
+                    ty: TypeSchema::Option(Box::new(TypeSchema::Enum {
+                        variants: vec!["required", "not_required"],
+                    })),
+                    comment: "Plan-approval mode, when the card is gated. \
+                              `null` clears it.",
+                    required: false,
+                },
                 defaulted_field(
                     "acceptanceCriteria",
                     TypeSchema::Array(Box::new(TypeSchema::String)),
@@ -176,8 +188,20 @@ fn replace_cards_input() -> FieldSchema {
                 },
                 defaulted_field(
                     "order",
+                    // `TaskBoardCard::order` is a `u32`, but `TypeSchema` has
+                    // no narrower unsigned type and no bounds, so `U64` is the
+                    // closest available declaration and the ceiling has to be
+                    // stated in prose. A value above `u32::MAX` passes schema
+                    // validation and is then refused by the handler's
+                    // deserialization. That imprecision is shared by every
+                    // `TypeSchema::U64` declaration in the catalog (200-odd of
+                    // them), so closing it means adding a bounded integer to
+                    // `core::TypeSchema` rather than editing this one field —
+                    // tracked as #6137. Drop this caveat when that lands.
                     TypeSchema::U64,
-                    "Sort position. Omit to default to 0; `null` is rejected.",
+                    "Sort position, 0..=4294967295 (u32). Omit to default to 0; \
+                     `null` is rejected, and a value above the u32 ceiling is \
+                     refused by the handler rather than by schema validation.",
                 ),
                 defaulted_field(
                     "updatedAt",
