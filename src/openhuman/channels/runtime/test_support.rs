@@ -15,12 +15,14 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::channels::context::{ChannelRuntimeContext, CHANNEL_MESSAGE_TIMEOUT_SECS};
 use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
+use crate::openhuman::channels::ChannelSystemPrompt;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig, ReliabilityConfig};
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -41,6 +43,12 @@ pub struct DispatchHarnessOptions {
     pub timeout_secs: u64,
     pub seed_history_len: usize,
     pub memory_entries: Vec<TestMemoryEntry>,
+    /// Workspace the runtime context reports; `None` falls back to the OS temp dir.
+    pub(crate) workspace_dir: Option<PathBuf>,
+    /// The prompt every dispatch is seeded with; `None` pins a fixed literal.
+    /// Pass one `ChannelSystemPrompt::refreshing` clone to several dispatches
+    /// to observe a re-render across them.
+    pub(crate) system_prompt: Option<ChannelSystemPrompt>,
 }
 
 impl Default for DispatchHarnessOptions {
@@ -58,6 +66,8 @@ impl Default for DispatchHarnessOptions {
             timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
             seed_history_len: 0,
             memory_entries: Vec::new(),
+            workspace_dir: None,
+            system_prompt: None,
         }
     }
 }
@@ -486,6 +496,14 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
         );
     }
 
+    let harness_system_prompt = options
+        .system_prompt
+        .clone()
+        .unwrap_or_else(|| ChannelSystemPrompt::fixed("system prompt"));
+    let harness_workspace_dir = options
+        .workspace_dir
+        .clone()
+        .unwrap_or_else(std::env::temp_dir);
     let ctx = Arc::new(ChannelRuntimeContext {
         channels_by_name: Arc::new(channels_by_name),
         turn_model_source: Some(
@@ -500,7 +518,7 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
                 .collect(),
         })),
         tools_registry: Arc::new(vec![Box::new(HarnessTool) as Box<dyn Tool>]),
-        system_prompt: Arc::new("system prompt".to_string()),
+        system_prompt: harness_system_prompt,
         model: Arc::new("harness-model".to_string()),
         temperature: 0.0,
         auto_save_memory: true,
@@ -513,7 +531,7 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
         inference_url: None,
         reliability: Arc::new(ReliabilityConfig::default()),
         provider_runtime_options: ProviderRuntimeOptions::default(),
-        workspace_dir: Arc::new(std::env::temp_dir()),
+        workspace_dir: Arc::new(harness_workspace_dir),
         message_timeout_secs: options.timeout_secs,
         multimodal: MultimodalConfig::default(),
         multimodal_files: MultimodalFileConfig::default(),
