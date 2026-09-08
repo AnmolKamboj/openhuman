@@ -858,7 +858,7 @@ async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
     // free `Option(String)` — which `approvalMode` was — would let a
     // catalog-valid value like "sometimes" through the schema and straight into
     // an `invalid params` from the handler.
-    for name in ["approvalMode"] {
+    for (name, expected) in [("approvalMode", ["not_required", "required"].as_slice())] {
         let field = card_fields
             .iter()
             .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
@@ -878,6 +878,24 @@ async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
                 )
             })
             .clone();
+
+        // Probing only what is listed would let a *removed* variant through:
+        // drop `not_required` and the surviving `required` probe still passes.
+        // The complete set is the thing being pinned, so assert it before
+        // probing. `expected` rides on the loop's own list so a second field
+        // brings its own set rather than widening a shared literal.
+        let mut declared = variants
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .unwrap_or_else(|| panic!("`{name}`'s declared variants must be strings"))
+            })
+            .collect::<Vec<_>>();
+        declared.sort_unstable();
+        assert_eq!(
+            declared, expected,
+            "`{name}` must declare exactly the variants its wire type parses"
+        );
 
         for (i, variant) in variants.iter().enumerate() {
             let mut probe = card.clone();
