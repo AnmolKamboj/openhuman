@@ -1328,6 +1328,45 @@ pub fn schema_for_rpc_method(method: &str) -> Option<ControllerSchema> {
 
 /// Validates that the provided parameters match the requirements of the controller schema.
 ///
+/// This is the *single* pre-dispatch gate for every registered controller. Each
+/// path that reaches `try_invoke_registered_rpc` validates first:
+///
+/// | entry point | validates in |
+/// | --- | --- |
+/// | HTTP JSON-RPC | `core::jsonrpc` |
+/// | dynamic dispatch fallback | `core::dispatch::try_registry_dispatch` |
+/// | CLI | `core::cli` |
+/// | MCP read and write tools | `openhuman::mcp::server::tools::params` |
+///
+/// The one call site that does not validate for itself is
+/// `openhuman::mcp::server::write_dispatch`, whose sole caller
+/// (`openhuman::mcp::server::tools::dispatch`) validates immediately before it.
+/// That is not a gap today, but it is the place a refactor could open one.
+///
+/// # Relationship to handler-side parameter checks (#6073)
+///
+/// Many handlers re-check required params themselves, in wording of their own
+/// (`missing required param: id`, ``missing required `class` ``,
+/// `invalid params: …`). A caller never sees those: this function has already
+/// refused the call, and its message carries the field's *schema comment* as a
+/// suffix — `missing required param 'id': Session ID.` — so the two are not
+/// interchangeable strings.
+///
+/// Those handler checks are kept deliberately, for two reasons:
+///
+/// - Not every `missing required param` in the tree belongs to a registered
+///   controller. Agent *tool* handlers take model-produced arguments and are
+///   not dispatched through this function at all, so their checks are load
+///   bearing.
+/// - A `RegisteredController`'s handler can be invoked directly, and several
+///   `tests/raw_coverage` suites do exactly that, asserting the handler's own
+///   refusal.
+///
+/// The practical consequence is for whoever writes the next test: asserting
+/// handler wording exercises the handler, not the dispatch path. To pin what a
+/// caller actually observes, go through one of the entry points above — see
+/// `tests/raw_coverage/dispatch_param_validation_e2e.rs`.
+///
 /// # Errors
 ///
 /// Returns an error message if required parameters are missing or if unknown parameters are provided.
