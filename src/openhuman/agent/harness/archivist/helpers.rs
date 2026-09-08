@@ -11,9 +11,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// delegation return path uses it to notice a sub-agent that emitted a
 /// tool call instead of executing one (#6033).
 pub(crate) fn looks_like_unexecuted_tool_call(text: &str) -> bool {
-    text.contains("<tool_call>")
-        || text.contains("{\"tool_calls\"")
-        || text.contains("\"tool_use\"")
+    contains_tool_call_payload(text) || text.contains("\"tool_use\"")
+}
+
+/// Whether `text` carries a **call-shaped** payload — an XML tool-call span
+/// or a `tool_calls` JSON key.
+///
+/// Narrower than [`looks_like_unexecuted_tool_call`] on purpose: `"tool_use"`
+/// alone appears in ordinary prose about the protocol, which is fine for
+/// deciding whether stripping is worth attempting but not for deciding that
+/// a sub-agent produced no answer.
+///
+/// The JSON key is matched without assuming it opens the object, so a
+/// pretty-printed `{\n  "tool_calls": [...]\n}` is recognised too.
+pub(crate) fn contains_tool_call_payload(text: &str) -> bool {
+    text.contains("<tool_call>") || text.contains("\"tool_calls\"")
 }
 
 /// Strip tool-call JSON blocks from an assistant response, leaving only the

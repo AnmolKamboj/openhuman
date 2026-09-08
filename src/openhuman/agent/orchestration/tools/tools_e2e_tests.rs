@@ -81,7 +81,18 @@ async fn archetype_delegation_tool_runs_child_agent_e2e() {
     .expect("tool execution");
 
     assert!(!result.is_error, "{}", result.output());
-    assert_eq!(result.output(), "archetype-delegation-child-answer");
+    // This archetype delegation asks for async but has no delivery thread in
+    // a test, so it falls back to running inline — and a fallback registers
+    // no durable worker either, so the result says so (#6033).
+    let output = result.output();
+    assert!(
+        output.starts_with("archetype-delegation-child-answer"),
+        "the child's answer must lead the result: {output}"
+    );
+    assert!(
+        output.contains("[INLINE_RESULT]"),
+        "an async delegation that fell back to blocking must disclose that no worker exists: {output}"
+    );
     assert!(provider.saw(ARCHETYPE_DELEGATION_CANARY));
 }
 

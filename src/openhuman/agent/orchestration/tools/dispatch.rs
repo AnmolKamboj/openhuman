@@ -169,6 +169,12 @@ pub(crate) async fn dispatch_subagent(
         );
     }
 
+    // Past this point the run is synchronous whichever mode was requested:
+    // the async branch above returns when it is taken, so a `PreferAsync`
+    // that fell through registers no durable worker either and its result
+    // must say so (#6033).
+    let mode = DispatchMode::Blocking;
+
     let parent_session = parent_ctx
         .as_ref()
         .map(|p| p.session_id.clone())
@@ -497,10 +503,28 @@ fn format_subagent_failure(tool_name: &str, message: &str) -> String {
 /// carries an answer and passes through untouched.
 pub(crate) fn is_unexecuted_tool_call_stub(output: &str) -> bool {
     use crate::openhuman::agent::harness::archivist::helpers::{
-        looks_like_unexecuted_tool_call, strip_tool_calls_from_response,
+        contains_tool_call_payload, strip_tool_calls_from_response,
     };
-    looks_like_unexecuted_tool_call(output)
-        && strip_tool_calls_from_response(output).trim().is_empty()
+    if !contains_tool_call_payload(output) {
+        // Prose merely naming a protocol field is not a stub.
+        return false;
+    }
+    // A whole-text JSON payload carrying `tool_calls` is a stub however it
+    // is formatted — line-based stripping cannot see that the object's
+    // inner members belong to the call rather than to an answer.
+    if let Ok(serde_json::Value::Object(map)) =
+        serde_json::from_str::<serde_json::Value>(output.trim())
+    {
+        if map.contains_key("tool_calls") {
+            return true;
+        }
+    }
+    // Otherwise (XML spans, mixed prose): a stub is what leaves no words
+    // behind once the markup is stripped. Structural punctuation is not an
+    // answer.
+    !strip_tool_calls_from_response(output)
+        .chars()
+        .any(char::is_alphanumeric)
 }
 
 /// The sentence appended to a blocking delegation's result.
@@ -511,6 +535,12 @@ pub(crate) fn is_unexecuted_tool_call_stub(output: &str) -> bool {
 /// the result itself stops it hunting for a worker that never existed
 /// (#6033).
 const INLINE_RESULT_NOTE: &str = "\n\n[INLINE_RESULT] This delegation ran inline and is complete as returned — there is no sub-agent worker for it. Do NOT call wait_subagent, list_subagents or continue_subagent for this delegation.";
+
+/// The same disclosure for a run that did **not** finish. It must not claim
+/// the result is complete — that would contradict the
+/// `[SUBAGENT_INCOMPLETE]` guardrail it is appended to — so it says only
+/// that there is no worker, and what to do instead.
+const NO_WORKER_NOTE: &str = "\n\n[INLINE_RESULT] This delegation ran inline and registered no sub-agent worker, so there is nothing to collect: do NOT call wait_subagent, list_subagents or continue_subagent for it. Re-delegate with a corrected prompt instead.";
 
 /// Append [`INLINE_RESULT_NOTE`] when the dispatch was blocking.
 pub(crate) fn with_inline_result_note(output: String, mode: DispatchMode) -> String {
@@ -528,14 +558,16 @@ pub(crate) fn incomplete_envelope(
     output: &str,
     mode: DispatchMode,
 ) -> String {
-    with_inline_result_note(
-        format!(
-            "[SUBAGENT_INCOMPLETE] the {tool_name} sub-agent {reason} and did not \
-             finish. Below is partial progress only — do NOT report it as done or \
-             re-run the identical delegation unchanged.\n\nPartial progress:\n{output}"
-        ),
-        mode,
-    )
+    let envelope = format!(
+        "[SUBAGENT_INCOMPLETE] the {tool_name} sub-agent {reason} and did not \
+         finish. Below is partial progress only — do NOT report it as done or \
+         re-run the identical delegation unchanged.\n\nPartial progress:\n{output}"
+    );
+    if mode == DispatchMode::Blocking {
+        format!("{envelope}{NO_WORKER_NOTE}")
+    } else {
+        envelope
+    }
 }
 
 #[cfg(test)]

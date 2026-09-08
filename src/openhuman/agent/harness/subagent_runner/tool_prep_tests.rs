@@ -95,13 +95,13 @@ fn essentials_are_reserved_ahead_of_ranked_hits() {
     let names: Vec<&str> = selected.iter().map(|&i| actions[i].name.as_str()).collect();
 
     assert_eq!(
-        &names[..3],
-        &[
-            "GMAIL_FETCH_EMAILS",
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-            "GMAIL_SEND_EMAIL"
-        ],
+        &names[..2],
+        &["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"],
         "essentials come first, in table order"
+    );
+    assert!(
+        !names.contains(&"GMAIL_SEND_EMAIL"),
+        "a read prompt must not be handed the send action: {names:?}"
     );
     assert!(
         names.contains(&"GMAIL_LIST_MESSAGES"),
@@ -282,5 +282,30 @@ fn gmail_read_prompt_keeps_a_content_returning_action() {
                 .len(),
             "prompt {prompt:?} produced a duplicate index"
         );
+    }
+}
+
+#[test]
+fn every_essential_action_is_read_only() {
+    // Essentials are forced onto a delegation whatever it asked for, so a
+    // write action here would hand a read task an unrequested
+    // side-effecting capability that the approval middleware does not gate
+    // (a ComposioActionTool does not override `external_effect`).
+    const WRITE_VERBS: &[&str] = &[
+        "SEND", "CREATE", "DELETE", "UPDATE", "PATCH", "MOVE", "MODIFY", "ADD", "REMOVE", "TRASH",
+        "REPLY", "FORWARD", "DRAFT",
+    ];
+    for (toolkit, essentials) in TOOLKIT_ESSENTIAL_ACTIONS {
+        for essential in *essentials {
+            let verb = essential
+                .split('_')
+                .nth(1)
+                .unwrap_or_default()
+                .to_ascii_uppercase();
+            assert!(
+                !WRITE_VERBS.contains(&verb.as_str()),
+                "{toolkit} essential {essential} is a write action; essentials must be read-only"
+            );
+        }
     }
 }

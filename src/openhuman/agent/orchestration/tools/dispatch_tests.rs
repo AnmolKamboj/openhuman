@@ -266,4 +266,49 @@ fn the_incomplete_envelope_frames_a_stub_without_claiming_success() {
     assert!(envelope.contains("do NOT report it as done"));
     assert!(envelope.contains("returned an unexecuted tool call"));
     assert!(envelope.contains("[INLINE_RESULT]"));
+    assert!(
+        !envelope.contains("complete as returned"),
+        "an unfinished run must never be described as complete"
+    );
+    assert!(envelope.contains("Re-delegate with a corrected prompt"));
+}
+
+#[test]
+fn an_unfinished_envelope_never_claims_completeness() {
+    // The completed note and the not-finished note are deliberately
+    // different: appending "is complete as returned" under a
+    // [SUBAGENT_INCOMPLETE] header would contradict the guardrail.
+    let done = super::with_inline_result_note("answer".to_string(), super::DispatchMode::Blocking);
+    assert!(done.contains("complete as returned"));
+
+    let unfinished = super::incomplete_envelope(
+        "delegate_to_integrations_agent",
+        "hit its iteration cap",
+        "partial",
+        super::DispatchMode::Blocking,
+    );
+    assert!(!unfinished.contains("complete as returned"));
+    assert!(unfinished.contains("nothing to collect"));
+}
+
+#[test]
+fn a_pretty_printed_tool_call_payload_is_still_a_stub() {
+    // The marker is matched as a JSON key, not as "{\"tool_calls\"", so
+    // whitespace before it does not hide the payload; and the leftover
+    // braces are punctuation, not an answer.
+    assert!(super::is_unexecuted_tool_call_stub(
+        "{\n  \"tool_calls\": [\n    {\"name\": \"GMAIL_FETCH_EMAILS\"}\n  ]\n}"
+    ));
+}
+
+#[test]
+fn prose_naming_a_protocol_field_is_not_a_stub() {
+    // "tool_use" alone is enough for the archivist to attempt a strip, but
+    // never enough to decide a sub-agent produced no answer.
+    assert!(!super::is_unexecuted_tool_call_stub(
+        "The \"tool_use\" field is how the provider reports a call."
+    ));
+    assert!(!super::is_unexecuted_tool_call_stub(
+        "I could not read the inbox: the connection is not authorised."
+    ));
 }
