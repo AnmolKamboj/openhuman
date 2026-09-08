@@ -482,3 +482,66 @@ async fn toc_is_capped_and_reports_what_it_omitted() {
         "the list must stay inside the share it was given (200, plus the header)"
     );
 }
+
+/// The share must never be `0`, because `0` is the sentinel that disables the
+/// cap — so the two allowances that round down to it are the ones to pin
+/// (CodeRabbit on #6068). A model advertising no window is the sharper of the
+/// two: no window means no `ImageAwareMessageTrimMiddleware` either, so the
+/// contents list is the one message that nothing downstream would shrink.
+#[test]
+fn a_small_or_absent_allowance_still_yields_a_cap() {
+    assert!(
+        toc_allowance_share(0) > 0,
+        "no window must still bound the list, not disable the cap"
+    );
+    for allowance in [1_u64, 5, 9, 99] {
+        let share = toc_allowance_share(allowance);
+        assert!(share > 0, "a {allowance}-token allowance rounded to no cap");
+        assert!(
+            share <= allowance,
+            "a {allowance}-token allowance yielded a larger share: {share}"
+        );
+    }
+    // Proportional sizing is untouched where there is something to divide.
+    assert_eq!(toc_allowance_share(2_000), 200);
+    assert_eq!(toc_allowance_share(100_000), 10_000);
+}
+
+/// The end of the same argument: with no window, a run holding far more
+/// artifacts than any list should carry still produces a bounded message.
+#[tokio::test]
+async fn the_contents_list_stays_bounded_when_no_window_is_advertised() {
+    let entries: Vec<(String, String, String, u64)> = (0..400)
+        .map(|i| {
+            (
+                format!("call-{i}"),
+                "file_read".to_string(),
+                format!("outputs/a-fairly-long-artifact-path-{i}.json"),
+                1_000,
+            )
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str, &str, u64)> = entries
+        .iter()
+        .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
+        .collect();
+    let mut ctx = ctx_with_artifacts(&borrowed).await;
+    let mw = ArtifactIndexTocMiddleware::new(toc_allowance_share(0));
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("what did you find?")],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let text = request.messages.last().expect("a contents list").text();
+    assert!(
+        text.contains("not listed here"),
+        "an omitted count must be disclosed, not silently dropped: {text}"
+    );
+    assert!(
+        estimate_text_tokens(&text) < 1_024,
+        "the no-window fallback must bound the list: {}",
+        estimate_text_tokens(&text)
+    );
+}

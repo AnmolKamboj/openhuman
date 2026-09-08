@@ -198,7 +198,7 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
                     if body.trim() != CLEARED_PLACEHOLDER {
                         continue;
                     }
-                    let Some(outcome) = self_outcome_for(&outcomes, &tool.tool_call_id) else {
+                    let Some(outcome) = captured_outcome_for(&outcomes, &tool.tool_call_id) else {
                         continue;
                     };
                     if outcome.trim().is_empty() {
@@ -258,8 +258,10 @@ impl Middleware<()> for FinalCallWrapUpMiddleware {
 /// The captured content for one tool call id, if the sink holds it.
 ///
 /// A free function so the borrow of the locked sink stays scoped to the lookup
-/// rather than being held across the mutation of `request.messages`.
-fn self_outcome_for(
+/// rather than being held across the mutation of `request.messages`. Named
+/// without a `self_` prefix (tinysweeper on #6068): it takes no receiver, and
+/// the prefix read as a method on something.
+fn captured_outcome_for(
     outcomes: &[crate::openhuman::agent::tinyagents::ToolCallOutcome],
     call_id: &str,
 ) -> Option<String> {
@@ -273,6 +275,34 @@ fn self_outcome_for(
 
 /// Namespace `ToolOutputMiddleware` writes each persisted artifact under.
 const ARTIFACT_INDEX_NAMESPACE: &str = "tool_results";
+
+/// The contents list's cap when the model advertises no context window.
+///
+/// A window is what every other bound here is derived from, so without one
+/// there is nothing to take a share of — and no `ImageAwareMessageTrimMiddleware`
+/// installed either, which is precisely why the list cannot be left unbounded
+/// on that path (CodeRabbit on #6068): it is the one message nothing downstream
+/// can shrink, on the one configuration where nothing downstream is watching.
+/// Small enough to stay a contents list, large enough for the realistic case of
+/// a handful of artifacts.
+const TOC_ALLOWANCE_NO_WINDOW: u64 = 512;
+
+/// The floor under a proportional share, so a small window still yields a cap
+/// rather than collapsing to `0` — which this middleware reads as "unbounded".
+const TOC_ALLOWANCE_MIN: u64 = 64;
+
+/// The contents list's share of a turn's input allowance.
+///
+/// A tenth: generous for the realistic case (a handful of artifacts is a few
+/// hundred bytes) and firm about the pathological one. Floored so a small
+/// window cannot round the share down to the sentinel that disables the cap,
+/// and given a fixed fallback when there is no window to take a share of.
+pub(crate) fn toc_allowance_share(trim_allowance: u64) -> u64 {
+    if trim_allowance == 0 {
+        return TOC_ALLOWANCE_NO_WINDOW;
+    }
+    (trim_allowance / 10).max(TOC_ALLOWANCE_MIN).min(trim_allowance)
+}
 
 /// Renders the run's persisted-artifact index into the request as a short
 /// contents list, so the model can always see what this turn has gathered and
