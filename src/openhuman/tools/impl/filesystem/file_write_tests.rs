@@ -335,3 +335,28 @@ async fn file_write_blocks_null_byte_in_path() {
 
     let _ = tokio::fs::remove_dir_all(&dir).await;
 }
+
+/// `file_write` has no content-size cap — unlike `file_read`'s 10MB read cap,
+/// `edit_file`'s 5MB and `grep`'s 5MB file caps, nothing here bounds how much
+/// an agent can write into the sandbox in one call.
+#[tokio::test]
+#[ignore = "confirms fail-open: file_write enforces no content-size cap, unlike its sibling tools"]
+async fn file_write_refuses_an_oversized_content_write() {
+    let dir = std::env::temp_dir().join("openhuman_test_file_write_oversized");
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+
+    let tool = FileWriteTool::new(test_security(dir.clone()));
+    let content = "x".repeat(64 * 1024 * 1024);
+    let result = tool
+        .execute(json!({"path": "huge.txt", "content": content}))
+        .await
+        .unwrap();
+    assert!(
+        result.is_error,
+        "a 64MB write must be refused by a stated ceiling, not written: {}",
+        result.output()
+    );
+
+    let _ = tokio::fs::remove_dir_all(&dir).await;
+}
