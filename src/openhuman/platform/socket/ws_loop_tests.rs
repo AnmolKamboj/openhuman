@@ -1,6 +1,6 @@
 use super::*;
 use parking_lot::RwLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio_tungstenite::tungstenite::http::{header::LOCATION, Response, StatusCode};
 
 use crate::openhuman::platform::socket::token_provider::{

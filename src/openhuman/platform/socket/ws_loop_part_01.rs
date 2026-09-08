@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
@@ -68,6 +69,7 @@ pub(super) async fn ws_loop(
     mut emit_rx: mpsc::UnboundedReceiver<String>,
     mut shutdown_rx: watch::Receiver<bool>,
     internal_tx: mpsc::UnboundedSender<String>,
+    emit_ready: Arc<AtomicBool>,
 ) {
     let mut backoff = Duration::from_millis(1000);
     let max_backoff = Duration::from_secs(30);
@@ -152,8 +154,17 @@ pub(super) async fn ws_loop(
             &mut emit_rx,
             &mut shutdown_rx,
             &internal_tx,
+            &emit_ready,
         )
         .await;
+
+        // The connection is over. Clear this connection's readiness flag
+        // *before* draining so a concurrent `emit` cannot pass its readiness
+        // check and enqueue a message this connection is about to discard.
+        // `run_connection` only ever sets it `true` after the CONNECT ACK, so
+        // clearing here also covers a connection that never handshook. It is a
+        // no-op on a `Failed` attempt that never flipped it.
+        emit_ready.store(false, Ordering::Release);
 
         // The connection attempt has ended (lost, failed, or shutdown), so any
         // in-flight `emit_with_ack` waiter can never receive its ACK now. Cancel
@@ -449,6 +460,7 @@ async fn run_connection(
     emit_rx: &mut mpsc::UnboundedReceiver<String>,
     shutdown_rx: &mut watch::Receiver<bool>,
     internal_tx: &mpsc::UnboundedSender<String>,
+    emit_ready: &AtomicBool,
 ) -> ConnectionOutcome {
     log::info!("[socket] WS URL: {}", ws_url);
 
@@ -513,9 +525,16 @@ async fn run_connection(
         .map(String::from);
     log::info!("[socket] SIO CONNECT ACK: sid={:?}", sio_sid);
 
-    // 6. Update state to Connected
+    // 6. Update state to Connected and mark this connection ready to emit.
+    // The readiness flag is the emit gate (see `SocketManager::emit`): only now,
+    // past a completed Socket.IO CONNECT ACK, is a queued message guaranteed to
+    // ride *this* live socket rather than be dropped by `drain_pending_emits`.
+    // A later server `error` EVENT flips `status` to `Error` for the UI but does
+    // not return from this function, so the socket stays live and this flag
+    // stays set — emits keep flowing until the connection is actually torn down.
     *shared.status.write() = ConnectionStatus::Connected;
     *shared.socket_id.write() = sio_sid;
+    emit_ready.store(true, Ordering::Release);
     emit_state_change(shared);
 
     // 7. Main event loop
