@@ -302,6 +302,61 @@ allowed_commands = ["ls", "cat"]
 
 // ── keyring consent ──────────────────────────────────────────────────────────
 
+/// Assert the BACKEND -> MODE pairing, not merely that the mode is in the enum.
+///
+/// #6076 was exactly a mismatched pair — `backendName: "file"` with
+/// `activeMode: "os_keyring"` — so a predicate that only rejects
+/// `consent_pending`/`declined` would let that regression back in while a comment
+/// claimed to guard it. Mirrors `active_mode_for` in
+/// `security/keyring_consent/policy.rs`, including the branch #6139's inline
+/// version could not reach: an `os` backend whose probe FAILED falls back to the
+/// recorded consent, not to `consent_pending` unconditionally.
+///
+/// `label` names the call site, so a failure says which of the two surfaces broke.
+fn assert_mode_matches_backend(status: &Value, label: &str) {
+    let available = status
+        .get("available")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| panic!("{label}: `available` must be a boolean: {status}"));
+    let backend = status
+        .get("backendName")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("{label}: the backend must be named: {status}"));
+    let mode = status
+        .get("activeMode")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("{label}: status must report an `activeMode`: {status}"));
+
+    match backend {
+        "os" if available => assert_eq!(
+            mode, "os_keyring",
+            "{label}: a working OS credential store is the one case that may claim \
+             `os_keyring`: {status}"
+        ),
+        // Probe failed: the mode falls back to whatever consent was recorded.
+        "os" => assert!(
+            ["consent_pending", "local_encrypted", "declined"].contains(&mode),
+            "{label}: an unavailable OS keyring reports the recorded consent: {status}"
+        ),
+        "encrypted_file" => assert_eq!(
+            mode, "local_encrypted_file",
+            "{label}: the encrypted_file backend stores secrets in \
+             {{workspace}}/secrets.enc: {status}"
+        ),
+        // What CI runs: no OS credential store, so secrets are plaintext on disk.
+        "file" | "mock" => assert_eq!(
+            mode, "local_plaintext_file",
+            "{label}: the file/mock backend is plaintext dev-keychain.json and must \
+             say so rather than claiming the OS keyring: {status}"
+        ),
+        // An unrecognised backend claims nothing — the deliberate fallback in policy.rs.
+        _ => assert_eq!(
+            mode, "consent_pending",
+            "{label}: an unrecognised backend must not guess where secrets live: {status}"
+        ),
+    }
+}
+
 /// All three keyring-consent controllers.
 ///
 /// The anchor is the **persisted file**, not `activeMode`. `policy::current_status`
@@ -366,30 +421,8 @@ async fn keyring_consent_status_decide_and_retry_probe() {
             .is_some_and(|n| !n.is_empty()),
         "the backend must be named so the settings panel can show it: {status}"
     );
+    assert_mode_matches_backend(status, "keyring_consent_status");
     if available {
-        // Assert the BACKEND -> MODE pairing, not merely that the mode is in the
-        // enum. #6076 was exactly a mismatched pair — `backendName: "file"` with
-        // `activeMode: "os_keyring"` — so a predicate that only rejects
-        // `consent_pending`/`declined` would let that regression back in while a
-        // comment claimed to guard it. Mirrors `active_mode_for` in
-        // `security/keyring_consent/policy.rs:125-146`.
-        let backend = status
-            .get("backendName")
-            .and_then(Value::as_str)
-            .expect("backendName asserted non-empty above");
-        let expected = match backend {
-            "os" => "os_keyring",
-            "encrypted_file" => "local_encrypted_file",
-            "file" | "mock" => "local_plaintext_file",
-            // An unrecognised backend reports `consent_pending` rather than
-            // guessing — the deliberate fallback in `policy.rs`.
-            _ => "consent_pending",
-        };
-        assert_eq!(
-            mode, expected,
-            "a usable `{backend}` backend must report `{expected}`; reporting anything \
-             else is the #6076 mismatch this test exists to catch: {status}"
-        );
         assert!(
             status.get("failureReason").is_none(),
             "`failureReason` is skipped when the keyring works: {status}"
@@ -528,21 +561,7 @@ async fn keyring_consent_status_decide_and_retry_probe() {
             .is_some_and(|n| !n.is_empty()),
         "the probe result must name the backend it probed: {probe}"
     );
-    assert!(
-        probe
-            .get("activeMode")
-            .and_then(Value::as_str)
-            .is_some_and(|m| [
-                "os_keyring",
-                "local_encrypted",
-                "local_encrypted_file",
-                "local_plaintext_file",
-                "consent_pending",
-                "declined",
-            ]
-            .contains(&m)),
-        "the probe must return a valid storage mode: {probe}"
-    );
+    assert_mode_matches_backend(probe, "keyring_consent_retry_probe");
 }
 
 // ── devices ──────────────────────────────────────────────────────────────────
