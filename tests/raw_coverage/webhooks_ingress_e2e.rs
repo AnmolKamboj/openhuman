@@ -581,6 +581,31 @@ async fn webhooks_registration_lifecycle_and_ownership_guards() {
         "unregister_echo must not touch the sibling agent tunnel: {result}"
     );
 
+    // ── #6091: unregistering a tunnel that was never registered must not claim it removed
+    // one. The wire shape is deliberately unchanged (the caller still diffs `registrations`),
+    // so the log line is the observable signal that the no-op branch was taken.
+    let absent = post_json_rpc(
+        &rpc_base,
+        7008,
+        "openhuman.webhooks_unregister_echo",
+        json!({ "tunnel_uuid": "e2e-never-registered-tunnel" }),
+    )
+    .await;
+    let envelope = assert_no_jsonrpc_error(&absent, "webhooks_unregister_echo (absent tunnel)");
+    let logs = envelope
+        .get("logs")
+        .and_then(Value::as_array)
+        .expect("unregister_echo carries a log line");
+    let line = logs[0].as_str().unwrap_or_default();
+    assert!(
+        line.contains("nothing removed"),
+        "an absent tunnel must be reported as a no-op, not as a removal: {line}"
+    );
+    assert!(
+        registration(peel(envelope), agent_uuid).is_some(),
+        "the no-op must leave the unrelated agent tunnel registered: {envelope}"
+    );
+
     // ── a missing required param is a params error, not a panic or a silent success.
     let bad = post_json_rpc(
         &rpc_base,
@@ -676,6 +701,37 @@ async fn webhooks_debug_log_ring_records_and_clears() {
     assert!(
         entry.get("status_code").map(Value::is_null).unwrap_or(true),
         "no response recorded yet ⇒ status_code must still be null: {entry}"
+    );
+
+    // #6090 — `limit` is a maximum, so an explicit zero returns nothing. The ring holds one
+    // entry at this point, so a `.max(1)`-style clamp would return that entry and this fails.
+    let zero = post_json_rpc(
+        &rpc_base,
+        7106,
+        "openhuman.webhooks_list_logs",
+        json!({ "limit": 0 }),
+    )
+    .await;
+    let result = peel(assert_no_jsonrpc_error(&zero, "webhooks_list_logs (limit 0)"));
+    assert_eq!(
+        result.get("logs").and_then(Value::as_array).map(Vec::len),
+        Some(0),
+        "limit 0 must return no entries, not one: {result}"
+    );
+    // The neighbouring value must still be honoured, so this cannot pass by returning
+    // nothing for every limit.
+    let one = post_json_rpc(
+        &rpc_base,
+        7107,
+        "openhuman.webhooks_list_logs",
+        json!({ "limit": 1 }),
+    )
+    .await;
+    let result = peel(assert_no_jsonrpc_error(&one, "webhooks_list_logs (limit 1)"));
+    assert_eq!(
+        result.get("logs").and_then(Value::as_array).map(Vec::len),
+        Some(1),
+        "limit 1 must still return the single recorded entry: {result}"
     );
 
     // clear_logs reports the count it removed, and the ring is empty afterwards.
