@@ -726,12 +726,23 @@ async fn mcp_setup_install_paths_validate_handles_and_report_dial_failure_in_ban
         "`tools` must be absent when the dial failed: {dial}"
     );
 
-    // `install_and_connect` on the same name does NOT get the in-band
-    // treatment — it maps the failure to an RPC error. Pinned because the
-    // schema claims otherwise: it declares a `status` output of `connected` |
-    // `installed_disconnected`, and the handler emits no `status` field at all
-    // and cannot produce the second value. See
-    // `~/tinyhuman/bugs/e2e-wave-mcp-setup-install-status-field-never-emitted.md`.
+    // `install_and_connect` still raises here, and after #6110 that is the
+    // *correct* answer rather than the drift this case originally pinned.
+    //
+    // `UNINSTALLABLE` declares neither a remote nor a package and the fixture
+    // registry serves no version of it, so the **install** step is what fails.
+    // There is no server and no `server_id`, so there is nothing to report a
+    // `status` for — the schema's `installed_disconnected` means "install
+    // succeeded, connect failed", which is a different case and not reachable
+    // from this input.
+    //
+    // The reconciliation the old note asked for has happened: a failed
+    // *connect* now returns `Ok` with `status: "installed_disconnected"` and an
+    // `error`, matching `test_connection`'s in-band contract. Exercising that
+    // arm needs a package that installs and then refuses to dial, which means a
+    // registry-resolvable package and a subprocess; it is covered by the unit
+    // tests on `classify_install_connect` in
+    // `src/openhuman/mcp/registry/setup_ops_tests.rs`.
     let install = rpc(
         &harness.rpc_base,
         225,
@@ -741,9 +752,8 @@ async fn mcp_setup_install_paths_validate_handles_and_report_dial_failure_in_ban
     .await;
     assert!(
         install.get("error").is_some(),
-        "install_and_connect raises where test_connection reports in band; if this \
-         starts returning a result the two have been reconciled and the bug note \
-         needs updating: {install}"
+        "an install that cannot resolve a package must still raise — it has no \
+         server_id to attach a status to: {install}"
     );
 
     registry_join.abort();
