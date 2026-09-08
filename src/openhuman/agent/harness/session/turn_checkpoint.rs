@@ -154,6 +154,10 @@ pub(super) fn truncate_chars(text: &str, max: usize) -> String {
     format!("{cut}… [truncated]")
 }
 
+#[cfg(test)]
+#[path = "turn_checkpoint_tests.rs"]
+mod tests;
+
 /// Build a deterministic checkpoint summary from this turn's tool-call
 /// results. Used only as a safety net when the model-written checkpoint
 /// call fails or returns empty, so a capped turn can never be left without
@@ -168,10 +172,6 @@ pub(super) fn truncate_chars(text: &str, max: usize) -> String {
 /// between the turn's work and the user. The output is quoted as data, under a
 /// heading that says so, because none of it has been through a model on this
 /// path: it is raw tool output being surfaced verbatim, not an answer.
-#[cfg(test)]
-#[path = "turn_checkpoint_tests.rs"]
-mod tests;
-
 pub(super) fn build_deterministic_checkpoint(
     results: &[CheckpointToolResult],
     max_iterations: usize,
