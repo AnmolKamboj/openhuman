@@ -682,3 +682,50 @@ async fn both_middlewares_together_stay_inside_the_no_window_allowance() {
         "the contents list is absent, so the bound proves nothing"
     );
 }
+
+/// A share smaller than the fixed text renders no rows at all. Forcing one
+/// would push a message nothing downstream can shrink over its bound, and the
+/// header plus the omitted count already disclose that the results exist
+/// (CodeRabbit on #6068).
+#[tokio::test]
+async fn a_share_smaller_than_the_header_renders_no_rows() {
+    let entries: Vec<(String, String, String, u64)> = (0..10)
+        .map(|i| {
+            (
+                format!("call-{i}"),
+                "file_read".to_string(),
+                format!("outputs/artifact-{i}.json"),
+                1_000,
+            )
+        })
+        .collect();
+    let borrowed: Vec<(&str, &str, &str, u64)> = entries
+        .iter()
+        .map(|(a, b, c, d)| (a.as_str(), b.as_str(), c.as_str(), *d))
+        .collect();
+    let mut ctx = ctx_with_artifacts(&borrowed).await;
+    // The floor a small window gets — below the header's own cost.
+    let mw = ArtifactIndexTocMiddleware::new(64);
+    let mut request = ModelRequest {
+        messages: vec![TaMessage::user("what did you find?")],
+        ..Default::default()
+    };
+
+    mw.before_model(&mut ctx, &(), &mut request).await.unwrap();
+
+    let text = request.messages.last().expect("a contents list").text();
+    assert!(
+        !text.contains("file_read"),
+        "no row fits the share, so none may be forced: {text}"
+    );
+    assert!(
+        text.contains("10 more stored result(s) not listed here"),
+        "every result was omitted and that must be disclosed: {text}"
+    );
+    // Nothing beyond the fixed text was spent.
+    assert!(
+        estimate_text_tokens(&text) < 64 + FOOTER_ALLOWANCE + 64,
+        "the message must carry the fixed text and nothing more: {}",
+        estimate_text_tokens(&text)
+    );
+}
