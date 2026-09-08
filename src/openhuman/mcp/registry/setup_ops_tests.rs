@@ -73,7 +73,7 @@ fn conn_status(status: ServerStatus, last_error: Option<&str>) -> ConnStatus {
 fn a_connected_server_classifies_as_connected_with_no_error() {
     let entry = conn_status(ServerStatus::Connected, None);
     assert_eq!(
-        super::classify_install_connect(Some(&entry)),
+        super::classify_install_connect(Ok(Some(&entry))),
         ("connected", None)
     );
 }
@@ -85,13 +85,16 @@ fn a_connected_server_with_no_tools_is_still_connected() {
     // `connected` reads from `ServerStatus`, never from the tool count.
     let mut entry = conn_status(ServerStatus::Connected, None);
     entry.tool_count = 0;
-    assert_eq!(super::classify_install_connect(Some(&entry)).0, "connected");
+    assert_eq!(
+        super::classify_install_connect(Ok(Some(&entry))).0,
+        "connected"
+    );
 }
 
 #[test]
 fn a_failed_connect_reports_installed_disconnected_and_carries_the_reason() {
     let entry = conn_status(ServerStatus::Error, Some("dial tcp: connection refused"));
-    let (status, error) = super::classify_install_connect(Some(&entry));
+    let (status, error) = super::classify_install_connect(Ok(Some(&entry)));
     assert_eq!(status, "installed_disconnected");
     assert_eq!(error.as_deref(), Some("dial tcp: connection refused"));
 }
@@ -101,7 +104,7 @@ fn a_401_reports_installed_disconnected_rather_than_connected() {
     // `Unauthorized` is reachable, distinct from `Error`, and is emphatically
     // not connected — a caller offering a sign-in path needs to see that.
     let entry = conn_status(ServerStatus::Unauthorized, Some("server answered 401"));
-    let (status, error) = super::classify_install_connect(Some(&entry));
+    let (status, error) = super::classify_install_connect(Ok(Some(&entry)));
     assert_eq!(status, "installed_disconnected");
     assert_eq!(error.as_deref(), Some("server answered 401"));
 }
@@ -111,7 +114,7 @@ fn a_non_connected_status_without_a_reason_still_names_the_state() {
     // `last_error` is `Option`; the schema's `error` is documented as present
     // whenever `status != connected`, so it must not go missing here.
     let entry = conn_status(ServerStatus::Disconnected, None);
-    let (status, error) = super::classify_install_connect(Some(&entry));
+    let (status, error) = super::classify_install_connect(Ok(Some(&entry)));
     assert_eq!(status, "installed_disconnected");
     assert!(
         error.as_deref().is_some_and(|e| e.contains("disconnected")),
@@ -120,13 +123,36 @@ fn a_non_connected_status_without_a_reason_still_names_the_state() {
 }
 
 #[test]
-fn an_unreadable_status_is_not_assumed_connected() {
-    let (status, error) = super::classify_install_connect(None);
+fn a_missing_status_row_is_not_assumed_connected() {
+    let (status, error) = super::classify_install_connect(Ok(None));
     assert_eq!(
         status, "installed_disconnected",
-        "a status we could not read back must never be reported as connected"
+        "a server with no status row must never be reported as connected"
     );
-    assert!(error.is_some(), "and it must say why");
+    assert!(
+        error
+            .as_deref()
+            .is_some_and(|e| e.contains("no status row")),
+        "and it must say which of the two unknowns it hit, got: {error:?}"
+    );
+}
+
+#[test]
+fn a_failed_status_query_surfaces_its_own_reason() {
+    // The status *method* failing is a different fact from the server being
+    // disconnected, and the reason must reach the caller rather than only a
+    // log line (tinysweeper on #6132).
+    let (status, error) = super::classify_install_connect(Err("store is poisoned"));
+    assert_eq!(status, "installed_disconnected");
+    let error = error.expect("a failed read-back must carry a reason");
+    assert!(
+        error.contains("store is poisoned"),
+        "the underlying error must be surfaced, not swallowed: {error}"
+    );
+    assert!(
+        error.contains("could not be read back"),
+        "and it must say the read-back is what failed: {error}"
+    );
 }
 
 #[test]
