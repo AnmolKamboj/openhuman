@@ -320,6 +320,14 @@ impl SocketManager {
     }
 
     /// Emit a Socket.IO event and wait for the backend ACK callback.
+    ///
+    /// Unlike [`emit`](Self::emit), this deliberately does **not** gate on
+    /// `Connected`: a message queued while `Connecting` is flushed once the
+    /// handshake completes, and if the handshake fails instead the ack simply
+    /// never arrives and this returns a timeout `Err`. Because delivery is
+    /// confirmed by the ack (or its absence), a pre-handshake `emit_with_ack`
+    /// cannot report a false success the way a bare `emit` could (#6084), so it
+    /// keeps the queue-then-confirm behaviour rather than rejecting early.
     pub async fn emit_with_ack(
         &self,
         event: &str,
