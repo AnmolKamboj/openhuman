@@ -43,6 +43,87 @@ async fn handle_resolve_policy_sandboxed_remote() {
     assert_eq!(backend, Some("docker"));
 }
 
+/// Build a `Config` carrying a Docker runtime with a NON-default image, so a
+/// test can prove the RPC handlers read the loaded runtime rather than
+/// `RuntimeConfig::default()` (#6081).
+#[cfg(test)]
+fn docker_runtime_config() -> crate::openhuman::config::Config {
+    let mut config = crate::openhuman::config::Config::default();
+    config.workspace_dir = std::path::PathBuf::from("/tmp/openhuman-6081-ws");
+    config.runtime.kind = "docker".into();
+    config.runtime.docker.image = "ghcr.io/example/custom-sandbox:6081".into();
+    config
+}
+
+/// #6081 regression — `sandbox_resolve_policy` must honor the loaded
+/// `[runtime] kind = "docker"` config. Before the fix the handler answered from
+/// `RuntimeConfig::default()` (`kind = "native"`), so a Docker-configured user
+/// was told `backend = "local"`. The config is injected through the
+/// embedder-config seam that `load_config_with_timeout()` reads, scoped for the
+/// duration of the dispatch.
+#[tokio::test]
+async fn handle_resolve_policy_honors_loaded_docker_runtime() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let ctx = CoreContext::for_test_with_config(DomainSet::full(), docker_runtime_config());
+
+    let mut params = Map::new();
+    params.insert("sandbox_mode".into(), Value::String("sandboxed".into()));
+    params.insert("is_remote".into(), Value::Bool(false));
+
+    let val = CoreContext::scope(ctx, async { handle_resolve_policy(params).await })
+        .await
+        .expect("resolve_policy should succeed under the scoped config");
+
+    // Consequence #1: the backend follows `[runtime] kind`, not the default.
+    assert_eq!(
+        val.get("backend").and_then(|b| b.as_str()),
+        Some("docker"),
+        "docker runtime must resolve to the docker backend; got {val:?}"
+    );
+
+    // Consequence #2: docker overrides reflect the user's `[runtime.docker]`,
+    // not the compiled-in default image.
+    let image = val
+        .get("docker_overrides")
+        .and_then(|o| o.get("image"))
+        .and_then(|i| i.as_str());
+    assert_eq!(
+        image,
+        Some("ghcr.io/example/custom-sandbox:6081"),
+        "docker_overrides.image must reflect the loaded [runtime.docker].image; got {val:?}"
+    );
+}
+
+/// #6081 regression — `sandbox_status` must likewise read the loaded runtime.
+/// With `[runtime] kind = "docker"` and `is_remote = false`, a sandboxed status
+/// probe resolves the docker backend; before the fix it answered "local" from
+/// `RuntimeConfig::default()`. Uses `backend = "local"` in the request to prove
+/// the resolution comes from the loaded config's `kind`, not the caller's
+/// backend name.
+#[tokio::test]
+async fn handle_status_honors_loaded_docker_runtime() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let ctx = CoreContext::for_test_with_config(DomainSet::full(), docker_runtime_config());
+
+    let mut params = Map::new();
+    params.insert("backend".into(), Value::String("local".into()));
+    params.insert("is_remote".into(), Value::Bool(false));
+
+    let val = CoreContext::scope(ctx, async { handle_status(params).await })
+        .await
+        .expect("status should succeed under the scoped config");
+
+    assert_eq!(
+        val.get("kind").and_then(|k| k.as_str()),
+        Some("docker"),
+        "docker runtime must make status report the docker backend; got {val:?}"
+    );
+}
+
 #[tokio::test]
 async fn handle_validate_policy_valid() {
     let policy = super::super::types::SandboxPolicy {
