@@ -254,6 +254,21 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
 
 // ── forget_facet ──────────────────────────────────────────────────────────────
 
+/// The log line `learning.forget_facet` emits, given whether a row was actually
+/// written.
+///
+/// Split out so the claim can be unit-tested without a cache: the defect this
+/// replaces built the "state=dropped user_state=forgotten" line unconditionally,
+/// *before* the read told it whether there was anything to drop, so an absent key
+/// produced a log asserting a state change that never happened (#6108).
+fn forget_facet_log(full_key: &str, dropped: bool) -> Vec<String> {
+    vec![if dropped {
+        format!("learning.forget_facet: key={full_key} state=dropped user_state=forgotten")
+    } else {
+        format!("learning.forget_facet: key={full_key} not present — no change")
+    }]
+}
+
 fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         use tinymemory_api::provider::{FacetState, UserState};
@@ -281,7 +296,12 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
             .await
             .map_err(|e| format!("get failed: {e:#}"))?;
 
-        let facet_json = if let Some(mut f) = facet_before {
+        // Absent is not an error: forgetting is idempotent, and erroring would
+        // leak whether the facet existed — the wrong direction for a privacy
+        // operation. The agent tool (`tools.rs`) has always behaved this way;
+        // what was wrong here was the *log*, built before the branch was known,
+        // so a typo'd key produced a line claiming a row had been dropped.
+        let (facet_json, dropped) = if let Some(mut f) = facet_before {
             // Mark Forgotten + Dropped so it doesn't resurface.
             f.user_state = UserState::Forgotten;
             f.state = FacetState::Dropped;
@@ -294,14 +314,12 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
                 .await
                 .map_err(|e| format!("re-read failed: {e:#}"))?
                 .unwrap_or(f);
-            facet_to_json(&updated)
+            (facet_to_json(&updated), true)
         } else {
-            serde_json::Value::Null
+            (serde_json::Value::Null, false)
         };
 
-        let log = vec![format!(
-            "learning.forget_facet: key={fk} state=dropped user_state=forgotten"
-        )];
+        let log = forget_facet_log(&fk, dropped);
         let payload = serde_json::json!({ "facet": facet_json });
         RpcOutcome::new(payload, log).into_cli_compatible_json()
     })
