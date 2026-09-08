@@ -1,4 +1,13 @@
 use super::*;
+use crate::core::runtime::context::CoreContext;
+use crate::core::runtime::DomainSet;
+
+/// Scope a `Config` onto the embedder-config seam that `load_config_with_timeout()`
+/// prefers, so a handler reads it instead of doing live disk I/O against
+/// `~/.openhuman` — which is slow and racy across parallel unit tests (#6081).
+fn scoped_ctx(config: crate::openhuman::config::Config) -> std::sync::Arc<CoreContext> {
+    CoreContext::for_test_with_config(DomainSet::full(), config)
+}
 
 #[test]
 fn all_schemas_are_in_sandbox_namespace() {
@@ -19,7 +28,8 @@ fn registered_controllers_match_schemas() {
 
 #[tokio::test]
 async fn handle_status_returns_json() {
-    let result = handle_status(Map::new()).await;
+    let ctx = scoped_ctx(crate::openhuman::config::Config::default());
+    let result = CoreContext::scope(ctx, async { handle_status(Map::new()).await }).await;
     assert!(result.is_ok());
 }
 
@@ -27,7 +37,8 @@ async fn handle_status_returns_json() {
 async fn handle_resolve_policy_none() {
     let mut params = Map::new();
     params.insert("sandbox_mode".into(), Value::String("none".into()));
-    let result = handle_resolve_policy(params).await;
+    let ctx = scoped_ctx(crate::openhuman::config::Config::default());
+    let result = CoreContext::scope(ctx, async { handle_resolve_policy(params).await }).await;
     assert!(result.is_ok());
 }
 
@@ -36,7 +47,8 @@ async fn handle_resolve_policy_sandboxed_remote() {
     let mut params = Map::new();
     params.insert("sandbox_mode".into(), Value::String("sandboxed".into()));
     params.insert("is_remote".into(), Value::Bool(true));
-    let result = handle_resolve_policy(params).await;
+    let ctx = scoped_ctx(crate::openhuman::config::Config::default());
+    let result = CoreContext::scope(ctx, async { handle_resolve_policy(params).await }).await;
     assert!(result.is_ok());
     let val = result.unwrap();
     let backend = val.get("backend").and_then(|b| b.as_str());
@@ -46,7 +58,6 @@ async fn handle_resolve_policy_sandboxed_remote() {
 /// Build a `Config` carrying a Docker runtime with a NON-default image, so a
 /// test can prove the RPC handlers read the loaded runtime rather than
 /// `RuntimeConfig::default()` (#6081).
-#[cfg(test)]
 fn docker_runtime_config() -> crate::openhuman::config::Config {
     let mut config = crate::openhuman::config::Config::default();
     config.workspace_dir = std::path::PathBuf::from("/tmp/openhuman-6081-ws");
@@ -63,10 +74,7 @@ fn docker_runtime_config() -> crate::openhuman::config::Config {
 /// duration of the dispatch.
 #[tokio::test]
 async fn handle_resolve_policy_honors_loaded_docker_runtime() {
-    use crate::core::runtime::context::CoreContext;
-    use crate::core::runtime::DomainSet;
-
-    let ctx = CoreContext::for_test_with_config(DomainSet::full(), docker_runtime_config());
+    let ctx = scoped_ctx(docker_runtime_config());
 
     let mut params = Map::new();
     params.insert("sandbox_mode".into(), Value::String("sandboxed".into()));
@@ -104,10 +112,7 @@ async fn handle_resolve_policy_honors_loaded_docker_runtime() {
 /// backend name.
 #[tokio::test]
 async fn handle_status_honors_loaded_docker_runtime() {
-    use crate::core::runtime::context::CoreContext;
-    use crate::core::runtime::DomainSet;
-
-    let ctx = CoreContext::for_test_with_config(DomainSet::full(), docker_runtime_config());
+    let ctx = scoped_ctx(docker_runtime_config());
 
     let mut params = Map::new();
     params.insert("backend".into(), Value::String("local".into()));
