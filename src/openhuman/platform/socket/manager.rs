@@ -172,7 +172,6 @@ impl SocketManager {
     }
 
     /// Check if the socket is currently connected.
-    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         *self.shared.status.read() == ConnectionStatus::Connected
     }
@@ -299,7 +298,19 @@ impl SocketManager {
     }
 
     /// Emit a Socket.IO event to the server.
+    ///
+    /// Gated on connection **readiness**, not merely on the emit channel
+    /// existing. `spawn_loop` installs `emit_tx` while the status is still
+    /// `Connecting` (before the Engine.IO / Socket.IO handshake completes), so a
+    /// channel-only guard would report success for a message that `ws_loop`'s
+    /// `drain_pending_emits` silently discards if the handshake then fails
+    /// (#4355). Callers must be told the truth, so an emit before the socket is
+    /// `Connected` returns the same `"Not connected"` error as an emit before
+    /// `connect` was ever called.
     pub async fn emit(&self, event: &str, data: serde_json::Value) -> Result<(), String> {
+        if !self.is_connected() {
+            return Err("Not connected".to_string());
+        }
         if let Some(ref tx) = *self.emit_tx.lock().await {
             let msg = encode_sio_event(event, data, None)?;
             tx.send(msg).map_err(|_| "Socket not connected".to_string())

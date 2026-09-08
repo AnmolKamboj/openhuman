@@ -57,6 +57,51 @@ async fn emit_without_connection_errors_without_panic() {
 }
 
 #[tokio::test]
+async fn emit_while_connecting_errors_even_with_emit_channel_present() {
+    // Arrange: mirror `spawn_loop`'s pre-handshake state — the emit channel is
+    // installed (so the old channel-only guard would pass) but the socket has
+    // not finished the SIO handshake yet.
+    let mgr = SocketManager::new();
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    *mgr.emit_tx.lock().await = Some(tx);
+    *mgr.shared.status.write() = ConnectionStatus::Connecting;
+
+    // Act
+    let err = mgr
+        .emit("test.event", json!({ "k": "v" }))
+        .await
+        .unwrap_err();
+
+    // Assert: the caller is told the truth, and nothing was queued onto a
+    // channel whose message `drain_pending_emits` would discard (#4355).
+    assert_eq!(err, "Not connected");
+    assert!(
+        rx.try_recv().is_err(),
+        "emit must not queue a message before the socket is Connected"
+    );
+}
+
+#[tokio::test]
+async fn emit_when_connected_queues_the_encoded_event() {
+    // Arrange
+    let mgr = SocketManager::new();
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    *mgr.emit_tx.lock().await = Some(tx);
+    *mgr.shared.status.write() = ConnectionStatus::Connected;
+
+    // Act
+    mgr.emit("test.event", json!({ "k": "v" }))
+        .await
+        .expect("emit must succeed once the socket is Connected");
+
+    // Assert: the encoded Socket.IO event lands on the outbound channel.
+    let queued = rx
+        .try_recv()
+        .expect("expected the emitted event to be queued");
+    assert_eq!(queued, r#"42["test.event",{"k":"v"}]"#);
+}
+
+#[tokio::test]
 async fn emit_with_ack_without_connection_errors_without_waiting() {
     let mgr = SocketManager::new();
     let err = mgr
