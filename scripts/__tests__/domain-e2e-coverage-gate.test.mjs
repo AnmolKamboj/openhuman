@@ -72,6 +72,7 @@ function fixture(t, options = {}) {
     featureGraph = {},
     withExcludedNamespaces = true,
     declareExcludedFeatures = true,
+    gateExcludedModule = true,
   } = options;
   const root = fs.mkdtempSync(join(tmpdir(), 'domain-e2e-gate-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -86,6 +87,16 @@ function fixture(t, options = {}) {
       root,
       'src/openhuman/test_support/schemas.rs',
       controller('test', 'reset') + controller('test_support', 'workspace_root'),
+    );
+    // The `#[cfg]` the exclusion claims. It lives on the `mod` declaration in
+    // the PARENT, which is where the gate looks for it — a fixture without this
+    // is a module that compiles unconditionally.
+    write(
+      root,
+      'src/openhuman/mod.rs',
+      gateExcludedModule
+        ? '#[cfg(feature = "e2e-test-support")]\npub mod test_support;\n'
+        : 'pub mod test_support;\n',
     );
   }
   return root;
@@ -380,5 +391,84 @@ test('reads a single-quoted TOML feature array', (t) => {
     result.stderr,
     /excluded namespace\(s\) are reachable in the measured configuration/,
     `a gate enabled through a literal string must count as enabled; got:\n${result.stderr}`,
+  );
+});
+
+// Codex, PR #6092 (second round). The last hole: delete the `#[cfg]` in Rust
+// and every other check here still passes — the feature is declared, it is
+// disabled, the namespace is discovered, it is not in MODULES — while the
+// module now compiles unconditionally and its controllers dispatch. An
+// exclusion is a claim about the source, so it is checked against the source.
+test('fails when the module is no longer behind the #[cfg] the exclusion claims', (t) => {
+  const root = fixture(t, { gateExcludedModule: false });
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.equal(result.status, 1, `an ungated module must fail the gate; got:\n${result.stdout}`);
+  assert.match(
+    result.stderr,
+    /no longer behind the gate they claim/,
+    `the failure must say the #[cfg] is gone; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stderr,
+    /src\/openhuman\/test_support\/schemas\.rs/,
+    `the file that lost its gate must be named; got:\n${result.stderr}`,
+  );
+});
+
+// The positive half, and the reason the walk climbs rather than reading the
+// file itself: `#[cfg]` sits on the `mod` declaration in the PARENT. Here the
+// gate is two levels up from the declaring file, with an ungated `mod schemas;`
+// in between — the arrangement `src/openhuman/test_support/` actually has.
+test('finds the gate on an ancestor mod declaration, not just the immediate parent', (t) => {
+  const root = fixture(t);
+  write(root, 'src/openhuman/test_support/mod.rs', 'mod schemas;\n');
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.doesNotMatch(
+    result.stderr,
+    /no longer behind the gate they claim/,
+    `a gate on a grandparent mod must count; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stdout,
+    /Excluded 2 controller\(s\)/,
+    `the exclusion must still apply; got:\n${result.stdout}`,
+  );
+});
+
+// A namespace can declare its controllers in `mod.rs` itself rather than in a
+// `schemas.rs` sibling. That file IS its directory's module, so its own `mod`
+// declaration sits one level further up and under the DIRECTORY's name —
+// resolving it like an ordinary file would look for `mod mod;` and find
+// nothing, silently reporting the module as ungated.
+test('resolves the gate for a namespace declared in mod.rs itself', (t) => {
+  const root = fixture(t, { withExcludedNamespaces: false });
+  write(
+    root,
+    'src/openhuman/test_support/mod.rs',
+    controller('test', 'reset') + controller('test_support', 'workspace_root'),
+  );
+  write(root, 'src/openhuman/mod.rs', '#[cfg(feature = "e2e-test-support")]\npub mod test_support;\n');
+  write(root, 'src/openhuman/widgets/schemas_part_01.rs', controller('widgets', 'list'));
+  write(root, 'tests/widgets_e2e.rs', 'let m = "openhuman.widgets_list";');
+
+  const result = runGate(root);
+
+  assert.doesNotMatch(
+    result.stderr,
+    /no longer behind the gate they claim/,
+    `a mod.rs-declared namespace must resolve its own gate; got:\n${result.stderr}`,
+  );
+  assert.match(
+    result.stdout,
+    /Excluded 2 controller\(s\)/,
+    `the exclusion must still apply; got:\n${result.stdout}`,
   );
 });

@@ -208,6 +208,9 @@ function collectInvokedMethods() {
  */
 function collectSchemaMethods() {
   const methodsByNamespace = new Map();
+  // Which file declared each namespace, so an exclusion can be checked against
+  // the `#[cfg]` chain that actually reaches it — see `moduleGatesFor`.
+  const filesByNamespace = new Map();
 
   for (const root of SCHEMA_ROOTS) {
     for (const file of walk(root, (f) => f.endsWith('.rs'))) {
@@ -222,11 +225,57 @@ function collectSchemaMethods() {
         if (!namespace || !functionName || functionName === 'unknown') continue;
         if (!methodsByNamespace.has(namespace)) methodsByNamespace.set(namespace, new Set());
         methodsByNamespace.get(namespace).add(`openhuman.${namespace}_${functionName}`);
+        if (!filesByNamespace.has(namespace)) filesByNamespace.set(namespace, new Set());
+        filesByNamespace.get(namespace).add(file);
       }
     }
   }
 
-  return methodsByNamespace;
+  return { methodsByNamespace, filesByNamespace };
+}
+
+/**
+ * The Cargo gates on the chain of `mod` declarations that must compile for
+ * `file` to exist in the build.
+ *
+ * `#[cfg]` sits on the `mod` declaration in the PARENT, never in the file
+ * itself, so this walks upward: `src/openhuman/test_support/schemas.rs` is
+ * reached through `mod schemas;` in `test_support/mod.rs` and then through
+ * `pub mod test_support;` in `openhuman/mod.rs` — and only the second carries
+ * the gate. A file pulled in by `include!` has no `mod` of its own and simply
+ * contributes nothing at its own level, which is why a missing declaration is
+ * not itself an error here.
+ */
+function moduleGatesFor(file) {
+  const gates = new Set();
+  let segments = path.relative(ROOT, file).split(path.sep);
+
+  while (segments.length > 1) {
+    const base = segments[segments.length - 1].replace(/\.rs$/, '');
+    const isModFile = base === 'mod';
+    // A `mod.rs` IS its directory's module, so its declaration lives one level
+    // further up and under the directory's name.
+    const name = isModFile ? segments[segments.length - 2] : base;
+    const parentDir = isModFile ? segments.slice(0, -2) : segments.slice(0, -1);
+    const declaringFile = path.join(ROOT, ...parentDir, 'mod.rs');
+
+    if (fs.existsSync(declaringFile)) {
+      const lines = read(declaringFile).split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (!new RegExp(`^\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+${name}\\s*;`).test(lines[i])) continue;
+        // Attributes stack above the declaration; read back through all of them.
+        for (let j = i - 1; j >= 0 && /^\s*#\[/.test(lines[j]); j--) {
+          const gate = lines[j].match(/#\[cfg\(.*?feature\s*=\s*"([a-z0-9-]+)"/)?.[1];
+          if (gate) gates.add(gate);
+        }
+      }
+    }
+
+    segments = parentDir;
+    if (segments[segments.length - 1] === 'src') break;
+  }
+
+  return gates;
 }
 
 /**
@@ -278,7 +327,7 @@ function measuredFeatures() {
  * fail to measure something, it deletes a real obligation from the denominator
  * and reports the smaller world as success.
  */
-function checkExclusions(discovered, labelForNamespace) {
+function checkExclusions(discovered, declaringFiles, labelForNamespace) {
   const { graph, enabled } = measuredFeatures();
   const problems = [];
 
@@ -328,6 +377,33 @@ function checkExclusions(discovered, labelForNamespace) {
     );
   }
 
+  // (2b) The `#[cfg]` itself is gone. Every check here can pass while the Rust
+  // gate that made the namespace unreachable has been deleted: the feature is
+  // still declared (0), still disabled (1), the namespace is still discovered
+  // (2) and still absent from MODULES (3) — but its module now compiles
+  // unconditionally and its controllers dispatch. An exclusion is a claim about
+  // the source, so it is checked against the source: every file declaring the
+  // namespace must sit behind a `#[cfg(feature = …)]` naming the claimed gate.
+  const ungated = [];
+  for (const [namespace, entry] of Object.entries(UNREACHABLE_NAMESPACES)) {
+    const files = declaringFiles.get(namespace);
+    if (!files) continue; // Already reported by (2); nothing to check against.
+    const unguarded = [...files]
+      .filter((file) => !moduleGatesFor(file).has(entry.feature))
+      .map((file) => path.relative(ROOT, file))
+      .sort();
+    if (unguarded.length > 0) {
+      ungated.push(`${namespace} — ${unguarded.join(', ')} (expected \`#[cfg(feature = "${entry.feature}")]\`)`);
+    }
+  }
+  if (ungated.length > 0) {
+    problems.push(
+      `${ungated.length} excluded namespace(s) are no longer behind the gate they claim:\n  ${ungated.join('\n  ')}` +
+        '\nThe module compiles unconditionally now, so its controllers dispatch and must be covered.' +
+        '\nRestore the `#[cfg]`, or drop the UNREACHABLE_NAMESPACES entry.',
+    );
+  }
+
   // (3) Naming one namespace in both lists is a contradiction: MODULES asks for
   // a coverage row, UNREACHABLE_NAMESPACES says there is nothing to cover.
   // Unchecked, the exclusion wins and the namespace vanishes from the report
@@ -346,7 +422,7 @@ function checkExclusions(discovered, labelForNamespace) {
 }
 
 const invoked = collectInvokedMethods();
-const schemas = collectSchemaMethods();
+const { methodsByNamespace: schemas, filesByNamespace: schemaFiles } = collectSchemaMethods();
 
 const labelForNamespace = new Map();
 for (const module of MODULES) {
@@ -360,7 +436,7 @@ const declaredButMissing = [...labelForNamespace.keys()]
   .filter((namespace) => !schemas.has(namespace))
   .sort();
 
-const exclusionProblems = checkExclusions(schemas, labelForNamespace);
+const exclusionProblems = checkExclusions(schemas, schemaFiles, labelForNamespace);
 
 // Reported below rather than dropped in silence: an excluded namespace is a
 // claim ("nothing here can be dispatched"), and a claim the report does not
