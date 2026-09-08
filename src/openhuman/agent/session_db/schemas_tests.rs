@@ -25,7 +25,9 @@ fn session_db_controllers_are_absent() {
     ];
     let schemas = all_controller_schemas();
     assert!(
-        schemas.iter().all(|schema| schema.namespace != "session_db"),
+        schemas
+            .iter()
+            .all(|schema| schema.namespace != "session_db"),
         "the removed `session_db` namespace must not be registered"
     );
     let registered = all_registered_controllers();
