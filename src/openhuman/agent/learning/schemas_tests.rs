@@ -141,3 +141,54 @@ fn reset_cache_schema_shape() {
     assert!(s.outputs.iter().any(|f| f.name == "deleted"));
     assert!(s.outputs.iter().any(|f| f.name == "pinned_preserved"));
 }
+
+// ── strict class validation (#6077) ───────────────────────────────────────────
+//
+// The class filter/argument is validated before the handler touches the store,
+// so an unknown class is rejected without a bound memory guard — which is what
+// lets these run as plain unit tests. On the old code `list_facets` with an
+// unknown class returned `{facets:[],count:0}`; it must now be an error.
+
+fn params_with_class(class: &str) -> Map<String, Value> {
+    let mut m = Map::new();
+    m.insert("class".to_string(), Value::String(class.to_string()));
+    m
+}
+
+#[tokio::test]
+async fn list_facets_rejects_unknown_class() {
+    let err = handle_list_facets(params_with_class("nonsense"))
+        .await
+        .expect_err("unknown class must be an error, not an empty result");
+    assert!(err.contains("invalid class `nonsense`"), "got: {err}");
+}
+
+#[tokio::test]
+async fn get_facet_rejects_unknown_class() {
+    let mut params = params_with_class("nonsense");
+    params.insert("key".to_string(), Value::String("verbosity".to_string()));
+    let err = handle_get_facet(params)
+        .await
+        .expect_err("unknown class must be rejected before store access");
+    assert!(err.contains("invalid class `nonsense`"), "got: {err}");
+}
+
+#[tokio::test]
+async fn forget_facet_rejects_unknown_class() {
+    let mut params = params_with_class("nonsense");
+    params.insert("key".to_string(), Value::String("verbosity".to_string()));
+    let err = handle_forget_facet(params)
+        .await
+        .expect_err("unknown class must be rejected before store access");
+    assert!(err.contains("invalid class `nonsense`"), "got: {err}");
+}
+
+#[tokio::test]
+async fn class_taking_handlers_keep_presence_check_before_value_check() {
+    // A missing class is still the presence error, not the invalid-class error —
+    // the new validation does not weaken the existing "missing required" contract.
+    let err = handle_get_facet(Map::new())
+        .await
+        .expect_err("missing class must error");
+    assert!(err.contains("missing required `class`"), "got: {err}");
+}
