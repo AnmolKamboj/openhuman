@@ -138,6 +138,7 @@ fn identity_override_replaces_root_soul_and_memory() {
             soul_md: Some("I am Alice, a meticulous archivist."),
             memory_md: Some("alice private memory marker"),
         },
+        ProjectContextPlacement::Inline,
     );
 
     assert!(prompt.contains("### SOUL.md"), "SOUL slot keeps its header");
@@ -173,6 +174,7 @@ fn memory_override_renders_even_when_root_memory_is_absent() {
             soul_md: None,
             memory_md: Some("profile-only memory"),
         },
+        ProjectContextPlacement::Inline,
     );
     assert!(prompt.contains("root soul"), "no soul override → root soul");
     assert!(prompt.contains("### MEMORY.md"));
@@ -192,9 +194,48 @@ fn empty_identity_override_matches_root_render_byte_for_byte() {
         Some(50),
         Some("Discord"),
         PromptIdentityOverride::default(),
+        ProjectContextPlacement::Inline,
     );
     assert_eq!(
         root, overridden,
         "the wrapper and an empty override are one render"
     );
+}
+
+#[test]
+fn omitted_placement_leaves_the_project_context_to_the_caller() {
+    let tmp = identity_workspace();
+    let identity = PromptIdentityOverride {
+        soul_md: Some("I am Alice, a meticulous archivist."),
+        memory_md: None,
+    };
+    let mut prompt = build_system_prompt_with_identity(
+        tmp.path(),
+        "model",
+        &[],
+        &[],
+        None,
+        Some("Discord"),
+        identity,
+        ProjectContextPlacement::Omitted,
+    );
+    assert!(
+        !prompt.contains("## Project Context"),
+        "omitted → nothing rendered"
+    );
+    assert!(!prompt.contains("I am Alice"));
+    assert!(
+        prompt.contains("## Channel Capabilities"),
+        "the rest still renders"
+    );
+
+    prompt.push_str("tool schemas go here\n");
+    render_project_context(&mut prompt, tmp.path(), None, identity);
+    let ctx = prompt
+        .find("## Project Context")
+        .expect("appended by the caller");
+    assert!(ctx > prompt.find("tool schemas go here").unwrap());
+    assert!(prompt.contains("I am Alice, a meticulous archivist."));
+    assert!(!prompt.contains("conflicting workspace-root identity"));
+    assert!(prompt.contains("Name: OpenHuman"));
 }
