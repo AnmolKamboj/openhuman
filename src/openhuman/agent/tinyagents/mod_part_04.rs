@@ -551,37 +551,28 @@ fn assemble_turn_harness(
 
     // ── The context ladder, cheapest sufficient step first (issue #6014) ──────
     //
-    // `before_model` runs in registration order, so what follows IS the order
-    // these fire in, and each step only matters when the one above it was not
-    // enough:
-    //
-    //   1. compression (above) — at 90% of the window, fold the older slice
-    //      into one task-aware summary that preserves its results.
-    //   2. microcompact — if still over, blank older tool bodies outright.
-    //   3. the wrap-up — on a capped turn's final call, undo (2) for the one
-    //      call that has to report everything, then ask for the conclusion.
-    //   4. trim — if still over, evict oldest whole messages.
+    // `before_model` runs in registration order, so what follows IS the firing
+    // order, and each step only matters when the one above was not enough:
+    // 1. compression (above) folds the older slice into a task-aware summary;
+    // 2. microcompact blanks older tool bodies if still over;
+    // 3. the wrap-up undoes (2) for a capped turn's concluding call;
+    // 4. trim evicts oldest whole messages if still over.
     //
     // The order used to be 2 -> 1 -> 4, because `context_mw.install` registered
     // microcompact: the summarizer was handed a transcript whose tool bodies
     // were already `CLEARED_PLACEHOLDER` and asked, by its own prompt, for "key
     // results/outputs" it could no longer see. Nothing recovered them.
     if microcompact_keep_recent > 0 {
-        // The token-budget gate the crate added for this and this call site
-        // never used (`with_token_budget`, tinyhumansai/openhuman#4755).
-        // Constructed bare, microcompact blanks on EVERY call once past
-        // `keep_recent` — not only under context pressure — so a turn that made
-        // ten tool calls composed its answer from the last five results with the
-        // rest blanked, while sitting well inside a window with room for all
-        // ten. That is not a capped-turn problem: it is every turn.
+        // The token-budget gate the crate added for this (#4755) and this call
+        // site never used. Constructed bare, microcompact blanks on EVERY call
+        // once past `keep_recent` — not only under pressure — so a ten-call turn
+        // answered from the last five results while sitting well inside a window
+        // with room for all ten. Not a capped-turn problem: every turn.
         //
-        // The budget matches the trim's input allowance, which is what puts
-        // microcompact strictly behind compression: the summarizer fires first,
-        // and blanking happens only if the transcript is STILL over afterwards.
-        //
-        // With no advertised window there is no budget to size and nothing else
-        // bounding the transcript, so the legacy always-blank behaviour stays as
-        // the sole backstop against unbounded growth.
+        // The budget matches the trim's allowance, which is what puts
+        // microcompact strictly behind compression. With no advertised window
+        // there is nothing to size against and nothing else bounding the
+        // transcript, so the legacy always-blank behaviour stays as the backstop.
         let microcompact = tinyagents_harness::middleware::MicrocompactMiddleware::new(
             microcompact_keep_recent,
             crate::openhuman::agent::context::CLEARED_PLACEHOLDER,
@@ -607,23 +598,20 @@ fn assemble_turn_harness(
     // has exited.
     //
     // **Top-level turns only**, the same cut `CapPauser`'s dispatch guard takes.
-    // A sub-agent reaching its own model-call cap is a routine outcome rather
-    // than a user-visible dead end: it summarises, hands the result back to its
-    // parent as a tool result, the parent keeps going, and `subagent_runner`
-    // already owns that checkpoint. The harm this fixes — a person left with a
-    // status line where an answer should be — belongs to the turn that answers a
-    // human. Withholding it also leaves a child's budget arithmetic alone: the
-    // conclusion costs a model call, and turning every delegated run's N tool
-    // rounds into N-1 is not a trade to impose as a side effect.
+    // A sub-agent reaching its own cap is a routine outcome, not a user-visible
+    // dead end: it summarises, hands the result back to its parent, and
+    // `subagent_runner` already owns that checkpoint. The harm this fixes — a
+    // person left with a status line where an answer should be — belongs to the
+    // turn that answers a human. It also leaves a child's budget alone: the
+    // conclusion costs a call, and turning every delegated run's N tool rounds
+    // into N-1 is not a trade to impose as a side effect.
     let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
         Arc::new(middleware::FinalCallWrapUpMiddleware::new(
             crate::openhuman::agent::harness::session::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
             tool_outcome_sink.clone(),
-            // The same allowance the trim below enforces, so restoration stops
-            // short of provoking an eviction instead of relying on one to clean
-            // up after it. `0` when the model advertises no window, which
-            // disables the bound — there is no budget to measure against, and
-            // no trim installed either.
+            // The trim's own allowance, so restoration stops short of
+            // provoking an eviction (see the middleware). `0` = no window
+            // advertised, so no bound and no trim either.
             context_window
                 .filter(|w| *w > 0)
                 .map(|w| middleware::legacy_max_input_tokens(w).max(1))
@@ -641,12 +629,8 @@ fn assemble_turn_harness(
     // counted in that budget — the trim never drops a system message, so being
     // counted costs nothing and being uncounted could push the request over.
     harness.push_middleware(Arc::new(middleware::ArtifactIndexTocMiddleware::new(
-        // CodeRabbit on #6068: the contents list is a system message, and
-        // `ImageAwareMessageTrimMiddleware` never evicts one — the property that
-        // makes it survive the ladder also makes it the one message nothing can
-        // shrink. A turn that persists enough artifacts could therefore grow an
-        // unbounded, un-evictable message. It is bounded here instead, against
-        // the same allowance the trim enforces.
+        // Bounded against the trim's own allowance: the list is a system
+        // message, so nothing downstream can shrink it (see the middleware).
         context_window
             .filter(|w| *w > 0)
             .map(|w| middleware::legacy_max_input_tokens(w).max(1))
