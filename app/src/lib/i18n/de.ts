@@ -6388,6 +6388,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Geheimnisspeicher-Modus',
   'keyring.settings.mode.osKeychain': 'OS-Schlüsselbund',
   'keyring.settings.mode.encryptedFile': 'Lokal verschlüsselt',
+  'keyring.settings.mode.localEncryptedFile': 'Verschlüsselte Datei',
+  'keyring.settings.mode.localPlaintextFile': 'Unverschlüsselte Datei',
   'keyring.settings.mode.consentPending': 'Nicht konfiguriert',
   'keyring.settings.mode.declined': 'Abgelehnt',
   'keyring.settings.availability': 'Schlüsselbund-Verfügbarkeit',

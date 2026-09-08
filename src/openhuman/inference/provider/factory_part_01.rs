@@ -249,10 +249,11 @@ pub(crate) fn is_raw_passthrough_model(model: &str) -> bool {
 /// constants and their `hint:*` forms (callers may pass either pre- or
 /// post-resolution).
 ///
-/// `reasoning-v1` is multimodal; the rest return `false` — flip an individual
-/// arm to `true` once that tier is confirmed multimodal on the backend. This is
-/// the **only** place to change managed-model vision; BYOK/custom models are
-/// handled separately by the user-set `model_registry.vision` flag
+/// `reasoning-v1` and the dedicated `vision-v1` tier are multimodal; every
+/// other tier returns `false` — flip an individual arm to `true` once that tier
+/// is confirmed multimodal on the backend. This is the **only** place to change
+/// managed-model vision; BYOK/custom models are handled separately by the
+/// user-set `model_registry.vision` flag
 /// ([`crate::openhuman::inference::model_context::model_vision_enabled`]).
 pub(crate) fn oh_tier_supports_vision(model: &str) -> bool {
     use crate::openhuman::config::{

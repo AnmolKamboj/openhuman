@@ -6319,6 +6319,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Tryb przechowywania sekretów',
   'keyring.settings.mode.osKeychain': 'Pęk kluczy systemu',
   'keyring.settings.mode.encryptedFile': 'Lokalnie zaszyfrowany',
+  'keyring.settings.mode.localEncryptedFile': 'Zaszyfrowany plik',
+  'keyring.settings.mode.localPlaintextFile': 'Niezaszyfrowany plik',
   'keyring.settings.mode.consentPending': 'Nie skonfigurowano',
   'keyring.settings.mode.declined': 'Odrzucono',
   'keyring.settings.availability': 'Dostępność pęku kluczy',
