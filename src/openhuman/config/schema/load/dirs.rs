@@ -290,17 +290,18 @@ pub(crate) fn resolve_config_dir_for_workspace(workspace_dir: &Path) -> (PathBuf
 
     let legacy_config_dir = parent.map(|parent| parent.join(".openhuman"));
     if let Some(legacy_dir) = legacy_config_dir {
-        // Legacy sibling layout: `<something>/workspace` with config living in a
-        // sibling `<something>/.openhuman`.
-        if legacy_dir.join("config.toml").exists() {
-            return (legacy_dir, workspace_config_dir);
-        }
-
-        // Same layout without a config.toml yet, but only when the sibling
-        // `.openhuman` actually exists — never return a non-existent doubled
-        // path (the original #6079 bug: this arm fired for any `workspace`
-        // basename, so `~/.openhuman/workspace` produced `~/.openhuman/.openhuman`).
-        if has_workspace_basename && legacy_dir.exists() {
+        // Legacy sibling layout: `<proj>/workspace` with config living in a
+        // sibling `<proj>/.openhuman`. Return the sibling unconditionally,
+        // including on a fresh volume where `<proj>/.openhuman` does not exist
+        // yet — that is where `config::load` writes and reads config for this
+        // layout, so nesting the workspace inside itself (the fall-through
+        // below) would strand it.
+        //
+        // This arm can no longer reintroduce the #6079 doubling: the modern
+        // layout above already intercepts `~/.openhuman/workspace` (parent IS
+        // the config dir) before control reaches here, so a `workspace`
+        // basename whose parent is the config dir never falls into this arm.
+        if legacy_dir.join("config.toml").exists() || has_workspace_basename {
             return (legacy_dir, workspace_config_dir);
         }
     }

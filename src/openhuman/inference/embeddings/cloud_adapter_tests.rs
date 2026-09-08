@@ -75,9 +75,12 @@ fn default_scope_falls_back_to_the_pre_login_user_dir() {
 #[test]
 fn env_workspace_scope_is_the_config_dir_not_the_raw_workspace() {
     // Legacy sibling layout: `<X>/workspace` with credentials in `<X>/.openhuman`.
-    // The resolver only maps a `workspace`-basename override to a sibling
-    // `.openhuman` when that sibling actually exists (#6079 guard — it must never
-    // fabricate a non-existent doubled path), so create it on a real temp dir.
+    // A `workspace`-basename override whose parent is not the `.openhuman` config
+    // dir maps to the sibling `<X>/.openhuman` (where `auth-profiles.json` lives).
+    // The modern-layout arm intercepts the `~/.openhuman/workspace` shape before
+    // this one, so this arm can no longer produce a doubled path (#6079). A real
+    // temp dir is used because `default_state_dir` operates on real filesystem
+    // layouts; the sibling need not pre-exist for resolution to pick it.
     let root = tempfile::tempdir().unwrap();
     let base = root.path();
     let workspace = base.join("workspace");

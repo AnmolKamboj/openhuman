@@ -638,24 +638,18 @@ fn config_dir_for_workspace_env() -> Option<PathBuf> {
         return None;
     }
 
+    // Resolve through the SAME workspace→config-dir mapping `config::load` uses
+    // (`resolve_config_dir_for_workspace`), not a private reimplementation.
+    // A copy here drifts from the loader: it independently doubled
+    // `~/.openhuman/workspace` into `~/.openhuman/.openhuman`, so
+    // `config_is_workspace_env_scoped` compared that against the loader's real
+    // `~/.openhuman` and returned false, mis-scoping credentials on session
+    // revalidation (#6079). Delegating keeps the two in lockstep, including the
+    // modern-layout recognition that fixes the doubling.
     let workspace_dir = PathBuf::from(workspace);
-    let workspace_config_dir = workspace_dir.clone();
-    if workspace_config_dir.join("config.toml").exists() {
-        return Some(workspace_config_dir);
-    }
-
-    if let Some(parent) = workspace_dir.parent() {
-        let legacy_dir = parent.join(".openhuman");
-        if legacy_dir.join("config.toml").exists()
-            || workspace_dir
-                .file_name()
-                .is_some_and(|name| name == std::ffi::OsStr::new("workspace"))
-        {
-            return Some(legacy_dir);
-        }
-    }
-
-    Some(workspace_config_dir)
+    let (config_dir, _workspace_dir) =
+        crate::openhuman::config::resolve_config_dir_for_workspace(&workspace_dir);
+    Some(config_dir)
 }
 
 fn config_is_workspace_env_scoped(config: &Config) -> bool {

@@ -608,19 +608,26 @@ fn resolve_config_dir_for_workspace_legacy_sibling_layout_is_preserved() {
 }
 
 #[test]
-fn resolve_config_dir_for_workspace_workspace_basename_without_config_falls_through() {
-    // Basename is `workspace`, but the parent is neither `.openhuman` nor has a
-    // real sibling `.openhuman/config.toml`, and nothing exists on disk. It must
-    // fall through to `(ws, ws/workspace)` — never a doubled `.openhuman/.openhuman`.
+fn resolve_config_dir_for_workspace_workspace_basename_resolves_to_fresh_legacy_sibling() {
+    // Legacy layout on a fresh volume: basename is `workspace`, the parent is
+    // NOT the `.openhuman` config dir (so the modern arm does not fire), and the
+    // sibling `.openhuman` does not exist yet. This must resolve to the sibling
+    // `<proj>/.openhuman` — where `config::load` writes config for this layout —
+    // NOT nest the workspace inside itself as `ws/workspace`. Regression guard
+    // for the over-corrected `.exists()` gate (Codex P2).
     let _g = env_lock();
     let ws = PathBuf::from("/home/test/some-project/workspace");
     let (config_dir, workspace_dir) = resolve_config_dir_for_workspace(&ws);
-    assert_eq!(config_dir, ws);
-    assert_eq!(workspace_dir, ws.join("workspace"));
-    assert_ne!(
+    assert_eq!(
         config_dir,
         PathBuf::from("/home/test/some-project/.openhuman"),
-        "a non-existent sibling .openhuman must not be returned"
+        "a fresh legacy workspace must resolve to its sibling .openhuman, not nest itself"
+    );
+    assert_eq!(workspace_dir, ws);
+    assert_ne!(
+        config_dir,
+        PathBuf::from("/home/test/some-project/.openhuman/.openhuman"),
+        "must never return the doubled .openhuman/.openhuman path"
     );
 }
 
