@@ -486,3 +486,63 @@ async fn current_user_fetch_carries_the_product_identity() {
 
     crate::api::product::reset_product_identity_for_test();
 }
+
+// Serialises the `OPENHUMAN_WORKSPACE` env mutations below so two of these tests
+// can't race each other on the process-global var.
+static WORKSPACE_ENV_TEST_LOCK: TestLazy<TestMutex<()>> = TestLazy::new(|| TestMutex::new(()));
+
+/// The #6079 twin: `config_dir_for_workspace_env` must resolve
+/// `~/.openhuman/workspace` to `~/.openhuman` (the real config dir), NOT the
+/// doubled `~/.openhuman/.openhuman`. The private reimplementation this replaced
+/// produced the doubled path, so `config_is_workspace_env_scoped` disagreed with
+/// the loader and mis-scoped credentials on session revalidation. Delegating to
+/// the shared `resolve_config_dir_for_workspace` keeps the two in lockstep.
+#[test]
+fn config_dir_for_workspace_env_modern_layout_does_not_double_openhuman() {
+    let _g = WORKSPACE_ENV_TEST_LOCK.lock();
+    std::env::set_var("OPENHUMAN_WORKSPACE", "/home/test/.openhuman/workspace");
+    let resolved = config_dir_for_workspace_env();
+    std::env::remove_var("OPENHUMAN_WORKSPACE");
+
+    assert_eq!(resolved, Some(PathBuf::from("/home/test/.openhuman")));
+    assert_ne!(
+        resolved,
+        Some(PathBuf::from("/home/test/.openhuman/.openhuman")),
+        "must never return the doubled .openhuman/.openhuman path"
+    );
+}
+
+/// A fresh legacy layout (`<proj>/workspace` with no sibling `.openhuman` on
+/// disk) must resolve to the sibling `<proj>/.openhuman`, matching the loader —
+/// not nest the workspace inside itself. Guards the same seam as the
+/// `dirs.rs` fresh-legacy test, one level up through the app_state resolver.
+#[test]
+fn config_dir_for_workspace_env_fresh_legacy_resolves_to_sibling() {
+    let _g = WORKSPACE_ENV_TEST_LOCK.lock();
+    std::env::set_var("OPENHUMAN_WORKSPACE", "/home/test/some-project/workspace");
+    let resolved = config_dir_for_workspace_env();
+    std::env::remove_var("OPENHUMAN_WORKSPACE");
+
+    assert_eq!(
+        resolved,
+        Some(PathBuf::from("/home/test/some-project/.openhuman")),
+        "a fresh legacy workspace must resolve to its sibling .openhuman"
+    );
+}
+
+/// An unset / empty `OPENHUMAN_WORKSPACE` yields `None` so the caller falls back
+/// to user-scoped resolution rather than treating the empty string as a path.
+#[test]
+fn config_dir_for_workspace_env_none_when_unset_or_empty() {
+    let _g = WORKSPACE_ENV_TEST_LOCK.lock();
+    std::env::remove_var("OPENHUMAN_WORKSPACE");
+    assert_eq!(config_dir_for_workspace_env(), None);
+
+    std::env::set_var("OPENHUMAN_WORKSPACE", "");
+    let resolved = config_dir_for_workspace_env();
+    std::env::remove_var("OPENHUMAN_WORKSPACE");
+    assert_eq!(
+        resolved, None,
+        "an empty override must not be treated as a path"
+    );
+}
