@@ -6963,6 +6963,8 @@ const en: TranslationMap = {
   'keyring.settings.storageMode': 'Secret storage mode',
   'keyring.settings.mode.osKeychain': 'OS Keychain',
   'keyring.settings.mode.encryptedFile': 'Local Encrypted',
+  'keyring.settings.mode.localEncryptedFile': 'Encrypted file',
+  'keyring.settings.mode.localPlaintextFile': 'Unencrypted file',
   'keyring.settings.mode.consentPending': 'Not configured',
   'keyring.settings.mode.declined': 'Declined',
   'keyring.settings.availability': 'Keychain availability',

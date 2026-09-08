@@ -6289,6 +6289,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': 'Режим хранения секретов',
   'keyring.settings.mode.osKeychain': 'Связка ключей ОС',
   'keyring.settings.mode.encryptedFile': 'Локальное шифрование',
+  'keyring.settings.mode.localEncryptedFile': 'Зашифрованный файл',
+  'keyring.settings.mode.localPlaintextFile': 'Незашифрованный файл',
   'keyring.settings.mode.consentPending': 'Не настроено',
   'keyring.settings.mode.declined': 'Отклонено',
   'keyring.settings.availability': 'Доступность связки ключей',

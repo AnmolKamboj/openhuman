@@ -5879,6 +5879,8 @@ const messages: TranslationMap = {
   'keyring.settings.storageMode': '密钥存储模式',
   'keyring.settings.mode.osKeychain': '操作系统密钥链',
   'keyring.settings.mode.encryptedFile': '本地加密',
+  'keyring.settings.mode.localEncryptedFile': '加密文件',
+  'keyring.settings.mode.localPlaintextFile': '未加密文件',
   'keyring.settings.mode.consentPending': '未配置',
   'keyring.settings.mode.declined': '已拒绝',
   'keyring.settings.availability': '密钥链可用性',
