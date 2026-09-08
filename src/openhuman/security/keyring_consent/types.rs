@@ -4,15 +4,22 @@ use serde::{Deserialize, Serialize};
 
 /// Where the process's secrets actually live.
 ///
-/// The first two variants are **consent outcomes** — the OS keyring was the
-/// intended store, it could not be used, and the user answered the consent
-/// prompt. The next two are **operator-configured backends**: nobody was asked
-/// anything, `OPENHUMAN_KEYRING_BACKEND` (or the staging/production default)
-/// simply selected a different store. Keeping those apart matters because they
-/// are not the same storage: a consented `LocalEncrypted` fallback means
-/// per-field `SecretStore` encryption inside the config, while
-/// `LocalEncryptedFile` means the `encrypted_file` backend's single
-/// `{workspace}/secrets.enc`.
+/// The variants fall into three groups. They are named here rather than
+/// referred to by position, because position is what rots:
+///
+/// - `OsKeyring` — no consent was ever needed; the `os` backend's probe
+///   succeeded and secrets are in the OS credential store.
+/// - `LocalEncrypted` / `ConsentPending` / `Declined` — **consent outcomes**,
+///   reachable only on the `os` path: the OS keyring could not be used, and
+///   the user has either answered the consent prompt or not answered yet.
+/// - `LocalEncryptedFile` / `LocalPlaintextFile` — **operator-configured
+///   backends**: nobody was asked anything, `OPENHUMAN_KEYRING_BACKEND` (or
+///   the staging/production default) simply selected a different store.
+///
+/// The last two groups must stay apart because they are not the same storage:
+/// a consented `LocalEncrypted` fallback means per-field `SecretStore`
+/// encryption inside the config, while `LocalEncryptedFile` means the
+/// `encrypted_file` backend's single `{workspace}/secrets.enc`.
 ///
 /// Read [`KeyringStatus::backend_name`] alongside this — the two answer
 /// different questions and must never contradict each other (#6076: every
