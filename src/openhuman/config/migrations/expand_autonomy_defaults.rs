@@ -110,19 +110,29 @@ pub fn run(config: &mut Config) -> anyhow::Result<MigrationStats> {
 
     // Widening a command allowlist is a security-relevant change, and until now
     // it happened at DEBUG — invisible on a default log level, and invisible in
-    // the file on disk, which still shows the narrow list the user wrote. Say it
-    // at WARN, and name what was added, whenever the list being widened was not
-    // empty: an empty list is a config that never expressed an opinion, but a
-    // non-empty one is a list somebody chose.
-    if !added_commands.is_empty() && !commands_before.is_empty() {
+    // the file on disk, which still shows the narrow list the user wrote.
+    //
+    // Warn whenever anything is added, including when the prior list was EMPTY.
+    // An earlier revision of this guard skipped the empty case on the reasoning
+    // that such a config "never expressed an opinion". That was backwards:
+    // `allowed_commands = []` is a deny-all shell policy and the strongest
+    // curated choice there is, so suppressing the warning silenced exactly the
+    // users with the most to lose.
+    if !added_commands.is_empty() {
+        // The remediation has to be honest about ordering. `run_pending`
+        // persists this mutated config and bumps `schema_version` immediately
+        // after this returns, so by the time anyone reads the warning the
+        // widening is already on disk. Setting `schema_version` now prevents a
+        // re-run; it does not undo this one.
         log::warn!(
-            "[migrations][expand-autonomy-defaults] widened a non-empty allowed_commands \
-             from {} to {} entries; added: {}. If this list was curated deliberately, the \
-             removals are NOT preserved — set `schema_version` in config.toml to opt out \
-             of this migration.",
+            "[migrations][expand-autonomy-defaults] widened allowed_commands from {} to {} \
+             entries; added: {}. This is already being persisted — if the previous list was \
+             curated, restore it in config.toml (the removals were NOT preserved) and set \
+             `schema_version = {}` to keep this migration from running again.",
             commands_before.len(),
             config.autonomy.allowed_commands.len(),
-            added_commands.join(", ")
+            added_commands.join(", "),
+            crate::openhuman::config::migrations::CURRENT_SCHEMA_VERSION,
         );
     }
 

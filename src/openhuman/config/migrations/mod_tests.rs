@@ -566,3 +566,33 @@ async fn an_explicit_schema_version_stops_the_allowlist_being_widened() {
         "with the gate satisfied no migration runs, so the curated list is untouched"
     );
 }
+
+/// The empty-allowlist case the first revision of the WARN guard silenced.
+///
+/// `allowed_commands = []` is a deny-all shell policy — the strongest curated
+/// choice available — and it is precisely the config that must not be widened
+/// quietly. Pinned separately from the two-entry case because an earlier guard
+/// treated "empty" as "no opinion" and skipped the warning for exactly these
+/// users.
+#[tokio::test]
+async fn a_hand_written_empty_allowlist_is_also_widened() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = 0;
+    config.autonomy.allowed_commands = Vec::new();
+
+    run_pending(&mut config).await;
+
+    assert!(
+        !config.autonomy.allowed_commands.is_empty(),
+        "current behaviour: a deny-all list is widened by the v3->v4 migration"
+    );
+    for added in &["mkdir", "touch", "cp", "mv", "ln"] {
+        assert!(
+            config.autonomy.allowed_commands.iter().any(|c| c == added),
+            "an explicitly empty allowlist still gains {added}"
+        );
+    }
+}
