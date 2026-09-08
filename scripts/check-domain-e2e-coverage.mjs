@@ -392,13 +392,29 @@ function moduleGateProves(file, feature) {
 
     if (fs.existsSync(declaringFile)) {
       const text = read(declaringFile);
-      const declaration = new RegExp(`^[ \\t]*(?:pub(?:\\([^)]*\\))?[ \\t]+)?mod[ \\t]+${name}[ \\t]*;`, 'm');
-      const found = declaration.exec(text);
-      if (found) {
-        for (const attribute of attributesBefore(text, found.index)) {
-          const inner = attribute.match(/^\s*cfg\s*\(([\s\S]*)\)\s*$/)?.[1];
-          if (inner && cfgProvesFeature(parseCfgPredicate(inner), feature)) return true;
-        }
+      const declaration = new RegExp(`^[ \\t]*(?:pub(?:\\([^)]*\\))?[ \\t]+)?mod[ \\t]+${name}[ \\t]*;`, 'gm');
+      // EVERY declaration has to imply the feature, not merely the first one.
+      // A module may be declared more than once under mutually exclusive
+      // predicates —
+      //
+      //   #[cfg(feature = "x")]      mod test_support;
+      //   #[cfg(not(feature = "x"))] mod test_support;
+      //
+      // — and it then exists in BOTH configurations. Reading only the first
+      // declaration sees the gate and calls the module absent when it is
+      // always present, so the test is "does every path to this module require
+      // the feature", and one unproven declaration settles it.
+      const declarations = [...text.matchAll(declaration)];
+      if (declarations.length > 0) {
+        const everyPathRequiresIt = declarations.every((found) =>
+          attributesBefore(text, found.index).some((attribute) => {
+            const inner = attribute.match(/^\s*cfg\s*\(([\s\S]*)\)\s*$/)?.[1];
+            return Boolean(inner) && cfgProvesFeature(parseCfgPredicate(inner), feature);
+          }),
+        );
+        // Not proving it here is not a verdict: an ancestor `mod` may still be
+        // gated, and that would make the file unreachable all the same.
+        if (everyPathRequiresIt) return true;
       }
     }
 
