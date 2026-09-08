@@ -804,13 +804,88 @@ async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
         card.insert(name, value);
     }
 
-    assert!(
-        required_seen.iter().any(|n| n == "id")
-            && required_seen.iter().any(|n| n == "title")
-            && required_seen.iter().any(|n| n == "status"),
-        "the catalog must mark `id`, `title` and `status` required — those are \
-         the three `TaskBoardCard` fields with no serde default. Got: {required_seen:?}"
+    // EXACTLY the trio, not merely "includes" it. `TaskBoardCard` has exactly
+    // three fields without a serde default; if a fourth is ever marked required
+    // in the catalog, a caller obeying the schema would send a key the handler
+    // does not need, and the loop above would happily paper over it.
+    let mut sorted = required_seen.clone();
+    sorted.sort();
+    assert_eq!(
+        sorted,
+        vec!["id".to_string(), "status".to_string(), "title".to_string()],
+        "the catalog must mark exactly `id`, `title` and `status` required — \
+         those are the only three `TaskBoardCard` fields with no serde default"
     );
+
+    // The six `#[serde(default)]` fields must NOT be declared `Option(...)`.
+    //
+    // This is asserted against the *declaration*, not against a dispatch,
+    // because a dispatch cannot see it: `core::all::check_type` short-circuits
+    // on `Value::Null` for every declared type, so `null` reaches the handler
+    // either way and is rejected by serde either way. The declaration is
+    // therefore documentation-only at runtime — and documentation-only is
+    // exactly the thing that rots unnoticed, so it gets a direct assertion.
+    for name in [
+        "plan",
+        "allowedTools",
+        "acceptanceCriteria",
+        "evidence",
+        "order",
+        "updatedAt",
+    ] {
+        let field = card_fields
+            .iter()
+            .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("the card must declare `{name}`"));
+        assert!(
+            field.get("ty").and_then(|t| t.get("Option")).is_none(),
+            "`{name}` is `#[serde(default)]` on a non-Option field upstream, so an \
+             explicit null fails to deserialize. Declaring it `Option(...)` advertises \
+             null as valid and puts the catalog back to describing a call the handler \
+             rejects. Declared ty was: {}",
+            field.get("ty").unwrap_or(&Value::Null)
+        );
+        assert_eq!(
+            field.get("required").and_then(Value::as_bool),
+            Some(false),
+            "`{name}` has a serde default, so it must be optional-by-omission"
+        );
+    }
+
+    // Every advertised status variant must actually parse. Taking only the
+    // first would let a misspelled later variant (`in-progress` for
+    // `in_progress`, say) sit in the catalog undetected.
+    let status_variants: Vec<String> = card_fields
+        .iter()
+        .find(|f| f.get("name").and_then(Value::as_str) == Some("status"))
+        .and_then(|f| f.get("ty"))
+        .and_then(|t| t.get("Enum"))
+        .and_then(|e| e.get("variants"))
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("`status` must declare an enum of variants"))
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    assert!(
+        status_variants.len() >= 2,
+        "a lifecycle enum with fewer than two variants is a declaration bug: {status_variants:?}"
+    );
+    for (i, variant) in status_variants.iter().enumerate() {
+        let mut probe = card.clone();
+        probe.insert("status".to_string(), Value::String(variant.clone()));
+        probe.insert("id".to_string(), Value::String(format!("probe-{i}")));
+        let response = rpc(
+            &harness.rpc_base,
+            70 + i as i64,
+            "openhuman.todos_replace",
+            json!({ "thread_id": thread, "cards": [Value::Object(probe)] }),
+        )
+        .await;
+        ok(
+            &response,
+            &format!("todos_replace with the declared status variant {variant:?}"),
+        );
+    }
 
     let replaced = rpc(
         &harness.rpc_base,
@@ -843,6 +918,72 @@ async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
         !id.is_empty(),
         "an empty `id` must be server-generated, got an empty string back"
     );
+
+    harness.join.abort();
+}
+
+/// A `#[serde(default)]` collection may be **omitted**, but not sent as `null`
+/// — and the catalog now says so (#6087).
+///
+/// `TaskBoardCard`'s `plan`, `allowedTools`, `acceptanceCriteria` and
+/// `evidence` are `Vec<String>`; `order` is `u32`; `updatedAt` is `String`.
+/// None is an `Option`, so `#[serde(default)]` covers an *absent* key and an
+/// explicit `null` fails with `invalid type: null`.
+///
+/// The first draft of this schema declared all six as `Option(...)`, which
+/// advertised `null` as valid and would have put the catalog straight back to
+/// describing a call the handler rejects — the exact defect #6087 removes.
+/// They are declared with their real types and `required: false` instead, and
+/// this pins both halves of that contract.
+#[tokio::test]
+async fn todos_replace_defaulted_card_fields_may_be_omitted_but_not_null() {
+    let _lock = env_lock();
+    let harness = setup(Vec::new()).await;
+    let thread = "todos-e2e-thread-defaults";
+
+    // Omitting every defaulted field is accepted — that is what the serde
+    // defaults are for, and what `required: false` advertises.
+    let omitted = rpc(
+        &harness.rpc_base,
+        80,
+        "openhuman.todos_replace",
+        json!({
+            "thread_id": thread,
+            "cards": [{ "id": "", "title": "only the required trio", "status": "todo" }]
+        }),
+    )
+    .await;
+    let result = ok(&omitted, "todos_replace omitting every defaulted field");
+    assert_eq!(
+        card_titles(result, "omitted defaults"),
+        vec!["only the required trio".to_string()],
+        "a card carrying only the required trio must be accepted: {result:?}"
+    );
+
+    // An explicit null for a defaulted collection is refused. If the catalog
+    // ever goes back to declaring these `Option(...)`, it will be promising a
+    // shape this assertion proves the handler does not accept.
+    for field in ["plan", "allowedTools", "acceptanceCriteria", "evidence"] {
+        let mut card = serde_json::Map::new();
+        card.insert("id".into(), json!(""));
+        card.insert("title".into(), json!("null probe"));
+        card.insert("status".into(), json!("todo"));
+        card.insert(field.to_string(), Value::Null);
+
+        let response = rpc(
+            &harness.rpc_base,
+            81,
+            "openhuman.todos_replace",
+            json!({ "thread_id": thread, "cards": [Value::Object(card)] }),
+        )
+        .await;
+        let message = error_message(&response, &format!("todos_replace with {field}: null"));
+        assert!(
+            message.contains("invalid type: null") || message.contains(field),
+            "an explicit null for the defaulted `{field}` must be refused, so the \
+             catalog must not advertise it as nullable; got: {message}"
+        );
+    }
 
     harness.join.abort();
 }

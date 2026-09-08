@@ -137,18 +137,31 @@ fn replace_cards_input() -> FieldSchema {
                     required: true,
                 },
                 optional_string("objective", "Richer objective for the card."),
-                string_array_input("plan", "Ordered plan steps."),
+                defaulted_field(
+                    "plan",
+                    TypeSchema::Array(Box::new(TypeSchema::String)),
+                    "Ordered plan steps. Omit the key to default to []; `null` is rejected.",
+                ),
                 optional_string("assignedAgent", "Agent assigned to run this card."),
-                string_array_input("allowedTools", "Tools the assigned agent may use."),
+                defaulted_field(
+                    "allowedTools",
+                    TypeSchema::Array(Box::new(TypeSchema::String)),
+                    "Tools the assigned agent may use. Omit to default to []; `null` is rejected.",
+                ),
                 optional_string(
                     "approvalMode",
                     "Plan-approval mode, when the card is gated.",
                 ),
-                string_array_input(
+                defaulted_field(
                     "acceptanceCriteria",
-                    "Acceptance criteria that define \"done\".",
+                    TypeSchema::Array(Box::new(TypeSchema::String)),
+                    "Acceptance criteria that define \"done\". Omit to default to []; `null` is rejected.",
                 ),
-                string_array_input("evidence", "Evidence gathered toward completion."),
+                defaulted_field(
+                    "evidence",
+                    TypeSchema::Array(Box::new(TypeSchema::String)),
+                    "Evidence gathered toward completion. Omit to default to []; `null` is rejected.",
+                ),
                 optional_string("notes", "Free-form notes."),
                 optional_string("blocker", "Reason, when `status == blocked`."),
                 optional_string(
@@ -161,19 +174,43 @@ fn replace_cards_input() -> FieldSchema {
                     comment: "Provenance blob carried through untouched.",
                     required: false,
                 },
-                FieldSchema {
-                    name: "order",
-                    ty: TypeSchema::Option(Box::new(TypeSchema::U64)),
-                    comment: "Sort position; defaults to 0.",
-                    required: false,
-                },
-                optional_string("updatedAt", "Last-update stamp; server-maintained."),
+                defaulted_field(
+                    "order",
+                    TypeSchema::U64,
+                    "Sort position. Omit to default to 0; `null` is rejected.",
+                ),
+                defaulted_field(
+                    "updatedAt",
+                    TypeSchema::String,
+                    "Last-update stamp, server-maintained. Omit it; `null` is rejected.",
+                ),
             ],
         })),
         comment: "Full replacement list. Each entry MUST carry `id`, `title` and \
                   `status`; every other field is optional. Note `title`, not \
                   `content` — see the field comments.",
         required: true,
+    }
+}
+
+/// A `todos.replace` card field that upstream `#[serde(default)]`s.
+///
+/// Declared with its **non-`Option`** type and `required: false`, which is the
+/// accurate statement of the contract: the key may be *omitted* (serde supplies
+/// the default) but may not be sent as `null`. `TaskBoardCard`'s `plan`,
+/// `allowedTools`, `acceptanceCriteria` and `evidence` are `Vec<String>`,
+/// `order` is `u32` and `updatedAt` is `String` — none is an `Option`, so
+/// `null` fails deserialization with `invalid type: null`.
+///
+/// Declaring these as `Option(...)` would advertise `null` as valid and put the
+/// catalog right back to describing a call the handler rejects, which is the
+/// defect #6087 exists to remove.
+fn defaulted_field(name: &'static str, ty: TypeSchema, comment: &'static str) -> FieldSchema {
+    FieldSchema {
+        name,
+        ty,
+        comment,
+        required: false,
     }
 }
 
