@@ -1,4 +1,3 @@
-
 // ── list_facets ───────────────────────────────────────────────────────────────
 
 fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
@@ -34,11 +33,19 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
                 f.state == FacetState::Active || f.state == FacetState::Provisional
             })
             .filter(|f| {
-                // Filter on the class column only — it is always derived from
-                // the key prefix, so the old `|| key.starts_with(...)` arm was
-                // redundant.
+                // Match on the class column when it is set — that stays
+                // authoritative, so a row explicitly tagged with another class
+                // can never match `cls` via its key prefix (the #6077 leak
+                // stays closed). A row with no class column falls back to its
+                // key prefix, which is where a canonical key like
+                // `style/verbosity` carries the class the column omits — the
+                // behaviour the dropped `|| key.starts_with(...)` arm provided
+                // for legitimate classless rows.
                 match &class_filter {
-                    Some(cls) => f.class.as_deref() == Some(cls.as_str()),
+                    Some(cls) => {
+                        f.class.as_deref() == Some(cls.as_str())
+                            || (f.class.is_none() && f.key.starts_with(&format!("{cls}/")))
+                    }
                     None => true,
                 }
             })
