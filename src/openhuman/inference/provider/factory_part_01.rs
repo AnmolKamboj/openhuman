@@ -329,7 +329,12 @@ pub(crate) fn role_uses_implicit_cloud_fallback(role: &str, config: &Config) -> 
 ///
 /// Empty / `"cloud"` resolves to `primary_cloud`. **Every** role behaves this
 /// way: a route that is not set falls through to the managed backend, and no
-/// role inherits another role's provider.
+/// role uses a sibling's BYOK provider as a fallback.
+///
+/// The deliberate *aliases* in [`configured_route_for_role`] are unaffected and
+/// remain: `burst` reads `agentic_provider` and `summarization` reads
+/// `memory_provider`. Those are two names for one configured route, which is a
+/// different thing from an unset route borrowing a set one.
 ///
 /// Until #6109 the three chat-tier roles (`chat`, `reasoning`, `coding`) took a
 /// configured BYOK provider from *any* sibling first, so setting one route moved
