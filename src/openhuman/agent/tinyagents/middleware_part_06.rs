@@ -276,32 +276,48 @@ fn captured_outcome_for(
 /// Namespace `ToolOutputMiddleware` writes each persisted artifact under.
 const ARTIFACT_INDEX_NAMESPACE: &str = "tool_results";
 
-/// The contents list's cap when the model advertises no context window.
+/// The input allowance the reductions divide up when no context window is
+/// advertised.
 ///
 /// A window is what every other bound here is derived from, so without one
 /// there is nothing to take a share of — and no `ImageAwareMessageTrimMiddleware`
-/// installed either, which is precisely why the list cannot be left unbounded
-/// on that path (CodeRabbit on #6068): it is the one message nothing downstream
-/// can shrink, on the one configuration where nothing downstream is watching.
-/// Small enough to stay a contents list, large enough for the realistic case of
-/// a handful of artifacts.
-const TOC_ALLOWANCE_NO_WINDOW: u64 = 512;
+/// installed either, which is precisely why neither share may be left unbounded
+/// on that path (CodeRabbit on #6068): these are the two additions nothing
+/// downstream can shrink, on the one configuration where nothing downstream is
+/// watching. Sized so the contents list's tenth lands on the 512 tokens a
+/// realistic handful of artifacts needs.
+const NO_WINDOW_ALLOWANCE: u64 = 5_120;
 
-/// The floor under a proportional share, so a small window still yields a cap
-/// rather than collapsing to `0` — which this middleware reads as "unbounded".
+/// The floor under the contents list's proportional share, so a small window
+/// still yields a cap rather than collapsing to `0` — which both middlewares
+/// read as "unbounded".
 const TOC_ALLOWANCE_MIN: u64 = 64;
 
-/// The contents list's share of a turn's input allowance.
+/// Split a turn's input allowance between the two things that add to the
+/// request: the artifact contents list and the wrap-up's result restoration.
 ///
-/// A tenth: generous for the realistic case (a handful of artifacts is a few
-/// hundred bytes) and firm about the pathological one. Floored so a small
-/// window cannot round the share down to the sentinel that disables the cap,
-/// and given a fixed fallback when there is no window to take a share of.
-pub(crate) fn toc_allowance_share(trim_allowance: u64) -> u64 {
-    if trim_allowance == 0 {
-        return TOC_ALLOWANCE_NO_WINDOW;
-    }
-    (trim_allowance / 10).max(TOC_ALLOWANCE_MIN).min(trim_allowance)
+/// Returns `(toc, restore)`. **Neither is ever `0`** — that is the sentinel both
+/// middlewares read as "no cap", so handing it to either is the bug this
+/// function exists to make unrepresentable. It bit twice on #6068: first when
+/// the two bounds were computed independently and the pair went unbounded, then
+/// when the no-window fallback was given to the contents list alone and
+/// `saturating_sub` handed restoration the sentinel it had just been rescued
+/// from.
+///
+/// The contents list takes a tenth — generous for the realistic case, firm
+/// about the pathological one — floored so a small window cannot round it away,
+/// and capped at half so restoration keeps a real share of a small allowance.
+pub(crate) fn split_input_allowance(trim_allowance: u64) -> (u64, u64) {
+    let total = if trim_allowance == 0 {
+        NO_WINDOW_ALLOWANCE
+    } else {
+        trim_allowance
+    };
+    let toc = (total / 10)
+        .max(TOC_ALLOWANCE_MIN)
+        .min(total.div_ceil(2))
+        .max(1);
+    (toc, total.saturating_sub(toc).max(1))
 }
 
 /// Renders the run's persisted-artifact index into the request as a short

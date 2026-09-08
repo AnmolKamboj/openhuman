@@ -611,8 +611,7 @@ fn assemble_turn_harness(
         .filter(|w| *w > 0)
         .map(|w| middleware::legacy_max_input_tokens(w).max(1))
         .unwrap_or(0);
-    let toc_allowance = middleware::toc_allowance_share(trim_allowance);
-    let restore_allowance = trim_allowance.saturating_sub(toc_allowance);
+    let (toc_allowance, restore_allowance) = middleware::split_input_allowance(trim_allowance);
 
     let wrap_up_mw = (pause_at_cap && subagent_scope.is_none()).then(|| {
         Arc::new(middleware::FinalCallWrapUpMiddleware::new(
