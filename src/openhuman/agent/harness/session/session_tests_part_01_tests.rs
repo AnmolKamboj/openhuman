@@ -103,7 +103,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
         },
     ]);
 
-    assert!(agent.refresh_delegation_tools());
+    agent.refresh_delegation_tools();
     assert_eq!(
         integration_delegate_toolkit_enum(&agent),
         vec!["gmail".to_string()]
@@ -132,17 +132,20 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
         },
     ]);
 
-    assert!(agent.refresh_delegation_tools());
+    agent.refresh_delegation_tools();
     assert_eq!(
         integration_delegate_toolkit_enum(&agent),
         vec!["gmail".to_string(), "notion".to_string()]
     );
+    // The schema moved; the executable instances must have moved with it.
+    // Before #6145 the shared clone above blocked the instance reconcile and
+    // only this assertion would have failed.
+    super::assert_synthesized_delegates_are_executable(&agent);
 }
 
 /// Regression for #3044: repeated mid-session connects while the `tools`
-/// Arc stays shared (the normal `before_dispatch` path, where
-/// `AgentToolSource` holds a clone) must not accumulate duplicate
-/// synthesised `ToolSpec`s.
+/// Arc stays shared (a detached sub-agent's cloned `ParentExecutionContext`
+/// outliving its turn) must not accumulate duplicate synthesised `ToolSpec`s.
 ///
 /// Before the fix, a failed `tools` reconcile rolled `synthesized_tool_names`
 /// back to the *old* mask. On the next refresh the spec `retain` used that
@@ -176,7 +179,7 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
 
     // Turn 1: gmail connects.
     agent.set_connected_integrations(vec![conn("gmail", "Email")]);
-    assert!(agent.refresh_delegation_tools());
+    agent.refresh_delegation_tools();
 
     // Hold a shared clone across every subsequent refresh so `Arc::get_mut`
     // always fails — exactly what happens during an in-flight turn.
@@ -184,7 +187,7 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
 
     // Turn 2: notion connects mid-session.
     agent.set_connected_integrations(vec![conn("gmail", "Email"), conn("notion", "Docs")]);
-    assert!(agent.refresh_delegation_tools());
+    agent.refresh_delegation_tools();
 
     // Turn 3: slack connects mid-session — this is where the old code
     // produced a duplicate `delegate_to_integrations_agent` spec.
@@ -193,7 +196,7 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
         conn("notion", "Docs"),
         conn("slack", "Chat"),
     ]);
-    assert!(agent.refresh_delegation_tools());
+    agent.refresh_delegation_tools();
 
     assert_eq!(
         delegate_spec_count(&agent),
@@ -208,6 +211,7 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
             "slack".to_string()
         ]
     );
+    super::assert_synthesized_delegates_are_executable(&agent);
 }
 
 #[tokio::test]
@@ -595,4 +599,123 @@ async fn last_turn_usage_is_public_and_non_draining() {
 
     // After the drain the peek accessor reports nothing, as expected.
     assert!(agent.last_turn_usage().is_none());
+}
+
+/// Regression for #6145: a delegate tool that appears for the **first time**
+/// while the `tools` Arc is shared must be dispatchable, not just advertised.
+///
+/// This is the exact field scenario from the issue — an agent whose surface
+/// carried no `delegate_to_integrations_agent` at all, a mid-session Composio
+/// connect while a clone was held, and a refresh that logged
+/// `added=["delegate_to_integrations_agent"] tools_reconciled=false`. The spec
+/// was reconciled, the instance was not, and the policy snapshot — built from
+/// the instances — had no entry for it, so the fail-closed visibility filter
+/// hid the delegate: silently missing until a unique-owner refresh happened.
+#[test]
+fn newly_synthesized_delegate_is_executable_while_tool_arc_is_shared() {
+    use crate::openhuman::agent::harness::AgentDefinitionRegistry;
+
+    AgentDefinitionRegistry::init_global_builtins().unwrap();
+    let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
+
+    // Turn 1 with nothing connected: no integration delegate exists yet.
+    agent.refresh_delegation_tools();
+    let advertised_before = agent
+        .tool_specs()
+        .iter()
+        .any(|spec| spec.name == "delegate_to_integrations_agent");
+    let executable_before = agent
+        .synthesized_tools_arc()
+        .iter()
+        .any(|t| t.name() == "delegate_to_integrations_agent");
+    assert_eq!(
+        advertised_before, executable_before,
+        "schema and instances must agree even before anything is connected"
+    );
+
+    // A detached sub-agent's cloned ParentExecutionContext holds a clone for
+    // as long as it runs. `Arc::get_mut` would fail from here on — which is
+    // what used to break the instance reconcile.
+    let _shared_tools = agent.tools_arc();
+
+    agent.set_connected_integrations(vec![
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
+            toolkit: "gmail".into(),
+            description: "Email".into(),
+            tools: vec![],
+            gated_tools: vec![],
+            connected: true,
+            connections: Vec::new(),
+            non_active_status: None,
+        },
+    ]);
+    agent.refresh_delegation_tools();
+
+    assert!(
+        agent
+            .tool_specs()
+            .iter()
+            .any(|spec| spec.name == "delegate_to_integrations_agent"),
+        "the mid-session connect must publish the delegate spec"
+    );
+    assert!(
+        agent
+            .synthesized_tools_arc()
+            .iter()
+            .any(|t| t.name() == "delegate_to_integrations_agent"),
+        "the delegate must also exist as an executable instance — a spec with \
+         nothing registered to run it is #6145"
+    );
+    super::assert_synthesized_delegates_are_executable(&agent);
+}
+
+/// The superseded synthesised instances are released once the readers holding
+/// them go away — the issue's "clean up the old one once its refcount drops".
+#[test]
+fn superseded_synthesized_instances_are_released_when_readers_drop() {
+    use crate::openhuman::agent::harness::AgentDefinitionRegistry;
+
+    AgentDefinitionRegistry::init_global_builtins().unwrap();
+    let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
+
+    let conn =
+        |slug: &str, desc: &str| crate::openhuman::agent::context::prompt::ConnectedIntegration {
+            toolkit: slug.into(),
+            description: desc.into(),
+            tools: vec![],
+            gated_tools: vec![],
+            connected: true,
+            connections: Vec::new(),
+            non_active_status: None,
+        };
+
+    agent.set_connected_integrations(vec![conn("gmail", "Email")]);
+    agent.refresh_delegation_tools();
+
+    // A turn takes its snapshot of the synthesised set and keeps it.
+    let in_flight = agent.synthesized_tools_arc();
+    assert_eq!(Arc::strong_count(&in_flight), 2, "agent + in-flight turn");
+
+    // The connection set changes underneath it.
+    agent.set_connected_integrations(vec![conn("gmail", "Email"), conn("notion", "Docs")]);
+    agent.refresh_delegation_tools();
+
+    // The reader still sees a coherent set, and it is the *previous* one.
+    assert_eq!(
+        Arc::strong_count(&in_flight),
+        1,
+        "the agent has moved on to a fresh Arc; only the in-flight turn holds the old one"
+    );
+    assert!(
+        !Arc::ptr_eq(&in_flight, &agent.synthesized_tools_arc()),
+        "a refresh must publish a new Arc rather than mutating the shared one"
+    );
+
+    // When the turn ends, the superseded instances are freed.
+    drop(in_flight);
+    assert_eq!(
+        Arc::strong_count(&agent.synthesized_tools_arc()),
+        2,
+        "only the agent's own Arc and this test's clone remain"
+    );
 }

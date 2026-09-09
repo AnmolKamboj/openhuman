@@ -152,6 +152,68 @@ fn build_parent_context_has_no_descriptor_without_profile_or_parent() {
     assert!(parent.workspace_descriptor.is_none());
 }
 
+/// Stands in for a synthesised `delegate_*` tool in the parent's own surface.
+struct ProbeDelegateTool;
+
+#[async_trait]
+impl Tool for ProbeDelegateTool {
+    /// A `delegate_*` name, like every synthesised delegation tool.
+    fn name(&self) -> &str {
+        "delegate_probe"
+    }
+
+    /// Marker text only; the description is never asserted on.
+    fn description(&self) -> &str {
+        "probe delegate"
+    }
+
+    /// An empty object schema, like a parameterless delegate.
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object"})
+    }
+
+    /// Never dispatched by these tests.
+    async fn execute(&self, _args: serde_json::Value) -> Result<ToolResult> {
+        Ok(ToolResult::success("probe"))
+    }
+}
+
+/// What a child is handed: the durable registry and its specs, index for
+/// index — never the parent's synthesised delegation specs, which have no
+/// instance in `all_tools` and which a sub-agent must not see (#4452).
+#[test]
+fn build_parent_context_passes_durable_specs_matching_all_tools() {
+    let agent = make_agent_with_tool_sets(
+        vec![Box::new(EchoTool), Box::new(CronAddProbeTool)],
+        vec![Box::new(ProbeDelegateTool)],
+        None,
+    );
+    assert!(
+        agent
+            .tool_specs()
+            .iter()
+            .any(|spec| spec.name == "delegate_probe"),
+        "sanity: the parent itself advertises the synthesised delegate"
+    );
+
+    let parent = agent.build_parent_execution_context();
+    assert_eq!(parent.all_tool_specs.len(), parent.all_tools.len());
+    for (tool, spec) in parent.all_tools.iter().zip(parent.all_tool_specs.iter()) {
+        assert_eq!(
+            tool.name(),
+            spec.name,
+            "a child's specs must track its tools index for index"
+        );
+    }
+    assert!(
+        !parent
+            .all_tool_specs
+            .iter()
+            .any(|spec| spec.name == "delegate_probe"),
+        "a synthesised delegate spec must never reach a child"
+    );
+}
+
 #[tokio::test]
 async fn transcript_roundtrip_work() {
     let mut agent = make_agent(None);
