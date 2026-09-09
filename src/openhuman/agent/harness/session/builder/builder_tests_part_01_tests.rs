@@ -638,7 +638,6 @@ async fn from_config_for_agent_synthesizes_custom_registry_entry_with_named_scop
 /// only kept off the dispatch path by set ordering.
 #[test]
 fn from_config_keeps_build_time_delegation_tools_out_of_the_durable_registry() {
-    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global_builtins().unwrap();
     let tmp = tempfile::TempDir::new().unwrap();
     let config = test_config(&tmp);
