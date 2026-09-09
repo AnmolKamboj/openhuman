@@ -91,9 +91,6 @@ fn ensure_memory_seams() {
             .name("turn-overrides-e2e-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
-                    Config::default(),
-                ));
             })
             .expect("spawn turn-overrides seam installer")
             .join()

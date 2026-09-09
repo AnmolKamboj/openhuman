@@ -125,9 +125,6 @@ fn ensure_memory_seams(workspace: &Path) {
                     config_path: workspace.join("config.toml"),
                     ..Config::default()
                 });
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    config.clone(),
-                );
                 #[cfg(feature = "modules")]
                 openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })

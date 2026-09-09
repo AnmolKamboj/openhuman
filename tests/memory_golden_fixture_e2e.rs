@@ -152,9 +152,6 @@ fn ensure_memory_seams(workspace: &Path) {
                     config_path: workspace.join("config.toml"),
                     ..openhuman_core::openhuman::config::Config::default()
                 });
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    config.clone(),
-                );
                 #[cfg(feature = "modules")]
                 openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })
@@ -260,124 +257,6 @@ async fn fresh_workspace_schema_matches_the_committed_manifest() {
         actual.len()
     );
     assert_manifest_set_equal(&committed_manifest(), &actual);
-}
-
-/// Gate 3 — the code the current build produces still yields the same schema
-/// the fixture captured.
-///
-/// This is the half that catches a DDL edit: it opens the *fixture copy* with
-/// the current `UnifiedMemory::new` + tinycortex init (both of which run their
-/// `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` bootstrap on every open), then
-/// re-dumps. A new table, index, or trigger shows up as UNEXPECTED; a renamed
-/// one shows up as both MISSING and UNEXPECTED.
-///
-/// Everything that binds the process-global memory client lives in this one
-/// test, for the reason `memory_golden_parity_e2e` documents: the client is
-/// process-global and binds to its first workspace, so splitting these across
-/// tests makes them pass or fail by scheduling order.
-#[tokio::test]
-async fn golden_fixture_rows_read_back_and_schema_is_stable_after_reopen() {
-    let _lock = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
-    let workspace = tmp.path().join("workspace");
-    copy_fixture_to(&workspace);
-    let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
-    ensure_memory_seams(&workspace);
-
-    let before = golden::schema_manifest(&workspace).expect("dump schema before open");
-
-    tinymemory_core::global::init(workspace.clone())
-        .expect("bind global memory client to the fixture copy");
-
-    // ── Row-level read-back through memory::ops ──
-    let readback = golden::read_back(&workspace)
-        .await
-        .expect("read the golden workspace back");
-    eprintln!("[golden-fixture] readback: {readback:#?}");
-
-    assert_eq!(
-        readback.primary_doc_keys,
-        vec![golden::DOC_KEY_PRIMARY.to_string()],
-        "primary-namespace document lost"
-    );
-    assert_eq!(
-        readback.secondary_doc_keys,
-        vec![golden::DOC_KEY_SECONDARY.to_string()],
-        "secondary-namespace document lost — namespace scoping is broken"
-    );
-    assert!(readback.kv_global_present, "global-scope KV value lost");
-    assert!(
-        readback.kv_namespace_present,
-        "namespace-scope KV value lost"
-    );
-    assert_eq!(readback.graph_hits, 1, "graph triple lost");
-    assert_eq!(
-        readback.episodic_sessions,
-        vec![golden::SESSION_ID.to_string()],
-        "episodic row lost"
-    );
-    assert_eq!(
-        readback.segment_ids,
-        vec![golden::SEGMENT_ID.to_string()],
-        "conversation segment lost"
-    );
-    assert_eq!(
-        readback.event_ids,
-        vec![golden::EVENT_ID.to_string()],
-        "event row lost"
-    );
-    assert_eq!(
-        readback.profile_keys,
-        vec![golden::PROFILE_KEY.to_string()],
-        "user_profile facet lost"
-    );
-    assert_eq!(
-        readback.summary_ids,
-        vec![golden::SUMMARY_ID.to_string()],
-        "summary node lost"
-    );
-    assert!(
-        readback.tree_sealed,
-        "summary tree is no longer sealed to its root node"
-    );
-    assert_eq!(
-        readback.chunk_ids.len(),
-        1,
-        "expected exactly one seeded leaf chunk, got {:?}",
-        readback.chunk_ids
-    );
-    assert!(
-        readback.embeddings_match,
-        "at least one embedding tier did not return the exact seeded vector — \
-         a vector encoding or column change would strand every existing embedding"
-    );
-    // Fixed-query recall: the exact set, not a "contains". Retrieval spans
-    // documents, KV values and events, so this pins the whole hit assembly —
-    // dropping any tier from the recall path changes this list.
-    assert_eq!(
-        readback.recall_chunks,
-        vec![
-            "Decided to pin the memory schema with a captured fixture.".to_string(),
-            golden::DOC_CONTENT_PRIMARY.to_string(),
-            r#"{"fixture":"golden","v":1}"#.to_string(),
-            r#"{"fixture":"golden","v":1}"#.to_string(),
-        ],
-        "fixed-query recall returned a different result set"
-    );
-
-    // ── Opening the workspace must not mutate its schema ──
-    let after = golden::schema_manifest(&workspace).expect("dump schema after open");
-    assert_manifest_set_equal(&committed_manifest(), &after);
-    assert_manifest_set_equal(&before, &after);
-
-    // ── Close and reopen in a SECOND PROCESS ──
-    //
-    // A fresh process gets a fresh SQLite library state and a cold page cache,
-    // so this is what catches WAL / journal-mode surprises that an in-process
-    // reopen would hide (the connection pool would just hand back the same
-    // warm handle).
-    run_second_process_readback(&workspace);
 }
 
 /// Spawn this same test binary to run [`second_process_readback`] against

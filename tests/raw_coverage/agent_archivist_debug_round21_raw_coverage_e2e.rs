@@ -179,9 +179,6 @@ impl Tool for EchoTool {
 fn setup_provider() -> (TempDir, Arc<MemoryClient>, Arc<dyn MemoryProvider>) {
     // The cfg(test)-only installer is out of reach for an external test
     // target; the public boot-shaped seam does the same job here.
-    openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
-        openhuman_core::openhuman::config::Config::default(),
-    ));
     let tmp = TempDir::new().expect("tempdir");
     let workspace = tmp.path().join("ws");
     std::fs::create_dir_all(&workspace).expect("workspace dir");
