@@ -6,6 +6,8 @@ use serde_json::json;
 use std::sync::Arc;
 use tinytools::ToolRunContext;
 
+const MAX_CONTENT_BYTES: usize = 5 * 1024 * 1024;
+
 /// Write file contents with path sandboxing
 pub struct FileWriteTool {
     security: Arc<SecurityPolicy>,
@@ -134,6 +136,13 @@ impl FileWriteTool {
             return Ok(ToolResult::error(
                 "[policy-blocked] Action blocked: autonomy is read-only",
             ));
+        }
+
+        if content.len() > MAX_CONTENT_BYTES {
+            return Ok(ToolResult::error(format!(
+                "Content too large: {} bytes (limit: {MAX_CONTENT_BYTES} bytes)",
+                content.len()
+            )));
         }
 
         if self.security.is_rate_limited() {
