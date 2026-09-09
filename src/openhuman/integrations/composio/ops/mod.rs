@@ -110,11 +110,7 @@ pub(crate) use error_utils::{
     resolve_client,
 };
 #[cfg(test)]
-pub(crate) use memory_cleanup::{composio_memory_targets_for_connection, MemoryCleanupTarget};
-#[cfg(test)]
 pub(crate) use providers_ops::parse_sync_reason;
-#[cfg(test)]
-pub(crate) use tinymemory_core::store::MemoryClient;
 
 #[cfg(test)]
 #[path = "../ops_tests.rs"]
