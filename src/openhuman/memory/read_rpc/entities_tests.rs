@@ -67,7 +67,11 @@ fn install_null_driver(cfg: &Config) {
 /// **this handler's** mapping of a driver's answer, so the instrument has to be
 /// something that produces the answer being mapped.
 #[derive(Debug, Default)]
-struct EntityAwareDriver;
+struct EntityAwareDriver {
+    /// Every `limit` the handler forwarded, so a clamp can be asserted by the
+    /// value the driver *received* rather than by the shape of what came back.
+    limits_seen: std::sync::Mutex<Vec<usize>>,
+}
 
 #[async_trait::async_trait]
 impl tinymemory_api::provider::MemoryEntities for EntityAwareDriver {
@@ -102,11 +106,12 @@ impl tinymemory_api::provider::MemoryEntities for EntityAwareDriver {
     async fn top_entities(
         &self,
         kind: Option<&str>,
-        _limit: usize,
+        limit: usize,
     ) -> Result<
         Vec<tinymemory_api::provider::types::EntityOccurrence>,
         tinymemory_api::error::MemoryError,
     > {
+        self.limits_seen.lock().expect("limits lock").push(limit);
         // The contract's request-side vocabulary. Only `person` is needed here;
         // what matters is that *some* kind is recognised and some other kind is
         // not, so the handler's two branches are both reachable.
@@ -220,12 +225,14 @@ impl MemoryProvider for EntityAwareDriver {
     }
 }
 
-fn install_entity_driver(cfg: &Config) {
+fn install_entity_driver(cfg: &Config) -> Arc<EntityAwareDriver> {
+    let driver = Arc::new(EntityAwareDriver::default());
     binding::install_for_test(
         &cfg.workspace_dir,
         &cfg.subsystems.memory,
-        Arc::new(EntityAwareDriver) as Arc<dyn MemoryProvider>,
+        Arc::clone(&driver) as Arc<dyn MemoryProvider>,
     );
+    driver
 }
 
 // ── the family-absent reads ────────────────────────────────────────────────
@@ -263,38 +270,40 @@ async fn delete_chunk_does_not_report_a_silent_success_without_the_family() {
     install_null_driver(&cfg);
 
     let outcome = delete_chunk_rpc(&cfg, "chunk-1".to_string()).await;
-    match outcome {
-        Err(_) => {}
-        Ok(ok) => assert!(
-            !ok.value.deleted,
-            "a driver that cannot delete must not answer `deleted: true`; got {:?}",
-            ok.value
-        ),
-    }
+    assert!(
+        outcome.is_err(),
+        "a delete the driver cannot perform must be an error, not a `deleted: false` \
+         success — a caller reading 'nothing was removed' concludes the content was \
+         already gone. Got: {:?}",
+        outcome.map(|ok| ok.value)
+    );
 }
 
 // ── the caps ───────────────────────────────────────────────────────────────
 
-/// `limit` is clamped rather than forwarded. Asserted through the handler's own
-/// log line, because the driver bound here indexes nothing and so cannot show
-/// the cap through a row count — and the clamp is the host's regardless of what
-/// the driver would have returned.
+/// `limit` is clamped at both ends before it reaches the driver.
+///
+/// Asserted on the value the driver was *handed*, which is the only thing that
+/// can show a clamp: the earlier version of this test checked that a log line
+/// existed and that the result was empty, and both are true whether or not the
+/// handler clamps anything. `MAX_LIST_LIMIT` is 1,000 and the floor is 1.
 #[tokio::test]
-async fn top_entities_clamps_an_absurd_limit_rather_than_forwarding_it() {
+async fn top_entities_clamps_both_ends_of_the_limit_before_the_driver_sees_it() {
     let (_tmp, cfg) = test_config();
-    install_entity_driver(&cfg);
+    let driver = install_entity_driver(&cfg);
 
-    let outcome = top_entities_rpc(&cfg, None, u32::MAX)
+    top_entities_rpc(&cfg, None, u32::MAX)
         .await
         .expect("top_entities");
-    assert!(
-        !outcome.logs.is_empty(),
-        "the handler logs its resolved parameters; that log is the seam this asserts through"
+    top_entities_rpc(&cfg, None, 0).await.expect("top_entities");
+
+    let seen = driver.limits_seen.lock().expect("limits lock").clone();
+    assert_eq!(
+        seen,
+        vec![super::MAX_LIST_LIMIT as usize, 1],
+        "the ceiling must arrive as MAX_LIST_LIMIT and the floor as 1, not as \
+         u32::MAX and 0"
     );
-    // A zero limit is the other end of the same clamp: the floor is 1, so this
-    // must not become "ask the driver for nothing".
-    let floored = top_entities_rpc(&cfg, None, 0).await.expect("top_entities");
-    assert!(floored.value.is_empty());
 }
 
 // ── the behaviour delta ────────────────────────────────────────────────────
@@ -309,7 +318,7 @@ async fn top_entities_clamps_an_absurd_limit_rather_than_forwarding_it() {
 #[tokio::test]
 async fn an_unknown_kind_degrades_to_an_empty_list_rather_than_an_error() {
     let (_tmp, cfg) = test_config();
-    install_entity_driver(&cfg);
+    let driver = install_entity_driver(&cfg);
 
     let outcome = top_entities_rpc(&cfg, Some("definitely-not-a-kind".to_string()), 10)
         .await
@@ -318,6 +327,15 @@ async fn an_unknown_kind_degrades_to_an_empty_list_rather_than_an_error() {
         outcome.value.is_empty(),
         "the pre-migration wire answered an empty list for an unknown kind"
     );
+    // An empty list is also what an *unbound* driver produces, so the assertion
+    // above cannot stand alone: it would pass if this test's driver were never
+    // reached, and it did exactly that until the clamp test caught it.
+    assert_eq!(
+        driver.limits_seen.lock().expect("limits lock").len(),
+        1,
+        "the handler must have reached this driver — otherwise the empty list \
+         above proves nothing about the map-back"
+    );
 }
 
 /// The narrowing half: a *recognised* kind is forwarded and answered normally,
@@ -325,10 +343,16 @@ async fn an_unknown_kind_degrades_to_an_empty_list_rather_than_an_error() {
 #[tokio::test]
 async fn a_recognised_kind_is_forwarded_rather_than_swallowed() {
     let (_tmp, cfg) = test_config();
-    install_entity_driver(&cfg);
+    let driver = install_entity_driver(&cfg);
 
     let outcome = top_entities_rpc(&cfg, Some("person".to_string()), 10)
         .await
         .expect("a recognised kind is a normal query");
     assert!(outcome.value.is_empty(), "this driver indexes no entities");
+    assert_eq!(
+        driver.limits_seen.lock().expect("limits lock").len(),
+        1,
+        "the query must have reached the driver rather than being answered \
+         by the map-back"
+    );
 }
