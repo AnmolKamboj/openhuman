@@ -1,3 +1,6 @@
+#[path = "../support/noop_memory.rs"]
+mod noop_memory;
+
 use async_trait::async_trait;
 use openhuman_core::openhuman::agent::dispatcher::{NativeToolDispatcher, XmlToolDispatcher};
 use openhuman_core::openhuman::agent::harness::definition::AgentTier;
@@ -17,7 +20,6 @@ use openhuman_core::openhuman::agent::messages::ConversationMessage;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
-use tinymemory_core::store as memory_store;
 use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::traits::ToolCallOptions;
 use openhuman_core::openhuman::tools::{
@@ -75,9 +77,6 @@ fn ensure_memory_seams() {
             .name("agent-session-turn-raw-coverage-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    Arc::new(Config::default()),
-                );
             })
             .expect("spawn agent session turn raw coverage seam installer")
             .join()
@@ -615,14 +614,6 @@ fn workspace(label: &str) -> (TempDir, PathBuf) {
     (temp, path)
 }
 
-fn memory_for_workspace(path: &PathBuf) -> Arc<dyn Memory> {
-    let cfg = MemoryConfig {
-        backend: "none".to_string(),
-        ..MemoryConfig::default()
-    };
-    Arc::from(memory_store::create_memory(&cfg, path).unwrap())
-}
-
 fn agent_with(
     model: Arc<dyn ChatModel<()>>,
     tools: Vec<Box<dyn Tool>>,
@@ -634,7 +625,7 @@ fn agent_with(
     Agent::builder()
         .chat_model(model)
         .tools(tools)
-        .memory(memory_for_workspace(&workspace_path))
+        .memory(noop_memory::noop_memory())
         .tool_dispatcher(dispatcher)
         .workspace_dir(workspace_path)
         .event_context("round17-session", "round17-channel")

@@ -129,9 +129,6 @@ fn ensure_memory_seams() {
                     workspace_dir: workspace,
                     ..openhuman_core::openhuman::config::Config::default()
                 });
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    Arc::clone(&config),
-                );
                 #[cfg(feature = "modules")]
                 openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })

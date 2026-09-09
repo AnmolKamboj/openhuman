@@ -489,7 +489,6 @@ async fn agent_turn_runs_long_parallel_subagent_flow_with_many_nested_tool_calls
     // binary happened to run first — and failed outright under any filter
     // narrow enough to exclude them all. `install_for_tests` is `Once`-guarded,
     // so calling it here is free when a sibling already did.
-    crate::openhuman::memory::host_impls::install_for_tests();
     AgentDefinitionRegistry::init_global_builtins().unwrap();
 
     let workspace = tempfile::TempDir::new().expect("temp workspace");
@@ -497,12 +496,11 @@ async fn agent_turn_runs_long_parallel_subagent_flow_with_many_nested_tool_calls
     let provider = ParallelHarnessProvider::default();
     let fixture_state = Arc::new(FixtureStepState::default());
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let tools: Vec<Box<dyn Tool>> = vec![
         Box::new(SpawnParallelAgentsTool::new()),
