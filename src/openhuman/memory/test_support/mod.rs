@@ -276,17 +276,30 @@ pub(crate) fn retaining_memory() -> Arc<dyn tinymemory_api::traits::Memory> {
 /// returns. The wait is bounded because a caller that gives up leaves the
 /// resolution running rather than cancelling it.
 ///
-/// The outcome is deliberately ignored: a host with no artifact for its
-/// platform resolves to `Failed`, which is settled too, and what the caller
-/// asserts about that is the caller's business.
+/// `Failed` is ignored: a host with no artifact for its platform resolves to
+/// it, that is settled too, and what the caller asserts about a driver that
+/// could not load is the caller's business. `StillLoading` is not ignored —
+/// it is the one outcome that leaves the caller in exactly the state this
+/// function exists to rule out, so it panics rather than handing back an
+/// unsettled module and letting the caller fail on the transient it was
+/// supposed to have waited out.
 #[cfg(feature = "modules")]
 pub(crate) async fn settle_memory_module() {
-    let _ = crate::openhuman::modules::ops::ensure_loaded_within(
+    use crate::openhuman::modules::ops::LoadError;
+
+    match crate::openhuman::modules::ops::ensure_loaded_within(
         &crate::openhuman::memory::binding::test_module_config(),
         crate::openhuman::memory::binding::MODULE_ID,
         Some(std::time::Duration::from_secs(30)),
     )
-    .await;
+    .await
+    {
+        Ok(()) | Err(LoadError::Failed(_)) => {}
+        Err(LoadError::StillLoading) => panic!(
+            "the memory module did not settle within 30s; every assertion after \
+             this point would race its load"
+        ),
+    }
 }
 
 /// Without the `modules` feature nothing loads a module, so nothing can be
