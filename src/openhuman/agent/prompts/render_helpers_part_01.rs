@@ -103,6 +103,20 @@ pub fn render_datetime(ctx: &PromptContext<'_>) -> Result<String> {
 /// session. The static grounding *rule* that tells the model to read this
 /// line lives in [`DateTimeSection`] / [`render_datetime`].
 pub fn current_datetime_line() -> String {
+    // `library-cpu.sh` sets `OPENHUMAN_PROFILE_FORCE_UTC=1` to skip
+    // `iana_time_zone`/CoreFoundation timezone resolution, which is itself a
+    // measurable cost in a cold CPU profile. Gated on `rss-bench`, so it does
+    // not exist in any shipped build.
+    #[cfg(feature = "rss-bench")]
+    if std::env::var_os("OPENHUMAN_PROFILE_FORCE_UTC").is_some() {
+        let now = chrono::Utc::now();
+        return format!(
+            "Current Date & Time: {} UTC (UTC, UTC+00:00), {}",
+            now.format("%Y-%m-%d %H:%M:%S"),
+            now.format("%A"),
+        );
+    }
+
     // When the host resolves an IANA zone, stamp local time + that zone. When
     // it can't (CI, stripped containers), fall back to true UTC — formatting
     // `Utc::now()` so the time, offset, and zone label all agree rather than
