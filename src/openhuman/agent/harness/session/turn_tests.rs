@@ -391,11 +391,10 @@ fn make_agent_with_tool_sets(
 ) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
@@ -405,9 +404,7 @@ fn make_agent_with_tool_sets(
     // runs the startup wiring that installs it, so the helper installs it
     // itself. `install_for_tests` is idempotent (a `Once`), so every helper in
     // this file calling it costs one install for the whole binary.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut builder = Agent::builder()
         .chat_model(Arc::new(DummyProvider))
@@ -457,14 +454,12 @@ fn make_agent_with_builder_and_dispatcher(
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
     // The embedding seam, as above.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     Agent::builder()
         .chat_model(provider)
@@ -516,10 +511,8 @@ fn make_agent_with_memory(
         .unwrap()
 }
 
-fn make_real_memory(workspace: &std::path::Path) -> Arc<dyn Memory> {
-    use crate::openhuman::inference::embeddings::NoopEmbedding;
-    use tinymemory_core::store::UnifiedMemory;
-    Arc::new(UnifiedMemory::new(workspace, Arc::new(NoopEmbedding), None).unwrap())
+fn make_real_memory(_workspace: &std::path::Path) -> Arc<dyn Memory> {
+    Arc::new(crate::openhuman::memory::tool_memory::test_helpers::MockMemory::default())
 }
 
 // ── bound_cached_transcript_messages — TAURI-RUST-7 trailing-strip ─────

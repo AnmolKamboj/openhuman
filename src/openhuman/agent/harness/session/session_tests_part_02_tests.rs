@@ -4,7 +4,6 @@ use super::*;
 async fn turn_with_native_dispatcher_handles_tool_results_variant() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -30,12 +29,11 @@ async fn turn_with_native_dispatcher_handles_tool_results_variant() {
         ]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -58,7 +56,6 @@ async fn turn_with_native_dispatcher_handles_tool_results_variant() {
 async fn turn_with_native_dispatcher_persists_fallback_tool_calls() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -82,12 +79,11 @@ async fn turn_with_native_dispatcher_persists_fallback_tool_calls() {
         ]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -182,7 +178,6 @@ fn turn_dispatches_spawn_subagent_through_full_path() {
 async fn system_prompt_and_model_are_byte_stable_across_turns() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -210,12 +205,11 @@ async fn system_prompt_and_model_are_byte_stable_across_turns() {
         captures: Mutex::new(Vec::new()),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider.clone() as Arc<dyn ChatModel<()>>)

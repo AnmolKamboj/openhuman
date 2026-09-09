@@ -626,10 +626,11 @@ pub async fn init_stores(
         // The engine seams are gone from here (#5560). They installed embedding
         // / chat / config / NLP / scheduler / shutdown / error-reporting
         // callbacks into *this process's* copy of `tinymemory-core`, and that
-        // copy no longer exists: the crate has left `[dependencies]`, so
-        // `memory::host_impls` compiles only under `memory-engine-seams`
-        // (default-ON, product-OFF) and the module answers these
-        // over the bus through `modules::memory_host` instead.
+        // copy no longer exists: the crate has left `[dependencies]`, and with
+        // openhuman#6161 it has left `[dev-dependencies]` too, taking
+        // `memory::host_impls` and the `memory-engine-seams` feature that
+        // gated it. The module answers these over the bus through
+        // `modules::memory_host` instead.
         //
         // The first attempt at this removal shipped an outage, and the reason
         // is worth keeping. It was not that the seams were needed in the

@@ -5,14 +5,11 @@ use super::super::context::{
 use super::super::runtime::process_channel_message;
 use super::super::{traits, Channel};
 use super::common::{HistoryCaptureModel, RecordingChannel};
-use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::inference::provider;
-use crate::openhuman::memory::{Memory, MemoryCategory};
+use crate::openhuman::memory::Memory;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tempfile::TempDir;
 use tinymemory_api::provider::MemoryCore as _;
-use tinymemory_core::store::UnifiedMemory;
 
 fn conversation_memory_key_uses_message_id() {
     let msg = traits::ChannelMessage {
@@ -53,58 +50,6 @@ fn conversation_memory_key_is_unique_per_message() {
         conversation_memory_key(&msg1),
         conversation_memory_key(&msg2)
     );
-}
-
-#[tokio::test]
-async fn autosave_keys_preserve_multiple_conversation_facts() {
-    let tmp = TempDir::new().unwrap();
-    let mem = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
-
-    let msg1 = traits::ChannelMessage {
-        id: "msg_1".into(),
-        sender: "U123".into(),
-        reply_target: "C456".into(),
-        content: "I'm Paul".into(),
-        channel: "slack".into(),
-        timestamp: 1,
-        thread_ts: None,
-    };
-    let msg2 = traits::ChannelMessage {
-        id: "msg_2".into(),
-        sender: "U123".into(),
-        reply_target: "C456".into(),
-        content: "I'm 45".into(),
-        channel: "slack".into(),
-        timestamp: 2,
-        thread_ts: None,
-    };
-
-    mem.store(
-        "",
-        &conversation_memory_key(&msg1),
-        &msg1.content,
-        MemoryCategory::Conversation,
-        None,
-    )
-    .await
-    .unwrap();
-    mem.store(
-        "",
-        &conversation_memory_key(&msg2),
-        &msg2.content,
-        MemoryCategory::Conversation,
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(mem.count().await.unwrap(), 2);
-
-    let recalled = mem
-        .recall("45", 5, crate::openhuman::memory::RecallOpts::default())
-        .await
-        .unwrap();
-    assert!(recalled.iter().any(|entry| entry.content.contains("45")));
 }
 
 #[tokio::test]
