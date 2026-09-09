@@ -502,17 +502,20 @@ impl Agent {
 
     /// Re-synthesise `delegate_*` tools for the orchestrator's `subagents`
     /// declaration using the live `connected_integrations` slice, and
-    /// reconcile the resulting set into `self.tools` / `self.tool_specs` /
-    /// `self.visible_tool_specs` / `self.visible_tool_names`.
+    /// reconcile the resulting set into `self.synthesized_tools` /
+    /// `self.tool_specs` / `self.visible_tool_specs` / `self.visible_tool_names`.
+    /// `self.tools` is never touched.
     ///
     /// **Reconciliation strategy** — full rebuild of the synthesised
     /// subset:
     ///
-    ///   1. Drop every tool whose name was in [`Self::synthesized_tool_names`]
+    ///   1. Drop every spec whose name was in [`Self::synthesized_tool_names`]
     ///      from the previous synthesis. Direct tools (`query_memory`,
     ///      `cron_add`, …) are untouched because their names are not in
     ///      that set.
-    ///   2. Append the freshly collected synthesis output verbatim.
+    ///   2. Append the fresh specs, and replace [`Self::synthesized_tools`]
+    ///      with the fresh instances — minus any name a durable tool owns,
+    ///      which the durable tool keeps (the same rule the builder applies).
     ///   3. Replace `synthesized_tool_names` with the new set so the
     ///      next refresh has a clean mask to undo.
     ///
@@ -522,10 +525,11 @@ impl Agent {
     ///     previous synthesis is unconditionally dropped, the new set is
     ///     authoritative.
     ///   * Direct tools can never be accidentally removed — only names
-    ///     in `synthesized_tool_names` are touched.
-    ///   * Duplicate registration is impossible — retain+extend
-    ///     guarantees every final entry is either a non-synthesised
-    ///     direct tool or a member of the fresh `synthed` set.
+    ///     in `synthesized_tool_names` are touched, and a durable name is
+    ///     never added to that mask.
+    ///   * Duplicate registration is impossible — the fresh set replaces the
+    ///     previous one wholesale and is disjoint from `self.tools`, so a
+    ///     name is registered at most once across both sets.
     ///
     /// **When to call**: on turn 1 only when the session was built
     /// without a prewarmed Composio cache snapshot, and on any
@@ -543,9 +547,12 @@ impl Agent {
     ///
     /// This is what makes the schema and the executable surface inseparable.
     /// Reconciling into `self.tools` instead required `Arc::get_mut`, which
-    /// fails under exactly that sharing — and the old code proceeded to publish
-    /// the new `tool_specs` anyway, advertising `delegate_*` tools to the
-    /// provider that were registered nowhere (#6145).
+    /// fails under exactly that sharing — and the old code proceeded to
+    /// reconcile `tool_specs` anyway, so the two halves drifted: a newly
+    /// connected toolkit's delegate had a spec with no instance (and no policy
+    /// decision, so the fail-closed visibility filter hid it — silently missing
+    /// until a unique-owner refresh) while a revoked toolkit's delegate kept its
+    /// instance with no spec — still registered and callable (#6145).
     ///
     /// Returns nothing: with the synthesised set held in its own `Arc` there is
     /// no longer a way for this to half-apply, so the `bool` it used to hand
@@ -571,7 +578,13 @@ impl Agent {
             return;
         }
 
-        let synthed = collect_orchestrator_tools(def, reg, &self.connected_integrations);
+        // A durable name wins a collision, exactly as at build time. Filtering
+        // here also keeps such a name out of the mask below, so the spec
+        // `retain` can never withdraw a durable tool's spec.
+        let synthed = super::super::builder::drop_synthesized_name_collisions(
+            &self.tools,
+            collect_orchestrator_tools(def, reg, &self.connected_integrations),
+        );
         let synthed_names: std::collections::HashSet<String> =
             synthed.iter().map(|t| t.name().to_string()).collect();
         let synthed_specs: Vec<crate::openhuman::tools::ToolSpec> =
@@ -605,8 +618,8 @@ impl Agent {
         //
         // This is the step that used to be conditional on `Arc::get_mut`
         // succeeding against `self.tools`. It no longer touches `self.tools` at
-        // all, so a concurrent reader cannot block it, and the specs above can
-        // never advertise an instance that was dropped on the floor (#6145).
+        // all, so a concurrent reader cannot block it, and the specs above and
+        // the instances here can never drift apart again (#6145).
         // Readers still holding the previous `Arc` keep a coherent set for the
         // rest of their turn; those instances are freed when the last one goes.
         let previous_instances = self.synthesized_tools.len();

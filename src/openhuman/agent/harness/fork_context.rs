@@ -49,9 +49,13 @@ pub struct ParentExecutionContext {
     /// per-archetype before handing it to the sub-agent's tool loop.
     pub all_tools: Arc<Vec<Box<dyn Tool>>>,
 
-    /// Pre-serialised tool specs matching `all_tools`. Captured at
-    /// turn-start so sub-agents can pass byte-identical schemas to the
-    /// provider for prefix-cache reuse.
+    /// Pre-serialised tool specs. Captured at turn-start so sub-agents can
+    /// pass byte-identical schemas to the provider for prefix-cache reuse.
+    ///
+    /// `all_tool_specs[i]` describes `all_tools[i]` for every durable index;
+    /// the parent's synthesised delegation specs follow at the tail with no
+    /// instance here, since a sub-agent is never handed a `delegate_*` tool
+    /// (#4452). Index into this only with indices taken from `all_tools`.
     pub all_tool_specs: Arc<Vec<ToolSpec>>,
 
     /// Names of the tools the parent actually advertises and will execute this

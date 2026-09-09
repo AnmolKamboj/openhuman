@@ -144,9 +144,8 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
 }
 
 /// Regression for #3044: repeated mid-session connects while the `tools`
-/// Arc stays shared (the normal `before_dispatch` path, where
-/// `AgentToolSource` holds a clone) must not accumulate duplicate
-/// synthesised `ToolSpec`s.
+/// Arc stays shared (a detached sub-agent's cloned `ParentExecutionContext`
+/// outliving its turn) must not accumulate duplicate synthesised `ToolSpec`s.
 ///
 /// Before the fix, a failed `tools` reconcile rolled `synthesized_tool_names`
 /// back to the *old* mask. On the next refresh the spec `retain` used that
@@ -615,10 +614,11 @@ async fn last_turn_usage_is_public_and_non_draining() {
 ///
 /// This is the exact field scenario from the issue — an agent whose surface
 /// carried no `delegate_to_integrations_agent` at all, a mid-session Composio
-/// connect while an in-flight turn held a clone, and a refresh that logged
+/// connect while a clone was held, and a refresh that logged
 /// `added=["delegate_to_integrations_agent"] tools_reconciled=false`. The spec
-/// reached the provider and the model called a tool the harness had never
-/// registered.
+/// was reconciled, the instance was not, and the policy snapshot — built from
+/// the instances — had no entry for it, so the fail-closed visibility filter
+/// hid the delegate: silently missing until a unique-owner refresh happened.
 #[test]
 fn newly_synthesized_delegate_is_executable_while_tool_arc_is_shared() {
     use crate::openhuman::agent::harness::AgentDefinitionRegistry;
@@ -641,9 +641,9 @@ fn newly_synthesized_delegate_is_executable_while_tool_arc_is_shared() {
         "schema and instances must agree even before anything is connected"
     );
 
-    // An in-flight turn (or a spawned sub-agent's ParentExecutionContext)
-    // holds a clone for the rest of the session. `Arc::get_mut` would fail
-    // from here on — which is what used to break the instance reconcile.
+    // A detached sub-agent's cloned ParentExecutionContext holds a clone for
+    // as long as it runs. `Arc::get_mut` would fail from here on — which is
+    // what used to break the instance reconcile.
     let _shared_tools = agent.tools_arc();
 
     agent.set_connected_integrations(vec![
@@ -671,8 +671,8 @@ fn newly_synthesized_delegate_is_executable_while_tool_arc_is_shared() {
             .synthesized_tools_arc()
             .iter()
             .any(|t| t.name() == "delegate_to_integrations_agent"),
-        "the delegate must also exist as an executable instance — advertising a \
-         tool with nothing registered to run it is #6145"
+        "the delegate must also exist as an executable instance — a spec with \
+         nothing registered to run it is #6145"
     );
     super::assert_synthesized_delegates_are_executable(&agent);
 }

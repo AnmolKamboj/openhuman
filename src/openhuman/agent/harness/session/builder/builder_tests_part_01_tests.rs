@@ -648,3 +648,51 @@ async fn from_config_for_agent_synthesizes_custom_registry_entry_with_named_scop
         "a tool outside the custom agent's allowlist must not be visible: {visible:?}"
     );
 }
+
+/// `from_config` hands the build-time delegation tools to the builder's
+/// synthesised set rather than folding them into the durable registry.
+///
+/// Before #6145 the factory appended them to `tools`, so the first
+/// `refresh_delegation_tools` — which replaces `Agent::synthesized_tools` and
+/// never touches `tools` — would have left the build-time instances behind:
+/// duplicated in the prompt catalogue next to their fresh replacements, and
+/// only kept off the dispatch path by set ordering.
+#[test]
+fn from_config_keeps_build_time_delegation_tools_out_of_the_durable_registry() {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global_builtins().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+
+    let agent = crate::openhuman::agent::Agent::from_config_for_agent(&config, "orchestrator")
+        .expect("orchestrator session build");
+
+    let synthesized: Vec<String> = agent
+        .synthesized_tools_arc()
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect();
+    assert!(
+        !synthesized.is_empty(),
+        "the orchestrator declares sub-agents, so the factory must synthesise delegates"
+    );
+    for name in &synthesized {
+        assert!(
+            agent.tools().iter().all(|tool| tool.name() != name),
+            "build-time delegate `{name}` must not also sit in the durable registry"
+        );
+        assert!(
+            agent.tool_specs().iter().any(|spec| &spec.name == name),
+            "build-time delegate `{name}` must be advertised"
+        );
+        assert!(
+            agent.tool_policy_session.decisions.contains_key(name),
+            "build-time delegate `{name}` must carry a policy decision"
+        );
+    }
+    let expected_mask: std::collections::HashSet<String> = synthesized.iter().cloned().collect();
+    assert_eq!(
+        agent.synthesized_tool_names, expected_mask,
+        "the refresh mask must be seeded with exactly the synthesised names"
+    );
+}

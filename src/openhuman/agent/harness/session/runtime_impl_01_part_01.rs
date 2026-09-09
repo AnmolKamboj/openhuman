@@ -70,8 +70,9 @@ impl Agent {
         Arc::clone(&self.synthesized_tools)
     }
 
-    /// Every tool this agent can execute: the durable registry plus the
-    /// synthesised delegation set.
+    /// Every tool this agent can execute: the durable registry first, then the
+    /// synthesised delegation set — the same order as [`Self::tool_specs`] and
+    /// turn dispatch.
     ///
     /// Borrowed rather than materialised as a `Vec<Box<dyn Tool>>` because
     /// `Box<dyn Tool>` is not cloneable — the two sets can be read together but

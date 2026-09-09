@@ -89,12 +89,15 @@ pub struct Agent {
     /// Held apart from [`Self::tools`] because it is the only part of the
     /// surface that changes mid-session, and `Box<dyn Tool>` is not cloneable:
     /// reconciling it *inside* `tools` meant `Arc::get_mut`, which fails
-    /// whenever any reader holds a clone (an in-flight turn, a spawned
-    /// sub-agent's `ParentExecutionContext`). The old code then updated
-    /// `tool_specs` anyway and dropped the fresh instances on the floor, so the
-    /// provider was advertised a `delegate_*` tool that no longer existed in
-    /// any registered tool set — the model called it and got "unknown tool"
-    /// (#6145).
+    /// whenever any reader holds a clone — in practice a detached sub-agent's
+    /// cloned `ParentExecutionContext`, which outlives the turn that spawned
+    /// it. The old code then reconciled `tool_specs` anyway and left the
+    /// instances as they were, so the two halves drifted (#6145): a newly
+    /// connected toolkit's delegate had a spec but no instance — and, the
+    /// policy snapshot being built from the instances, no decision either, so
+    /// the fail-closed visibility filter silently hid it until a unique-owner
+    /// refresh — while a revoked toolkit's delegate lost its spec but stayed
+    /// registered, advertised through its adapter, and callable.
     ///
     /// Because these instances are regenerated from scratch on every refresh,
     /// this `Arc` can always be *replaced* wholesale — no unique ownership
@@ -102,8 +105,13 @@ pub struct Agent {
     /// `Arc` keep a consistent view for the rest of their turn, and the
     /// superseded instances are freed once the last of them drops.
     ///
-    /// Spliced ahead of `tools` at dispatch, so name de-duplication prefers a
-    /// freshly synthesised instance. Empty for agents that do not delegate.
+    /// Disjoint from [`Self::tools`] by construction: a synthesised tool whose
+    /// name a durable tool owns is dropped at build time and on every refresh
+    /// (`builder::drop_synthesized_name_collisions`), so the durable tool wins
+    /// on every surface. Every reader enumerates `tools` first and this set
+    /// second — [`Self::tool_specs`], [`Self::all_tool_refs`], turn dispatch —
+    /// so a name resolves in the same order everywhere. Empty for agents that
+    /// do not delegate.
     pub(super) synthesized_tools: Arc<Vec<Box<dyn Tool>>>,
     /// Full tool specs — sub-agents receive these via
     /// [`ParentExecutionContext::all_tool_specs`].
@@ -469,8 +477,9 @@ pub struct Agent {
     /// direct tools (`query_memory`, `cron_add`, …) that share a name
     /// prefix.
     ///
-    /// Populated by `refresh_delegation_tools` itself; empty at
-    /// construction time.
+    /// Seeded by [`AgentBuilder::build`] from the set handed to
+    /// [`AgentBuilder::synthesized_tools`], then replaced by
+    /// `refresh_delegation_tools` on every refresh.
     ///
     /// Invariant: this set is the name mask for **both** [`Self::tool_specs`]'
     /// synthesised half and [`Self::synthesized_tools`], which reconcile
@@ -492,6 +501,9 @@ pub struct Agent {
 pub struct AgentBuilder {
     pub(super) turn_model_source: Option<TurnModelSource>,
     pub(super) tools: Option<Vec<Box<dyn Tool>>>,
+    /// Delegation tools synthesised for the session's initial connection set.
+    /// Held in [`Agent::synthesized_tools`], never inside [`Agent::tools`].
+    pub(super) synthesized_tools: Option<Vec<Box<dyn Tool>>>,
     /// When set, restricts which tools the main agent sees/calls.
     pub(super) visible_tool_names: Option<std::collections::HashSet<String>>,
     /// Optional explicit profile ceiling for tools delegated agents may inherit.
