@@ -116,3 +116,143 @@ impl tinymemory_api::traits::Memory for NoopMemory {
 pub(crate) fn noop_memory() -> Arc<dyn tinymemory_api::traits::Memory> {
     Arc::new(NoopMemory)
 }
+
+/// A [`Memory`] that keeps what it is given, for the handful of tests that
+/// write through an agent and then read the store back.
+///
+/// [`NoopMemory`] cannot serve those, and the distinction is not cosmetic: two
+/// `agent::` tests obtained a **sqlite-backed** store from the engine's factory
+/// — `memory_store::create_memory(&MemoryConfig { backend: "sqlite", .. })` —
+/// precisely because they assert on `count()` afterwards. Handing them a
+/// no-op made one fail outright ("Expected at least 2 memory entries, got 0")
+/// and, worse, made its sibling `auto_save_disabled_does_not_store` pass
+/// **vacuously**: it asserts the store is empty, and a store that is always
+/// empty agrees whether or not auto-save was actually disabled.
+///
+/// That is the whole reason this type exists rather than another `NoopMemory`
+/// call site. A fixture that cannot fail is not a fixture.
+///
+/// Deliberately not sqlite, and deliberately not the engine's factory: what
+/// those tests need is a store that retains, which is a `HashMap` behind a
+/// lock. Nothing about them was ever about SQL.
+///
+/// [`Memory`]: tinymemory_api::traits::Memory
+#[derive(Debug, Default)]
+pub(crate) struct RetainingMemory {
+    entries: std::sync::Mutex<Vec<tinymemory_api::types::MemoryEntry>>,
+}
+
+#[async_trait::async_trait]
+impl tinymemory_api::traits::Memory for RetainingMemory {
+    fn name(&self) -> &str {
+        "retaining_test_memory"
+    }
+
+    async fn store(
+        &self,
+        namespace: &str,
+        key: &str,
+        content: &str,
+        category: tinymemory_api::types::MemoryCategory,
+        session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let mut entries = self.entries.lock().expect("entries lock");
+        // Upsert on `(namespace, key)`, which is the contract's own rule for
+        // the entry tier — a second write under one key must replace, not
+        // accumulate, or a count assertion measures retries.
+        if let Some(existing) = entries
+            .iter_mut()
+            .find(|e| e.namespace.as_deref() == Some(namespace) && e.key == key)
+        {
+            existing.content = content.to_string();
+            return Ok(());
+        }
+        entries.push(tinymemory_api::types::MemoryEntry {
+            id: format!("{namespace}:{key}"),
+            key: key.to_string(),
+            content: content.to_string(),
+            namespace: Some(namespace.to_string()),
+            category,
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            session_id: session_id.map(str::to_string),
+            score: None,
+            taint: Default::default(),
+        });
+        Ok(())
+    }
+
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        _opts: tinymemory_api::recall::RecallOpts<'_>,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::MemoryEntry>> {
+        // Substring matching, not ranking. A test that needs relevance order
+        // is asserting an engine's scoring model and belongs upstream.
+        let entries = self.entries.lock().expect("entries lock");
+        Ok(entries
+            .iter()
+            .filter(|e| e.content.contains(query))
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn get(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> anyhow::Result<Option<tinymemory_api::types::MemoryEntry>> {
+        Ok(self
+            .entries
+            .lock()
+            .expect("entries lock")
+            .iter()
+            .find(|e| e.namespace.as_deref() == Some(namespace) && e.key == key)
+            .cloned())
+    }
+
+    async fn list(
+        &self,
+        namespace: Option<&str>,
+        category: Option<&tinymemory_api::types::MemoryCategory>,
+        session_id: Option<&str>,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::MemoryEntry>> {
+        Ok(self
+            .entries
+            .lock()
+            .expect("entries lock")
+            .iter()
+            .filter(|e| namespace.is_none_or(|ns| e.namespace.as_deref() == Some(ns)))
+            .filter(|e| category.is_none_or(|c| &e.category == c))
+            .filter(|e| session_id.is_none_or(|s| e.session_id.as_deref() == Some(s)))
+            .cloned()
+            .collect())
+    }
+
+    async fn forget(&self, namespace: &str, key: &str) -> anyhow::Result<bool> {
+        let mut entries = self.entries.lock().expect("entries lock");
+        let before = entries.len();
+        entries.retain(|e| !(e.namespace.as_deref() == Some(namespace) && e.key == key));
+        Ok(entries.len() != before)
+    }
+
+    async fn namespace_summaries(
+        &self,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::NamespaceSummary>> {
+        Ok(Vec::new())
+    }
+
+    async fn count(&self) -> anyhow::Result<usize> {
+        Ok(self.entries.lock().expect("entries lock").len())
+    }
+
+    async fn health_check(&self) -> bool {
+        true
+    }
+}
+
+/// The shorthand for a test that writes through an agent and reads it back.
+pub(crate) fn retaining_memory() -> Arc<dyn tinymemory_api::traits::Memory> {
+    Arc::new(RetainingMemory::default())
+}

@@ -238,17 +238,16 @@ fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     (mem, tmp)
 }
 
-fn make_sqlite_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
-    // The embedding seam fails loudly when unwired; before the memory
-    // extraction this was a direct call and needed no setup.
+/// A memory that **retains**, for the two auto-save tests that read it back.
+///
+/// This was `make_sqlite_memory` and asked the engine's factory for a
+/// `backend = "sqlite"` store. The name went with the engine: nothing in
+/// either caller is about SQL — they write through the agent and then assert
+/// on `count()` — so what they need is a store that keeps things, and the
+/// rename says which of the two properties is load-bearing.
+fn make_retaining_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     let tmp = tempfile::TempDir::new().unwrap();
-    let _cfg = MemoryConfig {
-        backend: "sqlite".into(),
-        ..MemoryConfig::default()
-    };
-    // The embedding seam fails loudly when unwired; before the memory
-    // extraction this was a direct call and needed no setup.
-    let mem = crate::openhuman::memory::test_support::noop_memory();
+    let mem = crate::openhuman::memory::test_support::retaining_memory();
     (mem, tmp)
 }
 
