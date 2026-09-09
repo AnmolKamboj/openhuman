@@ -3159,7 +3159,7 @@ async fn agent_public_tools_cover_validation_and_metadata_paths() {
 
 #[tokio::test]
 async fn agent_preference_tools_tree_loader_and_triage_events_cover_public_edges() {
-    let memory = Arc::new(RecordingMemory::default());
+    let _memory = Arc::new(RecordingMemory::default());
     let security = Arc::new(SecurityPolicy::default());
 
     assert_eq!(FacetClass::parse(" Tooling "), Some(FacetClass::Tooling));

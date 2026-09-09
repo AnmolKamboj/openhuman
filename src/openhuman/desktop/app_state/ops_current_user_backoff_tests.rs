@@ -7,7 +7,6 @@
 
 use super::*;
 use once_cell::sync::Lazy as TestLazy;
-use serde_json::json;
 
 // ── Current-user failure backoff (#5624) ────────────────────────────────────
 //

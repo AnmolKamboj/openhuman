@@ -311,7 +311,6 @@ async fn skill_listener_closed_channel_nulls_rx_and_is_not_a_signal() {
 fn refresh_workflows_picks_up_skill_installed_on_disk() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::skills::ops_types::{SKILL_MD, TRUST_MARKER};
 
     // Isolated, trusted workspace with one project-scope skill on disk.
@@ -330,12 +329,11 @@ fn refresh_workflows_picks_up_skill_installed_on_disk() {
     )
     .unwrap();
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &wsp).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -383,7 +381,6 @@ fn refresh_workflows_picks_up_skill_installed_on_disk() {
 fn refresh_workflows_retracts_skill_removed_from_disk() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::skills::ops_types::{SKILL_MD, TRUST_MARKER};
 
     let ws = tempfile::TempDir::new().expect("temp workspace");
@@ -403,12 +400,11 @@ fn refresh_workflows_retracts_skill_removed_from_disk() {
     )
     .unwrap();
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &wsp).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -492,7 +488,6 @@ fn refresh_workflows_retracts_skill_removed_from_disk() {
 async fn turn_without_tools_returns_text() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -505,12 +500,11 @@ async fn turn_without_tools_returns_text() {
         }]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -534,7 +528,6 @@ async fn turn_without_tools_returns_text() {
 async fn last_turn_usage_is_public_and_non_draining() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -553,12 +546,11 @@ async fn last_turn_usage_is_public_and_non_draining() {
         }]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
