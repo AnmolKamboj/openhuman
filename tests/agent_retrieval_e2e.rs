@@ -55,9 +55,6 @@ fn ensure_memory_seams() {
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
                 let config = std::sync::Arc::new(Config::default());
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    config.clone(),
-                );
                 #[cfg(feature = "modules")]
                 openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })

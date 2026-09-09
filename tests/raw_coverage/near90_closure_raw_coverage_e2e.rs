@@ -113,9 +113,6 @@ fn ensure_memory_seams(config: Arc<openhuman_core::openhuman::config::Config>) {
         .name("round20-memory-seams".to_string())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::clone(
-                &config,
-            ));
             #[cfg(feature = "modules")]
             openhuman_core::openhuman::modules::memory::set_modules_policy(config);
         })

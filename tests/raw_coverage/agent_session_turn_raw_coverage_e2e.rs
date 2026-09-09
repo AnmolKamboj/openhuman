@@ -75,9 +75,6 @@ fn ensure_memory_seams() {
             .name("agent-session-turn-raw-coverage-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    Arc::new(Config::default()),
-                );
             })
             .expect("spawn agent session turn raw coverage seam installer")
             .join()

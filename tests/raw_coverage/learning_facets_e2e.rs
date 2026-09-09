@@ -115,9 +115,6 @@ fn ensure_memory_seams() {
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
                 let config = Arc::new(shared_config_at(learning_workspace()));
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    config.clone(),
-                );
                 #[cfg(feature = "modules")]
                 openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })

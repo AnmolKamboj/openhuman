@@ -18,9 +18,6 @@ fn ensure_memory_seams() {
             .name("round23-memory-source-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
-                    Arc::new(Config::default()),
-                );
             })
             .expect("spawn round23 memory source seam installer")
             .join()
