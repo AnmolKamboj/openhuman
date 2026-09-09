@@ -47,7 +47,7 @@ impl Drop for WorkspaceEnvGuard {
 /// guard for the whole test: `let _env = ensure_memory_client();`.
 #[must_use]
 fn ensure_memory_client() -> WorkspaceEnvGuard {
-    let workspace = crate::openhuman::memory::ops::ensure_shared_memory_client();
+    let workspace = crate::openhuman::memory::ops::shared_memory_test_workspace();
     WorkspaceEnvGuard::pin(&workspace)
 }
 

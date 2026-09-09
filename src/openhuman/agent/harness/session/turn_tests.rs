@@ -382,7 +382,6 @@ impl Drop for WorkspaceEnvGuard {
 fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
@@ -396,9 +395,8 @@ fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
     // runs the startup wiring that installs it, so the helper installs it
     // itself. `install_for_tests` is idempotent (a `Once`), so every helper in
     // this file calling it costs one install for the whole binary.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
 
     let mut builder = Agent::builder()
         .chat_model(Arc::new(DummyProvider))
@@ -452,9 +450,8 @@ fn make_agent_with_builder_and_dispatcher(
         ..crate::openhuman::config::MemoryConfig::default()
     };
     // The embedding seam, as above.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
 
     Agent::builder()
         .chat_model(provider)
@@ -508,8 +505,7 @@ fn make_agent_with_memory(
 
 fn make_real_memory(workspace: &std::path::Path) -> Arc<dyn Memory> {
     use crate::openhuman::inference::embeddings::NoopEmbedding;
-    use tinymemory_core::store::UnifiedMemory;
-    Arc::new(UnifiedMemory::new(workspace, Arc::new(NoopEmbedding), None).unwrap())
+    Arc::new(crate::openhuman::memory::tool_memory::test_helpers::MockMemory::default())
 }
 
 // ── bound_cached_transcript_messages — TAURI-RUST-7 trailing-strip ─────

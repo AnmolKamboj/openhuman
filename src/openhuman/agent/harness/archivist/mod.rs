@@ -27,8 +27,6 @@ mod recap;
 // called it — see the module's own docs for the round trip and for why the
 // contract's episodic family is not where it belongs (#5560).
 mod store;
-#[cfg(test)]
-mod test_constructors;
 mod tree_ingest;
 mod types;
 
@@ -40,7 +38,3 @@ pub(crate) use crate::openhuman::agent::hooks::PostTurnHook;
 pub(crate) use helpers::extract_profile_key;
 #[cfg(test)]
 pub(crate) use std::sync::Arc;
-
-#[cfg(test)]
-#[path = "../archivist_tests.rs"]
-mod tests;

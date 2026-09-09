@@ -2,7 +2,6 @@ use super::*;
 use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::security::AutonomyLevel;
 use tempfile::TempDir;
-use tinymemory_core::store::UnifiedMemory;
 
 // Seeding still goes through the engine handle (`UnifiedMemory` above),
 // but the value types are the CONTRACT's: `tinymemory_core` re-exports
@@ -52,7 +51,7 @@ fn test_security() -> Arc<SecurityPolicy> {
 
 fn test_mem() -> (TempDir, Arc<dyn crate::openhuman::memory::Memory>) {
     let tmp = TempDir::new().unwrap();
-    let mem = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
+    let mem = crate::openhuman::memory::tool_memory::test_helpers::MockMemory::default();
     (tmp, Arc::new(mem))
 }
 

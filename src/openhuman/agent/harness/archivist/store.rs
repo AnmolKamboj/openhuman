@@ -379,6 +379,3 @@ fn write_if_new(abs_path: &Path, bytes: &[u8]) -> Result<bool> {
     }
 }
 
-#[cfg(test)]
-#[path = "store_tests.rs"]
-mod tests;

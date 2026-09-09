@@ -479,7 +479,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "shlex 1.3.0",
  "syn 2.0.119",
 ]
@@ -1593,22 +1593,6 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "dhat"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98cd11d84628e233de0ce467de10b8633f4ddaecafadefc86e13b84b8739b827"
-dependencies = [
- "backtrace",
- "lazy_static",
- "mintex",
- "parking_lot",
- "rustc-hash 1.1.0",
- "serde",
- "serde_json",
- "thousands",
 ]
 
 [[package]]
@@ -3503,12 +3487,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mintex"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c505b3e17ed6b70a7ed2e67fbb2c560ee327353556120d6e72f5232b6880d536"
-
-[[package]]
 name = "mio"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4112,7 +4090,6 @@ dependencies = [
  "cron",
  "crossterm",
  "curve25519-dalek",
- "dhat",
  "directories",
  "dirs 5.0.1",
  "dotenvy",
@@ -4172,7 +4149,6 @@ dependencies = [
  "tinychannels",
  "tinychannels-bus",
  "tinyconnectors-bus",
- "tinycortex",
  "tinydocs-bus",
  "tinyflows",
  "tinyflows-catalog",
@@ -4187,9 +4163,7 @@ dependencies = [
  "tinymemory-api",
  "tinymemory-bus",
  "tinymemory-conformance",
- "tinymemory-core",
  "tinymemory-sources",
- "tinymemory-tinycortex",
  "tinyruntime-bus",
  "tinytools",
  "tinyvoice-bus",
@@ -4819,7 +4793,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "rustls",
  "socket2",
  "thiserror 2.0.20",
@@ -4840,7 +4814,7 @@ dependencies = [
  "rand 0.10.2",
  "rand_pcg",
  "ring",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "rustls",
  "rustls-pki-types",
  "slab",
@@ -5316,12 +5290,6 @@ name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b74b56ffa8bb2830709a538c2cbcae9aa062db0d2a42563bfb09bdaae44020eb"
-
-[[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
@@ -6307,12 +6275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "thousands"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
-
-[[package]]
 name = "thread_local"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6551,42 +6513,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinycortex"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs 6.0.0",
- "futures",
- "log",
- "parking_lot",
- "rand 0.10.2",
- "regex",
- "reqwest",
- "rusqlite",
- "schemars",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "tinycortex-api",
- "tinyinference",
- "tokio",
- "toml 1.1.4+spec-1.1.0",
- "tracing",
- "uuid",
- "walkdir",
-]
-
-[[package]]
-name = "tinycortex-api"
-version = "0.1.1"
-dependencies = [
- "tinymemory-api",
-]
-
-[[package]]
 name = "tinydocs-bus"
 version = "0.1.15"
 dependencies = [
@@ -6768,38 +6694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinymemory-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs 6.0.0",
- "futures",
- "log",
- "parking_lot",
- "rand 0.10.2",
- "regex",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tinycortex",
- "tinycortex-api",
- "tinyinference",
- "tinymemory-api",
- "tinymemory-sources",
- "tinymemory-sync",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "walkdir",
-]
-
-[[package]]
 name = "tinymemory-sources"
 version = "0.1.0"
 dependencies = [
@@ -6818,35 +6712,6 @@ dependencies = [
  "tracing",
  "uuid",
  "walkdir",
-]
-
-[[package]]
-name = "tinymemory-sync"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "log",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "tinymemory-tinycortex"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "log",
- "rusqlite",
- "serde",
- "serde_json",
- "tinycortex",
- "tinymemory-api",
- "tinymemory-core",
- "tokio",
- "uuid",
 ]
 
 [[package]]

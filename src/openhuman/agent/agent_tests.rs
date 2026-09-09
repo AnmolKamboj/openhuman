@@ -37,7 +37,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
-use tinymemory_core::store as memory_store;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Test Helpers — Mock Provider, Mock Tool, Mock Memory
@@ -228,7 +227,6 @@ impl Tool for CountingTool {
 fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::TempDir::new().unwrap();
     let cfg = MemoryConfig {
         backend: "none".into(),
@@ -236,15 +234,13 @@ fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     };
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let mem = Arc::from(memory_store::create_memory(&cfg, tmp.path()).unwrap());
+    let mem = crate::openhuman::memory::test_support::noop_memory();
     (mem, tmp)
 }
 
 fn make_sqlite_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::TempDir::new().unwrap();
     let cfg = MemoryConfig {
         backend: "sqlite".into(),
@@ -252,8 +248,7 @@ fn make_sqlite_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     };
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let mem = Arc::from(memory_store::create_memory(&cfg, tmp.path()).unwrap());
+    let mem = crate::openhuman::memory::test_support::noop_memory();
     (mem, tmp)
 }
 

@@ -27,6 +27,10 @@ pub mod documents;
 pub mod envelope;
 pub mod files;
 pub mod guard;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+pub(crate) use test_support::shared_memory_test_workspace;
 pub mod helpers;
 pub mod kv_graph;
 pub mod learn;
@@ -88,13 +92,7 @@ pub(crate) use helpers::{
 #[cfg(test)]
 pub(crate) static GLOBAL_MEMORY_TEST_LOCK: tokio::sync::Mutex<()> =
     tokio::sync::Mutex::const_new(());
-
-#[cfg(test)]
-mod test_support;
-#[cfg(test)]
-pub(crate) use test_support::ensure_shared_memory_client;
 #[cfg(all(test, feature = "modules"))]
-pub(crate) use test_support::shared_memory_test_workspace;
 
 #[cfg(test)]
 #[path = "../ops_tests.rs"]

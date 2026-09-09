@@ -2381,7 +2381,6 @@ mod streaming_support {
     };
     use tinyinference::tool::ToolCall;
     use tinyinference::usage::Usage;
-    use tinymemory_core::store as memory_store;
 
     // ── ScriptedProvider ────────────────────────────────────────────────────
     // Copied (minimal) from tests/agent_session_turn_raw_coverage_e2e.rs:76-152.
@@ -2477,12 +2476,76 @@ mod streaming_support {
         (temp, path)
     }
 
-    fn memory_for_workspace_s(path: &Path) -> Arc<dyn Memory> {
-        let cfg = MemoryConfig {
-            backend: "none".to_string(),
-            ..MemoryConfig::default()
-        };
-        Arc::from(memory_store::create_memory(&cfg, path).unwrap())
+    /// A memory that stores nothing, which is what this helper always built.
+    ///
+    /// It used to ask the engine's factory for `backend: "none"` — an engine
+    /// call whose whole purpose was to get back something that does not store.
+    /// The agent under test needs *a* memory to be constructed with; it never
+    /// reads one back. So the no-op is not a downgrade from what was here, it
+    /// is the same behaviour without linking 133k lines to obtain it.
+    #[derive(Debug)]
+    struct NoMemory;
+
+    #[async_trait::async_trait]
+    impl Memory for NoMemory {
+        fn name(&self) -> &str {
+            "none"
+        }
+        async fn store(
+            &self,
+            _namespace: &str,
+            _key: &str,
+            _content: &str,
+            _category: openhuman_core::openhuman::memory::api::types::MemoryCategory,
+            _session_id: Option<&str>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn recall(
+            &self,
+            _query: &str,
+            _limit: usize,
+            _opts: openhuman_core::openhuman::memory::api::recall::RecallOpts<'_>,
+        ) -> anyhow::Result<Vec<openhuman_core::openhuman::memory::api::types::MemoryEntry>>
+        {
+            Ok(Vec::new())
+        }
+        async fn get(
+            &self,
+            _namespace: &str,
+            _key: &str,
+        ) -> anyhow::Result<Option<openhuman_core::openhuman::memory::api::types::MemoryEntry>>
+        {
+            Ok(None)
+        }
+        async fn list(
+            &self,
+            _namespace: Option<&str>,
+            _category: Option<&openhuman_core::openhuman::memory::api::types::MemoryCategory>,
+            _session_id: Option<&str>,
+        ) -> anyhow::Result<Vec<openhuman_core::openhuman::memory::api::types::MemoryEntry>>
+        {
+            Ok(Vec::new())
+        }
+        async fn forget(&self, _namespace: &str, _key: &str) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        async fn namespace_summaries(
+            &self,
+        ) -> anyhow::Result<Vec<openhuman_core::openhuman::memory::api::types::NamespaceSummary>>
+        {
+            Ok(Vec::new())
+        }
+        async fn count(&self) -> anyhow::Result<usize> {
+            Ok(0)
+        }
+        async fn health_check(&self) -> bool {
+            true
+        }
+    }
+
+    fn memory_for_workspace_s(_path: &Path) -> Arc<dyn Memory> {
+        Arc::new(NoMemory)
     }
 
     pub fn agent_with_s(

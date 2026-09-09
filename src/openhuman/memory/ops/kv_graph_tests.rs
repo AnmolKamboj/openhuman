@@ -1,7 +1,7 @@
 use super::*;
 
 fn ensure_memory_client() {
-    crate::openhuman::memory::ops::ensure_shared_memory_client();
+    crate::openhuman::memory::ops::shared_memory_test_workspace();
 }
 
 fn unique_namespace(prefix: &str) -> String {
