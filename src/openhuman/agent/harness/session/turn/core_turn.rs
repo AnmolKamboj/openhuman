@@ -71,12 +71,9 @@ impl Agent {
                 self.fetch_connected_integrations().await;
                 // Sessions born without a cached Composio view still need
                 // a one-shot delegation-surface reconcile before the system
-                // prompt is frozen. The shared-Arc failure path returns
-                // `false`, but on turn 1 the Arc should still be uniquely
-                // owned; a `false` return here indicates a programmer error
-                // and the warn-level log inside the helper already surfaces
-                // it, so we keep the existing best-effort contract.
-                let _ = self.refresh_delegation_tools();
+                // prompt is frozen. It runs before `build_system_prompt`
+                // below so the rendered tool catalogue carries the delegates.
+                self.refresh_delegation_tools();
             }
             let learned = self.fetch_learned_context().await;
             let rendered_prompt = self.build_system_prompt(learned)?;

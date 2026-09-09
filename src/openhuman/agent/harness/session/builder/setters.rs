@@ -20,6 +20,7 @@ impl AgentBuilder {
         Self {
             turn_model_source: None,
             tools: None,
+            synthesized_tools: None,
             visible_tool_names: None,
             subagent_tool_ceiling_names: None,
             memory: None,
@@ -91,6 +92,14 @@ impl AgentBuilder {
     /// Sets the available tools for the agent.
     pub fn tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    /// Sets the delegation tools synthesised for the session's initial
+    /// connection set — see [`Agent::synthesized_tools`]. A name a durable
+    /// tool already owns is dropped in [`Self::build`]. Defaults to none.
+    pub fn synthesized_tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
+        self.synthesized_tools = Some(tools);
         self
     }
 
@@ -460,7 +469,23 @@ impl AgentBuilder {
         let tools = self
             .tools
             .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
-        let tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
+        // The synthesised set lives beside the durable registry, never inside
+        // it (`Agent::synthesized_tools`); a durable name wins a collision.
+        let synthesized_tools = super::drop_synthesized_name_collisions(
+            &tools,
+            self.synthesized_tools.unwrap_or_default(),
+        );
+        let synthesized_tool_names: std::collections::HashSet<String> = synthesized_tools
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect();
+        // Durable specs first, synthesised after — every reader's order.
+        let durable_tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
+        let tool_specs: Vec<ToolSpec> = durable_tool_specs
+            .iter()
+            .cloned()
+            .chain(synthesized_tools.iter().map(|tool| tool.spec()))
+            .collect();
 
         let mut visible_names = self.visible_tool_names.unwrap_or_default();
         // Resolved here rather than at its historical position below: the pack
@@ -476,7 +501,11 @@ impl AgentBuilder {
         // advertised surface shrinks. Applied here, before the policy filter,
         // so the visible set and the policy session cannot disagree.
         if visible_names.is_empty() {
-            visible_names = tools.iter().map(|tool| tool.name().to_string()).collect();
+            visible_names = tools
+                .iter()
+                .chain(synthesized_tools.iter())
+                .map(|tool| tool.name().to_string())
+                .collect();
         }
         crate::openhuman::tools::toolpacks::strip_packed_from_visible(
             &mut visible_names,
@@ -491,12 +520,18 @@ impl AgentBuilder {
             .event_channel
             .clone()
             .unwrap_or_else(|| "internal".to_string());
-        let tool_policy_session = ToolPolicyEngine::build_session(
+        // Classify both sets: a synthesised delegate needs a decision too.
+        let all_tools: Vec<&dyn Tool> = tools
+            .iter()
+            .chain(synthesized_tools.iter())
+            .map(|tool| tool.as_ref())
+            .collect();
+        let tool_policy_session = ToolPolicyEngine::build_session_from_refs(
             &agent_definition_name,
             &event_channel,
             "session",
             &config.channel_permissions,
-            &tools,
+            &all_tools,
             &visible_names,
         );
 
@@ -510,12 +545,12 @@ impl AgentBuilder {
         // `tool_policy_session` marks both channel-blocked and role-hidden tools
         // as restricted, so deriving the child ceiling from it would reintroduce
         // exactly that conflation.
-        let channel_policy_session = ToolPolicyEngine::build_session(
+        let channel_policy_session = ToolPolicyEngine::build_session_from_refs(
             &agent_definition_name,
             &event_channel,
             "session",
             &config.channel_permissions,
-            &tools,
+            &all_tools,
             &std::collections::HashSet::new(),
         );
         let mut subagent_tool_ceiling_names = self.subagent_tool_ceiling_names.unwrap_or_default();
@@ -605,7 +640,9 @@ impl AgentBuilder {
         Ok(Agent {
             turn_model_source,
             tools,
+            synthesized_tools: Arc::new(synthesized_tools),
             tool_specs: Arc::new(tool_specs),
+            durable_tool_specs: Arc::new(durable_tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),
             visible_tool_names: visible_names,
             subagent_tool_ceiling_names,
@@ -702,8 +739,7 @@ impl AgentBuilder {
             pending_skill_announcement: Vec::new(),
             pending_skill_retraction: Vec::new(),
             archivist_hook: self.archivist_hook,
-            synthesized_tool_names: std::collections::HashSet::new(),
-            pending_synthesized_tools_mask: std::collections::HashSet::new(),
+            synthesized_tool_names,
             pending_turn_overrides: super::super::types::TurnOverrides::default(),
         })
     }
