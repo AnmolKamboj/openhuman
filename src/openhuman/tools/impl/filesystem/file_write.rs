@@ -12,6 +12,7 @@ const MAX_CONTENT_BYTES: usize = 5 * 1024 * 1024;
 pub struct FileWriteTool {
     security: Arc<SecurityPolicy>,
     approval_workspace_root: Option<std::path::PathBuf>,
+    sink: Arc<dyn super::write_sink::FileSink>,
 }
 
 impl FileWriteTool {
@@ -19,7 +20,15 @@ impl FileWriteTool {
         Self {
             security,
             approval_workspace_root: None,
+            sink: super::write_sink::os_sink(),
         }
+    }
+
+    /// Sends this tool's writes somewhere other than the OS.
+    #[cfg(test)]
+    pub fn with_sink(mut self, sink: Arc<dyn super::write_sink::FileSink>) -> Self {
+        self.sink = sink;
+        self
     }
 
     /// Use the same effective workspace root for approval routing that tool
@@ -31,6 +40,7 @@ impl FileWriteTool {
         Self {
             security,
             approval_workspace_root: Some(approval_workspace_root),
+            sink: super::write_sink::os_sink(),
         }
     }
 }
@@ -201,7 +211,7 @@ impl FileWriteTool {
             }
         }
 
-        match tokio::fs::write(&resolved_target, content).await {
+        match self.sink.write(&resolved_target, content.as_bytes()).await {
             Ok(()) => {
                 if let Some(agent_id) = file_state::current_file_state_agent_id() {
                     file_state::record_write(&agent_id, resolved_target);
