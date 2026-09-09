@@ -258,15 +258,13 @@ async fn execute_reports_a_bomb_shaped_header_without_decoding_pixels() {
     tokio::fs::write(&png_path, &bytes).await.unwrap();
 
     let tool = ImageInfoTool::new(test_security());
-    let start = std::time::Instant::now();
-    let result = tool
-        .execute(json!({"path": png_path.to_string_lossy()}))
-        .await
-        .unwrap();
-    assert!(
-        start.elapsed() < std::time::Duration::from_secs(2),
-        "a 34-byte file must resolve immediately regardless of claimed dimensions"
-    );
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        tool.execute(json!({"path": png_path.to_string_lossy()})),
+    )
+    .await
+    .expect("image-info execution must settle within two seconds")
+    .unwrap();
     assert!(!result.is_error, "{}", result.output());
     assert!(result.output().contains("Dimensions: 60000x60000"));
 
