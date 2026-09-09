@@ -3,7 +3,7 @@ fn create_chat_model_with_model_id_inner(
     role: &str,
     config: &Config,
 ) -> anyhow::Result<(Arc<dyn ChatModel<()>>, String)> {
-    #[cfg(any(test, feature = "e2e-test-support"))]
+    #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
     if let Some(model) = test_provider_override::current() {
         return Ok((model, "mock-model".to_string()));
     }
@@ -14,11 +14,11 @@ fn create_chat_model_with_model_id_inner(
     // override is installed. The public wrapper supplies the construction-time
     // default while preserving an explicit per-call `ModelRequest` temperature.
     let test_override_active = {
-        #[cfg(any(test, feature = "e2e-test-support"))]
+        #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
         {
             test_provider_override::current().is_some()
         }
-        #[cfg(not(any(test, feature = "e2e-test-support")))]
+        #[cfg(not(any(test, feature = "e2e-test-support", feature = "rss-bench")))]
         {
             false
         }
@@ -91,7 +91,7 @@ fn resolves_to_managed_backend(role: &str, config: &Config) -> bool {
 /// `resolves_to_managed_backend` is a pure config read that would otherwise
 /// still call this "managed" in a test with a bare default `Config`.
 pub async fn probe_inference_readiness(role: &str, config: &Config) -> Result<(), String> {
-    #[cfg(any(test, feature = "e2e-test-support"))]
+    #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
     if test_provider_override::current().is_some() {
         log::debug!(
             "[flows][inference-probe] role={role} test model override active — skipping probe"
@@ -161,16 +161,16 @@ fn create_chat_model_from_string_with_model_id_inner(
     provider: &str,
     config: &Config,
 ) -> anyhow::Result<(Arc<dyn ChatModel<()>>, String)> {
-    #[cfg(any(test, feature = "e2e-test-support"))]
+    #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
     if let Some(model) = test_provider_override::current() {
         return Ok((model, "mock-model".to_string()));
     }
     let test_override_active = {
-        #[cfg(any(test, feature = "e2e-test-support"))]
+        #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
         {
             test_provider_override::current().is_some()
         }
-        #[cfg(not(any(test, feature = "e2e-test-support")))]
+        #[cfg(not(any(test, feature = "e2e-test-support", feature = "rss-bench")))]
         {
             false
         }
