@@ -58,13 +58,13 @@ required-features = ["http-server", "bin-tools"]
 # `rss-bench` feature so no benchmark code enters the shipped build. Build with
 # `cargo build --release --features rss-bench --bin rss-bench`.
 #
-# It survives the engine removal because it never measured the engine. The
-# `library-profile` bins that shared this gate did — they embedded
-# `tinymemory-core` in-process, which is why the feature used to name the engine
-# crates — and they are gone with it. This one builds an `Agent` roster over its
-# own in-file `NoopMemory` and samples RSS; its own doc comment explains that it
-# hand-rolls that rather than asking the factory, because
-# `create_memory(backend = "none")` never returned a no-op backend.
+# It survives the engine removal because it never measured the engine: it builds
+# an `Agent` roster over its own in-file `NoopMemory` and samples RSS, and its
+# own doc comment explains that it hand-rolls that store rather than asking the
+# factory, because `create_memory(backend = "none")` never returned a no-op
+# backend. What the feature used to name the engine crates for was two
+# `library-profile` *scenarios* — see that target's comment below; the binary
+# itself is still here.
 [[bin]]
 name = "rss-bench"
 path = "src/bin/rss_bench.rs"

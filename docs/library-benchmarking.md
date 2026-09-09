@@ -11,14 +11,14 @@ subconscious pass, a memory ingest, a bare embed) that each have their own
 startup cost, steady-state footprint, and growth curve.
 
 This document describes the benchmark environment built to measure that: a
-pinned `library-profile` binary with eight scenarios, four driver scripts
+pinned `library-profile` binary with six scenarios, four driver scripts
 under `scripts/profile/`, and the comparison point the team cares about
 (ZeroClaw). It builds on the manual investigation in
 [`docs/resource-profiling-session-2026-07-21.md`](resource-profiling-session-2026-07-21.md);
 read that document for the deep memory/CPU attribution work. This document is
 about running repeatable benchmarks, not re-deriving those findings.
 
-## The eight scenarios
+## The scenarios
 
 All scenarios run in `target/release/library-profile <scenario>`, replace
 network inference with a deterministic provider (`rss-bench` feature), and
@@ -55,15 +55,15 @@ Six scripts under `scripts/profile/` (each has `-h`/`--help`):
   ```bash
   ./scripts/profile/library-bench.sh                     # default build, all scenarios
   ./scripts/profile/library-bench.sh --slim               # --no-default-features recipe
-  ./scripts/profile/library-bench.sh --scenarios "long-agent,subagents" --turns 50 --warm
+  ./scripts/profile/library-bench.sh --scenarios "long-agent,subagent-storm" --turns 50 --warm
   ```
 
 - **`library-cpu.sh`** — a `samply` wrapper for one scenario's CPU profile,
   isolated from persistence/timezone noise by default.
 
   ```bash
-  ./scripts/profile/library-cpu.sh subagents
-  samply load target/profile/rust-library/subagents-cpu.json.gz
+  ./scripts/profile/library-cpu.sh subagent-storm
+  samply load target/profile/rust-library/subagent-storm-cpu.json.gz
   ```
 
 - **`library-heap.sh`** — builds the `rss-bench-dhat` variant and runs a
@@ -126,7 +126,7 @@ behavior, not linked code size.
 | Variable | Effect |
 | --- | --- |
 | `OPENHUMAN_PROFILE_TURNS` | Turn count for `long-agent` (default 25). |
-| `OPENHUMAN_PROFILE_PREWARM_SUBAGENTS=1` | Run one warm-up turn before measuring (`subagents`/`subconscious`), isolating first-use cost from steady state. |
+| `OPENHUMAN_PROFILE_PREWARM_SUBAGENTS=1` | Run one warm-up turn before measuring (`subagent-storm`), isolating first-use cost from steady state. |
 | `OPENHUMAN_PROFILE_DISABLE_MEMORY_WRITES=1` | Disable `memory.auto_save` and episodic capture, isolating orchestration from persistence. |
 | `OPENHUMAN_PROFILE_FORCE_UTC=1` | Skip `iana_time_zone`/CoreFoundation timezone resolution. |
 | `OPENHUMAN_PROFILE_HOLD_SECS` / `HOLD_BEFORE_SECS` | Pause the process at settled/baseline state for external inspection (`vmmap`, `heap`, `malloc_history`, Instruments). |
@@ -272,12 +272,12 @@ Start cheap, escalate only as needed:
 4. **Instruments / `vmmap` / `heap` / `malloc_history`** — deepest macOS-native attribution, using the `OPENHUMAN_PROFILE_HOLD_SECS` / `HOLD_BEFORE_SECS` hooks to pause the process at baseline or settled state:
 
    ```bash
-   OPENHUMAN_PROFILE_HOLD_SECS=120 target/release/library-profile subagents &
+   OPENHUMAN_PROFILE_HOLD_SECS=120 target/release/library-profile subagent-storm &
    vmmap -summary <pid>
    heap -sH <pid>
 
    MallocStackLogging=1 OPENHUMAN_PROFILE_HOLD_SECS=120 \
-     target/release/library-profile subagents &
+     target/release/library-profile subagent-storm &
    malloc_history <pid> -allBySize
    ```
 
