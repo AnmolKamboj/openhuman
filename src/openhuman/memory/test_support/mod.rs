@@ -256,3 +256,40 @@ impl tinymemory_api::traits::Memory for RetainingMemory {
 pub(crate) fn retaining_memory() -> Arc<dyn tinymemory_api::traits::Memory> {
     Arc::new(RetainingMemory::default())
 }
+
+/// Wait out any in-flight load of the memory module.
+///
+/// A module is loaded once per process, by whichever caller asks first, and
+/// `modules::ops::state_of` reports `Loading` for the whole of it. Two correct
+/// answers to that transient are indistinguishable from a regression:
+/// `MemoryProvider::health` returns `degraded("the memory module is loading")`,
+/// and a handler that reaches the driver answers "memory is still starting".
+/// A test asserting a settled value therefore races whichever sibling triggered
+/// the load — invisible when it runs alone, and lost about as often as not when
+/// `cargo test --lib -- openhuman::memory` runs nine hundred of them in one
+/// process (openhuman#6172).
+///
+/// Awaiting the resolution is what makes this race-free, where polling
+/// `state_of` would only narrow the window: `Ready` and `Failed` are both
+/// terminal — tinybus keeps a refused library mapped, so a resolution is never
+/// retried — which means the state cannot return to `Loading` after this
+/// returns. The wait is bounded because a caller that gives up leaves the
+/// resolution running rather than cancelling it.
+///
+/// The outcome is deliberately ignored: a host with no artifact for its
+/// platform resolves to `Failed`, which is settled too, and what the caller
+/// asserts about that is the caller's business.
+#[cfg(feature = "modules")]
+pub(crate) async fn settle_memory_module() {
+    let _ = crate::openhuman::modules::ops::ensure_loaded_within(
+        &crate::openhuman::memory::binding::test_module_config(),
+        crate::openhuman::memory::binding::MODULE_ID,
+        Some(std::time::Duration::from_secs(30)),
+    )
+    .await;
+}
+
+/// Without the `modules` feature nothing loads a module, so nothing can be
+/// caught mid-load.
+#[cfg(not(feature = "modules"))]
+pub(crate) async fn settle_memory_module() {}
