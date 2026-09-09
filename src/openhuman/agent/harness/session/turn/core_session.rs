@@ -91,19 +91,13 @@ impl Agent {
         // model cannot enter the tool loop and answers in a single call. The
         // agent's durable `self.tools` / `self.visible_tool_names` are left
         // untouched — the next un-overridden turn gets the full toolbelt back.
-        let (turn_tools, turn_visible_tool_names) = if suppress_tools {
-            (
-                std::sync::Arc::new(Vec::new()),
-                std::collections::HashSet::new(),
-            )
-        } else {
-            (self.tools.clone(), self.visible_tool_names.clone())
-        };
+        let (turn_tools, turn_synthesized_tools, turn_visible_tool_names) =
+            self.turn_tool_sets(suppress_tools);
 
         tracing::info!(
             model = %effective_model,
             max_iterations,
-            tools = turn_tools.len(),
+            tools = turn_tools.len() + turn_synthesized_tools.len(),
             suppress_tools,
             "[agent_loop] routing chat turn through the tinyagents harness"
         );
@@ -159,6 +153,7 @@ impl Agent {
                     model: effective_model.to_string(),
                     messages,
                     tools: turn_tools,
+                    synthesized_tools: turn_synthesized_tools,
                     visible_tool_names: turn_visible_tool_names,
                     max_iterations,
                     on_progress: self.on_progress.clone(),

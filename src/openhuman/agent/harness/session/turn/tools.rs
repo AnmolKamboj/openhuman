@@ -7,6 +7,14 @@ use crate::openhuman::agent::progress::AgentProgress;
 
 use std::sync::Arc;
 
+/// One turn's tool inputs: the durable registry, the synthesised delegation
+/// set, and the callable-name allowlist. See [`Agent::turn_tool_sets`].
+type TurnToolSets = (
+    Arc<Vec<Box<dyn crate::openhuman::tools::Tool>>>,
+    Arc<Vec<Box<dyn crate::openhuman::tools::Tool>>>,
+    std::collections::HashSet<String>,
+);
+
 impl Agent {
     // ─────────────────────────────────────────────────────────────────
     // Sub-agent context snapshots
@@ -84,6 +92,32 @@ impl Agent {
             on_progress: self.on_progress.clone(),
             run_queue: self.run_queue.clone(),
         }
+    }
+
+    /// The tool sets and callable-name allowlist for one turn.
+    ///
+    /// Returns `(durable tools, synthesised delegation tools, visible names)`.
+    /// The two tool sets stay separate all the way to dispatch — see
+    /// [`Agent::synthesized_tools`] for why they are not one `Arc`.
+    ///
+    /// `suppress_tools` is the per-turn scope override (#1725): a chat /
+    /// small-talk turn runs with an EMPTY tool set, so the provider request
+    /// carries no tool schema and the model answers in a single call. The
+    /// agent's durable fields are left untouched either way — the next
+    /// un-overridden turn gets the full toolbelt back.
+    pub(super) fn turn_tool_sets(&self, suppress_tools: bool) -> TurnToolSets {
+        if suppress_tools {
+            return (
+                Arc::new(Vec::new()),
+                Arc::new(Vec::new()),
+                std::collections::HashSet::new(),
+            );
+        }
+        (
+            Arc::clone(&self.tools),
+            Arc::clone(&self.synthesized_tools),
+            self.visible_tool_names.clone(),
+        )
     }
 
     /// Emit a lifecycle progress event. Uses `send().await` so control
@@ -277,33 +311,32 @@ impl Agent {
             new_hash
         );
 
-        let prev_integrations = std::mem::replace(&mut self.connected_integrations, cache_view);
-        if self.refresh_delegation_tools() {
-            self.last_seen_integrations_hash = new_hash;
-            self.connected_integrations_initialized = true;
-            // Surface newly-connected toolkits onto the next user message so
-            // the model acts on them on the FIRST post-connect ask instead of
-            // refusing from stale chat context. Schema-only refresh already
-            // updated the enum; this closes the prose/decision gap.
-            let connected_slugs: Vec<String> = self
-                .connected_integrations
-                .iter()
-                .map(|i| i.toolkit.clone())
-                .collect();
-            // Append (don't overwrite) so a second connect before the next
-            // user turn doesn't drop the first one's announcement. Slugs are
-            // already de-duped against `announced_integrations`, but guard the
-            // pending list too in case the same slug is re-queued.
-            for slug in newly_connected_slugs(&connected_slugs, &mut self.announced_integrations) {
-                if !self.pending_integration_announcement.contains(&slug) {
-                    self.pending_integration_announcement.push(slug);
-                }
+        // No rollback path: `refresh_delegation_tools` reconciles the specs and
+        // the executable instances in one pass and cannot half-apply, so there
+        // is no failed state to restore `connected_integrations` from.
+        self.connected_integrations = cache_view;
+        self.refresh_delegation_tools();
+        self.last_seen_integrations_hash = new_hash;
+        self.connected_integrations_initialized = true;
+        // Surface newly-connected toolkits onto the next user message so
+        // the model acts on them on the FIRST post-connect ask instead of
+        // refusing from stale chat context. The refresh above already
+        // updated the enum; this closes the prose/decision gap.
+        let connected_slugs: Vec<String> = self
+            .connected_integrations
+            .iter()
+            .map(|i| i.toolkit.clone())
+            .collect();
+        // Append (don't overwrite) so a second connect before the next
+        // user turn doesn't drop the first one's announcement. Slugs are
+        // already de-duped against `announced_integrations`, but guard the
+        // pending list too in case the same slug is re-queued.
+        for slug in newly_connected_slugs(&connected_slugs, &mut self.announced_integrations) {
+            if !self.pending_integration_announcement.contains(&slug) {
+                self.pending_integration_announcement.push(slug);
             }
-            true
-        } else {
-            self.connected_integrations = prev_integrations;
-            false
         }
+        true
     }
 
     /// Reconcile the tracked installed-skill set ([`Self::workflows`]) against
@@ -501,37 +534,41 @@ impl Agent {
     /// [`Self::last_seen_integrations_hash`] vs.
     /// [`crate::openhuman::integrations::composio::cached_active_integrations`]).
     ///
-    /// **Shared-Arc behavior**: when `self.tools` is currently shared
-    /// (e.g. an in-flight turn cloned the Arc into its tool source), we
-    /// still refresh `self.tool_specs` / `self.visible_tool_specs` so the
-    /// provider-facing schema updates immediately. The executable tool
-    /// registry is refreshed only when `self.tools` has unique ownership.
-    /// This keeps same-turn routing unblocked while preserving ownership
-    /// safety for non-cloneable `Box<dyn Tool>` values.
+    /// **Concurrency**: this cannot fail on a shared session. The synthesised
+    /// instances live in their own [`Agent::synthesized_tools`] `Arc`, which is
+    /// *replaced* rather than mutated in place — so an in-flight turn or a
+    /// spawned sub-agent holding a clone never blocks reconciliation. Those
+    /// readers keep the previous, self-consistent set for the rest of their
+    /// turn; the superseded instances are freed when the last of them drops.
     ///
-    /// **Return value** — `true` when schema reconciliation succeeded (or
-    /// no reconcile was needed). Returns `false` only when a non-shared
-    /// reconcile path failed unexpectedly.
-    pub fn refresh_delegation_tools(&mut self) -> bool {
+    /// This is what makes the schema and the executable surface inseparable.
+    /// Reconciling into `self.tools` instead required `Arc::get_mut`, which
+    /// fails under exactly that sharing — and the old code proceeded to publish
+    /// the new `tool_specs` anyway, advertising `delegate_*` tools to the
+    /// provider that were registered nowhere (#6145).
+    ///
+    /// Returns nothing: with the synthesised set held in its own `Arc` there is
+    /// no longer a way for this to half-apply, so the `bool` it used to hand
+    /// back — and the caller rollback keyed on it — had no reachable `false`.
+    pub fn refresh_delegation_tools(&mut self) {
         use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
         use crate::openhuman::tools::orchestrator_tools::collect_orchestrator_tools;
 
         let Some(reg) = AgentDefinitionRegistry::global() else {
             // No registry — there's nothing we can do until the
             // registry is initialised. The agent's surface stays at
-            // whatever the builder produced; callers can safely treat
-            // this as "no reconcile needed right now".
-            return true;
+            // whatever the builder produced.
+            return;
         };
         let Some(def) = reg.get(&self.agent_definition_id) else {
             log::debug!(
                 "[agent] refresh_delegation_tools: definition '{}' not in registry — skipping",
                 self.agent_definition_id
             );
-            return true;
+            return;
         };
         if def.subagents.is_empty() {
-            return true;
+            return;
         }
 
         let synthed = collect_orchestrator_tools(def, reg, &self.connected_integrations);
@@ -542,17 +579,17 @@ impl Agent {
 
         // Skip mutation when neither the previous nor the next synthesis
         // produced any names — saves work on agents without dynamic
-        // delegation.
+        // delegation. `synthesized_tools` is already empty in that state, so
+        // there is nothing to publish either.
         if self.synthesized_tool_names.is_empty() && synthed_names.is_empty() {
-            return true;
+            return;
         }
 
         // Mask of the previous synthesis — the names whose `tool_specs` are
         // currently live (this set is kept in lock-step with `tool_specs`).
         let old_synth = std::mem::take(&mut self.synthesized_tool_names);
 
-        // `tool_specs` are plain data and therefore cloneable; we can always
-        // reconcile schema even when the Arc is shared. Drop exactly the
+        // `tool_specs` are plain data and therefore cloneable. Drop exactly the
         // previous synthesised spec set, then append the fresh one.
         {
             let specs_vec = Arc::make_mut(&mut self.tool_specs);
@@ -560,37 +597,20 @@ impl Agent {
             specs_vec.extend(synthed_specs);
         }
 
-        // `tools` contains non-cloneable trait objects. Reconcile it only when
-        // uniquely owned. The set of stale synthesised *instances* to drop is
-        // the previous synthesis (`old_synth`) plus any instances a prior
-        // shared-Arc refresh couldn't remove (`pending_synthesized_tools_mask`).
-        let tools_remove_mask: std::collections::HashSet<String> = old_synth
-            .iter()
-            .chain(self.pending_synthesized_tools_mask.iter())
-            .cloned()
-            .collect();
-        let tools_reconciled = if let Some(tools_vec) = Arc::get_mut(&mut self.tools) {
-            tools_vec.retain(|t| !tools_remove_mask.contains(t.name()));
-            tools_vec.extend(synthed);
-            // `tools` now matches `tool_specs` exactly — nothing pending.
-            self.pending_synthesized_tools_mask.clear();
-            true
-        } else {
-            // Schema (`tool_specs`) was updated to the new set, but the stale
-            // tool *instances* still sit in `self.tools`. Record their names
-            // so the next unique-owner refresh removes them. Crucially we do
-            // NOT roll `synthesized_tool_names` back to `old_synth` here — that
-            // would desync it from `tool_specs` and cause duplicate specs on
-            // the following refresh (#3044).
-            self.pending_synthesized_tools_mask = tools_remove_mask;
-            log::warn!(
-                "[agent] refresh_delegation_tools: tools Arc is shared — refreshed schema only \
-                 ({} synthesised tool name(s)); {} stale tool instance(s) pending removal on the next unique-owner refresh",
-                synthed_names.len(),
-                self.pending_synthesized_tools_mask.len()
-            );
-            false
-        };
+        // The executable instances are replaced wholesale. `synthed` already IS
+        // the complete new set — `collect_orchestrator_tools` rebuilds every
+        // delegate from the current connection set — so there is nothing to
+        // retain and no mask to apply: assigning a fresh `Arc` drops exactly
+        // the previous synthesis and nothing else.
+        //
+        // This is the step that used to be conditional on `Arc::get_mut`
+        // succeeding against `self.tools`. It no longer touches `self.tools` at
+        // all, so a concurrent reader cannot block it, and the specs above can
+        // never advertise an instance that was dropped on the floor (#6145).
+        // Readers still holding the previous `Arc` keep a coherent set for the
+        // rest of their turn; those instances are freed when the last one goes.
+        let previous_instances = self.synthesized_tools.len();
+        self.synthesized_tools = Arc::new(synthed);
 
         // `visible_tool_names` carries an explicit allowlist for
         // [`ToolScope::Named`] agents. Drop the previously-synthesised
@@ -639,21 +659,18 @@ impl Agent {
             .cloned()
             .collect();
 
-        // `tool_specs` always reconciled to the new set, so the name mask must
-        // track that set unconditionally — whether or not `tools` (the
-        // executable instances) could be reconciled this pass.
+        // Specs and instances reconciled to the same set in the same pass, so
+        // the name mask tracks that set unconditionally.
         self.synthesized_tool_names = synthed_names.clone();
 
         log::info!(
-            "[agent] refresh_delegation_tools: reconciled delegation schema for agent '{}' (display='{}'); now {} synthesised tool name(s); added={:?} removed={:?} tools_reconciled={} pending_tool_instances={}",
+            "[agent] refresh_delegation_tools: reconciled delegation surface for agent '{}' (display='{}'); now {} synthesised tool name(s); added={:?} removed={:?} superseded_instances={}",
             self.agent_definition_id,
             self.agent_definition_name,
             synthed_names.len(),
             added,
             removed,
-            tools_reconciled,
-            self.pending_synthesized_tools_mask.len()
+            previous_instances
         );
-        true
     }
 }

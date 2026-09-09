@@ -75,9 +75,36 @@ pub struct Agent {
     /// set per turn (issue #4249, Phase 3 / Motion A). Replaces the raw
     /// `Arc<dyn Provider>`; the harness names crate model types only.
     pub(super) turn_model_source: TurnModelSource,
-    /// Full tool registry. Sub-agents pull from this via
-    /// [`ParentExecutionContext::all_tools`].
+    /// Durable tool registry — everything the session was built with.
+    /// Sub-agents pull from this via [`ParentExecutionContext::all_tools`].
+    ///
+    /// Fixed for the life of the agent: the synthesised delegation surface,
+    /// which *does* change mid-session, lives in [`Self::synthesized_tools`]
+    /// instead. See that field for why.
     pub(super) tools: Arc<Vec<Box<dyn Tool>>>,
+    /// The delegation tools synthesised for the current connection set —
+    /// `delegate_<toolkit>` skill tools and archetype delegates, produced by
+    /// [`crate::openhuman::tools::orchestrator_tools::collect_orchestrator_tools`].
+    ///
+    /// Held apart from [`Self::tools`] because it is the only part of the
+    /// surface that changes mid-session, and `Box<dyn Tool>` is not cloneable:
+    /// reconciling it *inside* `tools` meant `Arc::get_mut`, which fails
+    /// whenever any reader holds a clone (an in-flight turn, a spawned
+    /// sub-agent's `ParentExecutionContext`). The old code then updated
+    /// `tool_specs` anyway and dropped the fresh instances on the floor, so the
+    /// provider was advertised a `delegate_*` tool that no longer existed in
+    /// any registered tool set — the model called it and got "unknown tool"
+    /// (#6145).
+    ///
+    /// Because these instances are regenerated from scratch on every refresh,
+    /// this `Arc` can always be *replaced* wholesale — no unique ownership
+    /// required, so reconciliation cannot fail. Readers holding the previous
+    /// `Arc` keep a consistent view for the rest of their turn, and the
+    /// superseded instances are freed once the last of them drops.
+    ///
+    /// Spliced ahead of `tools` at dispatch, so name de-duplication prefers a
+    /// freshly synthesised instance. Empty for agents that do not delegate.
+    pub(super) synthesized_tools: Arc<Vec<Box<dyn Tool>>>,
     /// Full tool specs — sub-agents receive these via
     /// [`ParentExecutionContext::all_tool_specs`].
     pub(super) tool_specs: Arc<Vec<ToolSpec>>,
@@ -431,41 +458,26 @@ pub struct Agent {
     /// closest available signal to "session is ending") to finalize the
     /// trailing open segment with an LLM recap + embedding.
     pub(super) archivist_hook: Option<Arc<ArchivistHook>>,
-    /// Names of every tool currently in [`Agent::tools`] that was
+    /// Names of every tool currently in [`Agent::synthesized_tools`] — those
     /// produced by [`crate::openhuman::tools::orchestrator_tools::collect_orchestrator_tools`]
     /// (i.e. `delegate_<toolkit>` skill tools and archetype-delegation
     /// tools like `delegate_archivist`). Tracked so
     /// [`Agent::refresh_delegation_tools`] can drop the entire
-    /// previously-synthesised subset on each refresh and append the
-    /// fresh set — without that mask we'd risk either leaking stale
-    /// `delegate_<toolkit>` entries on revoke or accidentally removing
+    /// previously-synthesised subset of [`Agent::tool_specs`] on each refresh
+    /// and append the fresh set — without that mask we'd risk either leaking
+    /// stale `delegate_<toolkit>` specs on revoke or accidentally removing
     /// direct tools (`query_memory`, `cron_add`, …) that share a name
     /// prefix.
     ///
     /// Populated by `refresh_delegation_tools` itself; empty at
     /// construction time.
     ///
-    /// Invariant: this tracks the names whose **`tool_specs`** are currently
-    /// live. `tool_specs` reconcile on every refresh (they're cloneable
-    /// data), so this set always equals the most recent synthesised set —
-    /// even when the executable `tools` Vec could not be reconciled because
-    /// its `Arc` was shared. Removing stale `tools` entries is tracked
-    /// separately by [`Self::pending_synthesized_tools_mask`].
+    /// Invariant: this set is the name mask for **both** [`Self::tool_specs`]'
+    /// synthesised half and [`Self::synthesized_tools`], which reconcile
+    /// together on every refresh. There is no longer a case where one advances
+    /// without the other — the schema and the executable instances cannot
+    /// drift (#6145).
     pub(super) synthesized_tool_names: std::collections::HashSet<String>,
-    /// Names of synthesised tool *instances* still present in [`Agent::tools`]
-    /// that a future unique-owner refresh must drop.
-    ///
-    /// When `refresh_delegation_tools` updates `tool_specs` but cannot
-    /// reconcile `tools` (the `Arc` is shared — the normal case while
-    /// `AgentToolSource` holds a clone during `before_dispatch`), the
-    /// previously-synthesised tool objects remain in `tools`. Their names are
-    /// accumulated here so the next refresh that *does* own `tools` uniquely
-    /// removes them — instead of overloading `synthesized_tool_names` (which
-    /// must stay in sync with `tool_specs`) and corrupting the spec
-    /// reconciliation on the following refresh (duplicate `ToolSpec`s, #3044).
-    ///
-    /// Empty at construction time and whenever `tools` is fully reconciled.
-    pub(super) pending_synthesized_tools_mask: std::collections::HashSet<String>,
     /// Overrides applied to the **next** [`Agent::turn`] call, then reset.
     ///
     /// Defaults to [`TurnOverrides::default`] (no suppression), so an agent

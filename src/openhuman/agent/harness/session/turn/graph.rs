@@ -54,8 +54,16 @@ pub(crate) struct ChatTurnGraph {
     /// Provider-ready messages (system + prior history + this turn's user turn,
     /// multimodal markers already expanded).
     pub messages: Vec<ChatMessage>,
-    /// The agent's resolved, `Arc`-shared harness tool set.
+    /// The agent's durable, `Arc`-shared harness tool set.
     pub tools: Arc<Vec<Box<dyn Tool>>>,
+    /// The delegation tools synthesised for the current connection set,
+    /// carried as their own set rather than merged into `tools`.
+    ///
+    /// This mirrors what the channel path has always done with its per-turn
+    /// `extra_tools` (see [`crate::openhuman::agent::harness::graph`]), and it
+    /// is what lets a mid-session Composio connect reach the model as a
+    /// *callable* tool rather than a schema entry with no instance behind it.
+    pub synthesized_tools: Arc<Vec<Box<dyn Tool>>>,
     /// Callable-tool whitelist (empty = every visible tool).
     pub visible_tool_names: HashSet<String>,
     /// Model-call cap for the loop.
@@ -110,7 +118,10 @@ pub(crate) async fn run_chat_turn_graph(graph: ChatTurnGraph) -> Result<Tinyagen
             provider_id,
             &graph.model,
             graph.messages,
-            vec![graph.tools],
+            // Synthesised set first: registration de-duplicates by name on a
+            // first-wins basis, so a freshly synthesised delegate takes
+            // precedence over any same-named instance in the durable registry.
+            vec![graph.synthesized_tools, graph.tools],
             visible_tool_names,
             graph.max_iterations,
             // Mirror the harness event stream onto this session's progress sink.
