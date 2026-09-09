@@ -220,6 +220,29 @@ async fn rpc(base: &str, id: i64, method: &str, params: Value) -> Value {
         .unwrap_or_else(|err| panic!("json for {method}: {err}"))
 }
 
+/// The `/schema` controller catalog, as the frontend and the CLI/RPC
+/// smoke-test generator consume it.
+async fn schema_catalog(base: &str) -> Value {
+    let url = format!("{}/schema", base.trim_end_matches('/'));
+    reqwest::get(&url)
+        .await
+        .unwrap_or_else(|err| panic!("GET {url}: {err}"))
+        .json::<Value>()
+        .await
+        .unwrap_or_else(|err| panic!("schema json: {err}"))
+}
+
+/// One method's declared entry from the catalog.
+fn catalog_entry<'a>(catalog: &'a Value, method: &str) -> &'a Value {
+    catalog
+        .get("methods")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("catalog has no methods array: {catalog}"))
+        .iter()
+        .find(|m| m.get("method").and_then(Value::as_str) == Some(method))
+        .unwrap_or_else(|| panic!("catalog does not advertise {method}"))
+}
+
 fn ok<'a>(value: &'a Value, context: &str) -> &'a Value {
     if let Some(error) = value.get("error") {
         panic!("{context}: unexpected JSON-RPC error: {error}");
@@ -612,26 +635,26 @@ async fn todos_run_records_and_reclaim_report_an_honest_empty_state() {
     harness.join.abort();
 }
 
-/// `todos_replace`'s declared contract cannot be satisfied from the schema.
+/// `todos_replace` refuses a card missing any of the mandatory trio.
 ///
-/// The controller catalog declares one input — `cards: Json`, commented
-/// *"Array of card objects (id may be empty — server generates)"* — and names
-/// no field of a card anywhere. The handler deserializes each entry into
-/// `TaskBoardCard`, whose `id`, `title` and `status` all lack
-/// `#[serde(default)]`, so every one of them must be **present**. Two
-/// consequences a caller reading the schema walks straight into, both pinned
-/// below:
+/// These three refusals are the *handler's* behaviour and are unchanged by
+/// #6087, which corrected the schema rather than the handler. What changed is
+/// that they are now **documented**: the catalog spells `id`, `title` and
+/// `status` as required (see `replace_cards_input`), so a caller can no longer
+/// walk into them by reading the schema. They are pinned here because the
+/// refusals themselves are the contract — `TaskBoardCard`'s `id`, `title` and
+/// `status` carry no `#[serde(default)]`, so every one of them must be
+/// **present**. Two consequences, both pinned below:
 ///
 /// 1. The obvious spelling — `content`, which is what the sibling `todos_add`
 ///    and `todos_edit` inputs call the very same text — is rejected outright.
 /// 2. "id may be empty" is about the string, not the key: omitting `status`
 ///    fails even with a well-formed title.
 ///
-/// This is a documentation defect in the schema, not behaviour to change here.
-/// See `~/tinyhuman/bugs/e2e-wave-todos-replace-undocumented-card-shape.md`.
-/// The assertions are written against what the code *does*, so the day the
-/// schema and the handler are reconciled this case fails and gets updated
-/// deliberately rather than silently drifting.
+/// The assertions are written against what the code *does*. The companion
+/// case `todos_replace_accepts_a_card_built_only_from_its_declared_schema`
+/// proves the other half: that the catalog now carries enough to build a card
+/// that these refusals let through.
 #[tokio::test]
 async fn todos_replace_rejects_the_card_shape_its_own_schema_implies() {
     let _lock = env_lock();
@@ -700,6 +723,330 @@ async fn todos_replace_rejects_the_card_shape_its_own_schema_implies() {
         .is_empty(),
         "a rejected replace must leave the board untouched: {listed}"
     );
+
+    harness.join.abort();
+}
+
+/// A card built **only** from what the catalog declares is accepted (#6087).
+///
+/// This is the regression test for the schema defect, and it is deliberately
+/// written so that it cannot pass by accident. Rather than hard-coding a card
+/// that happens to work, it *reads the declared schema* and constructs the card
+/// from it: every field the catalog marks `required` is populated, and the
+/// `status` value is taken from the declared enum's own variant list. If the
+/// declaration goes back to a bare `TypeSchema::Json`, or names a field the
+/// handler does not deserialize, or spells `title` as `content`, or offers a
+/// `status` variant `TaskCardStatus` will not parse, this fails — because the
+/// card it builds is only ever as correct as the schema it read.
+#[tokio::test]
+async fn todos_replace_accepts_a_card_built_only_from_its_declared_schema() {
+    let _lock = env_lock();
+    let harness = setup(Vec::new()).await;
+    let thread = "todos-e2e-thread-from-schema";
+
+    let catalog = schema_catalog(&harness.rpc_base).await;
+    let entry = catalog_entry(&catalog, "openhuman.todos_replace");
+
+    let cards_input = entry
+        .get("inputs")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("todos_replace declares no inputs: {entry}"))
+        .iter()
+        .find(|i| i.get("name").and_then(Value::as_str) == Some("cards"))
+        .unwrap_or_else(|| panic!("todos_replace declares no `cards` input: {entry}"));
+
+    // The declaration must describe an array of objects, not an opaque blob.
+    // `TypeSchema::Json` serialises as the bare string "Json", which is exactly
+    // what this controller used to publish and what made it unconstructible.
+    let card_fields = cards_input
+        .get("ty")
+        .and_then(|t| t.get("Array"))
+        .and_then(|a| a.get("Object"))
+        .and_then(|o| o.get("fields"))
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| {
+            panic!(
+                "`cards` must declare an array of objects with named fields; \
+                 an opaque type cannot be built from. Got ty = {}",
+                cards_input.get("ty").unwrap_or(&Value::Null)
+            )
+        });
+
+    // Build a card from the declaration alone.
+    let mut card = serde_json::Map::new();
+    let mut required_seen: Vec<String> = Vec::new();
+    for field in card_fields {
+        if field.get("required").and_then(Value::as_bool) != Some(true) {
+            continue;
+        }
+        let name = field
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("declared field without a name: {field}"))
+            .to_string();
+        let ty = field.get("ty").unwrap_or(&Value::Null);
+        let value = if let Some(variants) = ty.get("Enum").and_then(|e| e.get("variants")) {
+            // Take the enum's own first variant — if the schema advertises a
+            // value the wire type cannot parse, the dispatch below fails.
+            variants
+                .as_array()
+                .and_then(|v| v.first())
+                .cloned()
+                .unwrap_or_else(|| panic!("declared enum with no variants: {field}"))
+        } else if name == "id" {
+            // The one documented special case: the key is required, the string
+            // may be empty, and the server then generates the id.
+            Value::String(String::new())
+        } else {
+            Value::String(format!("built from the schema: {name}"))
+        };
+        required_seen.push(name.clone());
+        card.insert(name, value);
+    }
+
+    // EXACTLY the trio, not merely "includes" it. `TaskBoardCard` has exactly
+    // three fields without a serde default; if a fourth is ever marked required
+    // in the catalog, a caller obeying the schema would send a key the handler
+    // does not need, and the loop above would happily paper over it.
+    let mut sorted = required_seen.clone();
+    sorted.sort();
+    assert_eq!(
+        sorted,
+        vec!["id".to_string(), "status".to_string(), "title".to_string()],
+        "the catalog must mark exactly `id`, `title` and `status` required — \
+         those are the only three `TaskBoardCard` fields with no serde default"
+    );
+
+    // The six `#[serde(default)]` fields must NOT be declared `Option(...)`.
+    //
+    // This is asserted against the *declaration*, not against a dispatch,
+    // because a dispatch cannot see it: `core::all::check_type` short-circuits
+    // on `Value::Null` for every declared type, so `null` reaches the handler
+    // either way and is rejected by serde either way. The declaration is
+    // therefore documentation-only at runtime — and documentation-only is
+    // exactly the thing that rots unnoticed, so it gets a direct assertion.
+    for name in [
+        "plan",
+        "allowedTools",
+        "acceptanceCriteria",
+        "evidence",
+        "order",
+        "updatedAt",
+    ] {
+        let field = card_fields
+            .iter()
+            .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("the card must declare `{name}`"));
+        assert!(
+            field.get("ty").and_then(|t| t.get("Option")).is_none(),
+            "`{name}` is `#[serde(default)]` on a non-Option field upstream, so an \
+             explicit null fails to deserialize. Declaring it `Option(...)` advertises \
+             null as valid and puts the catalog back to describing a call the handler \
+             rejects. Declared ty was: {}",
+            field.get("ty").unwrap_or(&Value::Null)
+        );
+        assert_eq!(
+            field.get("required").and_then(Value::as_bool),
+            Some(false),
+            "`{name}` has a serde default, so it must be optional-by-omission"
+        );
+    }
+
+    // Every *optional* enum field must advertise exactly the variants its wire
+    // type parses, and each must round-trip. The generated card above only
+    // populates required fields, so without this an optional enum declared as a
+    // free `Option(String)` — which `approvalMode` was — would let a
+    // catalog-valid value like "sometimes" through the schema and straight into
+    // an `invalid params` from the handler.
+    for (name, expected) in [("approvalMode", ["not_required", "required"].as_slice())] {
+        let field = card_fields
+            .iter()
+            .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("the card must declare `{name}`"));
+        let variants = field
+            .get("ty")
+            .and_then(|t| t.get("Option"))
+            .and_then(|inner| inner.get("Enum"))
+            .and_then(|e| e.get("variants"))
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{name}` is backed by a closed enum upstream, so the catalog \
+                     must declare its variants rather than a free string. \
+                     Declared ty was: {}",
+                    field.get("ty").unwrap_or(&Value::Null)
+                )
+            })
+            .clone();
+
+        // Probing only what is listed would let a *removed* variant through:
+        // drop `not_required` and the surviving `required` probe still passes.
+        // The complete set is the thing being pinned, so assert it before
+        // probing. `expected` rides on the loop's own list so a second field
+        // brings its own set rather than widening a shared literal.
+        let mut declared = variants
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .unwrap_or_else(|| panic!("`{name}`'s declared variants must be strings"))
+            })
+            .collect::<Vec<_>>();
+        declared.sort_unstable();
+        assert_eq!(
+            declared, expected,
+            "`{name}` must declare exactly the variants its wire type parses"
+        );
+
+        for (i, variant) in variants.iter().enumerate() {
+            let mut probe = card.clone();
+            probe.insert("id".to_string(), Value::String(format!("enum-{name}-{i}")));
+            probe.insert(name.to_string(), variant.clone());
+            let response = rpc(
+                &harness.rpc_base,
+                90 + i as i64,
+                "openhuman.todos_replace",
+                json!({ "thread_id": thread, "cards": [Value::Object(probe)] }),
+            )
+            .await;
+            ok(
+                &response,
+                &format!("todos_replace with the declared `{name}` variant {variant}"),
+            );
+        }
+    }
+
+    // Every advertised status variant must actually parse. Taking only the
+    // first would let a misspelled later variant (`in-progress` for
+    // `in_progress`, say) sit in the catalog undetected.
+    let status_variants: Vec<String> = card_fields
+        .iter()
+        .find(|f| f.get("name").and_then(Value::as_str) == Some("status"))
+        .and_then(|f| f.get("ty"))
+        .and_then(|t| t.get("Enum"))
+        .and_then(|e| e.get("variants"))
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("`status` must declare an enum of variants"))
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    assert!(
+        status_variants.len() >= 2,
+        "a lifecycle enum with fewer than two variants is a declaration bug: {status_variants:?}"
+    );
+    for (i, variant) in status_variants.iter().enumerate() {
+        let mut probe = card.clone();
+        probe.insert("status".to_string(), Value::String(variant.clone()));
+        probe.insert("id".to_string(), Value::String(format!("probe-{i}")));
+        let response = rpc(
+            &harness.rpc_base,
+            70 + i as i64,
+            "openhuman.todos_replace",
+            json!({ "thread_id": thread, "cards": [Value::Object(probe)] }),
+        )
+        .await;
+        ok(
+            &response,
+            &format!("todos_replace with the declared status variant {variant:?}"),
+        );
+    }
+
+    let replaced = rpc(
+        &harness.rpc_base,
+        60,
+        "openhuman.todos_replace",
+        json!({ "thread_id": thread, "cards": [Value::Object(card)] }),
+    )
+    .await;
+    let result = ok(
+        &replaced,
+        "todos_replace with a card built from its own schema",
+    );
+
+    // It was accepted AND stored — a schema that merely deserializes but drops
+    // the card would be no better than the old one.
+    let titles = card_titles(result, "replace built from schema");
+    assert_eq!(
+        titles,
+        vec!["built from the schema: title".to_string()],
+        "the card built from the declared schema must land on the board: {result:?}"
+    );
+
+    // The server generated an id for the empty one, as the comment promises.
+    let stored = cards(result, "replace built from schema");
+    let id = stored[0]
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("stored card carries no id: {stored:?}"));
+    assert!(
+        !id.is_empty(),
+        "an empty `id` must be server-generated, got an empty string back"
+    );
+
+    harness.join.abort();
+}
+
+/// A `#[serde(default)]` collection may be **omitted**, but not sent as `null`
+/// — and the catalog now says so (#6087).
+///
+/// `TaskBoardCard`'s `plan`, `allowedTools`, `acceptanceCriteria` and
+/// `evidence` are `Vec<String>`; `order` is `u32`; `updatedAt` is `String`.
+/// None is an `Option`, so `#[serde(default)]` covers an *absent* key and an
+/// explicit `null` fails with `invalid type: null`.
+///
+/// The first draft of this schema declared all six as `Option(...)`, which
+/// advertised `null` as valid and would have put the catalog straight back to
+/// describing a call the handler rejects — the exact defect #6087 removes.
+/// They are declared with their real types and `required: false` instead, and
+/// this pins both halves of that contract.
+#[tokio::test]
+async fn todos_replace_defaulted_card_fields_may_be_omitted_but_not_null() {
+    let _lock = env_lock();
+    let harness = setup(Vec::new()).await;
+    let thread = "todos-e2e-thread-defaults";
+
+    // Omitting every defaulted field is accepted — that is what the serde
+    // defaults are for, and what `required: false` advertises.
+    let omitted = rpc(
+        &harness.rpc_base,
+        80,
+        "openhuman.todos_replace",
+        json!({
+            "thread_id": thread,
+            "cards": [{ "id": "", "title": "only the required trio", "status": "todo" }]
+        }),
+    )
+    .await;
+    let result = ok(&omitted, "todos_replace omitting every defaulted field");
+    assert_eq!(
+        card_titles(result, "omitted defaults"),
+        vec!["only the required trio".to_string()],
+        "a card carrying only the required trio must be accepted: {result:?}"
+    );
+
+    // An explicit null for a defaulted collection is refused. If the catalog
+    // ever goes back to declaring these `Option(...)`, it will be promising a
+    // shape this assertion proves the handler does not accept.
+    for field in ["plan", "allowedTools", "acceptanceCriteria", "evidence"] {
+        let mut card = serde_json::Map::new();
+        card.insert("id".into(), json!(""));
+        card.insert("title".into(), json!("null probe"));
+        card.insert("status".into(), json!("todo"));
+        card.insert(field.to_string(), Value::Null);
+
+        let response = rpc(
+            &harness.rpc_base,
+            81,
+            "openhuman.todos_replace",
+            json!({ "thread_id": thread, "cards": [Value::Object(card)] }),
+        )
+        .await;
+        let message = error_message(&response, &format!("todos_replace with {field}: null"));
+        assert!(
+            message.contains("invalid type: null") || message.contains(field),
+            "an explicit null for the defaulted `{field}` must be refused, so the \
+             catalog must not advertise it as nullable; got: {message}"
+        );
+    }
 
     harness.join.abort();
 }
