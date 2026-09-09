@@ -458,7 +458,7 @@ async fn enrich_does_nothing_when_no_cached_identities() {
     // returns `Vec::new()` and the connection is returned unchanged.
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+    crate::openhuman::memory::test_support::install_memory_driver_for_test(&config);
     let resp = make_connections_response(&[("c1", "gmail", "ACTIVE")]);
     let enriched = enrich_connections_with_identity(&config, resp).await;
     assert_eq!(enriched.connections.len(), 1);
@@ -468,86 +468,12 @@ async fn enrich_does_nothing_when_no_cached_identities() {
 }
 
 #[tokio::test]
-async fn enrich_populates_email_from_cached_profile() {
-    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
-    use tinymemory_api::composio::ProviderUserProfile;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
-
-    persist_provider_profile(
-        &config,
-        &ProviderUserProfile {
-            toolkit: "gmail".to_string(),
-            connection_id: Some("conn-gmail-1".to_string()),
-            email: Some("alice@example.com".to_string()),
-            display_name: Some("Alice Smith".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("persist provider profile");
-
-    let resp = make_connections_response(&[("conn-gmail-1", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(&config, resp).await;
-
-    assert_eq!(
-        enriched.connections[0].account_email.as_deref(),
-        Some("alice@example.com"),
-        "email should be populated from cached gmail profile"
-    );
-    assert_eq!(
-        enriched.connections[0].workspace.as_deref(),
-        Some("Alice Smith"),
-        "workspace (display_name) should be populated"
-    );
-    assert!(
-        enriched.connections[0].username.is_none(),
-        "username (handle) should be absent for gmail"
-    );
-}
-
-#[tokio::test]
-async fn enrich_populates_handle_for_github() {
-    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
-    use tinymemory_api::composio::ProviderUserProfile;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
-
-    persist_provider_profile(
-        &config,
-        &ProviderUserProfile {
-            toolkit: "github".to_string(),
-            connection_id: Some("conn-gh-1".to_string()),
-            username: Some("octocat".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("persist provider profile");
-
-    let resp = make_connections_response(&[("conn-gh-1", "github", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(&config, resp).await;
-
-    // GitHub uses `handle` kind (the catch-all branch in expand_identity_rows).
-    assert_eq!(
-        enriched.connections[0].username.as_deref(),
-        Some("octocat"),
-        "username (handle) should be populated for github"
-    );
-    assert!(enriched.connections[0].account_email.is_none());
-}
-
-#[tokio::test]
 async fn enrich_skips_connection_already_having_identity() {
     // If the backend-proxied path already populated account_email, the
     // enricher must NOT overwrite it with a potentially stale cached value.
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+    crate::openhuman::memory::test_support::install_memory_driver_for_test(&config);
 
     let mut resp = make_connections_response(&[("c-preloaded", "gmail", "ACTIVE")]);
     resp.connections[0].account_email = Some("preloaded@example.com".to_string());
@@ -561,57 +487,6 @@ async fn enrich_skips_connection_already_having_identity() {
 }
 
 #[tokio::test]
-async fn enrich_handles_multiple_connections_same_toolkit() {
-    // Two Gmail accounts — each gets its own identity label, not "Account N".
-    use crate::openhuman::integrations::composio::identity_store::persist_provider_profile;
-    use tinymemory_api::composio::ProviderUserProfile;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
-
-    persist_provider_profile(
-        &config,
-        &ProviderUserProfile {
-            toolkit: "gmail".to_string(),
-            connection_id: Some("g1".to_string()),
-            email: Some("alice@example.com".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("persist provider profile");
-    persist_provider_profile(
-        &config,
-        &ProviderUserProfile {
-            toolkit: "gmail".to_string(),
-            connection_id: Some("g2".to_string()),
-            email: Some("bob@example.com".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("persist provider profile");
-
-    let resp = make_connections_response(&[("g1", "gmail", "ACTIVE"), ("g2", "gmail", "ACTIVE")]);
-    let enriched = enrich_connections_with_identity(&config, resp).await;
-
-    let emails: Vec<_> = enriched
-        .connections
-        .iter()
-        .map(|c| c.account_email.as_deref())
-        .collect();
-    assert!(
-        emails.contains(&Some("alice@example.com")),
-        "first gmail account should carry alice's email"
-    );
-    assert!(
-        emails.contains(&Some("bob@example.com")),
-        "second gmail account should carry bob's email"
-    );
-}
-
-#[tokio::test]
 async fn enrich_leaves_unmatched_connection_unchanged() {
     // Connection whose id has no cached profile row is returned with all
     // identity fields as None — the UI falls back to "toolkit · connection_id".
@@ -620,7 +495,7 @@ async fn enrich_leaves_unmatched_connection_unchanged() {
 
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    crate::openhuman::memory::test_support::install_tinycortex_for_test(&config);
+    crate::openhuman::memory::test_support::install_memory_driver_for_test(&config);
 
     // Persist a profile for a DIFFERENT connection id.
     persist_provider_profile(

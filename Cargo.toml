@@ -832,6 +832,19 @@ tinycortex = { version = "0.1", features = ["obsidian", "persona", "sync"] }
 # requirement) out of the product while the tests that need a real engine keep
 # working.
 tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex" }
+# The fake memory driver the host's own tests bind, in place of an in-process
+# engine (openhuman#6161). It serves every optional family, so a handler that
+# asks for one by accessor gets `Some` rather than taking the `None` arm as
+# "unsupported" — which is the whole reason the fixture used to construct a real
+# `TinycortexProvider`.
+#
+# It costs this manifest nothing. The crate is `publish = false` and reached by
+# path like `tinymemory-api`, and its only dependencies are `tinymemory-api`,
+# `async-trait`, `serde_json` and `anyhow` — all already in the product graph.
+# By construction it cannot pull an engine back in: `tinymemory-conformance`
+# refuses to depend on `tinymemory-core`, and its CI asserts that, because a
+# conformance suite that reached an engine could not prove interchangeability.
+tinymemory-conformance = { path = "vendor/tinymemory/crates/tinymemory-conformance" }
 # Dual-declared on purpose (same shape as the `sentry`/`axum` entries): the
 # optional dependency above is bin-only behind `bin-tools`, but
 # `agent_orchestration::tools::tools_e2e_tests` (a #[cfg(test)] LIB module),

@@ -11,66 +11,35 @@ use super::binding::install_for_test;
 use crate::openhuman::memory::api::provider::MemoryProvider;
 use std::sync::Arc;
 
-/// Bind the in-process TinyCortex driver over a whole `Config`'s workspace.
+/// Bind a fake driver that serves every optional family over a whole `Config`'s
+/// workspace.
 ///
 /// The shorthand for a test whose handler reads through a family the null
-/// driver does not serve — `Chunks`, `Documents`, `Retrieval` — and which
-/// proves itself by writing rows and reading them back. `FixedDiagnostics`
-/// cannot serve those: it answers `Maintenance` and delegates the rest to
-/// null.
+/// driver does not serve — `Chunks`, `Documents`, `Retrieval`.
+/// `FixedDiagnostics` cannot serve those: it answers `Maintenance` and
+/// delegates the rest to null.
 ///
-/// This is the driver the loadable module wraps, so a test binding it exercises
-/// the same engine production reaches over the bus. It is not the bus itself,
-/// and cannot be: a `dlopen`'ed module is a process singleton, and two tests
-/// loading one in the same process hang rather than fail.
-pub(crate) fn install_tinycortex_for_test(config: &crate::openhuman::config::Config) {
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let client = Arc::new(
-        tinymemory_core::store::MemoryClient::from_workspace_dir(config.workspace_dir.clone())
-            .expect("open the workspace store"),
-    );
-    // Registered in the process-global slot as well as handed to the driver.
-    // The engine's Composio sync pipeline opens with `global::client_if_ready`
-    // and refuses with "memory client is not ready" without it — the module
-    // path calls `global::bind` for exactly this reason (tinymemory#100), and a
-    // fixture that builds a client owes the same registration. `bind` rather
-    // than `init` so the driver and the slot are the SAME client: `init` would
-    // construct a second one over the same SQLite file, which is two ingestion
-    // workers and the hazard `global.rs` documents at length.
-    let _ = tinymemory_core::global::bind(config.workspace_dir.clone(), Arc::clone(&client));
-    let engine_config = tinymemory_tinycortex::engine::EngineRuntimeConfig {
-        workspace_dir: config.workspace_dir.clone(),
-        config_path: config.workspace_dir.join("config.toml"),
-        memory: config.memory.clone(),
-        memory_tree: config.memory_tree.clone(),
-        scheduler_gate: config.scheduler_gate.clone(),
-        local_ai: config.local_ai.clone(),
-        embeddings_provider: config.embeddings_provider.clone(),
-        memory_provider: None,
-        // Added by tinymemory#100, which moved the periodic sync loops into the
-        // module. A test fixture wants the same "no cadence configured" default
-        // the module answers for an older host that sends nothing.
-        // Carried from the host config rather than blanked: the engine's
-        // `composio_config` branches on this, so an empty mode sends every
-        // fixture down the proxied path whether or not that is what the test
-        // configured.
-        memory_sync_interval_secs: config.memory_sync_interval_secs,
-        composio_mode: config.composio.mode.clone(),
-        composio_entity_id: config.composio.entity_id.clone(),
-        // Added by tinymemory#103: proxied Composio addresses the backend with
-        // this. Empty means the host named none, and the request then fails in the
-        // HTTP client rather than falling back to a guessed host.
-        backend_api_url: crate::api::config::effective_backend_api_url(&config.api_url),
-        default_model: None,
-        default_temperature: 0.2,
-        output_language: None,
-        memory_sources: serde_json::Value::Null,
-    };
+/// # Why this is not an engine any more
+///
+/// It used to build a real `TinycortexProvider` over a temp workspace, and that
+/// is what kept `tinycortex` and `tinymemory-core` — 133k lines — on this
+/// crate's test critical path long after they left the product build
+/// (openhuman#5560). The docstring justified it on the grounds that the
+/// alternative was the bus, and a `dlopen`ed module is a process singleton that
+/// hangs when a second test loads it.
+///
+/// That was a false choice: the third option is a driver that is neither the
+/// engine nor the bus. `tinymemory-conformance` ships one, it is held to the
+/// same contract as TinyCortex by `assert_provider`, and the engine is run
+/// against those same assertions upstream — so what a test observes here is
+/// contract behaviour rather than one engine's behaviour.
+///
+/// **What it deliberately will not do is filter, rank, or summarise.** A test
+/// that needs those is asserting engine semantics, and upstream owns them; the
+/// fake staying simple is what stops such a test from passing here against
+/// nothing but the fake.
+pub(crate) fn install_memory_driver_for_test(config: &crate::openhuman::config::Config) {
     let provider: Arc<dyn MemoryProvider> =
-        Arc::new(tinymemory_tinycortex::engine::TinycortexProvider::new(
-            "tinycortex".to_string(),
-            engine_config,
-            client,
-        ));
+        Arc::new(tinymemory_conformance::RecordingProvider::new());
     install_for_test(&config.workspace_dir, &config.subsystems.memory, provider);
 }

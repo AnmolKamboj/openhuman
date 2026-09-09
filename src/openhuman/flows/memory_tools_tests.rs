@@ -28,7 +28,7 @@ use crate::openhuman::memory::api::types::{
 //    supertrait is `MemoryCore`, which is a *different* trait with taint as
 //    an argument rather than a second method (see `provider/mandatory.rs`,
 //    which says so at the definition). Rebinding the fixture onto
-//    `memory::test_support::install_tinycortex_for_test` therefore rewrites
+//    `memory::test_support::install_memory_driver_for_test` therefore rewrites
 //    every `mem.store_with_taint(..)` / `mem.get(..)` in this module, not
 //    just its two lines.
 // 2. **The backend choice is load-bearing.** `FLOW_MEMORY_NAMESPACE_PREFIX`'s

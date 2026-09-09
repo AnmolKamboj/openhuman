@@ -224,7 +224,7 @@ async fn phase2_no_per_turn_tree_write_inner() {
 
 async fn phase2_exactly_one_tree_ingest_per_segment_close_inner() {
     let (_tmp, cfg) = test_config_with_tree();
-    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let (_client, provider) = provider_over(&cfg.workspace_dir);
     let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-one-ingest";
@@ -387,7 +387,7 @@ async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant_inner() {
 
 async fn phase2_ingested_content_is_raw_prose_not_recap_inner() {
     let (_tmp, cfg) = test_config_with_tree();
-    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let (_client, provider) = provider_over(&cfg.workspace_dir);
     let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-raw-prose";
@@ -448,7 +448,7 @@ async fn phase2_ingested_content_is_raw_prose_not_recap_inner() {
 
 async fn phase2_flush_also_triggers_tree_ingest_inner() {
     let (_tmp, cfg) = test_config_with_tree();
-    let (client, provider) = provider_over(&cfg.workspace_dir);
+    let (_client, provider) = provider_over(&cfg.workspace_dir);
     let hook = hook_with_stubs_and_tree_config(provider.clone(), cfg.clone());
 
     let session = "phase2-flush-tree";
