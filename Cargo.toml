@@ -1059,9 +1059,15 @@ runtime-node = []
 #
 # That is the exact soft-failure shape as `voice` (#4901) and
 # `tokenjuice-treesitter` (#4918): a gate that is not forwarded does not fail
-# the build, it just quietly does nothing. Hence the forward below, and
-# `contacts_feature_reaches_the_engine_reader` in `memory/people/mod.rs`, which
-# fails if this is ever flattened back into local `dep:` entries.
+# the build, it just quietly does nothing.
+#
+# The guard that used to catch it here, `contacts_feature_reaches_the_engine_
+# reader`, is gone with the engine (openhuman#6161) and could not have been
+# kept: it linked `tinycortex` from `#[cfg(test)]` to call the reader directly,
+# which proves nothing about this crate's forwarding once this crate does not
+# depend on the crate being forwarded to. The forward it guarded had already
+# moved into the module's own manifest, which is where the equivalent
+# assertion now belongs.
 # Nothing host-side is gated on `contacts` any more — its whole job was
 # forwarding into the engine so tinycortex's macOS CNContactStore reader
 # compiled. That reader now lives in the `tinymemory` module, whose own
