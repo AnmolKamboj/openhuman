@@ -54,6 +54,35 @@ path = "src/bin/fleet.rs"
 # (no `http-server`) this target is skipped rather than failing to link.
 required-features = ["http-server", "bin-tools"]
 
+# Embedded-RSS benchmark harness (#5046). Gated behind the default-OFF
+# `rss-bench` feature so no benchmark code enters the shipped build. Build with
+# `cargo build --release --features rss-bench --bin rss-bench`.
+#
+# It survives the engine removal because it never measured the engine. The
+# `library-profile` bins that shared this gate did — they embedded
+# `tinymemory-core` in-process, which is why the feature used to name the engine
+# crates — and they are gone with it. This one builds an `Agent` roster over its
+# own in-file `NoopMemory` and samples RSS; its own doc comment explains that it
+# hand-rolls that rather than asking the factory, because
+# `create_memory(backend = "none")` never returned a no-op backend.
+[[bin]]
+name = "rss-bench"
+path = "src/bin/rss_bench.rs"
+required-features = ["rss-bench"]
+
+# Stateful library profiling workloads (real sub-agent delegation, flows graphs
+# and skill runs under a hermetic mock provider). Local/dev only, and the
+# subject of every script in `scripts/profile/`.
+#
+# Two of its scenarios are gone with the in-process engine: `memory-ingest`
+# drained the memory queue and `cold-phases` checkpointed the engine bootstrap
+# through `tinymemory_core::store::MemoryClient`. The other six never named an
+# engine symbol, which is why this binary survives rather than going with them.
+[[bin]]
+name = "library-profile"
+path = "src/bin/library_profile/main.rs"
+required-features = ["rss-bench"]
+
 # ── Integration tests that need a PRODUCT gate ──────────────────────────────
 #
 # `[features] default` is the contributor set and no longer turns on `voice`,
@@ -379,6 +408,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
 serde_yaml = "0.9"
+# dhat — heap profiler for the offline `library-profile` benchmark binary only.
+# Default-OFF, dev-only: pulled in solely by the `rss-bench-dhat` feature so it
+# never enters the shipped desktop/library build (same posture as `rss-bench`).
+dhat = { version = "0.3", optional = true }
 # (Removed `html2md` dep. dhat-rs profiling on real Gmail inboxes
 # showed `html2md::walk` and `html2md::tables::handle` allocating
 # ~894 MB peak heap on a 10 KB HTML input from Otter.ai-style emails
@@ -1226,6 +1259,23 @@ whatsapp-web = ["channels", "tinychannels/whatsapp-web"]
 # build (app/scripts/e2e-build.sh) flips it on. Shipped binaries never have
 # this feature so the wipe RPC isn't even registered, let alone reachable.
 e2e-test-support = []
+# Compiles the embedded-RSS benchmark bin (#5046). Default-OFF and absent from
+# `scripts/ci/product-features.txt`, so nothing shipped enables it, and — like
+# `tui` — it is in NEITHER the contributor nor the product set, which is why the
+# `Rust RSS Benchmark` lane names it explicitly.
+#
+# The list is EMPTY, and that is the whole point of this edit. It used to read
+# `["dep:tinycortex", "dep:tinymemory-core"]`, but not for the benchmark's sake:
+# a `[[bin]]` cannot use a dev-dependency, so this feature was what turned the
+# engine on for the two `library-profile` bins that shared the gate. Those
+# measured the in-process engine and went with it. The benchmark itself names no
+# engine symbol and never did.
+rss-bench = []
+# Adds dhat heap profiling on top of `rss-bench` for the `library-profile`
+# binary. Default-OFF, dev-only: installs dhat's global allocator, which
+# perturbs RSS/timing numbers, so it is a separate opt-in feature rather than
+# folded into `rss-bench`. Never forwarded to the shipped build.
+rss-bench-dhat = ["rss-bench", "dep:dhat"]
 # Compiles `memory::host_impls`, the host side of the seam traits the memory
 # ENGINE declares, for builds that embed that engine in-process.
 #

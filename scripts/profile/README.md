@@ -45,9 +45,9 @@ timing numbers from this build are perturbed by instrumentation; use it only
 for allocation-site/retained-bytes attribution, not for RSS comparisons.
 
 ```bash
-./scripts/profile/library-heap.sh memory-ingest
+./scripts/profile/library-heap.sh agent-turn
 # open https://nnethercote.github.io/dh_view/dh_view.html and load
-# target/profile/rust-library/dhat-memory-ingest.json
+# target/profile/rust-library/dhat-agent-turn.json
 ```
 
 ### `library-fleet.sh` — fleet sweep + 2 GB / 2 vCPU budget gate
