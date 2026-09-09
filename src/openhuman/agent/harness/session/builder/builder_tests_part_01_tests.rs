@@ -695,4 +695,15 @@ fn from_config_keeps_build_time_delegation_tools_out_of_the_durable_registry() {
         agent.synthesized_tool_names, expected_mask,
         "the refresh mask must be seeded with exactly the synthesised names"
     );
+    // What a sub-agent is handed: the durable registry and its specs, index
+    // for index, with no synthesised delegate among them.
+    let durable_specs = agent.durable_tool_specs_arc();
+    assert_eq!(durable_specs.len(), agent.tools().len());
+    for (tool, spec) in agent.tools().iter().zip(durable_specs.iter()) {
+        assert_eq!(
+            tool.name(),
+            spec.name,
+            "durable specs must track the registry index for index"
+        );
+    }
 }

@@ -479,12 +479,12 @@ impl AgentBuilder {
             .iter()
             .map(|tool| tool.name().to_string())
             .collect();
-        // Durable specs first, synthesised after: the order every reader of
-        // the two sets enumerates them in (`Agent::all_tool_refs`, dispatch).
-        let tool_specs: Vec<ToolSpec> = tools
+        // Durable specs first, synthesised after — every reader's order.
+        let durable_tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
+        let tool_specs: Vec<ToolSpec> = durable_tool_specs
             .iter()
-            .chain(synthesized_tools.iter())
-            .map(|tool| tool.spec())
+            .cloned()
+            .chain(synthesized_tools.iter().map(|tool| tool.spec()))
             .collect();
 
         let mut visible_names = self.visible_tool_names.unwrap_or_default();
@@ -642,6 +642,7 @@ impl AgentBuilder {
             tools,
             synthesized_tools: Arc::new(synthesized_tools),
             tool_specs: Arc::new(tool_specs),
+            durable_tool_specs: Arc::new(durable_tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),
             visible_tool_names: visible_names,
             subagent_tool_ceiling_names,

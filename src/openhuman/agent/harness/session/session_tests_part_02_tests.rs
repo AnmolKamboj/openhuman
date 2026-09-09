@@ -510,18 +510,22 @@ struct NamedTool(&'static str);
 
 #[async_trait]
 impl Tool for NamedTool {
+    /// The caller-chosen name.
     fn name(&self) -> &str {
         self.0
     }
 
+    /// Fixed marker text, so a test can tell it from a synthesised delegate.
     fn description(&self) -> &str {
         "durable"
     }
 
+    /// A schema no synthesised delegate produces, so a spec can be attributed.
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object", "properties": {"durable": {"type": "boolean"}}})
     }
 
+    /// Returns a fixed success; dispatch itself is not under test here.
     async fn execute(
         &self,
         _args: serde_json::Value,
@@ -530,6 +534,7 @@ impl Tool for NamedTool {
     }
 }
 
+/// A connected Composio toolkit with the given slug, for driving refreshes.
 fn connected(slug: &str) -> crate::openhuman::agent::context::prompt::ConnectedIntegration {
     crate::openhuman::agent::context::prompt::ConnectedIntegration {
         toolkit: slug.into(),
