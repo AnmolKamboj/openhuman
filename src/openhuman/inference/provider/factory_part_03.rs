@@ -5,7 +5,7 @@ fn create_turn_chat_model_with_native_tools_and_route_inner(
     model: &str,
     native_tool_calling: bool,
 ) -> anyhow::Result<(Arc<dyn ChatModel<()>>, String, String)> {
-    #[cfg(any(test, feature = "e2e-test-support"))]
+    #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
     if let Some(chat) = test_provider_override::current() {
         let provider = chat
             .profile()
@@ -14,11 +14,11 @@ fn create_turn_chat_model_with_native_tools_and_route_inner(
         return Ok((chat, provider, model.to_string()));
     }
     let test_override_active = {
-        #[cfg(any(test, feature = "e2e-test-support"))]
+        #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
         {
             test_provider_override::current().is_some()
         }
-        #[cfg(not(any(test, feature = "e2e-test-support")))]
+        #[cfg(not(any(test, feature = "e2e-test-support", feature = "rss-bench")))]
         {
             false
         }
@@ -258,7 +258,7 @@ pub(crate) fn create_turn_chat_model_from_string_with_native_tools_and_route(
     temperature: f64,
     native_tool_calling: bool,
 ) -> anyhow::Result<(Arc<dyn ChatModel<()>>, String, String)> {
-    #[cfg(any(test, feature = "e2e-test-support"))]
+    #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
     if let Some(chat) = test_provider_override::current() {
         let provider = chat
             .profile()
@@ -271,11 +271,11 @@ pub(crate) fn create_turn_chat_model_from_string_with_native_tools_and_route(
         ));
     }
     let test_override_active = {
-        #[cfg(any(test, feature = "e2e-test-support"))]
+        #[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
         {
             test_provider_override::current().is_some()
         }
-        #[cfg(not(any(test, feature = "e2e-test-support")))]
+        #[cfg(not(any(test, feature = "e2e-test-support", feature = "rss-bench")))]
         {
             false
         }

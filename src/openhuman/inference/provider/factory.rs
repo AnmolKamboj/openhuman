@@ -32,7 +32,7 @@
 /// and clear it via the returned guard. Inert in production: the check below
 /// is gated on `cfg(test)` or an off-by-default test/profiling feature,
 /// so the override is never consulted in shipped builds.
-#[cfg(any(test, feature = "e2e-test-support"))]
+#[cfg(any(test, feature = "e2e-test-support", feature = "rss-bench"))]
 #[path = "factory_test_provider_override_tests.rs"]
 pub mod test_provider_override;
 
