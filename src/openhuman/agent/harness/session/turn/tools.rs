@@ -68,7 +68,10 @@ impl Agent {
             allowed_subagent_ids,
             turn_model_source: self.turn_model_source.clone(),
             all_tools: Arc::clone(&self.tools),
-            all_tool_specs: Arc::clone(&self.tool_specs),
+            // The durable registry's own specs, index for index with
+            // `all_tools` — never the synthesised delegation specs, which a
+            // child holds no instance for and must not see (#4452).
+            all_tool_specs: Arc::clone(&self.durable_tool_specs),
             visible_tool_names: self
                 .visible_tool_specs
                 .iter()

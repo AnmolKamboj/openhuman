@@ -113,9 +113,15 @@ pub struct Agent {
     /// so a name resolves in the same order everywhere. Empty for agents that
     /// do not delegate.
     pub(super) synthesized_tools: Arc<Vec<Box<dyn Tool>>>,
-    /// Full tool specs — sub-agents receive these via
-    /// [`ParentExecutionContext::all_tool_specs`].
+    /// Full tool specs: [`Self::tools`]' specs first, then the synthesised
+    /// half, which [`Agent::refresh_delegation_tools`] swaps in place.
     pub(super) tool_specs: Arc<Vec<ToolSpec>>,
+    /// The specs of [`Self::tools`] alone, index for index. Sub-agents receive
+    /// these via [`ParentExecutionContext::all_tool_specs`] beside
+    /// [`Self::tools`], so a child's spec list can never name a synthesised
+    /// delegate it holds no instance for (#4452). Fixed for the life of the
+    /// agent, like the registry it describes.
+    pub(super) durable_tool_specs: Arc<Vec<ToolSpec>>,
     /// Tool specs filtered by the visible-tool allowlist and session
     /// permission policy. These are the specs actually sent to the
     /// provider in the main agent's chat requests.

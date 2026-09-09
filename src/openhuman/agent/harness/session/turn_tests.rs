@@ -380,6 +380,15 @@ impl Drop for WorkspaceEnvGuard {
 }
 
 fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
+    make_agent_with_tool_sets(vec![Box::new(EchoTool)], Vec::new(), visible_tool_names)
+}
+
+/// [`make_agent`] with caller-chosen durable and synthesised tool sets.
+fn make_agent_with_tool_sets(
+    tools: Vec<Box<dyn Tool>>,
+    synthesized_tools: Vec<Box<dyn Tool>>,
+    visible_tool_names: Option<HashSet<String>>,
+) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
     crate::openhuman::memory::host_impls::install_for_tests();
@@ -402,7 +411,8 @@ fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
 
     let mut builder = Agent::builder()
         .chat_model(Arc::new(DummyProvider))
-        .tools(vec![Box::new(EchoTool)])
+        .tools(tools)
+        .synthesized_tools(synthesized_tools)
         .memory(mem)
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path)

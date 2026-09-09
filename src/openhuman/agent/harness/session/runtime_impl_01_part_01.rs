@@ -92,9 +92,16 @@ impl Agent {
         self.tool_specs.as_slice()
     }
 
-    /// Clone the agent's tool specs `Arc` for sharing with sub-agents.
+    /// Clone the agent's full tool specs `Arc` (durable and synthesised).
     pub fn tool_specs_arc(&self) -> Arc<Vec<ToolSpec>> {
         Arc::clone(&self.tool_specs)
+    }
+
+    /// Clone the specs of the durable registry alone, index for index with
+    /// [`Self::tools_arc`] — the pair a sub-agent is handed, so a child never
+    /// sees a spec for a synthesised delegate it holds no instance for.
+    pub fn durable_tool_specs_arc(&self) -> Arc<Vec<ToolSpec>> {
+        Arc::clone(&self.durable_tool_specs)
     }
 
     #[cfg(test)]
