@@ -25,6 +25,18 @@ fn response_keeps_top_level_statuses_array() {
 // that drove forty subjects through an in-process engine and went with it
 // (#6161). A later "tighten this into an RPC error" would turn a polled status
 // table into a visible failure, and no test would have objected (#6172).
+//
+// Two of the three are asserted below. The first — the binding itself failing
+// to resolve — is deliberately not, because it cannot be reached from a unit
+// test without damaging the rest of the binary. `binding::for_subtree` returns
+// `Err` on exactly two conditions: the process-wide `BINDINGS` lock being
+// poisoned, and the process-wide exit gate being raised. `memory::exit`'s own
+// doc gives the reason that gate is a type with one production instance rather
+// than a bare static — "a process-wide refusal to bind memory would reach every
+// other test in the same process" — so a test that raised it would fail every
+// test that binds memory after it. The arm is a two-line `warn` and `Vec::new()`
+// in `rpc.rs`; what would have to change for it to start propagating is the
+// `match` around it, which the two cases below already hold in place.
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::api::provider::MemoryProvider;
