@@ -178,7 +178,6 @@ fn _assert_builder_is_exported() -> AgentBuilder {
 fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
 
@@ -191,7 +190,7 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
 
     let mut builder = Agent::builder()
         .chat_model(provider)
@@ -226,7 +225,6 @@ fn integration_delegate_toolkit_enum(agent: &Agent) -> Vec<String> {
 async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::agent::harness::AgentDefinitionRegistry;
     use crate::openhuman::tools::SpawnSubagentTool;
 
@@ -278,7 +276,7 @@ async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
 
     // Tools include SpawnSubagentTool so the parent can call it.
     let tools: Vec<Box<dyn Tool>> = vec![Box::new(SpawnSubagentTool::new())];
@@ -460,7 +458,7 @@ fn agent_with_fake_locator(
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, workspace).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
     let agent = Agent::builder()
         .chat_model(Arc::new(MockProvider {
             responses: Mutex::new(vec![]),

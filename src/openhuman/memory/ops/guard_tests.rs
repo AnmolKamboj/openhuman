@@ -9,7 +9,7 @@ use super::*;
 /// The pre-boot fallback resolves *the same* workspace the global client is
 /// bound to, not whatever `Config::load_or_init` reports. That is the property
 /// the four re-pointed handlers rest on: their existing tests bind a temp
-/// workspace through `ensure_shared_memory_client()` and never build a
+/// workspace through `shared_memory_test_workspace()` and never build a
 /// `CoreContext`, so a config-derived fallback would silently guard a
 /// different store.
 #[tokio::test]
@@ -21,7 +21,7 @@ async fn falls_back_to_the_configured_workspace_when_there_is_no_context() {
     // so there is no `active_workspace_dir()` to interrogate. The fixture's own
     // workspace is the anchor now, and the assertion below — that the fallback
     // resolves to the same binding — is what this test was really about.
-    let workspace = crate::openhuman::memory::ops::ensure_shared_memory_client();
+    let workspace = crate::openhuman::memory::ops::shared_memory_test_workspace();
 
     let guard = active_memory_guard().await.expect("guard resolves");
     let bound = binding::for_workspace(&workspace, &MemorySubsystemConfig::default())
@@ -44,7 +44,7 @@ async fn guards_the_module_driver_and_keeps_its_identity() {
     let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
         .lock()
         .await;
-    crate::openhuman::memory::ops::ensure_shared_memory_client();
+    crate::openhuman::memory::ops::shared_memory_test_workspace();
 
     let guard = active_memory_guard().await.expect("guard resolves");
     assert_eq!(

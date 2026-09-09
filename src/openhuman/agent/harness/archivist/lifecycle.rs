@@ -33,8 +33,6 @@ impl ArchivistHook {
             boundary_config: BoundaryConfig::default(),
             config: None,
             summariser_available: false,
-            #[cfg(test)]
-            chat_provider: None,
         }
     }
 
@@ -113,8 +111,6 @@ impl ArchivistHook {
             boundary_config: BoundaryConfig::default(),
             config: None,
             summariser_available: false,
-            #[cfg(test)]
-            chat_provider: None,
         }
     }
 

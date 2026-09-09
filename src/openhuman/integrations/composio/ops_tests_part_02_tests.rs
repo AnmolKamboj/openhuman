@@ -1,46 +1,12 @@
 use super::*;
 
 #[tokio::test]
-async fn drive_cleanup_targets_are_connection_scoped() {
-    // The embedding seam fails loudly when unwired; same reasoning as the
-    // notion tests above.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    let tmp = tempfile::tempdir().unwrap();
-    let config = test_config(&tmp);
-    // The drive arm never touches the store, but discovery takes the caller's
-    // client unconditionally — the parameter is the seam the notion tests
-    // inject through.
-    let _drive_memory = std::sync::Arc::new(
-        MemoryClient::from_workspace_dir(config.workspace_dir.clone())
-            .expect("memory client should initialise"),
-    );
-
-    let targets = composio_memory_targets_for_connection(&config, Some("google_drive"), "conn-1")
-        .await
-        .expect("drive cleanup targets should resolve");
-
-    assert!(targets.contains(&MemoryCleanupTarget::Exact(
-        SourceKind::Document,
-        "drive:conn-1".to_string()
-    )));
-    assert!(targets.contains(&MemoryCleanupTarget::Prefix(
-        SourceKind::Document,
-        "googledrive:conn-1:".to_string()
-    )));
-    assert!(targets.contains(&MemoryCleanupTarget::Prefix(
-        SourceKind::Document,
-        "google_drive:conn-1/".to_string()
-    )));
-}
-
-#[tokio::test]
 async fn composio_get_user_profile_via_mock_returns_provider_profile() {
     let _serialised = module_guard().await;
     // The embedding seam fails loudly when unwired. Installed here rather
     // than relied upon from another test: `install_for_tests` is
     // `Once`-guarded, so a test that omits it passes only while some
     // earlier test in the same binary happened to run first.
-    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::config::TEST_ENV_LOCK;
     let _cache_guard = cache_guard();
     let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

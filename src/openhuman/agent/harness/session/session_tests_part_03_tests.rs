@@ -10,7 +10,6 @@ use super::*;
 fn seed_resume_from_thread_transcript_preserves_tool_calls_and_reasoning() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
     use super::super::transcript::{self, MessageUsage, TranscriptMeta, TurnUsage};
     use crate::openhuman::agent::messages::ChatMessage;
     use crate::openhuman::inference::provider::ToolCall;
@@ -84,7 +83,7 @@ fn seed_resume_from_thread_transcript_preserves_tool_calls_and_reasoning() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &wsp).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
     let mut agent = Agent::builder()
         .chat_model(Arc::new(MockProvider {
             responses: Mutex::new(vec![]),

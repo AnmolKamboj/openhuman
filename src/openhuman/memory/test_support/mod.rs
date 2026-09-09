@@ -43,3 +43,76 @@ pub(crate) fn install_memory_driver_for_test(config: &crate::openhuman::config::
         Arc::new(tinymemory_conformance::RecordingProvider::new());
     install_for_test(&config.workspace_dir, &config.subsystems.memory, provider);
 }
+
+/// A [`Memory`] that stores nothing.
+///
+/// Seventeen test helpers used to obtain one by asking the engine's factory for
+/// `backend: "none"` — an engine call whose entire purpose was to get back
+/// something that does not store. The agent or session under test needs *a*
+/// memory to be constructed with and never reads one back, so this is the same
+/// behaviour without linking an engine to obtain it.
+///
+/// Deliberately not the conformance driver: that one retains, and a test that
+/// asked for `"none"` was asking for the opposite. Swapping in a retaining
+/// store would change what those tests exercise.
+#[derive(Debug)]
+pub(crate) struct NoopMemory;
+
+#[async_trait::async_trait]
+impl tinymemory_api::traits::Memory for NoopMemory {
+    fn name(&self) -> &str {
+        "none"
+    }
+    async fn store(
+        &self,
+        _namespace: &str,
+        _key: &str,
+        _content: &str,
+        _category: tinymemory_api::types::MemoryCategory,
+        _session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn recall(
+        &self,
+        _query: &str,
+        _limit: usize,
+        _opts: tinymemory_api::recall::RecallOpts<'_>,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::MemoryEntry>> {
+        Ok(Vec::new())
+    }
+    async fn get(
+        &self,
+        _namespace: &str,
+        _key: &str,
+    ) -> anyhow::Result<Option<tinymemory_api::types::MemoryEntry>> {
+        Ok(None)
+    }
+    async fn list(
+        &self,
+        _namespace: Option<&str>,
+        _category: Option<&tinymemory_api::types::MemoryCategory>,
+        _session_id: Option<&str>,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::MemoryEntry>> {
+        Ok(Vec::new())
+    }
+    async fn forget(&self, _namespace: &str, _key: &str) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+    async fn namespace_summaries(
+        &self,
+    ) -> anyhow::Result<Vec<tinymemory_api::types::NamespaceSummary>> {
+        Ok(Vec::new())
+    }
+    async fn count(&self) -> anyhow::Result<usize> {
+        Ok(0)
+    }
+    async fn health_check(&self) -> bool {
+        true
+    }
+}
+
+/// The shorthand the `backend: "none"` call sites use.
+pub(crate) fn noop_memory() -> Arc<dyn tinymemory_api::traits::Memory> {
+    Arc::new(NoopMemory)
+}

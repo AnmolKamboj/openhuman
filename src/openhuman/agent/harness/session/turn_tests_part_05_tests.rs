@@ -115,9 +115,8 @@ fn make_agent_with_auto_recall(
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    crate::openhuman::memory::host_impls::install_for_tests();
     let mem: Arc<dyn Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
 
     Agent::builder()
         .chat_model(provider)
