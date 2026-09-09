@@ -605,6 +605,9 @@ impl AgentBuilder {
         Ok(Agent {
             turn_model_source,
             tools,
+            // Populated by the first `refresh_delegation_tools`; agents that
+            // declare no sub-agents never leave it empty-but-allocated.
+            synthesized_tools: Arc::new(Vec::new()),
             tool_specs: Arc::new(tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),
             visible_tool_names: visible_names,
@@ -703,7 +706,6 @@ impl AgentBuilder {
             pending_skill_retraction: Vec::new(),
             archivist_hook: self.archivist_hook,
             synthesized_tool_names: std::collections::HashSet::new(),
-            pending_synthesized_tools_mask: std::collections::HashSet::new(),
             pending_turn_overrides: super::super::types::TurnOverrides::default(),
         })
     }

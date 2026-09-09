@@ -223,6 +223,69 @@ fn integration_delegate_toolkit_enum(agent: &Agent) -> Vec<String> {
     out
 }
 
+/// Every synthesised delegate the agent advertises must have an executable
+/// instance behind it, and vice versa.
+///
+/// This is the invariant #6145 broke: `tool_specs` reconciled unconditionally
+/// while the instances only reconciled when the `tools` `Arc` happened to be
+/// uniquely owned, so a mid-session connect published a `delegate_*` schema
+/// that no registered tool set could dispatch. Asserted through the public
+/// surface only, like every other test in this file.
+fn assert_synthesized_delegates_are_executable(agent: &Agent) {
+    let instances = agent.synthesized_tools_arc();
+    let executable: std::collections::HashSet<String> =
+        instances.iter().map(|t| t.name().to_string()).collect();
+    assert_eq!(
+        executable.len(),
+        instances.len(),
+        "the synthesised set must not contain duplicate tool names"
+    );
+
+    let spec_names: std::collections::HashSet<String> = agent
+        .tool_specs()
+        .iter()
+        .map(|spec| spec.name.clone())
+        .collect();
+    for name in &executable {
+        assert!(
+            spec_names.contains(name),
+            "executable synthesised tool `{name}` is not advertised in tool_specs"
+        );
+    }
+
+    // The other direction is the one that actually regressed: a
+    // `delegate_*` spec on the wire with nothing registered to run it.
+    let advertised_delegates: Vec<&String> = spec_names
+        .iter()
+        .filter(|name| name.starts_with("delegate_"))
+        .collect();
+    for name in advertised_delegates {
+        assert!(
+            executable.contains(name),
+            "advertised delegate `{name}` has no executable instance; executable={executable:?}"
+        );
+    }
+
+    // Presence is not enough. A stale instance under a fresh spec is the same
+    // class of bug one step quieter: the model reads the new `toolkit` enum
+    // and routes to an instance built from the previous connection set. Pin
+    // that each instance's own schema is byte-identical to what is advertised.
+    for tool in instances.iter() {
+        let advertised = agent
+            .tool_specs()
+            .iter()
+            .find(|spec| spec.name == tool.name())
+            .unwrap_or_else(|| panic!("no spec advertised for synthesised tool `{}`", tool.name()));
+        assert_eq!(
+            tool.spec().parameters,
+            advertised.parameters,
+            "synthesised instance `{}` carries a stale schema — advertised and executable \
+             must be rebuilt in the same pass",
+            tool.name()
+        );
+    }
+}
+
 async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
