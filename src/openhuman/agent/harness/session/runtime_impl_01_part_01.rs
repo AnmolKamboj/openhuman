@@ -97,6 +97,12 @@ impl Agent {
         Arc::clone(&self.tool_specs)
     }
 
+    /// Clone the agent's provider-facing spec list: visible, policy-allowed,
+    /// de-duplicated, synthesised delegates included.
+    pub fn visible_tool_specs_arc(&self) -> Arc<Vec<ToolSpec>> {
+        Arc::clone(&self.visible_tool_specs)
+    }
+
     /// Clone the specs of the durable registry alone, index for index with
     /// [`Self::tools_arc`] — the pair a sub-agent is handed, so a child never
     /// sees a spec for a synthesised delegate it holds no instance for.

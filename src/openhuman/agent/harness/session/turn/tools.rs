@@ -77,6 +77,7 @@ impl Agent {
                 .iter()
                 .map(|spec| spec.name.clone())
                 .collect(),
+            visible_tool_specs: Arc::clone(&self.visible_tool_specs),
             subagent_tool_ceiling_names: self.subagent_tool_ceiling_names.clone(),
             model_name: self.model_name.clone(),
             temperature: self.temperature,
