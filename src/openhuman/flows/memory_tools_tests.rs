@@ -1,5 +1,4 @@
 use super::*;
-use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::security::AutonomyLevel;
 use tempfile::TempDir;
 

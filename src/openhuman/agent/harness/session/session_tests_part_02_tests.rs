@@ -29,12 +29,11 @@ async fn turn_with_native_dispatcher_handles_tool_results_variant() {
         ]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -80,12 +79,11 @@ async fn turn_with_native_dispatcher_persists_fallback_tool_calls() {
         ]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -207,12 +205,11 @@ async fn system_prompt_and_model_are_byte_stable_across_turns() {
         captures: Mutex::new(Vec::new()),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider.clone() as Arc<dyn ChatModel<()>>)

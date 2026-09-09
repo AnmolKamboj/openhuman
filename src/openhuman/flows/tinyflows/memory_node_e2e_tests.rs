@@ -50,7 +50,6 @@ use tinyflows::model::{Edge, Node, NodeKind, WorkflowGraph};
 
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
-use crate::openhuman::flows::flow_namespace;
 use crate::openhuman::flows::memory_tools::FlowMemoryRecallTool;
 use crate::openhuman::security::AutonomyLevel;
 use crate::openhuman::tools::traits::Tool;
@@ -269,4 +268,3 @@ async fn memory_node_remember_then_recall_round_trips_through_the_real_engine_an
 
 // ── 4. dry_run_workflow still works with a memory node: MockMemory returns
 // shaped data without ever touching the real store ─────────────────────────
-

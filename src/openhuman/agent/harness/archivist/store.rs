@@ -378,4 +378,3 @@ fn write_if_new(abs_path: &Path, bytes: &[u8]) -> Result<bool> {
         }
     }
 }
-

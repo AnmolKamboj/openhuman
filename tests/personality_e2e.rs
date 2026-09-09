@@ -13,9 +13,7 @@
 //! Run with: `cargo test --test personality_e2e`
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
-use serde_json::json;
 use tempfile::tempdir;
 
 use openhuman_core::openhuman::agent::profiles::{
@@ -31,11 +29,9 @@ use openhuman_core::openhuman::agent::prompts::{
     IdentitySection, PersonalityRosterEntry, PersonalityRosterSection, PromptContext,
     PromptSection, ToolCallFormat, UserFilesSection,
 };
-use openhuman_core::openhuman::inference::embeddings::NoopEmbedding;
 use openhuman_core::openhuman::memory::conversations::{
     ensure_thread, list_threads, update_thread_title, ConversationStore, CreateConversationThread,
 };
-use openhuman_core::openhuman::memory::NamespaceDocumentInput;
 // The engine handle is named on the crate rather than reached through the
 // memory module's public surface: it is an in-process engine type, not
 // contract vocabulary, and the alias that used to re-export it existed for

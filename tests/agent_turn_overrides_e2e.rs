@@ -38,7 +38,7 @@ use openhuman_core::openhuman::agent::dispatcher::{NativeToolDispatcher, XmlTool
 use openhuman_core::openhuman::agent::harness::session::TurnOverrides;
 use openhuman_core::openhuman::agent::tinyagents::thread_context::with_thread_id;
 use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::config::{AgentConfig, Config, ContextConfig, MemoryConfig};
+use openhuman_core::openhuman::config::{AgentConfig, ContextConfig};
 use openhuman_core::openhuman::threads::goals::{runtime as goal_runtime, store as goal_store};
 use openhuman_core::openhuman::tools::{
     PermissionLevel, Tool, ToolContent, ToolResult, ToolScope as RuntimeToolScope,
@@ -92,8 +92,7 @@ fn ensure_memory_seams() {
         std::thread::Builder::new()
             .name("turn-overrides-e2e-seams".to_string())
             .stack_size(8 * 1024 * 1024)
-            .spawn(|| {
-            })
+            .spawn(|| {})
             .expect("spawn turn-overrides seam installer")
             .join()
             .expect("turn-overrides seam installer panicked");

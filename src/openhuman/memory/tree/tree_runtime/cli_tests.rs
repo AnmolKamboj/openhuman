@@ -225,4 +225,3 @@ fn init_logging_sets_default_rust_log_only_when_needed() {
         assert_eq!(std::env::var("RUST_LOG").ok().as_deref(), Some("debug"));
     }
 }
-

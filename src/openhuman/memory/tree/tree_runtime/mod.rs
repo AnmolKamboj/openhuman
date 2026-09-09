@@ -42,7 +42,6 @@ pub use crate::openhuman::memory::api::tree::{
 pub mod ops;
 pub mod schemas;
 
-
 pub use ops as rpc;
 
 pub mod bus;

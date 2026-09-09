@@ -496,12 +496,11 @@ async fn agent_turn_runs_long_parallel_subagent_flow_with_many_nested_tool_calls
     let provider = ParallelHarnessProvider::default();
     let fixture_state = Arc::new(FixtureStepState::default());
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let tools: Vec<Box<dyn Tool>> = vec![
         Box::new(SpawnParallelAgentsTool::new()),

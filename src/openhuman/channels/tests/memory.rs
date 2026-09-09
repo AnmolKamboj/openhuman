@@ -5,12 +5,10 @@ use super::super::context::{
 use super::super::runtime::process_channel_message;
 use super::super::{traits, Channel};
 use super::common::{HistoryCaptureModel, RecordingChannel};
-use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::inference::provider;
-use crate::openhuman::memory::{Memory, MemoryCategory};
+use crate::openhuman::memory::Memory;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tempfile::TempDir;
 use tinymemory_api::provider::MemoryCore as _;
 
 fn conversation_memory_key_uses_message_id() {

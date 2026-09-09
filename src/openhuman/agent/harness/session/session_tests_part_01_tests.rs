@@ -329,12 +329,11 @@ fn refresh_workflows_picks_up_skill_installed_on_disk() {
     )
     .unwrap();
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -401,12 +400,11 @@ fn refresh_workflows_retracts_skill_removed_from_disk() {
     )
     .unwrap();
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -502,12 +500,11 @@ async fn turn_without_tools_returns_text() {
         }]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -549,12 +546,11 @@ async fn last_turn_usage_is_public_and_non_draining() {
         }]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)

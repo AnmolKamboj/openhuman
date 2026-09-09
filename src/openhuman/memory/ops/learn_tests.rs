@@ -1,7 +1,6 @@
 use std::ffi::OsString;
 
 use serde_json::json;
-use tempfile::TempDir;
 
 use super::*;
 use crate::openhuman::memory::api::types::NamespaceDocumentInput;
@@ -115,4 +114,3 @@ async fn memory_learn_all_is_noop_when_requested_namespaces_do_not_exist() {
     assert_eq!(outcome.value.namespaces_processed, 0);
     assert!(outcome.value.results.is_empty());
 }
-

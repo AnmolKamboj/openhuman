@@ -123,8 +123,7 @@ async fn setup() -> Harness {
     std::thread::Builder::new()
         .name("worker-c-memory-seams".to_string())
         .stack_size(8 * 1024 * 1024)
-        .spawn(|| {
-        })
+        .spawn(|| {})
         .expect("spawn worker-c memory seam installer")
         .join()
         .expect("worker-c memory seam installer panicked");

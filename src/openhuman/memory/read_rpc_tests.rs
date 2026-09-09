@@ -1,6 +1,4 @@
 use super::*;
-use chrono::{TimeZone, Utc};
-use rusqlite::params;
 use tempfile::TempDir;
 
 fn test_config() -> (TempDir, Config) {

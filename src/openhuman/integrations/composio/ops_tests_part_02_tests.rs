@@ -148,4 +148,3 @@ async fn composio_execute_via_mock_propagates_backend_error() {
     assert!(err.starts_with("[composio:error:"), "got: {err}");
     assert!(err.contains("rate limited"), "got: {err}");
 }
-
