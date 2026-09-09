@@ -161,6 +161,21 @@ async fn edit_rejects_identical_strings() {
 async fn edit_reports_an_os_write_failure_rather_than_a_silent_success() {
     use std::os::unix::fs::PermissionsExt;
 
+    // SAFETY: `geteuid` takes no arguments, mutates no process state, and is
+    // documented as always succeeding.
+    let euid = unsafe { libc::geteuid() };
+    if euid == 0 {
+        // A mode-bit write denial is a DAC check; root carries
+        // CAP_DAC_OVERRIDE and bypasses it, so the write below would
+        // succeed and this test would assert nothing. Skip loudly rather
+        // than pass on a precondition that never held.
+        eprintln!(
+            "edit_reports_an_os_write_failure_rather_than_a_silent_success: \
+             skipped — running as root, which bypasses file-mode write checks"
+        );
+        return;
+    }
+
     let dir = std::env::temp_dir().join("openhuman_test_edit_os_write_fail");
     let _ = tokio::fs::remove_dir_all(&dir).await;
     tokio::fs::create_dir_all(&dir).await.unwrap();
