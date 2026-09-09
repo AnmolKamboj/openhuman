@@ -342,17 +342,13 @@ fn parent_context_with_specs(
     visible_tool_specs: Vec<crate::openhuman::tools::ToolSpec>,
 ) -> crate::openhuman::agent::harness::fork_context::ParentExecutionContext {
     use std::sync::Arc;
-    // The embedding seam fails loudly when unwired; `create_memory` reaches it.
-    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_dir = workspace.path().to_path_buf();
     std::mem::forget(workspace);
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
-        backend: "none".into(),
-        ..crate::openhuman::config::MemoryConfig::default()
-    };
+    // The context needs *a* memory to be constructed with and never reads one
+    // back, which is exactly what `noop_memory` is for.
     let memory: Arc<dyn crate::openhuman::memory::Memory> =
-        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_dir).unwrap());
+        crate::openhuman::memory::test_support::noop_memory();
     let model: Arc<dyn tinyinference::model::ChatModel<()>> =
         Arc::new(tinyagents_harness::testkit::ScriptedModel::new(Vec::new()));
     crate::openhuman::agent::harness::fork_context::ParentExecutionContext {
