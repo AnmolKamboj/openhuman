@@ -111,6 +111,16 @@ export type ThreadComponents = {
    * component returns `null` when it has nothing to say.
    */
   RunningStatus?: ComponentType | undefined;
+  /**
+   * Host-owned one-line footer for a **settled** assistant message — the
+   * turn's process summary and the single door to its detail.
+   *
+   * A seam for the same reason `RunningStatus` is one: this file knows the
+   * message, not what the host recorded while producing it. The host component
+   * reads the message's own metadata and returns `null` when the turn has no
+   * process behind it, so a plain answer gets no footer.
+   */
+  TurnFooter?: ComponentType | undefined;
   /** Host-owned attachment previews rendered above the editor. */
   ComposerAttachments?: ComponentType | undefined;
   /** Host-owned attachment picker rendered in the action row. */
@@ -733,6 +743,7 @@ const AssistantMessage: FC = () => {
     ToolFallback: ToolFallbackComponent = ToolFallback,
     ToolGroup,
     ReasoningGroup,
+    TurnFooter,
   } = useContext(ThreadComponentsContext);
 
   const ACTION_BAR_PT = 'pt-1.5';
@@ -865,6 +876,7 @@ const AssistantMessage: FC = () => {
             Stopped
           </span>
         </AuiIf>
+        {TurnFooter ? <TurnFooter /> : null}
         <BranchPicker />
         <AssistantActionBar />
       </div>
