@@ -18,4 +18,3 @@ fn name_and_schema() {
     // No required args.
     assert_eq!(tool.parameters_schema()["required"], json!([]));
 }
-

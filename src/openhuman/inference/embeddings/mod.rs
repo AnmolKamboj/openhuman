@@ -60,8 +60,6 @@ pub(crate) use factory::MODELS_SUPPORTING_DIMENSIONS;
 // `-D warnings`. The
 // function itself is not test-only: `factory` and `embeddings::rpc` both reach
 // it directly through `super::factory::`, which is why only the re-export moves.
-#[cfg(any(test, feature = "memory-engine-seams"))]
-pub(crate) use factory::model_supports_dimensions;
 // #002 FR-015: the memory-tree OpenAI-compat embedder reuses the same key
 // resolution the embeddings RPC uses, so there is one source of truth.
 pub use noop::NoopEmbedding;
@@ -74,7 +72,7 @@ pub use rpc::provider_from_config;
 // gated on `memory-engine-seams` since #5560). `embeddings::rpc` itself names
 // the function
 // through `super::rpc`, not through here, so this gate does not narrow it.
-#[cfg(any(test, feature = "modules", feature = "memory-engine-seams"))]
+#[cfg(any(test, feature = "modules"))]
 pub(crate) use rpc::resolve_api_key;
 pub use schemas::{
     all_controller_schemas as all_embeddings_controller_schemas,

@@ -52,7 +52,6 @@
 pub mod rpc;
 pub mod schemas;
 
-
 // The controller aggregators this domain's RPC surface defines. Aliased
 // exactly as the pre-extraction module exported them.
 pub use schemas::{

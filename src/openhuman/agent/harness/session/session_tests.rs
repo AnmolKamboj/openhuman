@@ -185,12 +185,11 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
         responses: Mutex::new(vec![]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut builder = Agent::builder()
         .chat_model(provider)
@@ -271,12 +270,11 @@ async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
         ]),
     });
 
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     // Tools include SpawnSubagentTool so the parent can call it.
     let tools: Vec<Box<dyn Tool>> = vec![Box::new(SpawnSubagentTool::new())];
@@ -453,12 +451,11 @@ fn agent_with_fake_locator(
         canned,
         appended: Mutex::new(Vec::new()),
     });
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
     let agent = Agent::builder()
         .chat_model(Arc::new(MockProvider {
             responses: Mutex::new(vec![]),

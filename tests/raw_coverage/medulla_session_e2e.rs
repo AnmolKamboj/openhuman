@@ -265,7 +265,7 @@ async fn serve_fixture_backend() -> (
 
     async fn send_message(
         State(state): State<Arc<BackendState>>,
-        AxumPath(id): AxumPath<String>,
+        AxumPath(_id): AxumPath<String>,
         Query(query): Query<std::collections::HashMap<String, String>>,
         headers: HeaderMap,
         Json(body): Json<Value>,

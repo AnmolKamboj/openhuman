@@ -385,4 +385,3 @@ async fn composio_delete_connection_via_mock() {
         .unwrap();
     assert!(outcome.value.deleted);
 }
-

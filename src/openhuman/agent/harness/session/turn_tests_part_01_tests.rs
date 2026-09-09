@@ -460,13 +460,12 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
     // fast path finds nothing and the model-driven walk (the two-call sequence
     // asserted below) is what actually runs.
     let _workspace_env = WorkspaceEnvGuard::set(&workspace_path);
-    let memory_cfg = crate::openhuman::config::MemoryConfig {
+    let _memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
     // The embedding seam, as above.
-    let mem: Arc<dyn Memory> =
-        crate::openhuman::memory::test_support::noop_memory();
+    let mem: Arc<dyn Memory> = crate::openhuman::memory::test_support::noop_memory();
 
     let mut agent = Agent::builder()
         .chat_model(provider)

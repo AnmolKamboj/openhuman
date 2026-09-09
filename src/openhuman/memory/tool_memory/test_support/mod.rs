@@ -25,8 +25,8 @@
 //! tests reach `memory.entries.lock()` directly, and a `std` mutex would make
 //! every one of those call sites grow an `unwrap`.
 
-use std::collections::HashMap;
 use parking_lot::Mutex;
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use tinymemory_api::recall::RecallOpts;

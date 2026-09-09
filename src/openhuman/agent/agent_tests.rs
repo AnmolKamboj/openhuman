@@ -228,7 +228,7 @@ fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
     let tmp = tempfile::TempDir::new().unwrap();
-    let cfg = MemoryConfig {
+    let _cfg = MemoryConfig {
         backend: "none".into(),
         ..MemoryConfig::default()
     };
@@ -242,7 +242,7 @@ fn make_sqlite_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
     let tmp = tempfile::TempDir::new().unwrap();
-    let cfg = MemoryConfig {
+    let _cfg = MemoryConfig {
         backend: "sqlite".into(),
         ..MemoryConfig::default()
     };

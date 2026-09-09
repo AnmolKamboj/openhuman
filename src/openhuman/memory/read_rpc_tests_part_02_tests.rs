@@ -158,4 +158,3 @@ async fn vault_rpcs_report_core_host_os() {
         "host_os must be populated"
     );
 }
-

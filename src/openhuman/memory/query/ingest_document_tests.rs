@@ -153,4 +153,3 @@ async fn execute_rejects_blank_required_fields() {
         .expect("blank source_id should return ToolResult error");
     assert!(result.is_error);
 }
-

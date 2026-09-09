@@ -1,5 +1,4 @@
 use super::*;
-use chrono::TimeZone;
 use tempfile::TempDir;
 
 // `TreeNode`, `level_from_node_id` and `derive_parent_id` used to arrive
@@ -86,4 +85,3 @@ fn create_provider_uses_cloud_when_opted_in_and_local_ai_off() {
         "cloud fallback must resolve a model"
     );
 }
-
