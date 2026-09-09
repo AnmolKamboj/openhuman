@@ -253,10 +253,19 @@ async fn add_generates_an_id_and_caps_a_request_that_left_its_limits_unset() {
     //
     // The caller never supplies one; a request that could name its own id would
     // let two sources collide by construction.
+    let minted = added.id.strip_prefix("src_").unwrap_or_else(|| {
+        panic!(
+            "the handler must mint a `src_`-prefixed id, got {:?}",
+            added.id
+        )
+    });
     assert!(
-        added.id.starts_with("src_") && added.id.len() == "src_".len() + 32,
-        "the handler must mint a `src_<uuid simple>` id, got {:?}",
-        added.id
+        minted.len() == 32
+            && minted
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "the suffix must be a uuid-simple — 32 lowercase hex digits — and not \
+         merely 32 characters, got {minted:?}"
     );
 
     // ── the caps came from somewhere ────────────────────────────────────────
@@ -280,9 +289,25 @@ async fn add_generates_an_id_and_caps_a_request_that_left_its_limits_unset() {
     .expect("get_rpc")
     .value
     .source;
+    let fetched = fetched.expect("the added source is not readable back from the registry");
     assert_eq!(
-        fetched.map(|s| s.id),
-        Some(added.id.clone()),
-        "the added source is not readable back from the registry"
+        fetched.id, added.id,
+        "the registry read back a different source"
+    );
+
+    // The id alone would be satisfied by a registry that persisted an entry
+    // with every other field defaulted. These four are the request's
+    // non-default fields, so each one is a mapping the handler had to carry.
+    assert_eq!(
+        fetched.kind,
+        tinymemory_sources::types::SourceKind::GithubRepo,
+        "the request's kind must survive the round trip"
+    );
+    assert_eq!(fetched.label, "A repository", "the request's label");
+    assert!(fetched.enabled, "the request asked for an enabled source");
+    assert_eq!(
+        fetched.url.as_deref(),
+        Some("https://github.invalid/owner/repo"),
+        "the request's url"
     );
 }
