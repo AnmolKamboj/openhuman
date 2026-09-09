@@ -263,8 +263,118 @@ async fn memory_node_remember_then_recall_round_trips_through_the_real_engine_an
     );
 }
 
-// ── 3. security invariant end-to-end: scope:"user" writes are rejected,
-// and the user's real memory store is never touched ────────────────────────
+// ── 3. security invariant end-to-end: scope:"user" writes are rejected ─────
 
-// ── 4. dry_run_workflow still works with a memory node: MockMemory returns
-// shaped data without ever touching the real store ─────────────────────────
+/// A `remember` node asking for `scope: "user"` is refused twice over.
+///
+/// This test used to assert a third thing: that the user's real
+/// `GLOBAL_NAMESPACE` store held nothing under the key afterwards. That layer
+/// needed `tinymemory_core::global::client_if_ready()` and
+/// `tinycortex::memory::GLOBAL_NAMESPACE` — an in-process engine — and went
+/// with it (openhuman#6161). It is not replaced here, and pretending otherwise
+/// would be worse than saying so: the fake driver this crate now binds has no
+/// user store to leave untouched, so an assertion against it would pass
+/// whether or not the guard held.
+///
+/// The two layers that remain are the ones that do the refusing, and neither
+/// needed an engine to begin with. Deleting them along with the third was the
+/// mistake this restores.
+#[tokio::test]
+async fn memory_node_remember_user_scope_is_rejected_before_it_can_write() {
+    let _serial = lock_shared_memory().await;
+    let (_tmp, config) = full_autonomy_config();
+    let flow_id = unique_flow_id("e2e-security");
+    let caps = build_capabilities(config, format!("flow:{flow_id}"));
+    let forbidden_key = format!("forbidden-{}", uuid::Uuid::new_v4());
+
+    // ── (a) validate-time rejection: tinyflows' own structural validator
+    // rejects a `remember`/`scope: "user"` node BEFORE compile ever succeeds,
+    // so a graph shaped this way can never reach a run. Nothing else in this
+    // crate asserts the compiler half. ──
+    let user_scope_graph = trigger_to_memory(json!({
+        "operation": "remember",
+        "scope": "user",
+        "key": forbidden_key,
+        "value": "must never be written to user memory"
+    }));
+    let compile_err = tinyflows::compiler::compile(&user_scope_graph)
+        .expect_err("scope: \"user\" on a remember node must be rejected at validate/compile time");
+    assert!(
+        compile_err.to_string().to_lowercase().contains("user"),
+        "expected the validator's scope:\"user\" rejection, got: {compile_err}"
+    );
+
+    // ── (b) defense-in-depth: even bypassing tinyflows' validator entirely and
+    // calling straight through to the adapter `build_capabilities` wired — the
+    // exact instance a real run would dispatch to — `OpenHumanMemory::remember`
+    // independently refuses anything but scope: "flow".
+    //
+    // `memory_adapter_tests::remember_rejects_user_scope` covers the same
+    // refusal on a directly-constructed adapter. This one is not redundant with
+    // it: what is under test here is that the capability a real run receives is
+    // that adapter, rather than something assembled differently on the way. ──
+    let direct_err = turn_origin::with_origin(
+        workflow_origin(&flow_id),
+        caps.memory
+            .as_ref()
+            .expect("build_capabilities must wire a memory capability")
+            .remember("user", &forbidden_key, json!("must never be written")),
+    )
+    .await
+    .expect_err("the adapter itself must independently refuse scope: \"user\"");
+    assert!(direct_err
+        .to_string()
+        .contains("only supports scope \"flow\""));
+}
+
+// ── 4. dry_run_workflow still works with a memory node ─────────────────────
+
+/// A graph containing a `memory` node dry-runs end to end against the mock
+/// capabilities `DryRunWorkflowTool` wires, and comes back with `MockMemory`'s
+/// shaped echo rather than store content.
+///
+/// The two assertions that read the real on-disk store before and after — "the
+/// dry run never wrote there" — needed an in-process engine and went with it
+/// (openhuman#6161). What survives still distinguishes the two paths, because
+/// the echo is `MockMemory`'s and no real adapter produces it: a dry run that
+/// had reached the real store would fail the `mem_1` assertion rather than
+/// pass it quietly.
+#[tokio::test]
+async fn memory_node_dry_run_uses_mock_memory_end_to_end() {
+    let mock_caps = tinyflows::caps::mock::mock_capabilities();
+
+    let remember_graph = trigger_to_memory(json!({
+        "operation": "remember",
+        "scope": "flow",
+        "key": "item-42",
+        "value": "should never reach the real store in a dry run"
+    }));
+    let compiled_remember =
+        tinyflows::compiler::compile(&remember_graph).expect("compile remember graph");
+    let remember_outcome = tinyflows::engine::run(&compiled_remember, Value::Null, &mock_caps)
+        .await
+        .expect("dry-run remember should succeed against MockMemory");
+    assert_eq!(
+        remember_outcome.output["nodes"]["mem"]["items"][0]["json"]["json"]["ok"],
+        json!(true)
+    );
+
+    let recall_graph = trigger_to_memory(json!({
+        "operation": "recall",
+        "scope": "flow",
+        "query": "item-42"
+    }));
+    let compiled_recall =
+        tinyflows::compiler::compile(&recall_graph).expect("compile recall graph");
+    let recall_outcome = tinyflows::engine::run(&compiled_recall, Value::Null, &mock_caps)
+        .await
+        .expect("dry-run recall should succeed against MockMemory");
+    let results = recall_outcome.output["nodes"]["mem"]["items"][0]["json"]["json"]["results"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        results.iter().any(|hit| hit["id"] == json!("mem_1")),
+        "expected MockMemory's fixed shaped echo (not real-store content), got: {results:?}"
+    );
+}

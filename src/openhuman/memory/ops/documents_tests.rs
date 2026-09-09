@@ -114,14 +114,21 @@ async fn direct_document_handlers_roundtrip_through_namespace() {
     })
     .await
     .expect("context_query");
-    // Only that the handler reached a driver and returned a body. **Not** that
-    // the body mentions "ownership": that is semantic retrieval — the driver
-    // ranking a query against document content — and it is the engine's
-    // behaviour, asserted upstream against the engine itself
+    // The handler reached a driver and returned a rendered context body.
+    //
+    // **Not** that the body mentions "ownership": that is semantic retrieval —
+    // the driver ranking a query against document content — which is the
+    // engine's behaviour and is asserted upstream against the engine itself
     // (`tinymemory`'s `full_provider_conformance`). Pinning it from here made
     // this handler test pass or fail on whether the bound driver happens to
     // implement search, which is not what `context_query`'s wiring is.
-    let _ = &queried.value;
+    //
+    // What *is* this handler's own contract is that it forwards the driver's
+    // `context_text` and tags the call — so that is what is asserted.
+    // Borrowing the value and asserting nothing, which is what this line was
+    // between deleting the content assertion and now, would let a handler that
+    // stopped calling the driver entirely pass.
+    assert_eq!(queried.logs, vec!["memory context queried".to_string()]);
 
     let recalled = context_recall(RecallNamespaceParams {
         namespace: namespace.clone(),

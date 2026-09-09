@@ -225,15 +225,11 @@ impl Tool for CountingTool {
 /// The returned `TempDir` must be held alive for the duration of the test
 /// to prevent the directory (and its SQLite database) from being deleted.
 fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
-    // The embedding seam fails loudly when unwired; before the memory
-    // extraction this was a direct call and needed no setup.
+    // `backend: "none"` is what this fixture used to ask the engine's factory
+    // for, and a no-op store is exactly what that produced — so the config is
+    // gone rather than kept as an unused binding that reads like it still
+    // selects something.
     let tmp = tempfile::TempDir::new().unwrap();
-    let _cfg = MemoryConfig {
-        backend: "none".into(),
-        ..MemoryConfig::default()
-    };
-    // The embedding seam fails loudly when unwired; before the memory
-    // extraction this was a direct call and needed no setup.
     let mem = crate::openhuman::memory::test_support::noop_memory();
     (mem, tmp)
 }

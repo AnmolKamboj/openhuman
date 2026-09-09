@@ -81,24 +81,6 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
-
-/// `create_memory` requires the TinyMemory host seams and fails loudly when they
-/// are unwired — a deliberate choice, since an unwired embedding host would
-/// otherwise corrupt an embedding space quietly. Installed on a wide stack
-/// because the seam installer recurses deeply.
-fn ensure_memory_seams() {
-    MEMORY_SEAMS_INIT.get_or_init(|| {
-        std::thread::Builder::new()
-            .name("turn-overrides-e2e-seams".to_string())
-            .stack_size(8 * 1024 * 1024)
-            .spawn(|| {})
-            .expect("spawn turn-overrides seam installer")
-            .join()
-            .expect("turn-overrides seam installer panicked");
-    });
-}
-
 /// The agent turn loop needs the wide worker stack the product gives it.
 fn run_on_agent_stack<F, Fut>(name: &str, future_factory: F)
 where
@@ -292,7 +274,6 @@ fn suppress_active_goal_keeps_the_thread_goal_out_of_the_prompt() {
 }
 
 async fn suppress_active_goal_keeps_the_thread_goal_out_of_the_prompt_inner() {
-    ensure_memory_seams();
     let _env = env_lock();
 
     // Control and measured agent get SEPARATE workspaces on purpose.
@@ -387,7 +368,6 @@ fn suppress_transcript_autoload_does_not_replay_a_prior_threads_transcript() {
 }
 
 async fn suppress_transcript_autoload_does_not_replay_a_prior_threads_transcript_inner() {
-    ensure_memory_seams();
     let _env = env_lock();
     let (_temp, workspace_path) = workspace("suppress-transcript-autoload");
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
@@ -490,7 +470,6 @@ fn turn_overrides_apply_to_exactly_one_turn_and_then_reset() {
 }
 
 async fn turn_overrides_apply_to_exactly_one_turn_and_then_reset_inner() {
-    ensure_memory_seams();
     let _env = env_lock();
     let (_temp, workspace_path) = workspace("overrides-reset");
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
@@ -549,7 +528,6 @@ fn thread_goal_complete_and_clear_stop_the_goal_reaching_later_turns() {
 }
 
 async fn thread_goal_complete_and_clear_stop_the_goal_reaching_later_turns_inner() {
-    ensure_memory_seams();
     let _env = env_lock();
 
     // Separate workspaces, for the same reason as
