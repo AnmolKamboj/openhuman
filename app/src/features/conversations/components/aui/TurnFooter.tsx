@@ -71,6 +71,7 @@ export function TurnFooter() {
     <button
       type="button"
       data-testid="turn-process-footer"
+      data-analytics-id="chat-turn-process-open"
       title={t('conversations.agentTaskInsights.viewProcessSource')}
       onClick={() => host.open(trail)}
       className="text-content-muted hover:text-content-secondary -ms-1 rounded px-1 text-xs transition-colors">

@@ -263,14 +263,18 @@ describe('buildRuntimeMessages', () => {
 
     expect(projected).toHaveLength(2);
     expect(projected[1]).toMatchObject({ id: 'final', role: 'assistant' });
-    expect(projected[1]?.content).toEqual([
-      expect.objectContaining({
-        type: 'tool-call',
-        toolCallId: 'call-search',
-        toolName: 'web_search_tool',
-      }),
-      { type: 'text', text: finalText },
-    ]);
+    // One bubble, carrying the final text once — the intro segment is a prefix
+    // of it and must not render twice.
+    expect(projected[1]?.content).toEqual([{ type: 'text', text: finalText }]);
+    // The trail still belongs to the coalesced bubble; it is just no longer
+    // painted inline. The timeline row is named `tool` and is renamed to
+    // `web_search_tool` from the envelope BEFORE the visibility filter runs, so
+    // a recovered name decides visibility exactly as a declared one does — and
+    // a search is read-only, so it moves to the rail behind the footer.
+    expect(
+      (projected[1]?.metadata as { custom?: { processTrail?: unknown } } | undefined)?.custom
+        ?.processTrail
+    ).toMatchObject({ steps: 1, tools: 1 });
   });
 
   it('does not coalesce adjacent assistant turns with different request ids', () => {
@@ -508,11 +512,17 @@ describe('main-surface tool visibility', () => {
     // Reading, listing and searching are process. The row is not lost — it is
     // still in the timeline the turn footer opens — it just does not stack
     // above the answer.
+    //
+    // `web_search_tool` is the name a real search row carries: `web_search` is
+    // the settings-family id the core expands from (`tools/user_filter.rs:79-80`),
+    // and it is the canonical name — not the alias — that a live turn produces.
+    // Both are asserted so neither can regress.
     expect(
       visibleIds([
         tool({ id: 'r1', name: 'file_read', seq: 0, status: 'success' }),
         tool({ id: 'r2', name: 'grep', seq: 1, status: 'success' }),
-        tool({ id: 'r3', name: 'web_search', seq: 2, status: 'success' }),
+        tool({ id: 'r3', name: 'web_search_tool', seq: 2, status: 'success' }),
+        tool({ id: 'r4', name: 'web_search', seq: 3, status: 'success' }),
       ])
     ).toEqual([]);
   });
