@@ -133,62 +133,81 @@ impl Tool for GoalsTool {
                 "Missing 'op' parameter (list, add, edit or delete)",
             ));
         };
-        log::debug!("[memory_goals] tool=goals op={op}");
+        let text = args.get("text").and_then(|v| v.as_str());
+        let id = args.get("id").and_then(|v| v.as_str());
 
+        // Validate arguments BEFORE resolving the driver, so a malformed call
+        // reports the argument it is missing whatever the memory driver is.
+        // The four tools this replaced each did their own validation first, and
+        // `missing_arguments_are_reported_as_tool_errors` pins the ordering.
+        let action = match op {
+            "list" => Action::List,
+            "add" => match text {
+                Some(text) => Action::Add(text),
+                None => return Ok(ToolResult::error("Missing 'text' parameter for op 'add'")),
+            },
+            "edit" => match (id, text) {
+                (Some(id), Some(text)) => Action::Edit(id, text),
+                (None, _) => return Ok(ToolResult::error("Missing 'id' parameter for op 'edit'")),
+                (_, None) => {
+                    return Ok(ToolResult::error("Missing 'text' parameter for op 'edit'"))
+                }
+            },
+            "delete" => match id {
+                Some(id) => Action::Delete(id),
+                None => return Ok(ToolResult::error("Missing 'id' parameter for op 'delete'")),
+            },
+            other => {
+                return Ok(ToolResult::error(format!(
+                    "Unknown op '{other}'. Expected one of: list, add, edit, delete"
+                )))
+            }
+        };
+
+        log::debug!("[memory_goals] tool=goals op={op}");
         let guard = match goals_guard().await {
             Ok(guard) => guard,
             Err(e) => return Ok(ToolResult::error(e)),
         };
         let goals = guard.as_goals().expect("checked in goals_guard");
 
-        let text = args.get("text").and_then(|v| v.as_str());
-        let id = args.get("id").and_then(|v| v.as_str());
-
-        match op {
-            "list" => match ops::list(goals).await {
+        match action {
+            Action::List => match ops::list(goals).await {
                 // `render()` is the contract type's own markdown, so the bytes
                 // the agent reads are unchanged.
                 Ok(outcome) => Ok(ToolResult::success(outcome.value.render())),
                 Err(e) => Ok(ToolResult::error(e)),
             },
-            "add" => {
-                let Some(text) = text else {
-                    return Ok(ToolResult::error("Missing 'text' parameter for op 'add'"));
-                };
-                match ops::add(goals, text).await {
-                    Ok(outcome) => Ok(ToolResult::success(format!(
-                        "Added goal '{}'.",
-                        outcome.value.id
-                    ))),
-                    Err(e) => Ok(ToolResult::error(e)),
-                }
-            }
-            "edit" => {
-                let Some(id) = id else {
-                    return Ok(ToolResult::error("Missing 'id' parameter for op 'edit'"));
-                };
-                let Some(text) = text else {
-                    return Ok(ToolResult::error("Missing 'text' parameter for op 'edit'"));
-                };
-                match ops::edit(goals, id, text).await {
-                    Ok(_) => Ok(ToolResult::success(format!("Edited goal '{id}'."))),
-                    Err(e) => Ok(ToolResult::error(e)),
-                }
-            }
-            "delete" => {
-                let Some(id) = id else {
-                    return Ok(ToolResult::error("Missing 'id' parameter for op 'delete'"));
-                };
-                match ops::delete(goals, id).await {
-                    Ok(_) => Ok(ToolResult::success(format!("Deleted goal '{id}'."))),
-                    Err(e) => Ok(ToolResult::error(e)),
-                }
-            }
-            other => Ok(ToolResult::error(format!(
-                "Unknown op '{other}'. Expected one of: list, add, edit, delete"
-            ))),
+            Action::Add(text) => match ops::add(goals, text).await {
+                Ok(outcome) => Ok(ToolResult::success(format!(
+                    "Added goal '{}'.",
+                    outcome.value.id
+                ))),
+                Err(e) => Ok(ToolResult::error(e)),
+            },
+            Action::Edit(id, text) => match ops::edit(goals, id, text).await {
+                Ok(_) => Ok(ToolResult::success(format!("Edited goal '{id}'."))),
+                Err(e) => Ok(ToolResult::error(e)),
+            },
+            Action::Delete(id) => match ops::delete(goals, id).await {
+                Ok(_) => Ok(ToolResult::success(format!("Deleted goal '{id}'."))),
+                Err(e) => Ok(ToolResult::error(e)),
+            },
         }
     }
+}
+
+/// One validated op, borrowed from the call's arguments.
+///
+/// It exists so argument validation can finish before the memory driver is
+/// resolved: the driver round trip can fail for reasons that have nothing to do
+/// with the call being malformed, and reporting that instead of the missing
+/// argument is what sends the agent debugging the wrong thing.
+enum Action<'a> {
+    List,
+    Add(&'a str),
+    Edit(&'a str, &'a str),
+    Delete(&'a str),
 }
 
 #[cfg(test)]
