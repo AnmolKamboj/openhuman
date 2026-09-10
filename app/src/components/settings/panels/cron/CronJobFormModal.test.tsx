@@ -287,6 +287,21 @@ describe('<CronJobFormModal />', () => {
     );
   });
 
+  it('falls back to the generic label when the rejection carries no message', async () => {
+    const onCreate = vi.fn().mockRejectedValue(new Error(''));
+    render(<CronJobFormModal {...makeProps({ onCreate })} />);
+
+    fireEvent.change(screen.getByTestId('cron-form-prompt'), { target: { value: 'Some prompt' } });
+    fireEvent.click(screen.getByTestId('cron-form-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cron-form-error')).toBeInTheDocument();
+    });
+
+    // No trailing ": " when there is nothing to append.
+    expect(screen.getByTestId('cron-form-error')).toHaveTextContent(/^Failed to save job$/);
+  });
+
   // ── Create: "at" schedule ───────────────────────────────────────────
   it('submits with at-schedule, isoifies datetime input', async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
