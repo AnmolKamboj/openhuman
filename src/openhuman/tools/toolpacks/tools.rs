@@ -130,13 +130,13 @@ fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, Strin
             registry::pack_index_markdown()
         ));
     };
-    let Some(tools) = handle.tools() else {
+    if handle.registries().is_empty() {
         return Err(
             "The skill registry is not available in this session; the tools in this skill \
              cannot be loaded."
                 .to_string(),
         );
-    };
+    }
 
     let mut out = format!("# Skill `{}`\n\n{}\n\n", pack.id, pack.summary);
     out.push_str(&format!(
@@ -150,9 +150,10 @@ fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, Strin
         // A pack may name a tool this build compiled out (feature gate) or that
         // this agent never had. Rendering the ones that exist beats failing the
         // whole load.
-        let Some(tool) = tools.iter().find(|t| t.name() == *name) else {
+        let Some((tools, idx)) = handle.find(name) else {
             continue;
         };
+        let tool = &tools[idx];
         found += 1;
         out.push_str(&format!(
             "## `{}`\n\n{}\n\n",
@@ -342,12 +343,11 @@ impl Tool for UseSkillTool {
     }
 
     fn permission_level(&self) -> PermissionLevel {
-        let Some(tools) = self.handle.tools() else {
-            return PermissionLevel::Dangerous;
-        };
         let packed = registry::all_packed_tool_names();
-        tools
+        self.handle
+            .registries()
             .iter()
+            .flat_map(|tools| tools.iter())
             .filter(|t| packed.contains(&t.name()))
             .map(|t| t.permission_level())
             .max()
