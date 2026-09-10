@@ -194,11 +194,11 @@ impl ArchivistHook {
     ///
     /// Returns `(text, produced_by_llm)`. `produced_by_llm == false` means the
     /// LLM was unavailable / failed / returned empty and `text` is the shallow
-    /// heuristic `fallback_summary` bookend stub. That stub is an acceptable
-    /// durable last-resort on the *finalize* path, but callers driving the
-    /// **live prompt** (rolling recap → compaction) must treat
-    /// `produced_by_llm == false` as "no real recap" and fall back to their
-    /// own strategy — the stub must never become live compaction text.
+    /// heuristic `fallback_summary` bookend stub. Both callers treat that as
+    /// "no real recap" (#6156): the rolling recap keeps it out of the live
+    /// prompt so it can never become compaction text, and the finalize path
+    /// writes nothing at all — no summary row, no embedding, no goals
+    /// enrichment — rather than sealing the segment around a placeholder.
     pub(super) async fn summarize_entries(
         &self,
         entries: &[&EpisodicTurn],

@@ -247,7 +247,7 @@ impl MemoryEpisodic for RecordingProvider {
     ) -> Result<Vec<crate::openhuman::memory::api::provider::episodic::EpisodicTurn>, MemoryError>
     {
         self.record(Call::plain("episodic.session_turns"));
-        Ok(vec![])
+        Ok(self.session_turns.lock().unwrap().clone())
     }
 
     async fn open_segment(

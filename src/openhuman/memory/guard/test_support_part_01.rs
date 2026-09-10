@@ -22,7 +22,8 @@ use crate::openhuman::memory::api::provider::types::{
 };
 use crate::openhuman::memory::api::provider::{
     AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    EpisodicEvent, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions, MemoryCore,
+    EpisodicEvent, EpisodicTurn, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions,
+    MemoryCore,
     MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph,
     MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile,
     MemoryProvider, MemoryRecall, MemoryRetrieval, MemoryScoring, MemorySourceSink,
@@ -86,6 +87,9 @@ pub struct RecordingProvider {
     /// What `namespaces` returns, so a namespace can look populated (Lane B
     /// asks for the count before it pays for an embed) without a real store.
     namespace_summaries: Mutex<Vec<NamespaceSummary>>,
+    /// What `session_turns` returns, so the archivist's finalize path can be
+    /// driven past its empty-entries early return without an engine behind it.
+    session_turns: Mutex<Vec<EpisodicTurn>>,
 }
 
 impl Default for RecordingProvider {
@@ -102,6 +106,7 @@ impl RecordingProvider {
             fast_retrieve_result: Mutex::new(RetrievalResponse::default()),
             namespace_hits: Mutex::new(Vec::new()),
             namespace_summaries: Mutex::new(Vec::new()),
+            session_turns: Mutex::new(Vec::new()),
         }
     }
 
@@ -122,6 +127,11 @@ impl RecordingProvider {
 
     pub fn with_namespace_summaries(self, summaries: Vec<NamespaceSummary>) -> Self {
         *self.namespace_summaries.lock().unwrap() = summaries;
+        self
+    }
+
+    pub fn with_session_turns(self, turns: Vec<EpisodicTurn>) -> Self {
+        *self.session_turns.lock().unwrap() = turns;
         self
     }
 
