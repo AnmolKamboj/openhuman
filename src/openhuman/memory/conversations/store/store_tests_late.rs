@@ -208,6 +208,21 @@ fn equivalent_workspace_paths_share_the_same_lock_registry_entry() {
     assert_eq!(direct.root_dir(), dotted.root_dir());
 }
 
+#[test]
+fn nonexistent_relative_and_absolute_workspaces_share_store_identity() {
+    let relative = PathBuf::from(format!("target/store-alias-{}", uuid::Uuid::new_v4()));
+    let absolute = std::env::current_dir().unwrap().join(&relative);
+
+    let relative_store = ConversationStore::new(relative);
+    let absolute_store = ConversationStore::new(absolute);
+
+    assert_eq!(
+        relative_store.lock_identity_for_test(),
+        absolute_store.lock_identity_for_test()
+    );
+    assert_eq!(relative_store.root_dir(), absolute_store.root_dir());
+}
+
 #[cfg(unix)]
 #[test]
 fn symlinked_workspace_paths_share_the_same_lock_registry_entry() {

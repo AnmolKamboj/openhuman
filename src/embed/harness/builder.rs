@@ -239,7 +239,6 @@ impl HarnessBuilder {
 
     async fn build_inner(self) -> Result<Harness, HarnessError> {
         let inherit = self.workspace.is_operator_owned();
-        let host_kind = effective_host_kind(self.host_kind, inherit, &self.provider);
 
         if self.skills_dir.is_some() && inherit {
             return Err(HarnessError::Invalid(
@@ -312,6 +311,17 @@ impl HarnessBuilder {
             }
         }
 
+        // An endpoint without a model is deliberately ignored by the route
+        // applicator. Host policy must follow that effective behavior rather
+        // than the syntactic presence of endpoint credentials, or an ignored
+        // route could exempt an inherited installed provider from login.
+        let routed_provider_effective = self.provider.is_routed()
+            && config
+                .as_ref()
+                .and_then(|config| config.default_model.as_deref())
+                .is_some_and(|model| !model.trim().is_empty());
+        let host_kind = effective_host_kind(self.host_kind, inherit, routed_provider_effective);
+
         #[cfg(feature = "skills")]
         if let Some(dir) = self.skills_dir.as_deref() {
             super::skills::install(dir, &resolved.workspace_dir)?;
@@ -382,9 +392,9 @@ impl HarnessBuilder {
 fn effective_host_kind(
     requested: HostKind,
     inherit_workspace: bool,
-    provider: &Provider,
+    routed_provider_effective: bool,
 ) -> HostKind {
-    if requested == HostKind::Library && inherit_workspace && !provider.is_routed() {
+    if requested == HostKind::Library && inherit_workspace && !routed_provider_effective {
         HostKind::Cli
     } else {
         requested

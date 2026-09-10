@@ -77,6 +77,15 @@ pub(super) fn for_root(root: &Path) -> Arc<StoreLocks> {
 /// Canonicalizing the nearest existing ancestor handles symlinks and `..`;
 /// the missing suffix is then appended without touching the filesystem.
 pub(super) fn normalized_root(root: &Path) -> PathBuf {
+    let absolute;
+    let root = if root.is_absolute() {
+        root
+    } else {
+        absolute = std::env::current_dir()
+            .map(|cwd| cwd.join(root))
+            .unwrap_or_else(|_| root.to_path_buf());
+        &absolute
+    };
     if let Ok(canonical) = root.canonicalize() {
         return canonical;
     }
