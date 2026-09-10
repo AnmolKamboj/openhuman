@@ -367,7 +367,7 @@ async fn not_in_git_repo_returns_error() {
     let tool = test_tool(tmp.path());
     let result = tool.execute(json!({"operation": "status"})).await.unwrap();
     assert!(result.is_error);
-    assert!(result.output().contains("Not in a git repository"));
+    assert!(result.output().contains("Not in a git repository"), "ACTUAL: {}", result.output());
 }
 
 /// Suppress the developer's own system/global git config on a raw
