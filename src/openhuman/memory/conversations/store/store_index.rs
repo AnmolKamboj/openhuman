@@ -38,70 +38,58 @@ impl ConversationStore {
         mut after_scan: impl FnMut(),
     ) -> Result<(), String> {
         let key = self.root_dir();
-        let mut hook_pending = true;
-        loop {
-            // Fast path: already warm — one tiny lock acquisition and out.
+        // Fast path: already warm — one tiny lock acquisition and out.
+        if CONVERSATION_INDEX_CACHE.lock().contains_key(&key) {
+            return Ok(());
+        }
+        // Snapshot live thread IDs while holding the metadata lock. A delete
+        // takes the lifecycle write guard, while every production caller of
+        // this method holds its read guard, so deletion cannot interleave with
+        // this scan or publication.
+        // `thread_index_unlocked` reads only `threads.jsonl` (header-only,
+        // O(threads), no per-thread file I/O) — metadata is released
+        // immediately after, so the slow content reads below never block
+        // concurrent writers.
+        //
+        // Do NOT call `list_threads_unlocked` here.  For workspaces where any
+        // thread has no `MessageAppended`/`Stats` history (common before the
+        // Stats log was introduced), `list_threads_unlocked` triggers
+        // `measure_messages_unlocked` + a `Stats` append per thread — all under
+        // the metadata lock — reintroducing the multi-second stall this
+        // function is designed to avoid.
+        let thread_ids: Vec<String> = {
+            let _metadata = self.locks.metadata.lock();
+            // Re-check after acquiring: a concurrent prime may have just
+            // finished while we waited for metadata.
             if CONVERSATION_INDEX_CACHE.lock().contains_key(&key) {
                 return Ok(());
             }
-            // Snapshot live thread IDs and the deletion generation while
-            // holding the metadata lock.
-            // `thread_index_unlocked` reads only `threads.jsonl` (header-only,
-            // O(threads), no per-thread file I/O) — metadata is released
-            // immediately after, so the slow content reads below never block
-            // concurrent writers.
-            //
-            // Do NOT call `list_threads_unlocked` here.  For workspaces where any
-            // thread has no `MessageAppended`/`Stats` history (common before the
-            // Stats log was introduced), `list_threads_unlocked` triggers
-            // `measure_messages_unlocked` + a `Stats` append per thread — all under
-            // the metadata lock — reintroducing the multi-second stall this
-            // function is designed to avoid.
-            let (thread_ids, deletion_generation): (Vec<String>, u64) = {
-                let _metadata = self.locks.metadata.lock();
-                // Re-check after acquiring: a concurrent prime may have just
-                // finished while we waited for metadata.
-                if CONVERSATION_INDEX_CACHE.lock().contains_key(&key) {
-                    return Ok(());
-                }
-                (
-                    self.thread_index_unlocked()?.into_keys().collect(),
-                    self.locks.deletion_generation(),
-                )
-            };
-            // Build the index with no shared metadata lock held. Each JSONL file is
-            // read under its own thread lock. A message
-            // appended during this window stays absent from the in-memory index
-            // until the next cold rebuild — the accepted tradeoff for issue #2849.
-            let mut idx = InvertedIndex::new();
-            for thread_id in &thread_ids {
-                let thread_lock = self.locks.thread(thread_id);
-                let _thread = thread_lock.lock();
-                let path = self.thread_messages_path(thread_id);
-                if !path.exists() {
-                    continue;
-                }
-                if let Ok(messages) = read_jsonl::<ConversationMessage>(&path) {
-                    for msg in messages {
-                        idx.insert(thread_id, msg);
-                    }
-                }
-            }
-            if hook_pending {
-                hook_pending = false;
-                after_scan();
-            }
-            // Hold metadata across generation validation and publication. A
-            // delete either wins first and forces a rebuild, or runs after
-            // publication and removes its documents from the warm index.
-            let _metadata = self.locks.metadata.lock();
-            if self.locks.deletion_generation() != deletion_generation {
+            self.thread_index_unlocked()?.into_keys().collect()
+        };
+        // Build the index with no shared metadata lock held. Each JSONL file is
+        // read under its own thread lock. A message appended during this window
+        // stays absent from the in-memory index until the next cold rebuild —
+        // the accepted tradeoff for issue #2849.
+        let mut idx = InvertedIndex::new();
+        for thread_id in &thread_ids {
+            let thread_lock = self.locks.thread(thread_id);
+            let _thread = thread_lock.lock();
+            let path = self.thread_messages_path(thread_id);
+            if !path.exists() {
                 continue;
             }
-            let mut cache = CONVERSATION_INDEX_CACHE.lock();
-            cache.entry(key.clone()).or_insert(idx);
-            return Ok(());
+            if let Ok(messages) = read_jsonl::<ConversationMessage>(&path) {
+                for msg in messages {
+                    idx.insert(thread_id, msg);
+                }
+            }
         }
+        after_scan();
+        // Insert only if the key is still absent — a concurrent prime that
+        // finished first wins; ours is discarded.
+        let mut cache = CONVERSATION_INDEX_CACHE.lock();
+        cache.entry(key).or_insert(idx);
+        Ok(())
     }
 
     /// Acquire the cached inverted index for this workspace and run `f` against

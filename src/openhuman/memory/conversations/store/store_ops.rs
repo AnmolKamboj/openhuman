@@ -307,7 +307,6 @@ impl ConversationStore {
                     deleted_at: deleted_at.to_string(),
                 },
             )?;
-            self.locks.record_deletion();
         }
         let messages_path = self.thread_messages_path(thread_id);
         match fs::remove_file(&messages_path) {
@@ -349,7 +348,6 @@ impl ConversationStore {
             let mut cache = CONVERSATION_INDEX_CACHE.lock();
             cache.remove(&root);
         }
-        self.locks.record_deletion();
         self.locks.clear_threads();
         Ok(stats)
     }

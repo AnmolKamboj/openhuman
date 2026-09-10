@@ -115,7 +115,7 @@ static HARNESS_LIVE: AtomicBool = AtomicBool::new(false);
 /// Dropping it releases the process slot and, for
 /// [`Workspace::Ephemeral`], removes the workspace.
 pub struct Harness {
-    core: Core,
+    core: Option<Core>,
     provider: Provider,
     access: Access,
     /// Held for its `Drop`: an ephemeral workspace lives exactly as long as the
@@ -143,7 +143,7 @@ impl Harness {
     /// The harness's provider route and access origin are pre-applied; anything
     /// set on the returned [`Turn`] overrides them for that turn alone.
     pub fn turn(&self, message: impl Into<String>) -> Turn<'_> {
-        let mut turn = self.core.agent().turn(message);
+        let mut turn = self.core().agent().turn(message);
         if let Some(route) = self.provider.route() {
             turn = turn.route(route.clone());
         }
@@ -159,7 +159,9 @@ impl Harness {
     /// The typed core facade beneath this harness — config, memory, and the
     /// [`raw`](Core::raw) escape hatch for anything not yet modelled.
     pub fn core(&self) -> &Core {
-        &self.core
+        self.core
+            .as_ref()
+            .expect("harness core is present until drop")
     }
 
     /// The workspace this harness is rooted at.
@@ -178,7 +180,10 @@ impl Harness {
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        HARNESS_LIVE.store(false, std::sync::atomic::Ordering::Release);
+        // Drop the old core while the process slot is still claimed. Releasing
+        // it first lets another builder initialize process-scoped state while
+        // this runtime's keyring, bearer, event bus and subscribers are live.
+        drop(self.core.take());
         // For an ephemeral workspace, take ownership of the temp path and
         // remove it with a short retry. The core's memory/session writers keep
         // running a moment after the harness returns from a turn and can
@@ -199,6 +204,7 @@ impl Drop for Harness {
             }
             let _ = std::fs::remove_dir_all(&root);
         }
+        HARNESS_LIVE.store(false, std::sync::atomic::Ordering::Release);
         log::debug!("[embed][harness] released");
     }
 }

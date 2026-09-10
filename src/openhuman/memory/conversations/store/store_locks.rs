@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 
 use parking_lot::{Mutex, RwLock};
@@ -19,7 +18,6 @@ pub(super) struct StoreLocks {
     /// Serializes reads and appends of the root's shared `threads.jsonl`.
     pub(super) metadata: Mutex<()>,
     threads: Mutex<HashMap<String, Arc<Mutex<()>>>>,
-    deletion_generation: AtomicU64,
 }
 
 impl StoreLocks {
@@ -30,14 +28,6 @@ impl StoreLocks {
                 .entry(thread_id.to_string())
                 .or_insert_with(|| Arc::new(Mutex::new(()))),
         )
-    }
-
-    pub(super) fn deletion_generation(&self) -> u64 {
-        self.deletion_generation.load(Ordering::Acquire)
-    }
-
-    pub(super) fn record_deletion(&self) {
-        self.deletion_generation.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Call only while holding the lifecycle write guard.

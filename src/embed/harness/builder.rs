@@ -377,7 +377,7 @@ impl HarnessBuilder {
         }
 
         Ok(Harness {
-            core,
+            core: Some(core),
             provider: self.provider,
             access: self.access,
             _workspace: resolved,
