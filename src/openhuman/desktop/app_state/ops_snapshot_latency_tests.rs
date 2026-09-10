@@ -172,3 +172,91 @@ async fn current_user_fetches_reuse_one_connection() {
          one costs a TCP and a TLS handshake before the request goes out (#6180)"
     );
 }
+
+/// A detached refresh must not commit an identity the app has already left.
+///
+/// The background refresh outlives the poll that started it, so a logout and
+/// re-login (or an environment switch) can land while it is still in flight.
+/// Every write it then makes is process-global. The keyed reads in
+/// `fetch_current_user_cached` would only miss on a regressed entry — but
+/// `peek_cached_current_user_identity` reads that same slot with **no** key
+/// check, to embed the user in the agent's prompts (#926), so a regressed entry
+/// is served there as the current user.
+#[tokio::test]
+async fn a_background_refresh_does_not_overwrite_a_newer_identity() {
+    let _cache_lock = APP_STATE_CACHE_TEST_LOCK.lock().await;
+    let _failure_lock = super::current_user_backoff_tests::CURRENT_USER_FAILURE_TEST_LOCK
+        .lock()
+        .await;
+    struct CacheResetGuard;
+    impl Drop for CacheResetGuard {
+        fn drop(&mut self) {
+            *CURRENT_USER_CACHE.lock() = None;
+        }
+    }
+    let _reset = CacheResetGuard;
+
+    let app = axum::Router::new().route(
+        "/auth/me",
+        axum::routing::get(|| async {
+            axum::Json(json!({ "success": true, "data": { "firstName": "signed-out-user" } }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let stale_config = Config {
+        api_url: Some(format!("http://{addr}")),
+        ..Config::default()
+    };
+
+    // The identity the app moved to while the refresh below was in flight.
+    *CURRENT_USER_CACHE.lock() = Some(CachedCurrentUser {
+        api_base: current_user_api_base(&stale_config),
+        token: "token-for-the-user-who-just-signed-in".into(),
+        fetched_at: Instant::now(),
+        user: json!({ "firstName": "signed-in-user" }),
+    });
+
+    // The refresh the *previous* identity started, landing late.
+    refresh_current_user_now(
+        &stale_config,
+        "token-for-the-user-who-signed-out",
+        RefreshOrigin::Background,
+    )
+    .await
+    .expect("the stub answers /auth/me");
+
+    let cached = CURRENT_USER_CACHE
+        .lock()
+        .as_ref()
+        .and_then(|entry| entry.user.get("firstName").cloned());
+    assert_eq!(
+        cached,
+        Some(json!("signed-in-user")),
+        "a background refresh for the previous identity overwrote the current one; \
+         `peek_cached_current_user_identity` reads this slot unkeyed (#926)"
+    );
+
+    // The blocking path is authoritative by construction — its caller is still
+    // awaiting it — so it must still commit.
+    refresh_current_user_now(
+        &stale_config,
+        "token-for-the-user-who-signed-out",
+        RefreshOrigin::Blocking,
+    )
+    .await
+    .expect("the stub answers /auth/me");
+    let cached = CURRENT_USER_CACHE
+        .lock()
+        .as_ref()
+        .and_then(|entry| entry.user.get("firstName").cloned());
+    assert_eq!(
+        cached,
+        Some(json!("signed-out-user")),
+        "the blocking path must still commit; only detached refreshes are discarded"
+    );
+}

@@ -199,11 +199,17 @@ async fn fetch_current_user_cached(
             // trip under every `app_state_snapshot` (#6180: 732 calls in 3.5h,
             // not one of them under 500ms).
             //
-            // This costs no freshness: the refresh is still triggered on the
-            // same cadence and by the same poll that would have blocked for it,
-            // so the data is exactly as new as before — it just lands one poll
-            // later instead of holding this one open. The snapshot keeps
-            // reporting the true age it is serving in `current_user_stale_seconds`.
+            // This does move the refresh cadence, and it is worth being exact
+            // about how: the background refresh stamps `fetched_at` when it
+            // *completes*, so the next poll finds the entry still inside the
+            // TTL and serves it without revalidating. `GET /auth/me` is
+            // therefore refreshed about every other poll (~10s) rather than
+            // every poll (~5.5s). That is acceptable because this payload is
+            // display-only profile data (`firstName`, `lastName`, `username`,
+            // `_id`) and not the session-validity check, and it halves this
+            // endpoint's share of the background RPC load #6180 also reports.
+            // The snapshot keeps reporting the true age it is serving in
+            // `current_user_stale_seconds`.
             //
             // Only the expired-entry path revalidates in the background. With
             // no entry at all the shell has no identity to render, so that
@@ -244,7 +250,7 @@ async fn fetch_current_user_cached(
         }
     }
 
-    refresh_current_user_now(config, token).await
+    refresh_current_user_now(config, token, RefreshOrigin::Blocking).await
 }
 
 /// The cached user for this identity and how old it is, if the cache holds one.
@@ -307,7 +313,7 @@ fn spawn_current_user_refresh(config: &Config, token: &str) {
         // backend cannot leave the gate closed for longer than one window.
         match tokio::time::timeout(
             auth_fetch_timeout(),
-            refresh_current_user_now(&config, &token),
+            refresh_current_user_now(&config, &token, RefreshOrigin::Background),
         )
         .await
         {
@@ -330,6 +336,31 @@ fn spawn_current_user_refresh(config: &Config, token: &str) {
     });
 }
 
+/// Where a refresh was started from, which decides whether its answer may still
+/// be committed by the time it lands.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RefreshOrigin {
+    /// The caller is still awaiting this refresh and still holds the identity
+    /// it asked for, so the answer is authoritative by construction.
+    Blocking,
+    /// Detached from the poll that started it, and therefore able to outlive
+    /// the identity it was started for — a logout and re-login, or an
+    /// environment switch, can land in between.
+    Background,
+}
+
+/// Whether the cache has moved to an identity other than this refresh's.
+///
+/// An *empty* cache is deliberately not "moved on": a background refresh that
+/// started before anything was cached is still the right answer for the
+/// identity that asked for it.
+fn cached_identity_moved_on(api_base: &str, token: &str) -> bool {
+    CURRENT_USER_CACHE
+        .lock()
+        .as_ref()
+        .is_some_and(|entry| entry.api_base != api_base || entry.token != token)
+}
+
 /// Go to the backend, then reconcile the caches and freshness stamps with what
 /// came back. The blocking half of [`fetch_current_user_cached`], split out so
 /// the background refresh runs exactly the same path rather than a parallel
@@ -337,6 +368,7 @@ fn spawn_current_user_refresh(config: &Config, token: &str) {
 async fn refresh_current_user_now(
     config: &Config,
     token: &str,
+    origin: RefreshOrigin,
 ) -> Result<Option<Value>, CurrentUserFetchError> {
     let api_base = current_user_api_base(config);
     let fetched = match fetch_current_user(config, token).await {
@@ -346,6 +378,35 @@ async fn refresh_current_user_now(
             return Err(error);
         }
     };
+
+    // A detached refresh can land after the app has moved to another identity,
+    // and every write below is process-global. Committing then would regress
+    // the cache to the previous user — and `peek_cached_current_user_identity`
+    // reads that slot WITHOUT a key check (#926), so the regressed entry would
+    // be embedded in the agent's prompts as the current user. The keyed reads
+    // in `fetch_current_user_cached` would merely miss; that one would be
+    // wrong. Checked before the writes rather than at the cache lock, so a
+    // discarded refresh cannot clear the *newer* identity's failure record on
+    // its way out. The blocking path cannot race this way, so it never
+    // discards.
+    // A detached refresh can land after the app has moved to another identity,
+    // and every write below is process-global. Committing then would regress
+    // the cache to the previous user — and `peek_cached_current_user_identity`
+    // reads that slot WITHOUT a key check (#926), so the regressed entry would
+    // be embedded in the agent's prompts as the current user. The keyed reads
+    // in `fetch_current_user_cached` would merely miss; that one would be
+    // wrong. Checked before the writes rather than at the cache lock, so a
+    // discarded refresh cannot clear the *newer* identity's failure record on
+    // its way out. The blocking path cannot race this way, so it never
+    // discards.
+    if origin == RefreshOrigin::Background && cached_identity_moved_on(&api_base, token) {
+        debug!(
+            "{LOG_PREFIX} discarding background current user refresh; the cache moved to \
+             another identity while it was in flight"
+        );
+        return Ok(fetched);
+    }
+
     clear_current_user_failure();
     // Only a *refreshed user* makes the displayed data fresh. The backend can
     // answer 200 with no user at all, and the snapshot caller then falls back
