@@ -154,6 +154,11 @@ fn byok_openrouter_slugs_and_malformed_passthrough_ids_stay_byok() {
         "openrouter/deepseek",
         "openrouter/",
         "openrouter/a/b/c",
+        // empty segments are not the passthrough shape either
+        "openrouter/a//b",
+        "openrouter/a/b/",
+        "openrouter//b",
+        "openrouter///",
     ] {
         assert_eq!(route_for_model(model), CostRoute::Byok, "{model}");
     }

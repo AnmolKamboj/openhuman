@@ -90,9 +90,18 @@ pub fn route_for_model(model: &str) -> CostRoute {
 /// (`deepseek/deepseek-v4-flash`), never with this `openrouter/` qualifier, so
 /// the two cannot be confused.
 fn is_managed_passthrough_id(normalized: &str) -> bool {
-    normalized
-        .strip_prefix("openrouter/")
-        .is_some_and(|rest| rest.split('/').filter(|seg| !seg.is_empty()).count() == 2)
+    let Some(rest) = normalized.strip_prefix("openrouter/") else {
+        return false;
+    };
+    // EXACTLY two non-empty segments. Filtering empties before counting would
+    // accept `openrouter/a//b` and `openrouter/a/b/`, which are not the
+    // passthrough shape; classifying a malformed id as managed would count it
+    // toward the managed cap on the strength of a typo.
+    let mut segments = rest.split('/');
+    match (segments.next(), segments.next(), segments.next()) {
+        (Some(author), Some(slug), None) => !author.is_empty() && !slug.is_empty(),
+        _ => false,
+    }
 }
 
 /// Lower-case, trim, and strip the decorations a model id can pick up on its
