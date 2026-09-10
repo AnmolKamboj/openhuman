@@ -1,0 +1,28 @@
+id = "image_agent"
+display_name = "Image Creator"
+delegate_name = "create_image"
+when_to_use = "Image-generation specialist: create images from a prompt, or edit/restyle a reference image. Route make/generate/draw/edit-an-image requests here. Saves each result to the workspace and returns the local path."
+temperature = 0.6
+max_iterations = 8
+agent_tier = "worker"
+omit_identity = true
+omit_memory_context = true
+omit_safety_preamble = false
+omit_profile = true
+omit_memory_md = true
+
+# Multimodal tier so the agent can review the images it generates (and any
+# reference images) via the image_info / inline-image path, then iterate.
+[model]
+hint = "vision"
+
+[tools]
+# media_generate_image submits the generation and returns a saved local path;
+# media_list_models surfaces the catalog so the agent can pick a model; the
+# remaining tools let it inspect reference images and read prior outputs.
+named = [
+    "media_generate_image",
+    "media_list_models",
+    "image_info",
+    "file_read",
+]
