@@ -443,3 +443,196 @@ async fn cap_hit_summarizes_a_resumable_checkpoint() {
         "cap hit should return the summary checkpoint, got {output:?}"
     );
 }
+
+// ── Spawn-tool refusal on a sub-agent run (#6157, #4452) ────────────────
+
+/// Collects the messages of `WARN` events whose text contains a marker, so a
+/// test can assert on a log line that has no other observable side effect.
+#[derive(Clone, Default)]
+struct WarnSink(Arc<std::sync::Mutex<Vec<String>>>);
+
+impl WarnSink {
+    /// Every captured message containing `marker`, in emission order.
+    fn matching(&self, marker: &str) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.contains(marker))
+            .cloned()
+            .collect()
+    }
+}
+
+struct WarnLayer(WarnSink);
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnLayer {
+    /// Record the `message` field of every `WARN` event; ignore other levels.
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if *event.metadata().level() != tracing::Level::WARN {
+            return;
+        }
+        struct Message(Option<String>);
+        impl tracing::field::Visit for Message {
+            /// Keep the formatted `message` field and discard the rest.
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    self.0 = Some(format!("{value:?}"));
+                }
+            }
+        }
+        let mut message = Message(None);
+        event.record(&mut message);
+        if let Some(text) = message.0 {
+            self.0 .0.lock().unwrap().push(text);
+        }
+    }
+}
+
+/// Stands in for `spawn_subagent`: records whether it was ever dispatched, so a
+/// test can prove the tool was not merely absent from the advertisement but
+/// genuinely unreachable.
+struct SpawnProbeTool(Arc<std::sync::atomic::AtomicBool>);
+
+#[async_trait]
+impl Tool for SpawnProbeTool {
+    /// The exact name the #4452 strip must match.
+    fn name(&self) -> &str {
+        "spawn_subagent"
+    }
+    /// Irrelevant to the strip, which reads only the name.
+    fn description(&self) -> &str {
+        "spawn a sub-agent"
+    }
+    /// Irrelevant to the strip, which reads only the name.
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object"})
+    }
+    /// Records the dispatch. Reaching this line means the test has failed.
+    async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
+        self.0.store(true, Ordering::SeqCst);
+        Ok(ToolResult::success("spawned"))
+    }
+}
+
+/// Asks for `spawn_subagent` once, then finishes regardless of the answer.
+struct SpawnAttemptProvider {
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl ChatModel<()> for SpawnAttemptProvider {
+    /// Native tool calling, so the harness advertises tools normally.
+    fn profile(&self) -> Option<&ModelProfile> {
+        Some(native_tool_profile())
+    }
+
+    /// Ask for `spawn_subagent` on the first turn, then finish on the second.
+    async fn invoke(
+        &self,
+        _state: &(),
+        _request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            Ok(tool_response("1", "spawn_subagent", serde_json::json!({})))
+        } else {
+            Ok(ModelResponse::assistant("all done"))
+        }
+    }
+}
+
+const REFUSAL: &str = "refusing to register spawn/delegate tool";
+
+/// Runs one sub-agent turn whose parent surface carries `spawn_subagent`, with
+/// `allowed` deciding whether the allowlist readmits it. Returns
+/// (spawn tool executed?, refusal warnings emitted).
+async fn run_with_spawn_tool_in_parent_surface(allowed: HashSet<String>) -> (bool, Vec<String>) {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let executed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let sink = WarnSink::default();
+    let subscriber = tracing_subscriber::registry().with(WarnLayer(sink.clone()));
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+    let provider = Arc::new(SpawnAttemptProvider {
+        calls: AtomicUsize::new(0),
+    });
+    let parent_tools: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![
+        Box::new(EchoTool),
+        Box::new(SpawnProbeTool(executed.clone())),
+    ]);
+    let mut history = vec![ChatMessage::user("spawn a helper")];
+
+    run_subagent_via_graph(
+        crate::openhuman::agent::tinyagents::TurnModelSource::from_model(provider),
+        "mock-model",
+        0.0,
+        &mut history,
+        parent_tools,
+        vec![],
+        vec![],
+        allowed,
+        10,
+        None,
+        None,
+        "researcher",
+        "task-6157",
+        false,
+        None,
+        std::env::temp_dir(),
+        None,
+        1024,
+        false,
+        "root-session__spawn_refusal",
+        "mock-channel",
+        None,
+        AgentTokenjuiceCompression::Off,
+        None,
+    )
+    .await
+    .expect("graph subagent runs");
+
+    (executed.load(Ordering::SeqCst), sink.matching(REFUSAL))
+}
+
+/// The real shape: `run_typed_mode` has already stripped `spawn_subagent` from
+/// the allowlist, so the registration-time backstop is re-refusing a name that
+/// was never admitted. That is the happy path and must not warn (#6157) — the
+/// old unconditional warn fired here on every sub-agent run.
+#[tokio::test]
+async fn a_sub_agent_cannot_reach_a_spawn_tool_and_the_healthy_run_is_quiet() {
+    let allowed = HashSet::from(["echo".to_string()]);
+    let (executed, warnings) = run_with_spawn_tool_in_parent_surface(allowed).await;
+
+    assert!(
+        !executed,
+        "a sub-agent must never be able to invoke spawn_subagent (#4452)"
+    );
+    assert!(
+        warnings.is_empty(),
+        "an already-excluded spawn tool is the happy path, not a warning: {warnings:?}"
+    );
+}
+
+/// The misbuilt-allowlist case the backstop exists for: `spawn_subagent` is
+/// admitted, so registration must still refuse it *and* say so — this is the one
+/// shape in which the warning carries information.
+#[tokio::test]
+async fn an_allowlist_that_readmits_a_spawn_tool_is_refused_loudly() {
+    let allowed = HashSet::from(["echo".to_string(), "spawn_subagent".to_string()]);
+    let (executed, warnings) = run_with_spawn_tool_in_parent_surface(allowed).await;
+
+    assert!(
+        !executed,
+        "the backstop must still refuse the tool, not merely log about it"
+    );
+    assert_eq!(
+        warnings.len(),
+        1,
+        "the readmitted spawn tool warns exactly once: {warnings:?}"
+    );
+}
