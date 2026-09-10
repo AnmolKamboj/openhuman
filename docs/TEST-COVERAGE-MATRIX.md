@@ -381,7 +381,7 @@ End-to-end coverage of the agent harness via the web-chat RPC surface against an
 
 | ID    | Feature                    | Layer | Test path(s)             | Status | Notes |
 | ----- | -------------------------- | ----- | ------------------------ | ------ | ----- |
-| 9.2.1 | Cron Expression Validation | RU    | `src/openhuman/cron/`    | ✅     |       |
+| 9.2.1 | Cron Expression Validation | RU    | `src/openhuman/cron/`    | ✅     | Incl. the 5-minute agent-job floor (`validate_agent_schedule`, #6158) |
 | 9.2.2 | Recurring Execution        | WD+RI | `cron-jobs-flow.spec.ts` | ✅     |       |
 
 ### 9.3 Remote Execution
