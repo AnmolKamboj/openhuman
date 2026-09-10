@@ -4,31 +4,28 @@ use std::collections::HashSet;
 use std::sync::{Arc, Weak};
 
 use super::registry;
-use super::tools::{LoadSkillTool, PackRegistryHandle, UseSkillTool, LOAD_SKILL, USE_SKILL};
+use super::tools::{PackRegistryHandle, UseSkillTool, LOAD_SKILL, USE_SKILL};
 use crate::openhuman::tools::traits::Tool;
 
-/// Append `load_skill` + `use_skill` to a freshly built registry.
+/// Append `use_skill` to a freshly built registry.
 ///
-/// They start unbound; [`bind_pack_registry`] gives them their view of the
-/// registry once it is behind an `Arc`.
+/// It starts unbound; [`bind_pack_registry`] gives it its view of the registry
+/// once that is behind an `Arc`.
 pub fn append_pack_tools(tools: &mut Vec<Box<dyn Tool>>) {
-    let handle = PackRegistryHandle::default();
-    tools.push(Box::new(LoadSkillTool::new(handle.clone())));
-    tools.push(Box::new(UseSkillTool::new(handle)));
+    tools.push(Box::new(UseSkillTool::new(PackRegistryHandle::default())));
 }
 
-/// Point the pack tools at the registry they live in.
+/// Point the pack tool at the registry it lives in.
 ///
-/// The handle holds a [`Weak`], so the pack tools referencing the very vector
-/// that owns them does not leak. Call this after **every** rebinding of the
+/// The handle holds a [`Weak`], so the pack tool referencing the very vector
+/// that owns it does not leak. Call this after **every** rebinding of the
 /// agent's tool `Arc`; a stale handle degrades to "skill unavailable" rather
 /// than dispatching to the wrong registry.
 pub fn bind_pack_registry(tools: &Arc<Vec<Box<dyn Tool>>>) {
     let weak: Weak<Vec<Box<dyn Tool>>> = Arc::downgrade(tools);
     let mut bound = 0usize;
     for tool in tools.iter() {
-        let name = tool.name();
-        if name != LOAD_SKILL && name != USE_SKILL {
+        if tool.name() != USE_SKILL {
             continue;
         }
         if let Some(handle) = crate::openhuman::tools::traits::pack_registry_handle(tool.as_ref()) {
@@ -36,7 +33,7 @@ pub fn bind_pack_registry(tools: &Arc<Vec<Box<dyn Tool>>>) {
             bound += 1;
         }
     }
-    tracing::debug!(bound, "[toolpacks] bound pack tools to live registry");
+    tracing::debug!(bound, "[toolpacks] bound pack tool to live registry");
 }
 
 /// Remove packed tool names from an agent's advertised set.
@@ -55,6 +52,12 @@ pub fn bind_pack_registry(tools: &Arc<Vec<Box<dyn Tool>>>) {
 /// A caller with an *empty* `visible` set means "everything is visible"
 /// (the harness's historical sentinel), so there is nothing to subtract from
 /// and the set is left alone.
+///
+/// [`LOAD_SKILL`] is inserted alongside [`USE_SKILL`] even though it is no
+/// longer a registered tool: the visible set is also what the tool-policy
+/// boundary is rendered from, and a model that emits the retired name reaches
+/// `use_skill` through `normalize_tool_call` only if the policy layer did not
+/// refuse it by name first.
 pub fn strip_packed_from_visible(visible: &mut HashSet<String>, agent_id: &str) {
     if visible.is_empty() {
         return;
@@ -81,6 +84,6 @@ pub fn strip_packed_from_visible(visible: &mut HashSet<String>, agent_id: &str) 
     tracing::info!(
         agent = %agent_id,
         hidden = packed.len(),
-        "[toolpacks] withheld packed tool schemas; load_skill/use_skill advertised instead"
+        "[toolpacks] withheld packed tool schemas; use_skill advertised instead"
     );
 }

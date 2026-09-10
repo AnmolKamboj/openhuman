@@ -7,10 +7,11 @@
 //! idle in most conversations.
 //!
 //! A pack keeps its tools constructed and executable but unadvertised. The
-//! agent sees two small tools instead: [`tools::LoadSkillTool`] renders a
-//! pack's schemas into the conversation on demand, and [`tools::UseSkillTool`]
-//! executes one of them, forwarding permission level and execution context to
-//! the real tool so nothing is laundered through the proxy.
+//! agent sees one small tool instead: [`tools::UseSkillTool`] renders a pack's
+//! schemas into the conversation when called with a `skill` alone, and executes
+//! one of them when also given a `tool`, forwarding permission level and
+//! execution context to the real tool so nothing is laundered through the
+//! proxy.
 //!
 //! **Why a proxy and not dynamic registration.** Registering the real schemas
 //! mid-turn would be better — the model would get native tool calling with
