@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Weak};
 
 use super::registry;
-use super::tools::{PackRegistryHandle, UseSkillTool, LOAD_SKILL, USE_SKILL};
+use super::tools::{PackRegistryHandle, UseSkillTool, USE_SKILL};
 use crate::openhuman::tools::traits::Tool;
 
 /// Append `use_skill` to a freshly built registry.
@@ -52,12 +52,7 @@ pub fn bind_pack_registry(tools: &Arc<Vec<Box<dyn Tool>>>) {
 /// A caller with an *empty* `visible` set means "everything is visible"
 /// (the harness's historical sentinel), so there is nothing to subtract from
 /// and the set is left alone.
-///
-/// [`LOAD_SKILL`] is inserted alongside [`USE_SKILL`] even though it is no
-/// longer a registered tool: the visible set is also what the tool-policy
-/// boundary is rendered from, and a model that emits the retired name reaches
-/// `use_skill` through `normalize_tool_call` only if the policy layer did not
-/// refuse it by name first.
+
 pub fn strip_packed_from_visible(visible: &mut HashSet<String>, agent_id: &str) {
     if visible.is_empty() {
         return;
@@ -79,7 +74,6 @@ pub fn strip_packed_from_visible(visible: &mut HashSet<String>, agent_id: &str) 
     for name in &packed {
         visible.remove(name);
     }
-    visible.insert(LOAD_SKILL.to_string());
     visible.insert(USE_SKILL.to_string());
     tracing::info!(
         agent = %agent_id,

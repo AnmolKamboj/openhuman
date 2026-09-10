@@ -9,13 +9,6 @@ use super::registry;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 use tinytools::ToolRunContext;
 
-/// The retired name of the disclosure half, kept as a call-name alias.
-///
-/// `load_skill` and `use_skill` were separate tools, each rendering the whole
-/// pack index into its own description. They are one tool now, but a model
-/// that learned the old name still emits it, so `normalize_tool_call`
-/// rewrites such a call onto [`USE_SKILL`] rather than failing the turn.
-pub const LOAD_SKILL: &str = "load_skill";
 pub const USE_SKILL: &str = "use_skill";
 
 /// An `Arc`-shared, owned view of the tool registry a pack tool lives in.
@@ -158,9 +151,9 @@ fn named_tool(args: &Value) -> Option<&str> {
 /// `use_skill` — until the pack index that each carried in its own description
 /// made the pair spend 3.3 kB of every single turn saying one list twice, and
 /// made the first call of any packed tool a mandatory two-call round trip.
-/// `load_skill` survives as a call-name alias (`normalize_tool_call` in
-/// `agent/harness/session/turn/mod.rs`), so a model that learned the old name
-/// still lands here.
+/// A model that learned the retired name gets the harness's "unknown tool"
+/// recovery result (#4249) and retries against the schema it can actually see,
+/// so no alias is carried for it.
 ///
 /// **Permission forwarding is load-bearing.** The harness gates a call on the
 /// tool's `permission_level_with_args`, so a proxy reporting its own level would
