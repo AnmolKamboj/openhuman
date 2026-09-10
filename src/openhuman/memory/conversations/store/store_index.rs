@@ -4,7 +4,7 @@
 //! API in `store_ops.rs` (and the unit tests) can call it, but it stays out of
 //! the crate's public surface.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::path::PathBuf;
 
@@ -180,6 +180,7 @@ impl ConversationStore {
     /// metadata; a newly-created thread discovered between passes is handled
     /// by the next iteration.
     pub(super) fn list_threads_coordinated(&self) -> Result<Vec<ConversationThread>, String> {
+        let mut unreadable = HashSet::new();
         loop {
             let (index, missing) = {
                 let _metadata = self.locks.metadata.lock();
@@ -189,6 +190,7 @@ impl ConversationStore {
                     .filter(|(_, entry)| {
                         entry.message_count.is_none() || entry.last_message_at.is_none()
                     })
+                    .filter(|(thread_id, _)| !unreadable.contains(*thread_id))
                     .map(|(thread_id, _)| thread_id.clone())
                     .collect::<Vec<_>>();
                 (index, missing)
@@ -210,9 +212,11 @@ impl ConversationStore {
                 }
                 let Ok((count, last_message_at)) = self.measure_messages_unlocked(&thread_id)
                 else {
-                    // One unreadable transcript must not make navigation
-                    // unavailable or cause an unbounded retry loop.
-                    return Ok(Self::threads_from_index(index));
+                    // Quarantine this thread for this invocation so it neither
+                    // blocks repairs for later threads nor causes the outer
+                    // loop to retry it forever. A future list call retries it.
+                    unreadable.insert(thread_id);
+                    continue;
                 };
                 let resolved_last = last_message_at.unwrap_or_else(|| entry.created_at.clone());
                 append_jsonl(
