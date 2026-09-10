@@ -490,9 +490,9 @@ fn rebinding_a_pack_handle_repoints_it_at_the_new_registry() {
     // rebinding of the agent's tool `Arc`", but the handle used to hold a
     // `OnceLock`, so the second write was dropped on the floor. An agent that
     // rebuilt its tool vector kept a `Weak` into the old allocation; once that
-    // allocation went away the upgrade failed and every `use_skill`
-    // `use_skill` reported the registry as unavailable for the rest of the
-    // session. Last write must win.
+    // allocation went away the upgrade failed and every `use_skill` call
+    // reported the registry as unavailable for the rest of the session.
+    // Last write must win.
     let name = pack("crypto").unwrap().tools[0];
 
     // The agent's first tool `Arc`, with the packed tool marked Dangerous.
