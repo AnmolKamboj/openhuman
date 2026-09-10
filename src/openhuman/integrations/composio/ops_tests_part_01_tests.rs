@@ -83,28 +83,31 @@ async fn composio_list_capabilities_does_not_require_session() {
 }
 
 #[tokio::test]
-async fn composio_list_connections_returns_empty_without_session() {
+async fn composio_list_connections_is_quietly_unavailable_without_session() {
     let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     // Backend mode (the default) with no app-session JWT is the fresh-install /
-    // signed-out state, not a failure: the module has no proxy route to be
-    // given, so the old `Err` path reported "loaded without a connector route"
-    // at error level on every boot and periodic tick (#6176). Unlike
-    // `composio_list_toolkits_errors_without_session`, this member answers with
-    // an empty list — exactly as the direct-mode-without-key guard does
-    // (TAURI-RUST-R4) — and the log says why the list is empty.
-    let outcome = composio_list_connections(&config)
-        .await
-        .expect("backend mode without a session must return an empty list, not an error");
+    // signed-out state, not a failure. The connector module has no proxy route
+    // to be given, so before #6176 this call reached the module and reported its
+    // "loaded without a connector route" answer at error level on every boot
+    // and periodic tick. Now the guard answers first with the same "no backend
+    // session token" error every other member gives here: still an `Err` — the
+    // connections may exist server-side, so "unavailable" is the truthful
+    // answer and the reconcile / flows callers keep their fail-open handling —
+    // but nothing is reported to Sentry, and the JSON-RPC boundary demotes the
+    // wording as expected user state (`is_session_expired_message`).
+    let err = composio_list_connections(&config).await.unwrap_err();
     assert!(
-        outcome.value.connections.is_empty(),
-        "no session → no route → no connections"
+        err.contains("no backend session token"),
+        "the error should say what is missing: {err}"
     );
+    // The module's own wording is what used to be reported at error level; its
+    // absence proves the call never reached the module (and so never reached
+    // `report_composio_op_error`).
     assert!(
-        outcome.logs.iter().any(|l| l.contains("not signed in")),
-        "log must explain the empty list is the signed-out setup state, got {:?}",
-        outcome.logs
+        !err.contains("loaded without a connector route"),
+        "the guard must answer before the connector module does: {err}"
     );
 }
 

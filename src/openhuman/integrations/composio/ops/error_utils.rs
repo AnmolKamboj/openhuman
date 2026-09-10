@@ -30,14 +30,18 @@ pub(crate) fn should_forward_tags(toolkits: Option<&[String]>) -> bool {
 /// Result alias used by every `composio_*` op in this module.
 pub(super) type OpResult<T> = std::result::Result<T, String>;
 
+/// The answer every backend-mode member gives while there is no app-session
+/// JWT. Shared so the members agree on the wording, and because the wording is
+/// load-bearing: `is_session_expired_message` recognises "no backend session
+/// token", so the JSON-RPC boundary demotes this to an expected user-state
+/// error instead of paging Sentry.
+pub(crate) const COMPOSIO_NO_SESSION: &str =
+    "composio unavailable: no backend session token. Sign in first (auth_store_session).";
+
 /// Resolve a backend-mode [`ComposioClient`] from the root config, or
 /// return an error string that the caller can surface over RPC.
 pub(crate) fn resolve_client(config: &Config) -> OpResult<ComposioClient> {
-    build_composio_client(config).ok_or_else(|| {
-        "composio unavailable: no backend session token. Sign in first \
-         (auth_store_session)."
-            .to_string()
-    })
+    build_composio_client(config).ok_or_else(|| COMPOSIO_NO_SESSION.to_string())
 }
 
 /// True when the user has selected Composio **direct** mode but has not yet
@@ -84,8 +88,13 @@ pub(crate) fn direct_mode_without_key(config: &Config) -> OpResult<bool> {
 /// answers "this module was loaded without a connector route" — which the op
 /// layer then reported at error level (and to Sentry) once at boot from the
 /// memory-source reconcile and again on every periodic tick, for a user who
-/// simply has not signed in (#6176). Callers short-circuit to an empty result
-/// instead.
+/// simply has not signed in (#6176). Callers answer with the quiet
+/// [`COMPOSIO_NO_SESSION`] error instead — deliberately not an empty list,
+/// unlike the direct-mode guard: no key means no tenant and truly no
+/// connections, whereas no session only means the connections cannot be
+/// reached yet, and `memory::sources::reconcile` /
+/// `flows::validate_connection_refs` rely on `Err` meaning "unknown" (fail
+/// open) rather than "none".
 ///
 /// Session presence MUST mirror the module route's own resolution:
 /// `module_config` calls `integrations::build_client`, whose only token source
