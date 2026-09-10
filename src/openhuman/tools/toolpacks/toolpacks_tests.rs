@@ -192,6 +192,30 @@ fn use_skill_reports_the_inner_tools_permission_level() {
 }
 
 #[test]
+fn naming_no_tool_is_read_only_even_when_the_pack_is_dangerous() {
+    // The disclosure branch renders a schema and does nothing else. Reporting
+    // the packed ceiling here would put an approval prompt in front of reading
+    // a tool list, which is the round trip merging the two tools removed.
+    let name = pack("crypto").unwrap().tools[0];
+    let tools = registry_with(name, PermissionLevel::Dangerous);
+    let use_skill = find(&tools, USE_SKILL);
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto"})),
+        PermissionLevel::ReadOnly
+    );
+    // An empty string is a named-nothing call, not a tool called "".
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": ""})),
+        PermissionLevel::ReadOnly
+    );
+    // Naming a real one still reports that tool's level, not this branch's.
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": name})),
+        PermissionLevel::Dangerous
+    );
+}
+
+#[test]
 fn use_skill_forwards_the_inner_tools_external_effect() {
     // The approval gate calls external_effect_with_args on the proxy; a proxy
     // that reported false would let an effectful packed tool skip the prompt.
