@@ -1,0 +1,591 @@
+/**
+ * Shared, presentation-only field primitives for the node-config drawer
+ * (issue B5b / Phase 3b). Each per-kind form (`nodeConfigForms.tsx`) composes
+ * these; the drawer owns the controlled config object and passes each field a
+ * `value` + `onChange`, so every field here is a dumb controlled input.
+ *
+ * The primitives call `useT()` only for their *intrinsic* chrome (the
+ * "Expression" affordance, "Add row"/"Remove", "Invalid JSON" message) — the
+ * semantic per-field *labels* are always passed in by the form so the i18n key
+ * lives next to the field's meaning, not buried in a generic input.
+ *
+ * `=`-expression affordance: tinyflows resolves any config string starting with
+ * `=` as an expression evaluated against the node's input (`crate::expr`).
+ * {@link ExpressionField} surfaces that with a monospace input and a small
+ * "Expression" badge + hint so an author knows a value like `=item.url` is live,
+ * not a literal.
+ */
+import createDebug from 'debug';
+import { useCallback, useId, useMemo, useState } from 'react';
+
+import { cn } from '../../../../lib/cn';
+import { useT } from '../../../../lib/i18n/I18nContext';
+import type { FlowConnection } from '../../../../services/api/flowsApi';
+import {
+  Button,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupRoot,
+  NativeSelect,
+  Input as UiInput,
+  TextArea as UiTextArea,
+} from '../../../ui';
+import type { UpstreamExpressionOption } from './upstreamOptions';
+
+const log = createDebug('app:flows:nodeConfig:fields');
+
+export const MONO_CLASS = 'font-mono text-[13px]';
+
+/** Read a string field off a free-form config object, defaulting to `''`. */
+export function configString(config: Record<string, unknown>, key: string): string {
+  const value = config[key];
+  return typeof value === 'string' ? value : '';
+}
+
+/** Read a finite numeric field off a free-form config object, defaulting to `undefined`. */
+export function configNumber(config: Record<string, unknown>, key: string): number | undefined {
+  const value = config[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** Read a `Record<string,string>` map off config (e.g. HTTP headers / transform set). */
+export function configStringMap(
+  config: Record<string, unknown>,
+  key: string
+): Record<string, string> {
+  const value = config[key];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  }
+  return out;
+}
+
+/** Label + optional hint wrapper shared by every field. */
+export function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <label
+        htmlFor={htmlFor}
+        className="block text-[11px] font-semibold uppercase tracking-wide text-content-muted">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="text-[11px] leading-snug text-content-faint">{hint}</p>}
+    </div>
+  );
+}
+
+interface TextFieldProps {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  testId?: string;
+}
+
+export function TextField({ label, hint, value, onChange, placeholder, testId }: TextFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <UiInput
+        id={id}
+        type="text"
+        inputSize="sm"
+        className="w-full"
+        value={value}
+        placeholder={placeholder}
+        data-testid={testId}
+        onChange={e => onChange(e.target.value)}
+      />
+    </Field>
+  );
+}
+
+interface TextAreaFieldProps extends Omit<TextFieldProps, 'onChange'> {
+  onChange: (value: string) => void;
+  rows?: number;
+  mono?: boolean;
+}
+
+export function TextAreaField({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+  mono,
+  testId,
+}: TextAreaFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <UiTextArea
+        id={id}
+        rows={rows}
+        className={cn('resize-y', mono && MONO_CLASS)}
+        value={value}
+        placeholder={placeholder}
+        data-testid={testId}
+        onChange={e => onChange(e.target.value)}
+      />
+    </Field>
+  );
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface SelectFieldProps {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  testId?: string;
+}
+
+export function SelectField({ label, hint, value, onChange, options, testId }: SelectFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <NativeSelect
+        id={id}
+        inputSize="sm"
+        className="w-full"
+        value={value}
+        data-testid={testId}
+        onChange={e => onChange(e.target.value)}>
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </Field>
+  );
+}
+
+interface NumberFieldProps {
+  label: string;
+  hint?: string;
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  testId?: string;
+}
+
+/**
+ * A plain numeric input (e.g. a memory node's `limit` / `min_score`). Unlike
+ * {@link TextField} the empty string round-trips to `undefined` rather than
+ * `''`, so an unset optional numeric config key stays genuinely absent
+ * instead of becoming a stray `""` in the saved graph.
+ */
+export function NumberField({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+  step,
+  testId,
+}: NumberFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <UiInput
+        id={id}
+        type="number"
+        inputSize="sm"
+        className="w-full"
+        value={value ?? ''}
+        placeholder={placeholder}
+        min={min}
+        max={max}
+        step={step}
+        data-testid={testId}
+        onChange={e => {
+          const raw = e.target.value;
+          onChange(raw === '' ? undefined : Number(raw));
+        }}
+      />
+    </Field>
+  );
+}
+
+/**
+ * Compact "insert an upstream value" dropdown (Feature: `nodes` scope picker).
+ * Always renders with the empty placeholder selected; picking an option calls
+ * `onInsert(expression)` and snaps back to the placeholder, so it acts as a
+ * one-shot menu button rather than a stateful select (same sentinel-select
+ * pattern as `composioFields.tsx`). Renders nothing when there are no options.
+ */
+export function UpstreamInsertSelect({
+  options,
+  onInsert,
+  testId,
+  className,
+}: {
+  options: UpstreamExpressionOption[];
+  onInsert: (expression: string) => void;
+  testId?: string;
+  className?: string;
+}) {
+  const { t } = useT();
+  if (options.length === 0) return null;
+  return (
+    <NativeSelect
+      inputSize="sm"
+      className={cn('max-w-[45%] shrink-0 border-l text-[11px]', className)}
+      value=""
+      title={t('flows.nodeConfig.upstream.insertLabel', 'Insert a value from a previous step')}
+      aria-label={t('flows.nodeConfig.upstream.insertLabel', 'Insert a value from a previous step')}
+      data-testid={testId}
+      onChange={e => {
+        if (!e.target.value) return;
+        log('UpstreamInsertSelect: insert %s', e.target.value);
+        onInsert(e.target.value);
+      }}>
+      <option value="" disabled>
+        {t('flows.nodeConfig.upstream.insert', 'Insert…')}
+      </option>
+      {options.map(opt => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+}
+
+interface ExpressionFieldProps extends TextFieldProps {
+  /**
+   * `=nodes.…` expressions from upstream nodes; when non-empty a compact
+   * insert dropdown renders beside the input (picking replaces the value).
+   */
+  upstreamOptions?: UpstreamExpressionOption[];
+  /** Non-blocking warning (amber border + message), e.g. "Required — not wired". */
+  warning?: string;
+}
+
+/**
+ * A field whose value is commonly a tinyflows `=`-expression. Monospace input
+ * with a leading "Expression" badge + hint so authors recognize `=item.foo`
+ * as a live, input-bound value rather than a literal.
+ */
+export function ExpressionField({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+  testId,
+  upstreamOptions,
+  warning,
+}: ExpressionFieldProps) {
+  const { t } = useT();
+  const id = useId();
+  return (
+    <Field label={label} hint={hint ?? t('flows.nodeConfig.expressionHint')} htmlFor={id}>
+      <InputGroupRoot size="sm">
+        <InputGroupAddon
+          className={cn(warning && 'border-amber-400')}
+          title={t('flows.nodeConfig.expressionBadge')}
+          aria-hidden="true">
+          <span className="font-mono text-[11px] font-semibold">=</span>
+        </InputGroupAddon>
+        <InputGroupInput
+          id={id}
+          type="text"
+          className={cn(
+            MONO_CLASS,
+            warning && 'border-amber-400 focus:border-amber-500 focus:ring-amber-500/20'
+          )}
+          value={value}
+          placeholder={placeholder}
+          data-testid={testId}
+          onChange={e => onChange(e.target.value)}
+        />
+        {upstreamOptions && upstreamOptions.length > 0 && (
+          <UpstreamInsertSelect
+            options={upstreamOptions}
+            onInsert={onChange}
+            testId={testId ? `${testId}-upstream` : undefined}
+            className="max-w-[45%] shrink-0 text-[11px]"
+          />
+        )}
+      </InputGroupRoot>
+      {warning && (
+        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400" role="alert">
+          {warning}
+        </p>
+      )}
+    </Field>
+  );
+}
+
+interface KeyMapFieldProps {
+  label: string;
+  hint?: string;
+  value: Record<string, string>;
+  onChange: (value: Record<string, string>) => void;
+  monoValues?: boolean;
+  /** When non-empty, each row's value gets an upstream-expression insert menu. */
+  upstreamOptions?: UpstreamExpressionOption[];
+  testId?: string;
+}
+
+/**
+ * Edits a flat `Record<string,string>` (HTTP headers, transform `set`) as a
+ * list of key/value rows with add/remove. Rebuilds the whole object on every
+ * keystroke so the parent stays the single controlled source of truth.
+ */
+export function KeyMapField({
+  label,
+  hint,
+  value,
+  onChange,
+  monoValues,
+  upstreamOptions,
+  testId,
+}: KeyMapFieldProps) {
+  const { t } = useT();
+  // Rows are kept as an ordered array locally so editing a key doesn't reorder
+  // or drop an in-progress empty key. Seeded from `value`; the parent object is
+  // rebuilt from rows on every change.
+  const [rows, setRows] = useState<Array<[string, string]>>(() => Object.entries(value));
+
+  const commit = useCallback(
+    (next: Array<[string, string]>) => {
+      setRows(next);
+      const obj: Record<string, string> = {};
+      for (const [k, v] of next) {
+        if (k.trim() !== '') obj[k] = v;
+      }
+      log('KeyMapField commit: rows=%d keys=%d', next.length, Object.keys(obj).length);
+      onChange(obj);
+    },
+    [onChange]
+  );
+
+  return (
+    <Field label={label} hint={hint}>
+      <div className="space-y-1.5" data-testid={testId}>
+        {rows.map(([k, v], i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <UiInput
+              type="text"
+              inputSize="sm"
+              className="flex-1"
+              value={k}
+              placeholder={t('flows.nodeConfig.keymapKeyPlaceholder')}
+              onChange={e => {
+                const next = rows.slice();
+                next[i] = [e.target.value, v];
+                commit(next);
+              }}
+            />
+            <UiInput
+              type="text"
+              inputSize="sm"
+              className={cn('flex-1', monoValues && MONO_CLASS)}
+              value={v}
+              placeholder={t('flows.nodeConfig.keymapValuePlaceholder')}
+              onChange={e => {
+                const next = rows.slice();
+                next[i] = [k, e.target.value];
+                commit(next);
+              }}
+            />
+            {upstreamOptions && upstreamOptions.length > 0 && (
+              <UpstreamInsertSelect
+                options={upstreamOptions}
+                onInsert={expr => {
+                  const next = rows.slice();
+                  next[i] = [k, expr];
+                  commit(next);
+                }}
+                className="w-20 shrink-0 text-[11px]"
+              />
+            )}
+            <Button
+              type="button"
+              variant="tertiary"
+              size="xs"
+              iconOnly
+              tone="danger"
+              aria-label={t('flows.nodeConfig.keymapRemove')}
+              onClick={() => commit(rows.filter((_, idx) => idx !== i))}>
+              ✕
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="border-dashed"
+          data-testid={testId ? `${testId}-add` : undefined}
+          onClick={() => commit([...rows, ['', '']])}>
+          + {t('flows.nodeConfig.keymapAdd')}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
+interface JsonFieldProps {
+  label: string;
+  hint?: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  rows?: number;
+  testId?: string;
+}
+
+/**
+ * Edits an arbitrary JSON value (HTTP body, tool_call args, or the raw-config
+ * escape hatch) as pretty-printed text. Keeps a local text buffer so invalid
+ * intermediate states are allowed while typing; only propagates `onChange` when
+ * the buffer parses. Seeded once from `value` — the drawer body is keyed by
+ * node id, so switching nodes remounts and re-seeds.
+ */
+export function JsonField({ label, hint, value, onChange, rows = 6, testId }: JsonFieldProps) {
+  const { t } = useT();
+  const id = useId();
+  const initial = useMemo(() => {
+    if (value === undefined || value === null) return '';
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return '';
+    }
+  }, [value]);
+  const [text, setText] = useState(initial);
+  const [error, setError] = useState(false);
+
+  const handleChange = useCallback(
+    (next: string) => {
+      setText(next);
+      if (next.trim() === '') {
+        setError(false);
+        onChange(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(next);
+        setError(false);
+        log('JsonField parsed ok');
+        onChange(parsed);
+      } catch {
+        setError(true);
+        log('JsonField parse error — buffer held, not propagated');
+      }
+    },
+    [onChange]
+  );
+
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <UiTextArea
+        id={id}
+        rows={rows}
+        invalid={error}
+        className={cn('resize-y', MONO_CLASS)}
+        value={text}
+        data-testid={testId}
+        onChange={e => handleChange(e.target.value)}
+      />
+      {error && (
+        <p className="text-[11px] font-medium text-coral-600 dark:text-coral-400" role="alert">
+          {t('flows.nodeConfig.rawJsonInvalid')}
+        </p>
+      )}
+    </Field>
+  );
+}
+
+interface CredentialPickerFieldProps {
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  connections: FlowConnection[];
+  /** Restrict the offered connections by kind (e.g. only `http` for HTTP nodes). */
+  kinds?: Array<FlowConnection['kind']>;
+  testId?: string;
+}
+
+/**
+ * Credential selector for `http_request` / `tool_call` nodes, fed by
+ * `flows_list_connections` (secret-free). Writes the chosen `connection_ref`
+ * onto config; the empty option clears it. Shows only `display`/`kind` — never
+ * a secret. Renders a muted note when no credentials are connected.
+ */
+export function CredentialPickerField({
+  label,
+  value,
+  onChange,
+  connections,
+  kinds,
+  testId,
+}: CredentialPickerFieldProps) {
+  const { t } = useT();
+  const id = useId();
+  const options = useMemo(
+    () => (kinds ? connections.filter(c => kinds.includes(c.kind)) : connections),
+    [connections, kinds]
+  );
+
+  const resolvedLabel = label ?? t('flows.nodeConfig.credentialLabel');
+
+  if (options.length === 0) {
+    return (
+      <Field label={resolvedLabel} hint={t('flows.nodeConfig.credentialHint')}>
+        <p
+          className="rounded-lg border border-dashed border-line-strong px-2.5 py-1.5 text-xs text-content-faint"
+          data-testid={testId ? `${testId}-empty` : undefined}>
+          {t('flows.nodeConfig.credentialEmpty')}
+        </p>
+      </Field>
+    );
+  }
+
+  return (
+    <Field label={resolvedLabel} hint={t('flows.nodeConfig.credentialHint')} htmlFor={id}>
+      <NativeSelect
+        id={id}
+        inputSize="sm"
+        className="w-full"
+        value={value}
+        data-testid={testId}
+        onChange={e => onChange(e.target.value)}>
+        <option value="">{t('flows.nodeConfig.credentialNone')}</option>
+        {options.map(conn => (
+          <option key={conn.connection_ref} value={conn.connection_ref}>
+            {conn.display} · {conn.kind}
+          </option>
+        ))}
+      </NativeSelect>
+    </Field>
+  );
+}

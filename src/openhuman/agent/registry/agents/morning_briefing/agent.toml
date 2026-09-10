@@ -1,0 +1,25 @@
+id = "morning_briefing"
+display_name = "Morning Briefing"
+when_to_use = "Proactive daily agent — runs at a scheduled time (default 7 AM) to review the user's upcoming day and deliver a concise morning summary covering tasks, calendar events, important emails, and relevant context from connected skills."
+temperature = 0.5
+max_iterations = 8
+sandbox_mode = "read_only"
+
+# The brief pulls its recent memory itself via `memory_tree_cover_window`
+# (last 24h, source-grouped) — see prompt.md. We therefore suppress the
+# injected all-time memory blob (`## User Memory`, the namespace root
+# summaries): it is stale relative to "today" and would compete with the
+# fresh windowed tool result. Identity/safety boilerplate stays off too —
+# the prompt carries its own voice.
+omit_identity = true
+omit_memory_context = true
+omit_safety_preamble = true
+
+[model]
+hint = "agentic"
+
+[tools]
+# Wildcard within the skill category — the agent needs to discover and
+# call whichever Composio actions are available for the user's connected
+# integrations (calendar, email, tasks, etc.).
+wildcard = {}

@@ -1,0 +1,23 @@
+id = "tools_agent"
+display_name = "Tools Agent"
+when_to_use = "Generalist for heavyweight ad-hoc execution that does NOT touch a code repository: host shell, HTTP, web search, file reads. It cannot edit files or use git, so repo-scoped work goes to the code worker and managed Composio integrations go to the integrations agent."
+temperature = 0.4
+max_iterations = 10
+iteration_policy = "extended"
+sandbox_mode = "none"
+omit_identity = true
+omit_memory_context = true
+omit_safety_preamble = false
+
+[model]
+hint = "burst"
+
+[tools]
+# Wildcard — the agent inherits the orchestrator's full built-in tool
+# surface. Composio meta-tools and dynamic `<TOOLKIT>_*` action tools are
+# stripped at runtime (see `filter_non_composio_indices` in the subagent
+# runner), so the LLM never sees integration-specific tools here; those belong
+# to `integrations_agent`. Specialist-owned trading tools are also
+# stripped via `disallowed_tools` above so they route through their dedicated
+# agents exclusively.
+wildcard = {}
