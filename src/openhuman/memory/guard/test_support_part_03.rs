@@ -131,3 +131,29 @@ pub fn namespace_hit(
         taint: MemoryTaint::default(),
     }
 }
+
+// Moved from part 02 for the same reason the inherent impl above moved: that
+// file reached the 750-line ceiling when the episodic family grew
+// `segments_pending_summary` (#6186). `MemoryAnswer` is the tail block and is
+// self-contained, so it relocates without splitting a trait impl across files.
+#[async_trait]
+impl MemoryAnswer for RecordingProvider {
+    async fn answer(
+        &self,
+        _request: crate::openhuman::memory::api::provider::operations::AnswerRequest,
+    ) -> Result<crate::openhuman::memory::api::provider::operations::AnswerResponse, MemoryError>
+    {
+        self.record(Call {
+            method: "answer.answer".into(),
+            content: None,
+            taint: None,
+            scoped: None,
+        });
+        Ok(crate::openhuman::memory::api::provider::operations::AnswerResponse {
+            answer: String::new(),
+            model: None,
+            citations: Vec::new(),
+            steps: Vec::new(),
+        })
+    }
+}

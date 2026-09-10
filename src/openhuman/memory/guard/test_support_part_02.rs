@@ -731,25 +731,3 @@ impl MemoryEventIngest for RecordingProvider {
         Ok(IngestOutcome::default())
     }
 }
-
-#[async_trait]
-impl MemoryAnswer for RecordingProvider {
-    async fn answer(
-        &self,
-        _request: crate::openhuman::memory::api::provider::operations::AnswerRequest,
-    ) -> Result<crate::openhuman::memory::api::provider::operations::AnswerResponse, MemoryError>
-    {
-        self.record(Call {
-            method: "answer.answer".into(),
-            content: None,
-            taint: None,
-            scoped: None,
-        });
-        Ok(crate::openhuman::memory::api::provider::operations::AnswerResponse {
-            answer: String::new(),
-            model: None,
-            citations: Vec::new(),
-            steps: Vec::new(),
-        })
-    }
-}
