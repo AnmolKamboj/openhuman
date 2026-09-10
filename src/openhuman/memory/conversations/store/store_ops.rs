@@ -176,12 +176,10 @@ impl ConversationStore {
                     last_message_at: message.created_at.clone(),
                 },
             )?;
-        }
-        // Keep the inverted index in sync. We only update if the index has
-        // already been materialized for this workspace — otherwise the next
-        // search will lazily rebuild and pick up this message anyway, and we
-        // avoid paying the rebuild cost on a write path.
-        {
+            self.locks.record_mutation();
+            // Keep publication and warm-cache insertion in the same metadata
+            // critical section. A concurrent cold build either observes this
+            // generation or publishes first and receives this insertion.
             let mut cache = CONVERSATION_INDEX_CACHE.lock();
             if let Some(idx) = cache.get_mut(&self.root_dir()) {
                 idx.insert(thread_id, message.clone());

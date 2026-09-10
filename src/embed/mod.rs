@@ -63,7 +63,9 @@ pub use agent::{absolute, Agent, Route, Turn, TurnOutcome, TurnRequest};
 pub use auth::{Auth, AuthState, Session};
 pub use config::{Config, RuntimeFlags};
 pub use error::CoreError;
-pub use harness::{Access, Harness, HarnessBuilder, HarnessError, Provider, Workspace};
+pub use harness::{
+    Access, Harness, HarnessBuilder, HarnessCore, HarnessError, Provider, Workspace,
+};
 #[cfg(feature = "mcp")]
 pub use harness::{HttpHeader, McpAuthConfig, McpServer};
 #[cfg(feature = "medulla")]

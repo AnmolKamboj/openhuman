@@ -123,6 +123,40 @@ pub struct Harness {
     _workspace: ResolvedWorkspace,
 }
 
+/// Borrowed access to the core owned by a [`Harness`].
+///
+/// Unlike [`Core`], this facade is deliberately not cloneable and does not
+/// expose the runtime `Arc`: a retained runtime could outlive the harness's
+/// process-slot and workspace ownership. Share an `Arc<Harness>` when several
+/// agents need concurrent access.
+pub struct HarnessCore<'a> {
+    core: &'a Core,
+}
+
+impl HarnessCore<'_> {
+    pub fn config(&self) -> crate::embed::Config<'_> {
+        self.core.config()
+    }
+
+    pub fn auth(&self) -> crate::embed::Auth<'_> {
+        self.core.auth()
+    }
+
+    pub fn agent(&self) -> crate::embed::Agent<'_> {
+        self.core.agent()
+    }
+
+    #[cfg(feature = "medulla")]
+    pub fn medulla(&self) -> crate::embed::Medulla<'_> {
+        self.core.medulla()
+    }
+
+    /// Borrow the underlying runtime without exposing its owning `Arc`.
+    pub fn raw(&self) -> &crate::core::runtime::CoreRuntime {
+        self.core.raw().as_ref()
+    }
+}
+
 impl Harness {
     /// Start configuring a harness.
     pub fn builder() -> HarnessBuilder {
@@ -143,7 +177,12 @@ impl Harness {
     /// The harness's provider route and access origin are pre-applied; anything
     /// set on the returned [`Turn`] overrides them for that turn alone.
     pub fn turn(&self, message: impl Into<String>) -> Turn<'_> {
-        let mut turn = self.core().agent().turn(message);
+        let mut turn = self
+            .core
+            .as_ref()
+            .expect("harness core is present until drop")
+            .agent()
+            .turn(message);
         if let Some(route) = self.provider.route() {
             turn = turn.route(route.clone());
         }
@@ -158,10 +197,13 @@ impl Harness {
 
     /// The typed core facade beneath this harness — config, memory, and the
     /// [`raw`](Core::raw) escape hatch for anything not yet modelled.
-    pub fn core(&self) -> &Core {
-        self.core
-            .as_ref()
-            .expect("harness core is present until drop")
+    pub fn core(&self) -> HarnessCore<'_> {
+        HarnessCore {
+            core: self
+                .core
+                .as_ref()
+                .expect("harness core is present until drop"),
+        }
     }
 
     /// The workspace this harness is rooted at.

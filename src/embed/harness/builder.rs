@@ -315,7 +315,7 @@ impl HarnessBuilder {
         // applicator. Host policy must follow that effective behavior rather
         // than the syntactic presence of endpoint credentials, or an ignored
         // route could exempt an inherited installed provider from login.
-        let routed_provider_effective = self.provider.is_routed()
+        let routed_provider_effective = self.provider.has_usable_route()
             && config
                 .as_ref()
                 .and_then(|config| config.default_model.as_deref())

@@ -361,6 +361,15 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
         "search failed: {:?}",
         search_result.err()
     );
+    let appended = store
+        .search_cross_thread_messages("written during cold rebuild", 10, None)
+        .unwrap();
+    assert!(
+        appended
+            .iter()
+            .any(|hit| hit.message_id == "concurrent-append"),
+        "completed append was omitted from index: {appended:?}"
+    );
 }
 
 #[test]
