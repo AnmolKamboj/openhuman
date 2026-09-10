@@ -38,11 +38,40 @@ static ROOTS: LazyLock<Mutex<HashMap<PathBuf, Weak<StoreLocks>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub(super) fn for_root(root: &Path) -> Arc<StoreLocks> {
+    let root = stable_root_key(root);
     let mut roots = ROOTS.lock();
-    if let Some(existing) = roots.get(root).and_then(Weak::upgrade) {
+    if let Some(existing) = roots.get(&root).and_then(Weak::upgrade) {
         return existing;
     }
     let locks = Arc::new(StoreLocks::default());
-    roots.insert(root.to_path_buf(), Arc::downgrade(&locks));
+    roots.insert(root, Arc::downgrade(&locks));
     locks
+}
+
+/// Resolve aliases even before the conversation directory itself exists.
+/// Canonicalizing the nearest existing ancestor handles symlinks and `..`;
+/// the missing suffix is then appended without touching the filesystem.
+fn stable_root_key(root: &Path) -> PathBuf {
+    if let Ok(canonical) = root.canonicalize() {
+        return canonical;
+    }
+
+    let mut suffix = Vec::new();
+    let mut ancestor = root;
+    loop {
+        if let Ok(canonical) = ancestor.canonicalize() {
+            return suffix
+                .iter()
+                .rev()
+                .fold(canonical, |path, component| path.join(component));
+        }
+        let Some(name) = ancestor.file_name() else {
+            return root.to_path_buf();
+        };
+        suffix.push(name.to_os_string());
+        let Some(parent) = ancestor.parent() else {
+            return root.to_path_buf();
+        };
+        ancestor = parent;
+    }
 }

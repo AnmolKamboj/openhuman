@@ -26,6 +26,26 @@ fn a_harness_identifies_as_a_library_host_by_default() {
 }
 
 #[test]
+fn inherited_workspace_and_provider_keep_installed_session_policy() {
+    assert_eq!(
+        effective_host_kind(HostKind::Library, true, &Provider::inherit()),
+        HostKind::Cli
+    );
+    assert_eq!(
+        effective_host_kind(
+            HostKind::Library,
+            true,
+            &Provider::openai_compatible("https://api.example/v1", "sk")
+        ),
+        HostKind::Library
+    );
+    assert_eq!(
+        effective_host_kind(HostKind::Library, false, &Provider::inherit()),
+        HostKind::Library
+    );
+}
+
+#[test]
 fn default_services_start_no_background_writers() {
     // cron, heartbeat and the memory queue each write to the workspace on their
     // own schedule. A library call that started them would become a background

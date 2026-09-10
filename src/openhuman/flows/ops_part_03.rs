@@ -192,7 +192,9 @@ async fn evaluate_inference_readiness(
 
     // Layer 1: signed-out is the cheapest, most decisive check. Session-wide
     // — checked once for the whole graph, not per node/role.
-    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
+    if crate::openhuman::inference::provider::factory::current_host_requires_session()
+        && crate::openhuman::cron::scheduler_gate::is_signed_out()
+    {
         tracing::debug!(
             target: "flows",
             node = %first_node.id,

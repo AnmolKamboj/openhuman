@@ -525,9 +525,7 @@ pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
     // would mix desktop product policy into the library contract. The ambient
     // context is installed by the dispatch chokepoint; all other host kinds
     // retain the registration gate below.
-    if crate::core::runtime::context::CoreContext::current()
-        .is_some_and(|ctx| ctx.host_kind() == crate::core::types::HostKind::Library)
-    {
+    if !current_host_requires_session() {
         return Ok(());
     }
 
@@ -559,6 +557,19 @@ pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
         anyhow::bail!("SESSION_EXPIRED: no backend session — sign in to use OpenHuman")
     }
     Ok(())
+}
+
+/// Whether inference in the ambient host participates in OpenHuman app login.
+/// Library hosts receive their provider configuration from the embedding
+/// process; every other host retains the product session policy.
+pub(crate) fn current_host_requires_session() -> bool {
+    crate::core::runtime::context::CoreContext::current()
+        .map(|ctx| host_requires_session(ctx.host_kind()))
+        .unwrap_or(true)
+}
+
+fn host_requires_session(host_kind: crate::core::types::HostKind) -> bool {
+    host_kind != crate::core::types::HostKind::Library
 }
 
 fn resolve_primary_cloud_provider_string(config: &Config) -> String {

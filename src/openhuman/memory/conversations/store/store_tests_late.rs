@@ -192,6 +192,39 @@ fn one_hundred_agent_threads_use_independent_message_locks() {
     assert_eq!(message_locks.len(), 100);
 }
 
+#[test]
+fn equivalent_workspace_paths_share_the_same_lock_registry_entry() {
+    let temp = TempDir::new().unwrap();
+    let child = temp.path().join("child");
+    std::fs::create_dir(&child).unwrap();
+
+    let direct = ConversationStore::new(temp.path().to_path_buf());
+    let dotted = ConversationStore::new(child.join(".."));
+
+    assert_eq!(
+        direct.lock_identity_for_test(),
+        dotted.lock_identity_for_test()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_workspace_paths_share_the_same_lock_registry_entry() {
+    let temp = TempDir::new().unwrap();
+    let workspace = temp.path().join("workspace");
+    let alias = temp.path().join("alias");
+    std::fs::create_dir(&workspace).unwrap();
+    std::os::unix::fs::symlink(&workspace, &alias).unwrap();
+
+    let direct = ConversationStore::new(workspace);
+    let linked = ConversationStore::new(alias);
+
+    assert_eq!(
+        direct.lock_identity_for_test(),
+        linked.lock_identity_for_test()
+    );
+}
+
 // ── concurrency: search cold rebuild must not block concurrent append ────────
 
 /// Regression test for issue #2849.

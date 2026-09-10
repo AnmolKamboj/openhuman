@@ -239,6 +239,7 @@ impl HarnessBuilder {
 
     async fn build_inner(self) -> Result<Harness, HarnessError> {
         let inherit = self.workspace.is_operator_owned();
+        let host_kind = effective_host_kind(self.host_kind, inherit, &self.provider);
 
         if self.skills_dir.is_some() && inherit {
             return Err(HarnessError::Invalid(
@@ -342,11 +343,11 @@ impl HarnessBuilder {
         log::debug!(
             "[embed][harness] building host_kind={:?} inherit_workspace={inherit} \
              routed_provider={} domains={domains:?} tool_groups={tool_groups:?}",
-            self.host_kind,
+            host_kind,
             self.provider.is_routed(),
         );
 
-        let mut builder = CoreBuilder::new(self.host_kind)
+        let mut builder = CoreBuilder::new(host_kind)
             .domains(domains)
             .tool_groups(tool_groups)
             .services(services)
@@ -371,6 +372,22 @@ impl HarnessBuilder {
             access: self.access,
             _workspace: resolved,
         })
+    }
+}
+
+/// Preserve the installed application's authentication policy when the
+/// harness borrows both its workspace and provider. `Library` means the host
+/// supplied inference; it must not become a blanket way to bypass the session
+/// gate around an operator-installed provider.
+fn effective_host_kind(
+    requested: HostKind,
+    inherit_workspace: bool,
+    provider: &Provider,
+) -> HostKind {
+    if requested == HostKind::Library && inherit_workspace && !provider.is_routed() {
+        HostKind::Cli
+    } else {
+        requested
     }
 }
 
