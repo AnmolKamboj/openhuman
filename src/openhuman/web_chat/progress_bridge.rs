@@ -342,9 +342,8 @@ pub(crate) fn spawn_progress_bridge(
         AgentRunKind, AgentRunStatus, AgentRunUpsert, RunEventAppend, RunTelemetryUpsert,
     };
 
-    tokio::spawn(crate::core::runtime::context::CoreContext::propagate(
-        async move {
-            log::debug!(
+    let bridge = async move {
+        log::debug!(
             "[web_channel][bridge] spawned client_id={} thread_id={} request_id={} speak_reply={:?} source={:?} session_id={:?}",
             client_id,
             thread_id,
@@ -353,165 +352,165 @@ pub(crate) fn spawn_progress_bridge(
             metadata.source,
             metadata.session_id,
         );
-            let mut round: u32 = 0;
-            let mut parent_max_iterations: u32 = 0;
-            // Accumulates the parent agent's streamed narration for the current
-            // round. When a tool call closes the round, this leading narration is
-            // flushed as an interim chat bubble (`chat_interim`) so it persists in
-            // the thread instead of vanishing on settle — the final answer arrives
-            // separately via `deliver_response` and is never part of this buffer
-            // (it belongs to the terminal round, which ends with no tool call).
-            let mut pending_narration = String::new();
-            let mut events_seen: u64 = 0;
-            // Per-request monotonic ordering key stamped on every emitted
-            // web-channel event (see `publish_seq_stamped`). Unique per emission so
-            // the frontend can dedup by `(request_id, seq)`.
-            let mut emit_seq: u64 = 0;
-            let mut parent_completed = false;
-            let mut parent_tool_count: u64 = 0;
-            let mut child_tool_counts: HashMap<String, u64> = HashMap::new();
-            let mut turn_state =
-                TurnStateMirror::new(turn_state_store, thread_id.clone(), request_id.clone());
+        let mut round: u32 = 0;
+        let mut parent_max_iterations: u32 = 0;
+        // Accumulates the parent agent's streamed narration for the current
+        // round. When a tool call closes the round, this leading narration is
+        // flushed as an interim chat bubble (`chat_interim`) so it persists in
+        // the thread instead of vanishing on settle — the final answer arrives
+        // separately via `deliver_response` and is never part of this buffer
+        // (it belongs to the terminal round, which ends with no tool call).
+        let mut pending_narration = String::new();
+        let mut events_seen: u64 = 0;
+        // Per-request monotonic ordering key stamped on every emitted
+        // web-channel event (see `publish_seq_stamped`). Unique per emission so
+        // the frontend can dedup by `(request_id, seq)`.
+        let mut emit_seq: u64 = 0;
+        let mut parent_completed = false;
+        let mut parent_tool_count: u64 = 0;
+        let mut child_tool_counts: HashMap<String, u64> = HashMap::new();
+        let mut turn_state =
+            TurnStateMirror::new(turn_state_store, thread_id.clone(), request_id.clone());
 
-            // #3886: opt-in structured tracing export. When enabled, fold the same
-            // progress stream into OTel/Langfuse-style spans correlated by session
-            // id (falling back to the thread id for headless/autonomous runs).
-            // `None` (disabled) is zero-cost.
-            let mut journal_trace_ctx = None;
-            let mut span_collector = if config.observability.share_usage_data
-                || config.observability.agent_tracing.enabled
-            {
-                use crate::openhuman::agent::progress_tracing::{
-                    trace_session_id, RunType, SpanCollector, TraceContext,
-                };
-                // One trace per turn: the trace id is unique per request, while the
-                // thread id rides along as the Langfuse `sessionId` so a
-                // conversation's per-turn traces still group under one session.
-                let base = trace_session_id(metadata.session_id, &thread_id);
-                let trace_id = format!("{base}:{request_id}");
-                // Attribute the trace to the *real* authenticated user (cached
-                // `auth_get_me` identity: id, else email) — the transport client
-                // id (socket client / "system") is NOT a user; it rides along as
-                // the separate `client.id` metadata attribute. When no identity is
-                // cached (signed-out / fresh install), fall back to the client id
-                // so the trace still carries some attribution.
-                let identity =
-                    crate::openhuman::desktop::app_state::peek_cached_current_user_identity();
-                let user_attributed = identity.is_some();
-                let user_id = identity
-                    .and_then(|i| i.id.or(i.email))
-                    .or_else(|| session_profile_user_attribution(&config))
-                    .unwrap_or_else(|| client_id.clone());
-                // Run origin for trace metadata: the request's source tag
-                // ("ptt"/"dictation"/"type"/"autonomous"/…), else a
-                // plain interactive chat turn.
-                let run_type = RunType::from_source(metadata.source.as_deref());
-                let channel_source = metadata
-                    .source
-                    .clone()
-                    .unwrap_or_else(|| "chat".to_string());
-                // Storage-level privacy gate (#4454): capture_content (off by
-                // default) rides on the TraceContext so the collector only attaches
-                // prompt/reply content to spans when the operator opted in — no
-                // exporter can serialize prompt/reply text otherwise.
-                let capture_content = config.observability.agent_tracing.capture_content;
-                log::debug!(
-                    "[web_channel][bridge] trace context trace_id={} user_attributed={} \
-                 agent_id={:?} channel_source={} run_type={} capture_content={} request_id={}",
-                    trace_id,
-                    user_attributed,
-                    metadata.agent_id,
-                    channel_source,
-                    run_type.as_str(),
-                    capture_content,
-                    request_id,
-                );
-                let mut trace_ctx = TraceContext::new(trace_id, Some(user_id))
-                    .with_session_group(thread_id.clone())
-                    .with_client_id(client_id.clone())
-                    .with_channel_source(channel_source)
-                    .with_run_type(run_type)
-                    .with_capture_content(capture_content);
-                if let Some(agent_id) = metadata.agent_id.clone() {
-                    trace_ctx = trace_ctx.with_agent_id(agent_id);
-                }
-                journal_trace_ctx = Some(trace_ctx.clone());
-                Some(SpanCollector::new(trace_ctx))
-            } else {
-                None
+        // #3886: opt-in structured tracing export. When enabled, fold the same
+        // progress stream into OTel/Langfuse-style spans correlated by session
+        // id (falling back to the thread id for headless/autonomous runs).
+        // `None` (disabled) is zero-cost.
+        let mut journal_trace_ctx = None;
+        let mut span_collector = if config.observability.share_usage_data
+            || config.observability.agent_tracing.enabled
+        {
+            use crate::openhuman::agent::progress_tracing::{
+                trace_session_id, RunType, SpanCollector, TraceContext,
             };
+            // One trace per turn: the trace id is unique per request, while the
+            // thread id rides along as the Langfuse `sessionId` so a
+            // conversation's per-turn traces still group under one session.
+            let base = trace_session_id(metadata.session_id, &thread_id);
+            let trace_id = format!("{base}:{request_id}");
+            // Attribute the trace to the *real* authenticated user (cached
+            // `auth_get_me` identity: id, else email) — the transport client
+            // id (socket client / "system") is NOT a user; it rides along as
+            // the separate `client.id` metadata attribute. When no identity is
+            // cached (signed-out / fresh install), fall back to the client id
+            // so the trace still carries some attribution.
+            let identity =
+                crate::openhuman::desktop::app_state::peek_cached_current_user_identity();
+            let user_attributed = identity.is_some();
+            let user_id = identity
+                .and_then(|i| i.id.or(i.email))
+                .or_else(|| session_profile_user_attribution(&config))
+                .unwrap_or_else(|| client_id.clone());
+            // Run origin for trace metadata: the request's source tag
+            // ("ptt"/"dictation"/"type"/"autonomous"/…), else a
+            // plain interactive chat turn.
+            let run_type = RunType::from_source(metadata.source.as_deref());
+            let channel_source = metadata
+                .source
+                .clone()
+                .unwrap_or_else(|| "chat".to_string());
+            // Storage-level privacy gate (#4454): capture_content (off by
+            // default) rides on the TraceContext so the collector only attaches
+            // prompt/reply content to spans when the operator opted in — no
+            // exporter can serialize prompt/reply text otherwise.
+            let capture_content = config.observability.agent_tracing.capture_content;
+            log::debug!(
+                "[web_channel][bridge] trace context trace_id={} user_attributed={} \
+                 agent_id={:?} channel_source={} run_type={} capture_content={} request_id={}",
+                trace_id,
+                user_attributed,
+                metadata.agent_id,
+                channel_source,
+                run_type.as_str(),
+                capture_content,
+                request_id,
+            );
+            let mut trace_ctx = TraceContext::new(trace_id, Some(user_id))
+                .with_session_group(thread_id.clone())
+                .with_client_id(client_id.clone())
+                .with_channel_source(channel_source)
+                .with_run_type(run_type)
+                .with_capture_content(capture_content);
+            if let Some(agent_id) = metadata.agent_id.clone() {
+                trace_ctx = trace_ctx.with_agent_id(agent_id);
+            }
+            journal_trace_ctx = Some(trace_ctx.clone());
+            Some(SpanCollector::new(trace_ctx))
+        } else {
+            None
+        };
 
-            // #4270: emit a periodic liveness beat for the whole in-flight turn so
-            // the frontend silence timer never false-fires during a long prefill or
-            // a buffered-reasoning phase that streams no progress events. The beat
-            // is gated on `turn_active` (set once `TurnStarted` is observed) so we
-            // never emit before the turn's `inference_start` has armed the timer.
-            let mut heartbeat =
-                tokio::time::interval(std::time::Duration::from_secs(INFERENCE_HEARTBEAT_SECS));
-            // Wall-clock cadence: a slow turn must not produce a burst of catch-up
-            // beats once it finally yields control.
-            heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            // `interval`'s first tick resolves immediately — consume it so the first
-            // real beat lands one full interval after the turn begins.
-            heartbeat.tick().await;
-            let mut turn_active = false;
+        // #4270: emit a periodic liveness beat for the whole in-flight turn so
+        // the frontend silence timer never false-fires during a long prefill or
+        // a buffered-reasoning phase that streams no progress events. The beat
+        // is gated on `turn_active` (set once `TurnStarted` is observed) so we
+        // never emit before the turn's `inference_start` has armed the timer.
+        let mut heartbeat =
+            tokio::time::interval(std::time::Duration::from_secs(INFERENCE_HEARTBEAT_SECS));
+        // Wall-clock cadence: a slow turn must not produce a burst of catch-up
+        // beats once it finally yields control.
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // `interval`'s first tick resolves immediately — consume it so the first
+        // real beat lands one full interval after the turn begins.
+        heartbeat.tick().await;
+        let mut turn_active = false;
 
-            loop {
-                let event = tokio::select! {
-                    // Drain real progress events preferentially over the timer so a
-                    // busy turn never starves event handling to emit a beat.
-                    biased;
-                    maybe = rx.recv() => match maybe {
-                        Some(ev) => ev,
-                        None => break,
-                    },
-                    _ = heartbeat.tick() => {
-                        if turn_active {
-                            log::trace!(
-                                "[web_channel][bridge] inference_heartbeat thread_id={} request_id={}",
-                                thread_id,
-                                request_id,
-                            );
-                            publish_seq_stamped(&mut emit_seq, WebChannelEvent {
-                                event: "inference_heartbeat".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                ..Default::default()
-                            });
-                        }
-                        continue;
+        loop {
+            let event = tokio::select! {
+                // Drain real progress events preferentially over the timer so a
+                // busy turn never starves event handling to emit a beat.
+                biased;
+                maybe = rx.recv() => match maybe {
+                    Some(ev) => ev,
+                    None => break,
+                },
+                _ = heartbeat.tick() => {
+                    if turn_active {
+                        log::trace!(
+                            "[web_channel][bridge] inference_heartbeat thread_id={} request_id={}",
+                            thread_id,
+                            request_id,
+                        );
+                        publish_seq_stamped(&mut emit_seq, WebChannelEvent {
+                            event: "inference_heartbeat".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            ..Default::default()
+                        });
                     }
-                };
-                events_seen += 1;
-                turn_state.observe(&event);
-                if let Some(collector) = span_collector.as_mut() {
-                    collector.record(&event, unix_epoch_ms());
+                    continue;
                 }
-                match &event {
-                    AgentProgress::TextDelta { delta, iteration } => {
-                        log::trace!(
-                            "[web_channel][bridge] text_delta round={} chars={} request_id={}",
-                            iteration,
-                            delta.len(),
-                            request_id,
-                        );
-                    }
-                    AgentProgress::ThinkingDelta { delta, iteration } => {
-                        log::trace!(
-                            "[web_channel][bridge] thinking_delta round={} chars={} request_id={}",
-                            iteration,
-                            delta.len(),
-                            request_id,
-                        );
-                    }
-                    AgentProgress::ToolCallArgsDelta {
-                        call_id,
-                        tool_name,
-                        delta,
+            };
+            events_seen += 1;
+            turn_state.observe(&event);
+            if let Some(collector) = span_collector.as_mut() {
+                collector.record(&event, unix_epoch_ms());
+            }
+            match &event {
+                AgentProgress::TextDelta { delta, iteration } => {
+                    log::trace!(
+                        "[web_channel][bridge] text_delta round={} chars={} request_id={}",
                         iteration,
-                    } => {
-                        log::trace!(
+                        delta.len(),
+                        request_id,
+                    );
+                }
+                AgentProgress::ThinkingDelta { delta, iteration } => {
+                    log::trace!(
+                        "[web_channel][bridge] thinking_delta round={} chars={} request_id={}",
+                        iteration,
+                        delta.len(),
+                        request_id,
+                    );
+                }
+                AgentProgress::ToolCallArgsDelta {
+                    call_id,
+                    tool_name,
+                    delta,
+                    iteration,
+                } => {
+                    log::trace!(
                         "[web_channel][bridge] tool_args_delta round={} tool={} call_id={} chars={} request_id={}",
                         iteration,
                         tool_name,
@@ -519,29 +518,29 @@ pub(crate) fn spawn_progress_bridge(
                         delta.len(),
                         request_id,
                     );
-                    }
-                    AgentProgress::ToolCallStarted {
-                        call_id,
-                        tool_name,
-                        iteration,
-                        ..
-                    } => {
-                        log::debug!(
+                }
+                AgentProgress::ToolCallStarted {
+                    call_id,
+                    tool_name,
+                    iteration,
+                    ..
+                } => {
+                    log::debug!(
                         "[web_channel][bridge] tool_call round={} tool={} call_id={} request_id={}",
                         iteration,
                         tool_name,
                         call_id,
                         request_id,
                     );
-                    }
-                    AgentProgress::ToolCallCompleted {
-                        call_id,
-                        tool_name,
-                        success,
-                        iteration,
-                        ..
-                    } => {
-                        log::debug!(
+                }
+                AgentProgress::ToolCallCompleted {
+                    call_id,
+                    tool_name,
+                    success,
+                    iteration,
+                    ..
+                } => {
+                    log::debug!(
                         "[web_channel][bridge] tool_result round={} tool={} call_id={} success={} request_id={}",
                         iteration,
                         tool_name,
@@ -549,11 +548,11 @@ pub(crate) fn spawn_progress_bridge(
                         success,
                         request_id,
                     );
-                    }
-                    AgentProgress::SubagentFailed {
-                        agent_id, error, ..
-                    } => {
-                        log::warn!(
+                }
+                AgentProgress::SubagentFailed {
+                    agent_id, error, ..
+                } => {
+                    log::warn!(
                         "[web_channel][bridge] subagent_failed agent_id={} err={} client_id={} thread_id={} request_id={}",
                         agent_id,
                         error,
@@ -561,295 +560,292 @@ pub(crate) fn spawn_progress_bridge(
                         thread_id,
                         request_id,
                     );
-                    }
-                    other => {
-                        log::debug!(
-                            "[web_channel][bridge] lifecycle event={:?} request_id={}",
-                            std::mem::discriminant(other),
-                            request_id,
-                        );
-                    }
                 }
-                match event {
-                    AgentProgress::TurnStarted => {
-                        // Turn is live — start emitting liveness beats (issue #4270).
-                        turn_active = true;
-                        ledger_upsert_agent_run(
-                            &config,
-                            AgentRunUpsert {
-                                id: request_id.clone(),
-                                kind: AgentRunKind::BackgroundAgent,
-                                parent_run_id: None,
-                                parent_thread_id: Some(thread_id.clone()),
-                                agent_id: Some("orchestrator".to_string()),
-                                status: AgentRunStatus::Running,
-                                prompt_ref: Some(format!(
-                                    "thread:{thread_id}:request:{request_id}"
-                                )),
-                                worker_thread_id: None,
-                                task_board_id: Some(thread_id.clone()),
-                                task_card_id: None,
-                                checkpoint_path: None,
-                                checkpoint: None,
-                                summary: None,
-                                error: None,
-                                metadata: json!({
-                                    "clientId": client_id,
-                                    "source": "web_channel",
-                                    "schemaVersion": 1
-                                }),
-                                started_at: None,
-                                completed_at: None,
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: request_id.clone(),
-                                event_type: "turn_started".to_string(),
-                                payload: json!({ "threadId": thread_id, "clientId": client_id }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "inference_start".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::IterationStarted {
+                other => {
+                    log::debug!(
+                        "[web_channel][bridge] lifecycle event={:?} request_id={}",
+                        std::mem::discriminant(other),
+                        request_id,
+                    );
+                }
+            }
+            match event {
+                AgentProgress::TurnStarted => {
+                    // Turn is live — start emitting liveness beats (issue #4270).
+                    turn_active = true;
+                    ledger_upsert_agent_run(
+                        &config,
+                        AgentRunUpsert {
+                            id: request_id.clone(),
+                            kind: AgentRunKind::BackgroundAgent,
+                            parent_run_id: None,
+                            parent_thread_id: Some(thread_id.clone()),
+                            agent_id: Some("orchestrator".to_string()),
+                            status: AgentRunStatus::Running,
+                            prompt_ref: Some(format!("thread:{thread_id}:request:{request_id}")),
+                            worker_thread_id: None,
+                            task_board_id: Some(thread_id.clone()),
+                            task_card_id: None,
+                            checkpoint_path: None,
+                            checkpoint: None,
+                            summary: None,
+                            error: None,
+                            metadata: json!({
+                                "clientId": client_id,
+                                "source": "web_channel",
+                                "schemaVersion": 1
+                            }),
+                            started_at: None,
+                            completed_at: None,
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: request_id.clone(),
+                            event_type: "turn_started".to_string(),
+                            payload: json!({ "threadId": thread_id, "clientId": client_id }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "inference_start".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::IterationStarted {
+                    iteration,
+                    max_iterations,
+                } => {
+                    round = iteration;
+                    parent_max_iterations = max_iterations;
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "iteration_start".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(format!("Iteration {iteration}/{max_iterations}")),
+                            round: Some(iteration),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::ToolCallStarted {
+                    call_id,
+                    tool_name,
+                    arguments,
+                    iteration,
+                    display_label,
+                    display_detail,
+                } => {
+                    // The parent's leading narration for this round is complete
+                    // once it calls a tool — flush it as an interim bubble so it
+                    // persists interleaved with the tool activity.
+                    flush_interim_narration(
+                        &mut pending_narration,
                         iteration,
-                        max_iterations,
-                    } => {
-                        round = iteration;
-                        parent_max_iterations = max_iterations;
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "iteration_start".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(format!("Iteration {iteration}/{max_iterations}")),
-                                round: Some(iteration),
+                        &client_id,
+                        &thread_id,
+                        &request_id,
+                        &mut emit_seq,
+                    );
+                    parent_tool_count += 1;
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: request_id.clone(),
+                            event_type: "tool_call_started".to_string(),
+                            payload: json!({
+                                "callId": call_id,
+                                "toolName": tool_name,
+                                "iteration": iteration
+                            }),
+                        },
+                    );
+                    ledger_upsert_telemetry(
+                        &config,
+                        RunTelemetryUpsert {
+                            run_id: request_id.clone(),
+                            tool_count: Some(parent_tool_count),
+                            ..Default::default()
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "tool_call".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            tool_name: Some(tool_name),
+                            skill_id: Some("web_channel".to_string()),
+                            args: Some(arguments),
+                            round: Some(iteration),
+                            tool_call_id: Some(call_id),
+                            tool_display_label: display_label,
+                            tool_display_detail: display_detail,
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::ToolCallCompleted {
+                    call_id,
+                    tool_name,
+                    success,
+                    output_chars,
+                    output,
+                    elapsed_ms,
+                    iteration,
+                    failure,
+                    ..
+                } => {
+                    // Serialize the classified failure (if any) for the UI + ledger.
+                    let failure_json = failure.as_ref().and_then(|f| serde_json::to_value(f).ok());
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: request_id.clone(),
+                            event_type: "tool_call_completed".to_string(),
+                            payload: json!({
+                                "callId": call_id,
+                                "toolName": tool_name,
+                                "success": success,
+                                "outputChars": output_chars,
+                                "elapsedMs": elapsed_ms,
+                                "iteration": iteration,
+                                "failure": failure_json,
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "tool_result".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            tool_name: Some(tool_name),
+                            skill_id: Some("web_channel".to_string()),
+                            // Forward the real tool result (size-capped) so the UI
+                            // can render tool output — mirrors the subagent
+                            // `subagent_tool_result` path. Frontends that only
+                            // need size/timing read the ledger telemetry instead.
+                            output: Some(cap_wire_output(output)),
+                            success: Some(success),
+                            round: Some(iteration),
+                            tool_call_id: Some(call_id),
+                            failure: failure_json,
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentSpawned {
+                    agent_id,
+                    task_id,
+                    mode,
+                    dedicated_thread,
+                    prompt_chars,
+                    worker_thread_id,
+                    display_name,
+                    ..
+                } => {
+                    let label = display_name.as_deref().unwrap_or(&agent_id);
+                    let kind = if worker_thread_id.is_some() {
+                        AgentRunKind::WorkerThread
+                    } else {
+                        AgentRunKind::Subagent
+                    };
+                    ledger_upsert_agent_run(
+                        &config,
+                        AgentRunUpsert {
+                            id: task_id.clone(),
+                            kind,
+                            parent_run_id: Some(request_id.clone()),
+                            parent_thread_id: Some(thread_id.clone()),
+                            agent_id: Some(agent_id.clone()),
+                            status: AgentRunStatus::Running,
+                            prompt_ref: worker_thread_id
+                                .as_ref()
+                                .map(|id| format!("thread:{id}:message:seed")),
+                            worker_thread_id: worker_thread_id.clone(),
+                            task_board_id: Some(thread_id.clone()),
+                            task_card_id: None,
+                            checkpoint_path: None,
+                            checkpoint: None,
+                            summary: None,
+                            error: None,
+                            metadata: json!({
+                                "mode": mode,
+                                "dedicatedThread": dedicated_thread,
+                                "promptChars": prompt_chars,
+                                "displayName": display_name,
+                                "source": "agent_progress",
+                                "schemaVersion": 1
+                            }),
+                            started_at: None,
+                            completed_at: None,
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_spawned".to_string(),
+                            payload: json!({
+                                "agentId": agent_id,
+                                "parentRunId": request_id,
+                                "threadId": thread_id,
+                                "workerThreadId": worker_thread_id,
+                                "mode": mode,
+                                "dedicatedThread": dedicated_thread,
+                                "promptChars": prompt_chars,
+                                "displayName": display_name
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_spawned".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(format!("Sub-agent '{label}' spawned")),
+                            tool_name: Some(agent_id),
+                            skill_id: Some(task_id),
+                            round: Some(round),
+                            subagent: Some(SubagentProgressDetail {
+                                mode: Some(mode),
+                                dedicated_thread: Some(dedicated_thread),
+                                prompt_chars: Some(prompt_chars as u64),
+                                worker_thread_id,
+                                display_name,
                                 ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::ToolCallStarted {
-                        call_id,
-                        tool_name,
-                        arguments,
-                        iteration,
-                        display_label,
-                        display_detail,
-                    } => {
-                        // The parent's leading narration for this round is complete
-                        // once it calls a tool — flush it as an interim bubble so it
-                        // persists interleaved with the tool activity.
-                        flush_interim_narration(
-                            &mut pending_narration,
-                            iteration,
-                            &client_id,
-                            &thread_id,
-                            &request_id,
-                            &mut emit_seq,
-                        );
-                        parent_tool_count += 1;
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: request_id.clone(),
-                                event_type: "tool_call_started".to_string(),
-                                payload: json!({
-                                    "callId": call_id,
-                                    "toolName": tool_name,
-                                    "iteration": iteration
-                                }),
-                            },
-                        );
-                        ledger_upsert_telemetry(
-                            &config,
-                            RunTelemetryUpsert {
-                                run_id: request_id.clone(),
-                                tool_count: Some(parent_tool_count),
-                                ..Default::default()
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "tool_call".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                tool_name: Some(tool_name),
-                                skill_id: Some("web_channel".to_string()),
-                                args: Some(arguments),
-                                round: Some(iteration),
-                                tool_call_id: Some(call_id),
-                                tool_display_label: display_label,
-                                tool_display_detail: display_detail,
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::ToolCallCompleted {
-                        call_id,
-                        tool_name,
-                        success,
-                        output_chars,
-                        output,
-                        elapsed_ms,
-                        iteration,
-                        failure,
-                        ..
-                    } => {
-                        // Serialize the classified failure (if any) for the UI + ledger.
-                        let failure_json =
-                            failure.as_ref().and_then(|f| serde_json::to_value(f).ok());
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: request_id.clone(),
-                                event_type: "tool_call_completed".to_string(),
-                                payload: json!({
-                                    "callId": call_id,
-                                    "toolName": tool_name,
-                                    "success": success,
-                                    "outputChars": output_chars,
-                                    "elapsedMs": elapsed_ms,
-                                    "iteration": iteration,
-                                    "failure": failure_json,
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "tool_result".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                tool_name: Some(tool_name),
-                                skill_id: Some("web_channel".to_string()),
-                                // Forward the real tool result (size-capped) so the UI
-                                // can render tool output — mirrors the subagent
-                                // `subagent_tool_result` path. Frontends that only
-                                // need size/timing read the ledger telemetry instead.
-                                output: Some(cap_wire_output(output)),
-                                success: Some(success),
-                                round: Some(iteration),
-                                tool_call_id: Some(call_id),
-                                failure: failure_json,
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentSpawned {
-                        agent_id,
-                        task_id,
-                        mode,
-                        dedicated_thread,
-                        prompt_chars,
-                        worker_thread_id,
-                        display_name,
-                        ..
-                    } => {
-                        let label = display_name.as_deref().unwrap_or(&agent_id);
-                        let kind = if worker_thread_id.is_some() {
-                            AgentRunKind::WorkerThread
-                        } else {
-                            AgentRunKind::Subagent
-                        };
-                        ledger_upsert_agent_run(
-                            &config,
-                            AgentRunUpsert {
-                                id: task_id.clone(),
-                                kind,
-                                parent_run_id: Some(request_id.clone()),
-                                parent_thread_id: Some(thread_id.clone()),
-                                agent_id: Some(agent_id.clone()),
-                                status: AgentRunStatus::Running,
-                                prompt_ref: worker_thread_id
-                                    .as_ref()
-                                    .map(|id| format!("thread:{id}:message:seed")),
-                                worker_thread_id: worker_thread_id.clone(),
-                                task_board_id: Some(thread_id.clone()),
-                                task_card_id: None,
-                                checkpoint_path: None,
-                                checkpoint: None,
-                                summary: None,
-                                error: None,
-                                metadata: json!({
-                                    "mode": mode,
-                                    "dedicatedThread": dedicated_thread,
-                                    "promptChars": prompt_chars,
-                                    "displayName": display_name,
-                                    "source": "agent_progress",
-                                    "schemaVersion": 1
-                                }),
-                                started_at: None,
-                                completed_at: None,
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_spawned".to_string(),
-                                payload: json!({
-                                    "agentId": agent_id,
-                                    "parentRunId": request_id,
-                                    "threadId": thread_id,
-                                    "workerThreadId": worker_thread_id,
-                                    "mode": mode,
-                                    "dedicatedThread": dedicated_thread,
-                                    "promptChars": prompt_chars,
-                                    "displayName": display_name
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_spawned".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(format!("Sub-agent '{label}' spawned")),
-                                tool_name: Some(agent_id),
-                                skill_id: Some(task_id),
-                                round: Some(round),
-                                subagent: Some(SubagentProgressDetail {
-                                    mode: Some(mode),
-                                    dedicated_thread: Some(dedicated_thread),
-                                    prompt_chars: Some(prompt_chars as u64),
-                                    worker_thread_id,
-                                    display_name,
-                                    ..Default::default()
-                                }),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentCompleted {
-                        agent_id,
-                        task_id,
-                        elapsed_ms,
-                        iterations,
-                        output_chars,
-                        worktree_path,
-                        changed_files,
-                        dirty_status,
-                        ..
-                    } => {
-                        let completed_at = chrono::Utc::now();
-                        ledger_upsert_agent_run(
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentCompleted {
+                    agent_id,
+                    task_id,
+                    elapsed_ms,
+                    iterations,
+                    output_chars,
+                    worktree_path,
+                    changed_files,
+                    dirty_status,
+                    ..
+                } => {
+                    let completed_at = chrono::Utc::now();
+                    ledger_upsert_agent_run(
                         &config,
                         AgentRunUpsert {
                             id: task_id.clone(),
@@ -873,131 +869,131 @@ pub(crate) fn spawn_progress_bridge(
                             completed_at: Some(completed_at),
                         },
                     );
-                        ledger_upsert_telemetry(
-                            &config,
-                            RunTelemetryUpsert {
-                                run_id: task_id.clone(),
+                    ledger_upsert_telemetry(
+                        &config,
+                        RunTelemetryUpsert {
+                            run_id: task_id.clone(),
+                            elapsed_ms: Some(elapsed_ms),
+                            tool_count: child_tool_counts.get(&task_id).copied(),
+                            ..Default::default()
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_completed".to_string(),
+                            payload: json!({
+                                "agentId": agent_id,
+                                "elapsedMs": elapsed_ms,
+                                "iterations": iterations,
+                                "outputChars": output_chars,
+                                "worktreePath": worktree_path,
+                                "changedFiles": changed_files,
+                                "dirtyStatus": dirty_status
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_completed".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(format!(
+                                "Sub-agent '{agent_id}' completed in {elapsed_ms}ms"
+                            )),
+                            tool_name: Some(agent_id),
+                            skill_id: Some(task_id),
+                            success: Some(true),
+                            round: Some(round),
+                            subagent: Some(SubagentProgressDetail {
                                 elapsed_ms: Some(elapsed_ms),
-                                tool_count: child_tool_counts.get(&task_id).copied(),
-                                ..Default::default()
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_completed".to_string(),
-                                payload: json!({
-                                    "agentId": agent_id,
-                                    "elapsedMs": elapsed_ms,
-                                    "iterations": iterations,
-                                    "outputChars": output_chars,
-                                    "worktreePath": worktree_path,
-                                    "changedFiles": changed_files,
-                                    "dirtyStatus": dirty_status
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_completed".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(format!(
-                                    "Sub-agent '{agent_id}' completed in {elapsed_ms}ms"
-                                )),
-                                tool_name: Some(agent_id),
-                                skill_id: Some(task_id),
-                                success: Some(true),
-                                round: Some(round),
-                                subagent: Some(SubagentProgressDetail {
-                                    elapsed_ms: Some(elapsed_ms),
-                                    iterations: Some(iterations),
-                                    output_chars: Some(output_chars as u64),
-                                    // Worktree isolation metadata (#3376) — drives the
-                                    // inline subagent worktree row's open/diff/remove
-                                    // actions. All `None`/absent for non-isolated workers.
-                                    ..subagent_worktree_detail(
-                                        worktree_path,
-                                        changed_files,
-                                        dirty_status,
-                                    )
-                                }),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentFailed {
-                        agent_id,
-                        task_id,
-                        error,
-                    } => {
-                        let completed_at = chrono::Utc::now();
-                        ledger_upsert_agent_run(
-                            &config,
-                            AgentRunUpsert {
-                                id: task_id.clone(),
-                                kind: AgentRunKind::Subagent,
-                                parent_run_id: Some(request_id.clone()),
-                                parent_thread_id: Some(thread_id.clone()),
-                                agent_id: Some(agent_id.clone()),
-                                status: AgentRunStatus::Failed,
-                                prompt_ref: None,
-                                worker_thread_id: None,
-                                task_board_id: Some(thread_id.clone()),
-                                task_card_id: None,
-                                checkpoint_path: None,
-                                checkpoint: None,
-                                summary: None,
-                                error: Some(error.clone()),
-                                metadata: json!({}),
-                                started_at: None,
-                                completed_at: Some(completed_at),
-                            },
-                        );
-                        ledger_upsert_telemetry(
-                            &config,
-                            RunTelemetryUpsert {
-                                run_id: task_id.clone(),
-                                tool_count: child_tool_counts.get(&task_id).copied(),
-                                error: Some(error.clone()),
-                                ..Default::default()
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_failed".to_string(),
-                                payload: json!({ "agentId": agent_id, "error": error }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_failed".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(error),
-                                tool_name: Some(agent_id),
-                                skill_id: Some(task_id),
-                                success: Some(false),
-                                round: Some(round),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentAwaitingUser {
-                        agent_id,
-                        task_id,
-                        question,
-                        worker_thread_id,
-                        checkpoint_path,
-                    } => {
-                        log::debug!(
+                                iterations: Some(iterations),
+                                output_chars: Some(output_chars as u64),
+                                // Worktree isolation metadata (#3376) — drives the
+                                // inline subagent worktree row's open/diff/remove
+                                // actions. All `None`/absent for non-isolated workers.
+                                ..subagent_worktree_detail(
+                                    worktree_path,
+                                    changed_files,
+                                    dirty_status,
+                                )
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentFailed {
+                    agent_id,
+                    task_id,
+                    error,
+                } => {
+                    let completed_at = chrono::Utc::now();
+                    ledger_upsert_agent_run(
+                        &config,
+                        AgentRunUpsert {
+                            id: task_id.clone(),
+                            kind: AgentRunKind::Subagent,
+                            parent_run_id: Some(request_id.clone()),
+                            parent_thread_id: Some(thread_id.clone()),
+                            agent_id: Some(agent_id.clone()),
+                            status: AgentRunStatus::Failed,
+                            prompt_ref: None,
+                            worker_thread_id: None,
+                            task_board_id: Some(thread_id.clone()),
+                            task_card_id: None,
+                            checkpoint_path: None,
+                            checkpoint: None,
+                            summary: None,
+                            error: Some(error.clone()),
+                            metadata: json!({}),
+                            started_at: None,
+                            completed_at: Some(completed_at),
+                        },
+                    );
+                    ledger_upsert_telemetry(
+                        &config,
+                        RunTelemetryUpsert {
+                            run_id: task_id.clone(),
+                            tool_count: child_tool_counts.get(&task_id).copied(),
+                            error: Some(error.clone()),
+                            ..Default::default()
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_failed".to_string(),
+                            payload: json!({ "agentId": agent_id, "error": error }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_failed".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(error),
+                            tool_name: Some(agent_id),
+                            skill_id: Some(task_id),
+                            success: Some(false),
+                            round: Some(round),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentAwaitingUser {
+                    agent_id,
+                    task_id,
+                    question,
+                    worker_thread_id,
+                    checkpoint_path,
+                } => {
+                    log::debug!(
                         "[web_channel][bridge] subagent_awaiting_user agent_id={} task_id={} client_id={} thread_id={} request_id={}",
                         agent_id,
                         task_id,
@@ -1005,543 +1001,537 @@ pub(crate) fn spawn_progress_bridge(
                         thread_id,
                         request_id,
                     );
-                        ledger_upsert_agent_run(
-                            &config,
-                            AgentRunUpsert {
-                                id: task_id.clone(),
-                                kind: if worker_thread_id.is_some() {
-                                    AgentRunKind::WorkerThread
-                                } else {
-                                    AgentRunKind::Subagent
-                                },
-                                parent_run_id: Some(request_id.clone()),
-                                parent_thread_id: Some(thread_id.clone()),
-                                agent_id: Some(agent_id.clone()),
-                                status: AgentRunStatus::AwaitingUser,
-                                prompt_ref: None,
-                                worker_thread_id: worker_thread_id.clone(),
-                                task_board_id: Some(thread_id.clone()),
-                                task_card_id: None,
-                                // What the runner actually wrote; the old rebuild
-                                // from `workspace_dir` asserted a checkpoint that
-                                // may never have been written (#5928).
-                                checkpoint_path: checkpoint_path.clone(),
-                                checkpoint: Some(json!({
-                                    "resumeTool": "continue_subagent",
-                                    "taskId": task_id,
-                                    "agentId": agent_id,
-                                    "question": question,
-                                    "workerThreadId": worker_thread_id,
-                                    "checkpointPersisted": checkpoint_path.is_some()
-                                })),
-                                summary: Some(question.clone()),
-                                error: None,
-                                metadata: json!({}),
-                                started_at: None,
-                                completed_at: None,
+                    ledger_upsert_agent_run(
+                        &config,
+                        AgentRunUpsert {
+                            id: task_id.clone(),
+                            kind: if worker_thread_id.is_some() {
+                                AgentRunKind::WorkerThread
+                            } else {
+                                AgentRunKind::Subagent
                             },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_awaiting_user".to_string(),
-                                payload: json!({
-                                    "agentId": agent_id,
-                                    "question": question,
-                                    "workerThreadId": worker_thread_id
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_awaiting_user".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(question),
-                                tool_name: Some(agent_id),
-                                skill_id: Some(task_id),
-                                success: Some(true),
-                                round: Some(round),
-                                subagent: Some(SubagentProgressDetail {
-                                    worker_thread_id,
-                                    ..Default::default()
-                                }),
+                            parent_run_id: Some(request_id.clone()),
+                            parent_thread_id: Some(thread_id.clone()),
+                            agent_id: Some(agent_id.clone()),
+                            status: AgentRunStatus::AwaitingUser,
+                            prompt_ref: None,
+                            worker_thread_id: worker_thread_id.clone(),
+                            task_board_id: Some(thread_id.clone()),
+                            task_card_id: None,
+                            // What the runner actually wrote; the old rebuild
+                            // from `workspace_dir` asserted a checkpoint that
+                            // may never have been written (#5928).
+                            checkpoint_path: checkpoint_path.clone(),
+                            checkpoint: Some(json!({
+                                "resumeTool": "continue_subagent",
+                                "taskId": task_id,
+                                "agentId": agent_id,
+                                "question": question,
+                                "workerThreadId": worker_thread_id,
+                                "checkpointPersisted": checkpoint_path.is_some()
+                            })),
+                            summary: Some(question.clone()),
+                            error: None,
+                            metadata: json!({}),
+                            started_at: None,
+                            completed_at: None,
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_awaiting_user".to_string(),
+                            payload: json!({
+                                "agentId": agent_id,
+                                "question": question,
+                                "workerThreadId": worker_thread_id
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_awaiting_user".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(question),
+                            tool_name: Some(agent_id),
+                            skill_id: Some(task_id),
+                            success: Some(true),
+                            round: Some(round),
+                            subagent: Some(SubagentProgressDetail {
+                                worker_thread_id,
                                 ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentIterationStarted {
-                        agent_id,
-                        task_id,
-                        iteration,
-                        max_iterations,
-                        extended_policy,
-                    } => {
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_iteration_start".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                message: Some(if extended_policy {
-                                    format!("Sub-agent '{agent_id}' step {iteration}")
-                                } else {
-                                    format!(
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentIterationStarted {
+                    agent_id,
+                    task_id,
+                    iteration,
+                    max_iterations,
+                    extended_policy,
+                } => {
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_iteration_start".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            message: Some(if extended_policy {
+                                format!("Sub-agent '{agent_id}' step {iteration}")
+                            } else {
+                                format!(
                                     "Sub-agent '{agent_id}' iteration {iteration}/{max_iterations}"
                                 )
-                                }),
-                                tool_name: Some(agent_id),
-                                skill_id: Some(task_id),
-                                round: Some(round),
-                                subagent: Some(SubagentProgressDetail {
-                                    child_iteration: Some(iteration),
-                                    child_max_iterations: if extended_policy {
-                                        None
-                                    } else {
-                                        Some(max_iterations)
-                                    },
-                                    ..Default::default()
-                                }),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentToolCallStarted {
-                        agent_id,
-                        task_id,
-                        call_id,
-                        tool_name,
-                        arguments,
-                        iteration,
-                        display_label,
-                        display_detail,
-                    } => {
-                        let count = child_tool_counts.entry(task_id.clone()).or_insert(0);
-                        *count += 1;
-                        ledger_upsert_telemetry(
-                            &config,
-                            RunTelemetryUpsert {
-                                run_id: task_id.clone(),
-                                tool_count: Some(*count),
-                                ..Default::default()
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_tool_call_started".to_string(),
-                                payload: json!({
-                                    "agentId": agent_id,
-                                    "callId": call_id,
-                                    "toolName": tool_name,
-                                    "iteration": iteration
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_tool_call".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                tool_name: Some(tool_name),
-                                skill_id: Some(task_id.clone()),
-                                // The child's tool arguments, so the UI can show what
-                                // the sub-agent actually did (issue: subagent drawer
-                                // detail). Skipped from the wire when `null`.
-                                args: if arguments.is_null() {
+                            }),
+                            tool_name: Some(agent_id),
+                            skill_id: Some(task_id),
+                            round: Some(round),
+                            subagent: Some(SubagentProgressDetail {
+                                child_iteration: Some(iteration),
+                                child_max_iterations: if extended_policy {
                                     None
                                 } else {
-                                    Some(arguments)
+                                    Some(max_iterations)
                                 },
-                                round: Some(round),
-                                tool_call_id: Some(call_id),
-                                tool_display_label: display_label,
-                                tool_display_detail: display_detail,
-                                subagent: Some(SubagentProgressDetail {
-                                    child_iteration: Some(iteration),
-                                    agent_id: Some(agent_id),
-                                    task_id: Some(task_id),
-                                    ..Default::default()
-                                }),
                                 ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentToolCallStarted {
+                    agent_id,
+                    task_id,
+                    call_id,
+                    tool_name,
+                    arguments,
+                    iteration,
+                    display_label,
+                    display_detail,
+                } => {
+                    let count = child_tool_counts.entry(task_id.clone()).or_insert(0);
+                    *count += 1;
+                    ledger_upsert_telemetry(
+                        &config,
+                        RunTelemetryUpsert {
+                            run_id: task_id.clone(),
+                            tool_count: Some(*count),
+                            ..Default::default()
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_tool_call_started".to_string(),
+                            payload: json!({
+                                "agentId": agent_id,
+                                "callId": call_id,
+                                "toolName": tool_name,
+                                "iteration": iteration
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_tool_call".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            tool_name: Some(tool_name),
+                            skill_id: Some(task_id.clone()),
+                            // The child's tool arguments, so the UI can show what
+                            // the sub-agent actually did (issue: subagent drawer
+                            // detail). Skipped from the wire when `null`.
+                            args: if arguments.is_null() {
+                                None
+                            } else {
+                                Some(arguments)
                             },
-                        );
-                    }
-                    AgentProgress::SubagentToolCallCompleted {
-                        agent_id,
-                        task_id,
-                        call_id,
-                        tool_name,
-                        success,
-                        output_chars,
-                        output,
-                        elapsed_ms,
-                        iteration,
-                        failure,
-                        ..
-                    } => {
-                        // Serialize the classified failure (if any) so a failed
-                        // sub-agent tool row carries its "why + next" copy on the
-                        // wire + ledger, matching the main-agent path (#4459).
-                        let failure_json =
-                            failure.as_ref().and_then(|f| serde_json::to_value(f).ok());
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: task_id.clone(),
-                                event_type: "subagent_tool_call_completed".to_string(),
-                                payload: json!({
-                                    "agentId": agent_id,
-                                    "callId": call_id,
-                                    "toolName": tool_name,
-                                    "success": success,
-                                    "outputChars": output_chars,
-                                    "elapsedMs": elapsed_ms,
-                                    "iteration": iteration,
-                                    "failure": failure_json,
-                                }),
-                            },
-                        );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_tool_result".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                tool_name: Some(tool_name),
-                                skill_id: Some(task_id.clone()),
-                                success: Some(success),
-                                round: Some(round),
-                                tool_call_id: Some(call_id),
-                                // The child's actual tool output, so the drawer can show
-                                // *what came back* (not just a char count). Capped to a
-                                // bounded size for the wire (#4007); `output_chars` +
-                                // `elapsed_ms` still ride along in `subagent` below.
-                                output: Some(cap_wire_output(output)),
-                                failure: failure_json,
-                                subagent: Some(SubagentProgressDetail {
-                                    child_iteration: Some(iteration),
-                                    agent_id: Some(agent_id),
-                                    task_id: Some(task_id),
-                                    elapsed_ms: Some(elapsed_ms),
-                                    output_chars: Some(output_chars as u64),
-                                    ..Default::default()
-                                }),
+                            round: Some(round),
+                            tool_call_id: Some(call_id),
+                            tool_display_label: display_label,
+                            tool_display_detail: display_detail,
+                            subagent: Some(SubagentProgressDetail {
+                                child_iteration: Some(iteration),
+                                agent_id: Some(agent_id),
+                                task_id: Some(task_id),
                                 ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentTextDelta {
-                        agent_id,
-                        task_id,
-                        delta,
-                        iteration,
-                    } => {
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_text_delta".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                round: Some(round),
-                                delta: Some(delta),
-                                delta_kind: Some("text".to_string()),
-                                skill_id: Some(task_id.clone()),
-                                subagent: Some(SubagentProgressDetail {
-                                    child_iteration: Some(iteration),
-                                    agent_id: Some(agent_id),
-                                    task_id: Some(task_id),
-                                    ..Default::default()
-                                }),
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentToolCallCompleted {
+                    agent_id,
+                    task_id,
+                    call_id,
+                    tool_name,
+                    success,
+                    output_chars,
+                    output,
+                    elapsed_ms,
+                    iteration,
+                    failure,
+                    ..
+                } => {
+                    // Serialize the classified failure (if any) so a failed
+                    // sub-agent tool row carries its "why + next" copy on the
+                    // wire + ledger, matching the main-agent path (#4459).
+                    let failure_json = failure.as_ref().and_then(|f| serde_json::to_value(f).ok());
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: task_id.clone(),
+                            event_type: "subagent_tool_call_completed".to_string(),
+                            payload: json!({
+                                "agentId": agent_id,
+                                "callId": call_id,
+                                "toolName": tool_name,
+                                "success": success,
+                                "outputChars": output_chars,
+                                "elapsedMs": elapsed_ms,
+                                "iteration": iteration,
+                                "failure": failure_json,
+                            }),
+                        },
+                    );
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_tool_result".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            tool_name: Some(tool_name),
+                            skill_id: Some(task_id.clone()),
+                            success: Some(success),
+                            round: Some(round),
+                            tool_call_id: Some(call_id),
+                            // The child's actual tool output, so the drawer can show
+                            // *what came back* (not just a char count). Capped to a
+                            // bounded size for the wire (#4007); `output_chars` +
+                            // `elapsed_ms` still ride along in `subagent` below.
+                            output: Some(cap_wire_output(output)),
+                            failure: failure_json,
+                            subagent: Some(SubagentProgressDetail {
+                                child_iteration: Some(iteration),
+                                agent_id: Some(agent_id),
+                                task_id: Some(task_id),
+                                elapsed_ms: Some(elapsed_ms),
+                                output_chars: Some(output_chars as u64),
                                 ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::SubagentThinkingDelta {
-                        agent_id,
-                        task_id,
-                        delta,
-                        iteration,
-                    } => {
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "subagent_thinking_delta".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                round: Some(round),
-                                delta: Some(delta),
-                                delta_kind: Some("thinking".to_string()),
-                                skill_id: Some(task_id.clone()),
-                                subagent: Some(SubagentProgressDetail {
-                                    child_iteration: Some(iteration),
-                                    agent_id: Some(agent_id),
-                                    task_id: Some(task_id),
-                                    ..Default::default()
-                                }),
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentTextDelta {
+                    agent_id,
+                    task_id,
+                    delta,
+                    iteration,
+                } => {
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_text_delta".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            round: Some(round),
+                            delta: Some(delta),
+                            delta_kind: Some("text".to_string()),
+                            skill_id: Some(task_id.clone()),
+                            subagent: Some(SubagentProgressDetail {
+                                child_iteration: Some(iteration),
+                                agent_id: Some(agent_id),
+                                task_id: Some(task_id),
                                 ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::TaskBoardUpdated { board } => {
-                        log::debug!(
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::SubagentThinkingDelta {
+                    agent_id,
+                    task_id,
+                    delta,
+                    iteration,
+                } => {
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "subagent_thinking_delta".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            round: Some(round),
+                            delta: Some(delta),
+                            delta_kind: Some("thinking".to_string()),
+                            skill_id: Some(task_id.clone()),
+                            subagent: Some(SubagentProgressDetail {
+                                child_iteration: Some(iteration),
+                                agent_id: Some(agent_id),
+                                task_id: Some(task_id),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::TaskBoardUpdated { board } => {
+                    log::debug!(
                         "[web_channel][bridge] task_board_updated client_id={} thread_id={} request_id={} cards={}",
                         client_id,
                         thread_id,
                         request_id,
                         board.cards.len()
                     );
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "task_board_updated".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                task_board: Some(serde_json::to_value(board).unwrap_or_else(
-                                    |_| serde_json::json!({ "threadId": thread_id, "cards": [] }),
-                                )),
-                                ..Default::default()
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "task_board_updated".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            task_board: Some(serde_json::to_value(board).unwrap_or_else(
+                                |_| serde_json::json!({ "threadId": thread_id, "cards": [] }),
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::TextDelta { delta, iteration } => {
+                    // Buffer the round's narration so it can be flushed as an
+                    // interim bubble if a tool call closes this round.
+                    pending_narration.push_str(&delta);
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "text_delta".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            round: Some(iteration),
+                            delta: Some(delta),
+                            delta_kind: Some("text".to_string()),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::ThinkingDelta { delta, iteration } => {
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "thinking_delta".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            round: Some(iteration),
+                            delta: Some(delta),
+                            delta_kind: Some("thinking".to_string()),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::ToolCallArgsDelta {
+                    call_id,
+                    tool_name,
+                    delta,
+                    iteration,
+                } => {
+                    publish_seq_stamped(
+                        &mut emit_seq,
+                        WebChannelEvent {
+                            event: "tool_args_delta".to_string(),
+                            client_id: client_id.clone(),
+                            thread_id: thread_id.clone(),
+                            request_id: request_id.clone(),
+                            tool_name: if tool_name.is_empty() {
+                                None
+                            } else {
+                                Some(tool_name)
                             },
-                        );
-                    }
-                    AgentProgress::TextDelta { delta, iteration } => {
-                        // Buffer the round's narration so it can be flushed as an
-                        // interim bubble if a tool call closes this round.
-                        pending_narration.push_str(&delta);
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "text_delta".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                round: Some(iteration),
-                                delta: Some(delta),
-                                delta_kind: Some("text".to_string()),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::ThinkingDelta { delta, iteration } => {
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "thinking_delta".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                round: Some(iteration),
-                                delta: Some(delta),
-                                delta_kind: Some("thinking".to_string()),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::ToolCallArgsDelta {
-                        call_id,
-                        tool_name,
-                        delta,
-                        iteration,
-                    } => {
-                        publish_seq_stamped(
-                            &mut emit_seq,
-                            WebChannelEvent {
-                                event: "tool_args_delta".to_string(),
-                                client_id: client_id.clone(),
-                                thread_id: thread_id.clone(),
-                                request_id: request_id.clone(),
-                                tool_name: if tool_name.is_empty() {
-                                    None
-                                } else {
-                                    Some(tool_name)
-                                },
-                                skill_id: Some("web_channel".to_string()),
-                                round: Some(iteration),
-                                delta: Some(delta),
-                                delta_kind: Some("tool_args".to_string()),
-                                tool_call_id: Some(call_id),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    AgentProgress::TurnCompleted { iterations } => {
-                        parent_completed = true;
-                        // Turn is done — stop liveness beats (issue #4270). The FE
-                        // clears its silence timer on `chat_done`/`chat_error`; this
-                        // also prevents a stray beat racing the channel close.
-                        turn_active = false;
-                        let completed_at = chrono::Utc::now();
-                        ledger_upsert_agent_run(
-                            &config,
-                            AgentRunUpsert {
-                                id: request_id.clone(),
-                                kind: AgentRunKind::BackgroundAgent,
-                                parent_run_id: None,
-                                parent_thread_id: Some(thread_id.clone()),
-                                agent_id: Some("orchestrator".to_string()),
-                                status: AgentRunStatus::Completed,
-                                prompt_ref: Some(format!(
-                                    "thread:{thread_id}:request:{request_id}"
-                                )),
-                                worker_thread_id: None,
-                                task_board_id: Some(thread_id.clone()),
-                                task_card_id: None,
-                                checkpoint_path: None,
-                                checkpoint: None,
-                                summary: Some(format!("Completed in {iterations} iteration(s)")),
-                                error: None,
-                                metadata: json!({}),
-                                started_at: None,
-                                completed_at: Some(completed_at),
-                            },
-                        );
-                        ledger_append_event(
-                            &config,
-                            RunEventAppend {
-                                run_id: request_id.clone(),
-                                event_type: "turn_completed".to_string(),
-                                payload: json!({ "iterations": iterations }),
-                            },
-                        );
-                        log::debug!(
-                            "[web_channel] turn completed after {iterations} iteration(s) \
+                            skill_id: Some("web_channel".to_string()),
+                            round: Some(iteration),
+                            delta: Some(delta),
+                            delta_kind: Some("tool_args".to_string()),
+                            tool_call_id: Some(call_id),
+                            ..Default::default()
+                        },
+                    );
+                }
+                AgentProgress::TurnCompleted { iterations } => {
+                    parent_completed = true;
+                    // Turn is done — stop liveness beats (issue #4270). The FE
+                    // clears its silence timer on `chat_done`/`chat_error`; this
+                    // also prevents a stray beat racing the channel close.
+                    turn_active = false;
+                    let completed_at = chrono::Utc::now();
+                    ledger_upsert_agent_run(
+                        &config,
+                        AgentRunUpsert {
+                            id: request_id.clone(),
+                            kind: AgentRunKind::BackgroundAgent,
+                            parent_run_id: None,
+                            parent_thread_id: Some(thread_id.clone()),
+                            agent_id: Some("orchestrator".to_string()),
+                            status: AgentRunStatus::Completed,
+                            prompt_ref: Some(format!("thread:{thread_id}:request:{request_id}")),
+                            worker_thread_id: None,
+                            task_board_id: Some(thread_id.clone()),
+                            task_card_id: None,
+                            checkpoint_path: None,
+                            checkpoint: None,
+                            summary: Some(format!("Completed in {iterations} iteration(s)")),
+                            error: None,
+                            metadata: json!({}),
+                            started_at: None,
+                            completed_at: Some(completed_at),
+                        },
+                    );
+                    ledger_append_event(
+                        &config,
+                        RunEventAppend {
+                            run_id: request_id.clone(),
+                            event_type: "turn_completed".to_string(),
+                            payload: json!({ "iterations": iterations }),
+                        },
+                    );
+                    log::debug!(
+                        "[web_channel] turn completed after {iterations} iteration(s) \
                          client_id={client_id} thread_id={thread_id} request_id={request_id} \
                          speak_reply={:?} source={:?} session_id={:?}",
-                            metadata.speak_reply,
-                            metadata.source,
-                            metadata.session_id,
-                        );
-                    }
-                    AgentProgress::TurnCostUpdated {
-                        model,
-                        iteration,
-                        input_tokens,
-                        output_tokens,
-                        cached_input_tokens,
-                        total_usd,
-                    } => {
-                        ledger_upsert_telemetry(
-                            &config,
-                            RunTelemetryUpsert {
-                                run_id: request_id.clone(),
-                                input_tokens: Some(input_tokens),
-                                output_tokens: Some(output_tokens),
-                                cached_input_tokens: Some(cached_input_tokens),
-                                cost_usd: Some(total_usd),
-                                model: Some(model.clone()),
-                                ..Default::default()
-                            },
-                        );
-                        log::debug!(
-                            "[web_channel] turn cost update model={model} iter={iteration} \
+                        metadata.speak_reply,
+                        metadata.source,
+                        metadata.session_id,
+                    );
+                }
+                AgentProgress::TurnCostUpdated {
+                    model,
+                    iteration,
+                    input_tokens,
+                    output_tokens,
+                    cached_input_tokens,
+                    total_usd,
+                } => {
+                    ledger_upsert_telemetry(
+                        &config,
+                        RunTelemetryUpsert {
+                            run_id: request_id.clone(),
+                            input_tokens: Some(input_tokens),
+                            output_tokens: Some(output_tokens),
+                            cached_input_tokens: Some(cached_input_tokens),
+                            cost_usd: Some(total_usd),
+                            model: Some(model.clone()),
+                            ..Default::default()
+                        },
+                    );
+                    log::debug!(
+                        "[web_channel] turn cost update model={model} iter={iteration} \
                          in={input_tokens} out={output_tokens} cached_in={cached_input_tokens} \
                          total_usd={total_usd:.4} client_id={client_id} thread_id={thread_id}"
-                        );
-                    }
-                    AgentProgress::TurnContent { .. } => {
-                        // Prompt/reply content is attached to the trace span by the
-                        // span collector above; the ledger/telemetry bridge ignores it.
-                    }
-                    AgentProgress::ModelCallCompleted {
-                        model,
-                        iteration,
-                        input_tokens,
-                        output_tokens,
-                        cost_usd,
-                        ..
-                    } => {
-                        // Per-call usage is consumed by the span collector above
-                        // (per-call Langfuse generation); the socket/ledger surfaces
-                        // stay on the cumulative TurnCostUpdated rollup.
-                        log::debug!(
+                    );
+                }
+                AgentProgress::TurnContent { .. } => {
+                    // Prompt/reply content is attached to the trace span by the
+                    // span collector above; the ledger/telemetry bridge ignores it.
+                }
+                AgentProgress::ModelCallCompleted {
+                    model,
+                    iteration,
+                    input_tokens,
+                    output_tokens,
+                    cost_usd,
+                    ..
+                } => {
+                    // Per-call usage is consumed by the span collector above
+                    // (per-call Langfuse generation); the socket/ledger surfaces
+                    // stay on the cumulative TurnCostUpdated rollup.
+                    log::debug!(
                         "[web_channel][bridge] model_call_completed model={model} iter={iteration} \
                          in={input_tokens} out={output_tokens} cost_usd={cost_usd:.6} request_id={request_id}"
                     );
-                    }
                 }
             }
-            turn_state.finish();
-            if !parent_completed {
-                ledger_upsert_agent_run(
+        }
+        turn_state.finish();
+        if !parent_completed {
+            ledger_upsert_agent_run(
+                &config,
+                AgentRunUpsert {
+                    id: request_id.clone(),
+                    kind: AgentRunKind::BackgroundAgent,
+                    parent_run_id: None,
+                    parent_thread_id: Some(thread_id.clone()),
+                    agent_id: Some("orchestrator".to_string()),
+                    status: AgentRunStatus::Interrupted,
+                    prompt_ref: Some(format!("thread:{thread_id}:request:{request_id}")),
+                    worker_thread_id: None,
+                    task_board_id: Some(thread_id.clone()),
+                    task_card_id: None,
+                    checkpoint_path: None,
+                    checkpoint: None,
+                    summary: None,
+                    error: Some("progress bridge exited before turn completion".to_string()),
+                    metadata: json!({}),
+                    started_at: None,
+                    completed_at: Some(chrono::Utc::now()),
+                },
+            );
+            ledger_append_event(
+                &config,
+                RunEventAppend {
+                    run_id: request_id.clone(),
+                    event_type: "turn_interrupted".to_string(),
+                    payload: json!({ "eventsSeen": events_seen }),
+                },
+            );
+        }
+        // #3886: seal any spans still open after the stream closed and hand the
+        // run's trace to the configured tracing sink. Best-effort and gated;
+        // never affects the turn outcome.
+        if let Some(mut collector) = span_collector.take() {
+            collector.finish(unix_epoch_ms());
+            let live_spans = collector.spans().to_vec();
+            let journal_export = if let Some(trace_ctx) = journal_trace_ctx.take() {
+                shadow_compare_journal_projection(
+                    &request_id,
+                    trace_ctx.clone(),
+                    parent_max_iterations,
+                    &live_spans,
+                )
+                .await
+                .map(|observations| (trace_ctx, observations))
+            } else {
+                None
+            };
+            if let Some((trace_ctx, observations)) = journal_export {
+                let run_telemetry = ledger_get_telemetry(&config, &request_id);
+                crate::openhuman::agent::progress_tracing::export_run_trace_from_journal(
                     &config,
-                    AgentRunUpsert {
-                        id: request_id.clone(),
-                        kind: AgentRunKind::BackgroundAgent,
-                        parent_run_id: None,
-                        parent_thread_id: Some(thread_id.clone()),
-                        agent_id: Some("orchestrator".to_string()),
-                        status: AgentRunStatus::Interrupted,
-                        prompt_ref: Some(format!("thread:{thread_id}:request:{request_id}")),
-                        worker_thread_id: None,
-                        task_board_id: Some(thread_id.clone()),
-                        task_card_id: None,
-                        checkpoint_path: None,
-                        checkpoint: None,
-                        summary: None,
-                        error: Some("progress bridge exited before turn completion".to_string()),
-                        metadata: json!({}),
-                        started_at: None,
-                        completed_at: Some(chrono::Utc::now()),
-                    },
-                );
-                ledger_append_event(
-                    &config,
-                    RunEventAppend {
-                        run_id: request_id.clone(),
-                        event_type: "turn_interrupted".to_string(),
-                        payload: json!({ "eventsSeen": events_seen }),
-                    },
-                );
-            }
-            // #3886: seal any spans still open after the stream closed and hand the
-            // run's trace to the configured tracing sink. Best-effort and gated;
-            // never affects the turn outcome.
-            if let Some(mut collector) = span_collector.take() {
-                collector.finish(unix_epoch_ms());
-                let live_spans = collector.spans().to_vec();
-                let journal_export = if let Some(trace_ctx) = journal_trace_ctx.take() {
-                    shadow_compare_journal_projection(
-                        &request_id,
-                        trace_ctx.clone(),
-                        parent_max_iterations,
-                        &live_spans,
-                    )
-                    .await
-                    .map(|observations| (trace_ctx, observations))
-                } else {
-                    None
-                };
-                if let Some((trace_ctx, observations)) = journal_export {
-                    let run_telemetry = ledger_get_telemetry(&config, &request_id);
-                    crate::openhuman::agent::progress_tracing::export_run_trace_from_journal(
-                        &config,
-                        &trace_ctx,
-                        &observations,
-                        run_telemetry.as_ref(),
-                        &live_spans,
-                    )
+                    &trace_ctx,
+                    &observations,
+                    run_telemetry.as_ref(),
+                    &live_spans,
+                )
+                .await;
+            } else {
+                crate::openhuman::agent::progress_tracing::export_run_trace(&config, &live_spans)
                     .await;
-                } else {
-                    crate::openhuman::agent::progress_tracing::export_run_trace(
-                        &config,
-                        &live_spans,
-                    )
-                    .await;
-                }
             }
+        }
 
-            log::debug!(
+        log::debug!(
             "[web_channel][bridge] exit client_id={} thread_id={} request_id={} round={} events_seen={}",
             client_id,
             thread_id,
@@ -1549,7 +1539,9 @@ pub(crate) fn spawn_progress_bridge(
             round,
             events_seen,
         );
-        },
+    };
+    tokio::spawn(crate::core::runtime::context::CoreContext::propagate(
+        bridge,
     ));
 }
 
