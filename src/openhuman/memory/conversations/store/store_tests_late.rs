@@ -320,7 +320,7 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
             scanned_tx.send(()).unwrap();
             release_rx.recv().unwrap();
         })?;
-        store_search.with_index(|idx| idx.search("seed message", 5, None))
+        store_search.with_primed_index(|idx| idx.search("seed message", 5, None))
     });
 
     scanned_rx

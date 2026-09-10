@@ -113,7 +113,7 @@ impl ConversationStore {
         // rebuild.
         let _lifecycle = self.locks.lifecycle.read();
         self.prime_index_if_cold()?;
-        self.with_index(|idx| idx.search(query, limit, exclude_thread_id))
+        self.with_primed_index(|idx| idx.search(query, limit, exclude_thread_id))
     }
 
     /// Append a message to the thread's JSONL file. Errors if the thread is missing.

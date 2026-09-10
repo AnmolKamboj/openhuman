@@ -113,10 +113,12 @@ impl ConversationStore {
         unreachable!("bounded prime loop returns on every path")
     }
 
-    /// Acquire the cached inverted index for this workspace and run `f` against
-    /// it. `search_cross_thread_messages` warms it first while holding the
-    /// root's lifecycle read guard, so purge cannot remove it between the two.
-    pub(super) fn with_index<R>(
+    /// Acquire an index that the caller has already warmed with
+    /// [`Self::prime_index_if_cold`] and run `f` against it. The only
+    /// production caller, `search_cross_thread_messages`, holds the root's
+    /// lifecycle read guard across both calls, so purge cannot remove the
+    /// entry between priming and access.
+    pub(super) fn with_primed_index<R>(
         &self,
         f: impl FnOnce(&mut InvertedIndex) -> R,
     ) -> Result<R, String> {
@@ -124,7 +126,7 @@ impl ConversationStore {
         let mut cache = CONVERSATION_INDEX_CACHE.lock();
         let idx = cache
             .get_mut(&key)
-            .ok_or_else(|| "conversation index missing after prime".to_string())?;
+            .ok_or_else(|| "conversation index missing after required prime".to_string())?;
         Ok(f(idx))
     }
 
