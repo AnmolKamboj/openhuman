@@ -1,0 +1,174 @@
+//! What one `app_state_snapshot` poll costs, and what the core can stop paying.
+//!
+//! Split out of `ops_tests.rs` for the layout gate. Kept as one file because
+//! both subjects are one measurement: #6180 reported 732 snapshot calls in
+//! ~3.5h with no call under 500ms and spikes to 1910ms, and the two tests here
+//! pin the two halves of that number the core controls.
+
+use super::tests::APP_STATE_CACHE_TEST_LOCK;
+use super::*;
+use serde_json::json;
+// Measured against the production backend over a ~250ms RTT link, one
+// `GET /auth/me` costs ~380-540ms on a warm connection and ~780-1420ms on a
+// cold one — and a 404 for a route that does not exist on the same host costs
+// the same as `/auth/me`, so the floor is the round trip itself, not the
+// endpoint. Neither number is something the core can shrink. What it can do is
+// stop paying them: not block the poll on the round trip, and not open a new
+// connection each time it makes one. One test each.
+
+/// Serve the identity we already have; re-confirm it behind the poll.
+///
+/// `fetch_current_user_cached` used to block on `GET /auth/me` the moment its
+/// entry aged past the TTL, which — with the frontend scheduling the next poll
+/// from the previous *response* — was every poll. That put a floor of one WAN
+/// round trip under every `app_state_snapshot`. The stub here answers slowly on
+/// purpose: an expired entry must come back immediately anyway, and the refresh
+/// must still land.
+#[tokio::test]
+async fn an_expired_current_user_is_served_while_it_refreshes() {
+    let _cache_lock = APP_STATE_CACHE_TEST_LOCK.lock().await;
+    // A successful refresh calls `clear_current_user_failure`, which wipes a
+    // global the backoff tests seed.
+    let _failure_lock = super::current_user_backoff_tests::CURRENT_USER_FAILURE_TEST_LOCK
+        .lock()
+        .await;
+    struct CacheResetGuard;
+    impl Drop for CacheResetGuard {
+        fn drop(&mut self) {
+            *CURRENT_USER_CACHE.lock() = None;
+        }
+    }
+    let _reset = CacheResetGuard;
+
+    const BACKEND_DELAY: Duration = Duration::from_millis(2000);
+
+    let app = axum::Router::new().route(
+        "/auth/me",
+        axum::routing::get(|| async move {
+            tokio::time::sleep(BACKEND_DELAY).await;
+            axum::Json(json!({ "success": true, "data": { "firstName": "from-backend" } }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let config = Config {
+        api_url: Some(format!("http://{addr}")),
+        ..Config::default()
+    };
+    // The failure record is keyed on `(api_base, token)` and this base carries a
+    // fresh ephemeral port, so no seeded outage can match it and none is seeded
+    // here — nothing to clean up, and no cross-test write.
+    *CURRENT_USER_CACHE.lock() = Some(CachedCurrentUser {
+        api_base: current_user_api_base(&config),
+        token: "tok".into(),
+        fetched_at: Instant::now() - (CURRENT_USER_REFRESH_TTL + Duration::from_secs(1)),
+        user: json!({ "firstName": "from-cache" }),
+    });
+
+    let started = Instant::now();
+    let served = fetch_current_user_cached(&config, "tok", true)
+        .await
+        .expect("an expired entry is still an answer");
+    let waited = started.elapsed();
+
+    assert_eq!(
+        served.as_ref().and_then(|u| u.get("firstName")),
+        Some(&json!("from-cache")),
+        "the expired entry must be what the poll is handed"
+    );
+    assert!(
+        waited < Duration::from_millis(400),
+        "the poll waited {waited:?} on the backend; serving the entry it already \
+         had is the whole point — this is #6180's per-poll round trip"
+    );
+
+    // ...and the refresh must actually happen, or "fast" is just "never
+    // refreshes". Wait past the stub's delay for the cache to flip.
+    let refreshed = tokio::time::timeout(BACKEND_DELAY * 3, async {
+        loop {
+            let landed = CURRENT_USER_CACHE
+                .lock()
+                .as_ref()
+                .and_then(|entry| entry.user.get("firstName").cloned());
+            if landed == Some(json!("from-backend")) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(
+        refreshed.is_ok(),
+        "the background refresh never replaced the stale entry; \
+         serving stale forever is not stale-while-revalidate"
+    );
+}
+
+/// Successive `/auth/me` fetches must share one TCP connection.
+///
+/// `fetch_current_user` built a fresh `reqwest::Client` per call, and a
+/// `Client` owns its connection pool — so every fetch opened a new connection
+/// and paid a TCP handshake plus a TLS handshake before the request could go
+/// out. Over a WAN link that is two extra round trips on top of the one the
+/// request costs, and it is the gap between #6180's ~500ms floor and its
+/// ~1900ms spikes.
+///
+/// Asserted on the wire, because `reqwest::Client` exposes no pool statistics:
+/// the server sees a distinct ephemeral source port for every new connection,
+/// so a reused connection is exactly one distinct peer address across N
+/// requests.
+#[tokio::test]
+async fn current_user_fetches_reuse_one_connection() {
+    use axum::extract::ConnectInfo;
+    use std::collections::BTreeSet;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    type Peers = Arc<StdMutex<BTreeSet<SocketAddr>>>;
+    let peers: Peers = Arc::new(StdMutex::new(BTreeSet::new()));
+    let peers_for_route = peers.clone();
+
+    let app = axum::Router::new().route(
+        "/auth/me",
+        axum::routing::get(move |ConnectInfo(peer): ConnectInfo<SocketAddr>| {
+            let peers = peers_for_route.clone();
+            async move {
+                peers.lock().unwrap().insert(peer);
+                axum::Json(json!({ "success": true, "data": { "firstName": "steven" } }))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await;
+    });
+
+    let config = Config {
+        api_url: Some(format!("http://{addr}")),
+        ..Config::default()
+    };
+
+    // Sequential, like the poll loop: each call must find the previous call's
+    // connection idle in the pool and reuse it.
+    for _ in 0..3 {
+        fetch_current_user(&config, "tok")
+            .await
+            .expect("the stub answers /auth/me");
+    }
+
+    let distinct = peers.lock().unwrap().len();
+    assert_eq!(
+        distinct, 1,
+        "three sequential /auth/me fetches opened {distinct} connections; each new \
+         one costs a TCP and a TLS handshake before the request goes out (#6180)"
+    );
+}

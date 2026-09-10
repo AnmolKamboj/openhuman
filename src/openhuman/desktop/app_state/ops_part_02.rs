@@ -184,20 +184,36 @@ async fn fetch_current_user_cached(
     let api_base = current_user_api_base(config);
 
     if allow_cache {
-        {
-            let cache = CURRENT_USER_CACHE.lock();
-            if let Some(entry) = cache.as_ref() {
-                if entry.api_base == api_base
-                    && entry.token == token
-                    && entry.fetched_at.elapsed() < CURRENT_USER_REFRESH_TTL
-                {
-                    debug!(
-                        "{LOG_PREFIX} using cached current user age_ms={}",
-                        entry.fetched_at.elapsed().as_millis()
-                    );
-                    return Ok(Some(entry.user.clone()));
-                }
+        if let Some((user, age)) = cached_current_user(&api_base, token) {
+            if age < CURRENT_USER_REFRESH_TTL {
+                debug!(
+                    "{LOG_PREFIX} using cached current user age_ms={}",
+                    age.as_millis()
+                );
+                return Ok(Some(user));
             }
+            // Stale-while-revalidate. The entry has expired, but we already
+            // know who this is — serve that and re-confirm it behind the poll
+            // instead of making the shell wait on a WAN round trip to be told
+            // the same thing. Blocking here is what put a floor of one round
+            // trip under every `app_state_snapshot` (#6180: 732 calls in 3.5h,
+            // not one of them under 500ms).
+            //
+            // This costs no freshness: the refresh is still triggered on the
+            // same cadence and by the same poll that would have blocked for it,
+            // so the data is exactly as new as before — it just lands one poll
+            // later instead of holding this one open. The snapshot keeps
+            // reporting the true age it is serving in `current_user_stale_seconds`.
+            //
+            // Only the expired-entry path revalidates in the background. With
+            // no entry at all the shell has no identity to render, so that
+            // first fetch after login still blocks, below.
+            spawn_current_user_refresh(config, token);
+            debug!(
+                "{LOG_PREFIX} serving expired current user age_ms={} while refreshing behind the poll",
+                age.as_millis()
+            );
+            return Ok(Some(user));
         }
 
         // Nothing fresh to serve, so this poll would normally go to the network
@@ -228,6 +244,101 @@ async fn fetch_current_user_cached(
         }
     }
 
+    refresh_current_user_now(config, token).await
+}
+
+/// The cached user for this identity and how old it is, if the cache holds one.
+///
+/// Reads under one lock and hands back an owned copy, so no caller holds
+/// `CURRENT_USER_CACHE` across a decision — the freshness test and the
+/// stale-while-revalidate branch below both need the same read.
+fn cached_current_user(api_base: &str, token: &str) -> Option<(Value, Duration)> {
+    let cache = CURRENT_USER_CACHE.lock();
+    let entry = cache.as_ref()?;
+    (entry.api_base == api_base && entry.token == token)
+        .then(|| (entry.user.clone(), entry.fetched_at.elapsed()))
+}
+
+/// Single-flight gate for the background refresh.
+///
+/// An async mutex held by the spawned task for its lifetime, taken with
+/// `try_lock` so a poll that finds a refresh already running simply declines to
+/// start a second one rather than queueing behind it. Same gate, same reason as
+/// [`RUNTIME_SNAPSHOT_REBUILD`]: without it every overlapping poll launches its
+/// own fetch. Using a guard rather than a flag means a panicking refresh
+/// releases the gate instead of wedging it shut for the life of the process.
+static CURRENT_USER_REFRESH_INFLIGHT: Lazy<tokio::sync::Mutex<()>> =
+    Lazy::new(|| tokio::sync::Mutex::new(()));
+
+/// Refresh the cached current user without making the caller wait for it.
+///
+/// Declines to start when the backoff window from an earlier failure is still
+/// open — a background refresh would re-pay exactly the timeout that window
+/// exists to avoid (#5624) — and when a previous poll's refresh is still in
+/// flight.
+fn spawn_current_user_refresh(config: &Config, token: &str) {
+    if let Some((error, consecutive, remaining)) =
+        suppressed_current_user_failure(&current_user_api_base(config), token)
+    {
+        // Logged here because the stale-while-revalidate return above means an
+        // outage no longer reaches the replay branch in
+        // `fetch_current_user_cached` — without this line a backend that has
+        // been down for minutes leaves no trace at all in the snapshot logs.
+        // `debug!`, not `warn!`: no request was made and nothing waited on it
+        // (#5930).
+        debug!(
+            "{LOG_PREFIX} not refreshing current user behind the poll; backend failed \
+             {consecutive}x, retrying in {}ms: {}",
+            remaining.as_millis(),
+            error.message()
+        );
+        return;
+    }
+    let gate: &'static tokio::sync::Mutex<()> = &CURRENT_USER_REFRESH_INFLIGHT;
+    let Ok(guard) = gate.try_lock() else {
+        return;
+    };
+
+    let config = config.clone();
+    let token = token.to_string();
+    tokio::spawn(async move {
+        let _guard = guard;
+        // Bounded by the same budget the blocking path spends, so a hung
+        // backend cannot leave the gate closed for longer than one window.
+        match tokio::time::timeout(
+            auth_fetch_timeout(),
+            refresh_current_user_now(&config, &token),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            // The stale entry stands and the failure is recorded, so the next
+            // poll takes the backoff path. Not a failure of any user-visible
+            // operation — nothing was waiting on this.
+            Ok(Err(error)) => debug!(
+                "{LOG_PREFIX} background current user refresh failed; serving stale entry: {}",
+                error.message()
+            ),
+            Err(_) => {
+                debug!(
+                    "{LOG_PREFIX} background current user refresh timed out after {}s; serving stale entry",
+                    auth_fetch_timeout().as_secs()
+                );
+                note_current_user_timeout(&config, &token);
+            }
+        }
+    });
+}
+
+/// Go to the backend, then reconcile the caches and freshness stamps with what
+/// came back. The blocking half of [`fetch_current_user_cached`], split out so
+/// the background refresh runs exactly the same path rather than a parallel
+/// copy of it that could drift.
+async fn refresh_current_user_now(
+    config: &Config,
+    token: &str,
+) -> Result<Option<Value>, CurrentUserFetchError> {
+    let api_base = current_user_api_base(config);
     let fetched = match fetch_current_user(config, token).await {
         Ok(user) => sanitize_snapshot_user(user),
         Err(error) => {
