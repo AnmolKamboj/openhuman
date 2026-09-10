@@ -170,6 +170,13 @@ pub struct SocketManager {
     /// Serializes identity-sensitive disconnect → bridge bind → connect
     /// transactions while still allowing ordinary emits and state reads.
     identity_rebind: tokio::sync::Mutex<()>,
+    /// `(url, token)` the background loop is currently serving, recorded when a
+    /// loop is spawned and cleared on disconnect. Read by [`is_live_for`] so a
+    /// redundant connect for the identity that is already live can be skipped
+    /// instead of re-running the whole handshake (#6181).
+    ///
+    /// [`is_live_for`]: SocketManager::is_live_for
+    connection_identity: RwLock<Option<(String, String)>>,
 }
 
 impl SocketManager {
@@ -188,6 +195,7 @@ impl SocketManager {
             shutdown_tx: tokio::sync::Mutex::new(None),
             loop_handle: tokio::sync::Mutex::new(None),
             identity_rebind: tokio::sync::Mutex::new(()),
+            connection_identity: RwLock::new(None),
         }
     }
 
@@ -221,6 +229,29 @@ impl SocketManager {
         *self.shared.status.read() == ConnectionStatus::Connected
     }
 
+    /// True when a **live** connection is already serving exactly this `url`
+    /// under exactly this session token.
+    ///
+    /// Startup has two independent connect paths — the core's bootstrap
+    /// auto-connect and the renderer's `socket_connect_with_session` RPC — and
+    /// each unconditionally tore the other's socket down and redid the whole
+    /// Engine.IO/Socket.IO handshake, so a cold start opened two EIO sessions a
+    /// couple of seconds apart (#6181). Callers consult this before starting an
+    /// identity rebind so the second path becomes a no-op.
+    ///
+    /// Deliberately conservative: a different URL, a different token, or any
+    /// status other than `Connected` all report `false`, so an account switch
+    /// (same URL, new token) still forces a real reconnect and an unhealthy
+    /// socket is still replaced.
+    pub fn is_live_for(&self, url: &str, token: &str) -> bool {
+        self.is_connected()
+            && self
+                .connection_identity
+                .read()
+                .as_ref()
+                .is_some_and(|(u, t)| u == url && t == token)
+    }
+
     // -----------------------------------------------------------------------
     // Connection lifecycle
     // -----------------------------------------------------------------------
@@ -246,7 +277,7 @@ impl SocketManager {
         // live-session refresh, callers should use `connect_with_session` which
         // builds a provider via `token_provider_from_config`.
         let provider = static_token_provider(token.to_string());
-        self.spawn_loop(url, provider).await
+        self.spawn_loop(url, provider, token.to_string()).await
     }
 
     /// Connect using a **live-refresh token provider**.
@@ -268,8 +299,8 @@ impl SocketManager {
         // Validate that a token is available right now before spawning. This
         // mirrors the empty-token guard in `connect()` and ensures callers
         // see an immediate error if the session store is empty.
-        match token_provider() {
-            Ok(t) if !t.trim().is_empty() => {}
+        let token = match token_provider() {
+            Ok(t) if !t.trim().is_empty() => t,
             Ok(_) => {
                 log::error!(
                     "[socket] connect_with_provider: refusing to start — provider returned empty token"
@@ -282,22 +313,37 @@ impl SocketManager {
                 );
                 return Err(e);
             }
-        }
-        self.spawn_loop(url, token_provider).await
+        };
+        self.spawn_loop(url, token_provider, token).await
     }
 
     /// Shared spawn path used by both [`connect`] and [`connect_with_provider`].
     ///
     /// Installs the rustls crypto provider, tears down any existing connection,
-    /// constructs the channel pair, and spawns the background `ws_loop` task.
-    /// Entry-point-specific validation (empty-token guard, provider pre-check)
-    /// is done by the callers before this is called.
-    async fn spawn_loop(&self, url: &str, provider: TokenProvider) -> Result<(), String> {
+    /// records the connection's identity, constructs the channel pair, and
+    /// spawns the background `ws_loop` task. Entry-point-specific validation
+    /// (empty-token guard, provider pre-check) is done by the callers before this
+    /// is called, and `token` is the value they validated — it is recorded, not
+    /// sent, so `is_live_for` compares against the credential this connection was
+    /// actually started with.
+    async fn spawn_loop(
+        &self,
+        url: &str,
+        provider: TokenProvider,
+        token: String,
+    ) -> Result<(), String> {
         // Ensure the rustls crypto provider is installed (needed for wss:// TLS).
         // This is a no-op if already installed.
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         self.disconnect().await?;
+
+        // Record the identity this loop will serve so a redundant connect for
+        // the same url+token can be skipped (see `is_live_for`). This is the
+        // token the caller already validated, not a fresh provider call: the two
+        // must agree, or the guard could match on a credential this connection
+        // never used.
+        *self.connection_identity.write() = Some((url.to_string(), token));
 
         log::info!("[socket] Connecting to {}", url);
 
@@ -358,6 +404,7 @@ impl SocketManager {
         *self.shared.status.write() = ConnectionStatus::Disconnected;
         *self.shared.socket_id.write() = None;
         *self.shared.error.write() = None;
+        *self.connection_identity.write() = None;
         emit_state_change(&self.shared);
         log::debug!("[socket] Disconnected");
         Ok(())
