@@ -18,7 +18,7 @@
 //! and the three mutations are `Write`, and collapsing them to a single flat
 //! `Write` would put an approval prompt in front of reading the list. The
 //! pattern is
-//! [`git_operations`](crate::openhuman::tools::impl_tools)'s — resolve the
+//! `git_operations`'s — resolve the
 //! discriminator from the args and answer for that branch, with the arg-less
 //! accessor reporting the ceiling rather than guessing low.
 //!
