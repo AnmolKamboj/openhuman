@@ -176,6 +176,16 @@ fn _assert_builder_is_exported() -> AgentBuilder {
 /// built `Agent` so individual tests can assert against the
 /// [`Agent::agent_definition_name`] accessor.
 fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Agent {
+    build_minimal_agent_with_tool_sets(vec![Box::new(MockTool)], Vec::new(), definition_name)
+}
+
+/// [`build_minimal_agent_with_definition_name`] with caller-chosen durable and
+/// synthesised tool sets, for the tests that pin how the two sets relate.
+fn build_minimal_agent_with_tool_sets(
+    tools: Vec<Box<dyn Tool>>,
+    synthesized_tools: Vec<Box<dyn Tool>>,
+    definition_name: Option<&str>,
+) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
     let workspace = tempfile::TempDir::new().expect("temp workspace");
@@ -193,7 +203,8 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
 
     let mut builder = Agent::builder()
         .chat_model(provider)
-        .tools(vec![Box::new(MockTool)])
+        .tools(tools)
+        .synthesized_tools(synthesized_tools)
         .memory(mem)
         .tool_dispatcher(Box::new(NativeToolDispatcher))
         .workspace_dir(workspace_path);
@@ -219,6 +230,95 @@ fn integration_delegate_toolkit_enum(agent: &Agent) -> Vec<String> {
         .collect();
     out.sort();
     out
+}
+
+/// Every synthesised delegate the agent advertises must have an executable
+/// instance behind it, and vice versa.
+///
+/// This is the invariant #6145 broke: `tool_specs` reconciled unconditionally
+/// while the instances only reconciled when the `tools` `Arc` happened to be
+/// uniquely owned. A mid-session connect published a `delegate_*` spec with no
+/// instance behind it — and, the policy snapshot being built from the
+/// instances, no decision either, so the fail-closed visibility filter hid it
+/// — while a revoke withdrew the spec and left the instance registered and
+/// callable. Asserted through the public surface only, like every other test
+/// in this file.
+fn assert_synthesized_delegates_are_executable(agent: &Agent) {
+    let instances = agent.synthesized_tools_arc();
+    let executable: std::collections::HashSet<String> =
+        instances.iter().map(|t| t.name().to_string()).collect();
+    assert_eq!(
+        executable.len(),
+        instances.len(),
+        "the synthesised set must not contain duplicate tool names"
+    );
+
+    let spec_names: std::collections::HashSet<String> = agent
+        .tool_specs()
+        .iter()
+        .map(|spec| spec.name.clone())
+        .collect();
+    for name in &executable {
+        assert!(
+            spec_names.contains(name),
+            "executable synthesised tool `{name}` is not advertised in tool_specs"
+        );
+    }
+
+    // The other direction is the connect case: a `delegate_*` spec with
+    // nothing registered to run it. Checked against the whole callable
+    // surface, since a durable tool may legitimately own a `delegate_*` name
+    // (in which case the synthesised one is dropped, not the durable one).
+    let all_names: Vec<&str> = agent.all_tool_refs().iter().map(|t| t.name()).collect();
+    let callable: std::collections::HashSet<&str> = all_names.iter().copied().collect();
+    let advertised_delegates: Vec<&String> = spec_names
+        .iter()
+        .filter(|name| name.starts_with("delegate_"))
+        .collect();
+    for name in advertised_delegates {
+        assert!(
+            callable.contains(name.as_str()),
+            "advertised delegate `{name}` has no executable instance in either set; \
+             callable={callable:?}"
+        );
+    }
+
+    // Presence is not enough. A stale instance under a fresh spec is the same
+    // class of bug one step quieter: the model reads the new `toolkit` enum
+    // and routes to an instance built from the previous connection set. Pin
+    // that each instance's own schema is byte-identical to what is advertised.
+    for tool in instances.iter() {
+        let advertised = agent
+            .tool_specs()
+            .iter()
+            .find(|spec| spec.name == tool.name())
+            .unwrap_or_else(|| panic!("no spec advertised for synthesised tool `{}`", tool.name()));
+        assert_eq!(
+            tool.spec().parameters,
+            advertised.parameters,
+            "synthesised instance `{}` carries a stale schema — advertised and executable \
+             must be rebuilt in the same pass",
+            tool.name()
+        );
+    }
+
+    // The two sets are disjoint by construction, so a name never resolves to
+    // two instances however the readers order them.
+    assert_eq!(
+        callable.len(),
+        all_names.len(),
+        "the durable and synthesised sets must not share a name: {all_names:?}"
+    );
+
+    // And every synthesised tool carries a policy decision — without one the
+    // fail-closed visibility filter would hide it, which is how the connect
+    // direction of #6145 stayed invisible.
+    for name in &executable {
+        assert!(
+            agent.tool_policy_session.decisions.contains_key(name),
+            "synthesised tool `{name}` has no policy decision"
+        );
+    }
 }
 
 async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
