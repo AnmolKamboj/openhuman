@@ -125,10 +125,10 @@ pub struct Harness {
 
 /// Borrowed access to the core owned by a [`Harness`].
 ///
-/// Unlike [`Core`], this facade is deliberately not cloneable and does not
-/// expose the runtime `Arc`: a retained runtime could outlive the harness's
-/// process-slot and workspace ownership. Share an `Arc<Harness>` when several
-/// agents need concurrent access.
+/// Unlike [`Core`], this facade is deliberately not cloneable and exposes
+/// neither the unconfigured agent facade nor the raw runtime: either path
+/// could start a turn without the harness's caller-supplied provider route.
+/// Share an `Arc<Harness>` when several agents need concurrent turn access.
 pub struct HarnessCore<'a> {
     core: &'a Core,
 }
@@ -142,18 +142,9 @@ impl HarnessCore<'_> {
         self.core.auth()
     }
 
-    pub fn agent(&self) -> crate::embed::Agent<'_> {
-        self.core.agent()
-    }
-
     #[cfg(feature = "medulla")]
     pub fn medulla(&self) -> crate::embed::Medulla<'_> {
         self.core.medulla()
-    }
-
-    /// Borrow the underlying runtime without exposing its owning `Arc`.
-    pub fn raw(&self) -> &crate::core::runtime::CoreRuntime {
-        self.core.raw().as_ref()
     }
 }
 
@@ -195,8 +186,9 @@ impl Harness {
         turn
     }
 
-    /// The typed core facade beneath this harness — config, memory, and the
-    /// [`raw`](Core::raw) escape hatch for anything not yet modelled.
+    /// Safe typed access to non-turn core domains. Agent turns intentionally
+    /// remain on [`Harness::turn`], which always applies the harness provider
+    /// route and access origin.
     pub fn core(&self) -> HarnessCore<'_> {
         HarnessCore {
             core: self
