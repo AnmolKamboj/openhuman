@@ -81,6 +81,99 @@ fn find<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> &'a dyn Tool {
         .unwrap_or_else(|| panic!("{name} missing"))
 }
 
+/// A registry split the way a real agent's is: the pack tool in the durable
+/// vector, the packed tool in the separate synthesised one.
+///
+/// This is not a contrived shape. Every `delegate_*` tool is synthesised into
+/// `Agent::synthesized_tools`, a different `Arc` from the durable registry
+/// (#6145), and seven delegates were already packed.
+fn split_registries(
+    name: &'static str,
+    level: PermissionLevel,
+) -> (Arc<Vec<Box<dyn Tool>>>, Arc<Vec<Box<dyn Tool>>>) {
+    let mut durable: Vec<Box<dyn Tool>> = Vec::new();
+    append_pack_tools(&mut durable);
+    let durable = Arc::new(durable);
+    let synthesized: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(FakeTool {
+        name,
+        level,
+        external: false,
+        timeout: ToolTimeout::Inherit,
+    })]);
+    bind_pack_registry(&durable);
+    bind_synthesized_pack_registry(&durable, &synthesized);
+    (durable, synthesized)
+}
+
+/// A packed **delegate** must be reachable, not merely withheld.
+///
+/// It was not. `use_skill` was bound only to the durable registry, and no
+/// `delegate_*` tool is in it — so `do_crypto`, `run_skill`, `setup_skills`,
+/// `build_workflow`, `discover_workflows`, `use_mcp_server` and
+/// `setup_mcp_server` were all dropped from the wire and then unreachable
+/// through the route that was supposed to replace them. Withholding a tool the
+/// model then cannot call is strictly worse than never packing it.
+#[tokio::test]
+async fn a_packed_delegate_in_the_synthesised_set_is_reachable() {
+    let (durable, _synthesized) = split_registries("do_crypto", PermissionLevel::ReadOnly);
+    let use_skill = find(&durable, USE_SKILL);
+
+    // Disclosure half: the schema must render even though the tool is in the
+    // other registry.
+    let rendered = use_skill
+        .execute(json!({"skill": "crypto"}))
+        .await
+        .unwrap();
+    assert!(!rendered.is_error, "{}", rendered.text());
+    assert!(
+        format!("{:?}", rendered.content).contains("do_crypto"),
+        "the pack listing omitted the synthesised delegate"
+    );
+
+    // Dispatch half.
+    let ran = use_skill
+        .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {"marker": "x"}}))
+        .await
+        .unwrap();
+    assert!(!ran.is_error, "packed delegate was not dispatchable: {}", ran.text());
+    assert!(format!("{:?}", ran.content).contains("marker"));
+}
+
+/// Replacing the synthesised `Arc` must re-point the handle at the new one.
+///
+/// `refresh_delegation_tools` rebuilds that set on every Composio reconcile. A
+/// handle left holding the old `Weak` stops upgrading once the last reader of
+/// the previous allocation goes, and every packed delegate silently becomes
+/// unreachable for the rest of the session — the same class of bug the durable
+/// `OnceLock` rebinding fix already addressed on the other registry.
+#[tokio::test]
+async fn rebinding_the_synthesised_set_repoints_the_handle() {
+    let (durable, first) = split_registries("do_crypto", PermissionLevel::ReadOnly);
+    let use_skill = find(&durable, USE_SKILL);
+
+    // A reconcile: a fresh set, and the old allocation dropped.
+    let second: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(FakeTool {
+        name: "wallet_status",
+        level: PermissionLevel::ReadOnly,
+        external: false,
+        timeout: ToolTimeout::Inherit,
+    })]);
+    bind_synthesized_pack_registry(&durable, &second);
+    drop(first);
+
+    let ran = use_skill
+        .execute(json!({"skill": "crypto", "tool": "wallet_status", "args": {}}))
+        .await
+        .unwrap();
+    assert!(!ran.is_error, "handle did not follow the rebind: {}", ran.text());
+    // And the retired instance is gone with its allocation.
+    let stale = use_skill
+        .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {}}))
+        .await
+        .unwrap();
+    assert!(stale.is_error, "a dropped delegate stayed reachable");
+}
+
 #[test]
 fn every_packed_name_belongs_to_exactly_one_pack() {
     let mut seen = HashSet::new();
