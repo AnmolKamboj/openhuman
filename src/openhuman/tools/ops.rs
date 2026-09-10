@@ -1253,12 +1253,15 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "notify_user",
     ];
     const THREADS_EXTRA: &[&str] = &["goal_get", "goal_set", "goal_complete"];
-    // Memory extras not covered by the `memory_`/`goals_` prefixes.
+    // Memory extras not covered by the `memory_`/`goals_` prefixes. `goals`
+    // has no trailing underscore since the four `goals_*` tools collapsed into
+    // one `op`-dispatched tool, so it needs an entry here rather than a prefix.
     const MEMORY_EXTRA: &[&str] = &[
         "remember_preference",
         "save_preference",
         "update_memory_md",
         "tool_stats",
+        "goals",
     ];
 
     // MCP: every MCP tool name is `mcp_` prefixed (mcp_registry_*, mcp_setup_*,
@@ -1470,6 +1473,13 @@ fn tool_capability(name: &str) -> Option<tinymemory_api::capabilities::Capabilit
         "memory_diff" => Capability::Diff,
         "memory_doctor" => Capability::Maintenance,
         "tool_stats" => Capability::ToolMemory,
+
+        // The long-term goals tool. It was four `goals_*` tools and is now one
+        // `op`-dispatched `goals`; the exact arm is what the prefix rule below
+        // no longer covers. The per-thread `goal_get`/`goal_set`/
+        // `goal_complete` tools are `DomainGroup::Threads` and a different
+        // concept, and neither `goals` nor `goals_` catches them.
+        "goals" => Capability::Goals,
 
         // Prefix rules, so a NEW tool in one of these families auto-gates
         // instead of silently landing in the un-filtered bucket — the same
