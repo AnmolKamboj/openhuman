@@ -696,24 +696,13 @@ pub fn all_tools_with_runtime(
         security.clone(),
     )));
 
-    // Long-term goals list tools. Used primarily by the background
-    // `goals_agent` (which filters to these via its `[tools] named`
-    // allowlist); also available to the main agent for explicit edits.
-    {
-        let goals_dir = root_config.workspace_dir.clone();
-        tools.push(Box::new(
-            crate::openhuman::memory::tools::goals::GoalsListTool::new(goals_dir.clone()),
-        ));
-        tools.push(Box::new(
-            crate::openhuman::memory::tools::goals::GoalsAddTool::new(goals_dir.clone()),
-        ));
-        tools.push(Box::new(
-            crate::openhuman::memory::tools::goals::GoalsEditTool::new(goals_dir.clone()),
-        ));
-        tools.push(Box::new(
-            crate::openhuman::memory::tools::goals::GoalsDeleteTool::new(goals_dir),
-        ));
-    }
+    // Long-term goals list tool. Used primarily by the background
+    // `goals_agent` (which filters to it via its `[tools] named` allowlist);
+    // also available to the main agent for explicit edits. One `op`-dispatched
+    // tool, not four — see the module docs on `memory::tools::goals`.
+    tools.push(Box::new(
+        crate::openhuman::memory::tools::goals::GoalsTool::new(root_config.workspace_dir.clone()),
+    ));
 
     // Thread-level goal tools (Codex-style per-thread completion contract).
     // Visible only to agents that allowlist them (orchestrator). The target
