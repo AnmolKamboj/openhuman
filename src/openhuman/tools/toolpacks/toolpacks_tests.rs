@@ -445,7 +445,7 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             ],
         ),
         ("tasks", &["manage_tasks"]),
-        ("goals", &["goal_set", "goal_get", "goal_complete"]),
+        ("thread_goals", &["goal_set", "goal_get", "goal_complete"]),
         ("app_update", &["update_check", "update_apply"]),
     ];
 

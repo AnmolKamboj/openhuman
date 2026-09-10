@@ -224,8 +224,13 @@ pub const PACKS: &[ToolPack] = &[
         owners: &["task_manager_agent"],
     },
     ToolPack {
-        id: "goals",
-        summary: "Read, set and complete the user's long-term goals.",
+        id: "thread_goals",
+        // Named for the scope, not the noun. There are two goal surfaces and
+        // they are different things: the `goals` tool holds the user's durable
+        // long-term objectives in memory, while these three hold the
+        // completion contract for one conversation thread. This pack was
+        // called `goals` and read as the other one.
+        summary: "The completion contract for THIS thread: read, set and complete the objective the current conversation is working toward. Not the user's long-term goals (that is the `goals` tool).",
         tools: &["goal_set", "goal_get", "goal_complete"],
         owners: &[],
     },
