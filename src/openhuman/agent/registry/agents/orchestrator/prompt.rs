@@ -16,7 +16,7 @@ use crate::openhuman::agent::context::prompt::{
     ConnectedIntegration, PromptContext, ToolCallFormat,
 };
 use crate::openhuman::agent::harness::definition::SubagentEntry;
-use crate::openhuman::agent::registry::AgentDefinitionRegistry;
+use crate::openhuman::agent::harness::AgentDefinitionRegistry;
 use crate::openhuman::skills::ops_types::Workflow;
 use crate::openhuman::tools::orchestrator_tools::sanitise_slug;
 use crate::openhuman::tools::toolpacks;
