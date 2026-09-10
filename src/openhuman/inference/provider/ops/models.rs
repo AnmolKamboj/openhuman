@@ -150,29 +150,51 @@ pub async fn list_configured_models_from_config(
         // Do NOT propagate a missing session: a self-hosted entry may carry a
         // provider-scoped key instead, and the auth arm below documents that
         // fallback. Only fail when neither credential exists, so the error the
-        // caller sees names the real problem. `require_live_session_token` also
-        // publishes `SessionExpired` for a locally-expired token, which we still
-        // want on the session path.
-        match crate::openhuman::security::credentials::session_support::require_live_session_token(
-            config,
-        ) {
-            Ok(token) => managed_token = token,
-            // Signed out is not a provider failure. The managed catalog simply
-            // has nothing to offer until there is a session, and the picker
-            // still shows managed with its automatic routing — so return an
-            // empty list rather than surfacing "could not load models".
-            Err(err) if api_key.is_empty() => {
+        // caller sees names the real problem.
+        //
+        // Classify the session directly rather than going through
+        // `require_live_session_token`, which flattens "signed out" and "could
+        // not read the credential store" into one opaque Err. A lock timeout or
+        // filesystem error is a recoverable fault the picker should surface —
+        // swallowing it into a successful empty catalog hides it (review, #6206).
+        // A store error still propagates; only a genuinely absent/expired
+        // session degrades to an empty list.
+        use crate::openhuman::security::credentials::session_support::{
+            classify_session_token, load_app_session_profile, publish_local_session_expiry,
+            SessionTokenCheck,
+        };
+        let profile = load_app_session_profile(config)?;
+        match classify_session_token(profile.as_ref(), chrono::Utc::now()) {
+            SessionTokenCheck::Live(token) => managed_token = token,
+            // Signed out is not a provider failure. The managed catalog has
+            // nothing to offer until there is a session, and managed stays
+            // selectable on its automatic routing — so return an empty list
+            // rather than surfacing "could not load models".
+            check if api_key.is_empty() => {
+                let reason = match check {
+                    SessionTokenCheck::Expired => {
+                        // Still announce the expiry: `require_live_session_token`
+                        // did this for us before, and without it an expired token
+                        // stays in the store with nothing prompting a re-auth.
+                        publish_local_session_expiry("list_configured_models");
+                        "session expired"
+                    }
+                    _ => "no session",
+                };
                 log::info!(
-                    "[providers][list_models] managed catalog unavailable — no live session ({err}); returning an empty list"
+                    "[providers][list_models] managed catalog unavailable — {reason}; returning an empty list"
                 );
                 return Ok(crate::rpc::RpcOutcome::new(
                     serde_json::json!({ "models": Vec::<ModelInfo>::new() }),
-                    vec!["no live session; managed catalog is empty".to_string()],
+                    vec![format!("{reason}; managed catalog is empty")],
                 ));
             }
-            Err(err) => {
+            check => {
+                if matches!(check, SessionTokenCheck::Expired) {
+                    publish_local_session_expiry("list_configured_models");
+                }
                 log::debug!(
-                    "[providers][list_models] no live session ({err}); falling back to the provider-scoped key"
+                    "[providers][list_models] no live session; falling back to the provider-scoped key"
                 );
             }
         }
@@ -270,7 +292,7 @@ pub async fn list_configured_models_from_config(
         // Scoped to the managed provider on purpose: for a BYOK provider a 401
         // IS the actionable error (a wrong or revoked API key), and hiding it
         // would strand the user with a silently empty dropdown.
-        if managed_401_means_signed_out(status.as_u16(), entry.auth_style) {
+        if managed_401_means_signed_out(status.as_u16(), entry.auth_style, &managed_token) {
             log::info!(
                 "[providers][list_models] managed catalog unavailable — backend rejected the session token (401); returning an empty list"
             );

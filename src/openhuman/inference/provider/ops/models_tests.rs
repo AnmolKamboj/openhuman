@@ -91,7 +91,24 @@ fn other_slugs_do_not_synthesize_a_managed_entry() {
 #[test]
 fn a_managed_401_reads_as_signed_out() {
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
-    assert!(managed_401_means_signed_out(401, AuthStyle::OpenhumanJwt));
+    assert!(managed_401_means_signed_out(
+        401,
+        AuthStyle::OpenhumanJwt,
+        "session-jwt"
+    ));
+}
+
+/// When no session existed, the request went out with the provider-scoped
+/// fallback key — so a 401 means THAT key is wrong or revoked. Hiding it behind
+/// an empty catalog would strand a self-hosted entry with no clue why.
+#[test]
+fn a_401_against_the_fallback_key_still_surfaces() {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    assert!(!managed_401_means_signed_out(
+        401,
+        AuthStyle::OpenhumanJwt,
+        ""
+    ));
 }
 
 /// Everything else must keep surfacing the error. A BYOK 401 is the actionable
@@ -101,11 +118,14 @@ fn a_managed_401_reads_as_signed_out() {
 fn other_statuses_and_providers_still_surface_the_error() {
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
     for style in [AuthStyle::Bearer, AuthStyle::Anthropic, AuthStyle::None] {
-        assert!(!managed_401_means_signed_out(401, style), "{style:?} 401");
+        assert!(
+            !managed_401_means_signed_out(401, style, "session-jwt"),
+            "{style:?} 401"
+        );
     }
     for status in [400, 403, 404, 429, 500, 503] {
         assert!(
-            !managed_401_means_signed_out(status, AuthStyle::OpenhumanJwt),
+            !managed_401_means_signed_out(status, AuthStyle::OpenhumanJwt, "session-jwt"),
             "managed {status}"
         );
     }

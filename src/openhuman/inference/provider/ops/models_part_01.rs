@@ -95,7 +95,13 @@ fn url_is_credential_safe(url: &str) -> bool {
 fn managed_401_means_signed_out(
     status: u16,
     auth_style: crate::openhuman::config::schema::cloud_providers::AuthStyle,
+    managed_token: &str,
 ) -> bool {
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
-    status == 401 && auth_style == AuthStyle::OpenhumanJwt
+    // `managed_token` non-empty means the request actually carried the app
+    // session. When it is empty the request went out with the provider-scoped
+    // fallback key instead, and a 401 then means THAT key is wrong or revoked —
+    // an actionable credential error that must not be hidden behind an empty
+    // catalog just because the entry's auth_style is OpenhumanJwt (review, #6206).
+    status == 401 && auth_style == AuthStyle::OpenhumanJwt && !managed_token.is_empty()
 }
