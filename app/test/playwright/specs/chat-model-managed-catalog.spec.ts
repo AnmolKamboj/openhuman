@@ -155,9 +155,9 @@ test.describe('Managed OpenRouter catalog in the model picker', () => {
     ).toBeVisible({ timeout: 20_000 });
 
     // The catalog reached the browser through the real core fetch, not a stub.
-    const optionValues = await select.locator('option').evaluateAll(nodes =>
-      nodes.map(node => (node as HTMLOptionElement).value)
-    );
+    const optionValues = await select
+      .locator('option')
+      .evaluateAll(nodes => nodes.map(node => (node as HTMLOptionElement).value));
     expect(optionValues).toContain(PLAIN_ID);
     expect(optionValues).toContain(FREE_ID);
     // "Automatic" is always present so a pin is reversible.
@@ -171,9 +171,7 @@ test.describe('Managed OpenRouter catalog in the model picker', () => {
 
     // A catalog entry with neither name nor pricing falls back to the bare id
     // rather than rendering "undefined" or an empty option.
-    const plainestLabel = await select
-      .locator(`option[value="${NO_METADATA_ID}"]`)
-      .textContent();
+    const plainestLabel = await select.locator(`option[value="${NO_METADATA_ID}"]`).textContent();
     expect(plainestLabel?.trim()).toBe(NO_METADATA_ID);
   });
 
