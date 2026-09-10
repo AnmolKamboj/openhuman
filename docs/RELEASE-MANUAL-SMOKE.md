@@ -22,7 +22,7 @@ Applies to every release, all platforms.
 
 ### Checkbox appearance
 
-- [ ] **Skill source filters show their selection** — In Connections → Skills, open the catalog source filter and toggle a source off and on. Verify that the rows filter correctly, the menu stays open, and the selected source has a visible checkmark. Repeat in light and dark themes; selected and indeterminate shared checkboxes must show a contrasting mark, while unchecked boxes remain empty.
+- [ ] **Skill source filters show their selection** — In Connections → Skills, open the catalog source filter and toggle a source off and on. Verify that the rows filter correctly, the menu stays open, and the selected source has a visible checkmark. Repeat in light and dark themes, including Matrix, Ocean and Sepia dark; selected and indeterminate shared checkboxes must show a contrasting mark, while unchecked boxes remain empty.
 
 ### Public installer script
 
