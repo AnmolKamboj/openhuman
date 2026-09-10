@@ -260,3 +260,65 @@ async fn a_background_refresh_does_not_overwrite_a_newer_identity() {
         "the blocking path must still commit; only detached refreshes are discarded"
     );
 }
+
+/// The TTL clock must start when the request goes out, not when it lands.
+///
+/// `CURRENT_USER_REFRESH_TTL` is measured against `fetched_at`, and the poll
+/// loop schedules itself from the previous *response*. Stamping `fetched_at` at
+/// completion folds the round trip into the next window: a refresh taking `L`
+/// leaves the following poll only `TTL - L` from expiry, that poll reads the
+/// entry as fresh, and the refresh after it never happens — the cadence halves
+/// as a silent side effect of no longer blocking (#6190 review). Stamping at
+/// initiation keeps the wall-clock cadence exactly what it was before.
+#[tokio::test]
+async fn the_refresh_ttl_clock_starts_when_the_request_goes_out() {
+    let _cache_lock = APP_STATE_CACHE_TEST_LOCK.lock().await;
+    let _failure_lock = super::current_user_backoff_tests::CURRENT_USER_FAILURE_TEST_LOCK
+        .lock()
+        .await;
+    struct CacheResetGuard;
+    impl Drop for CacheResetGuard {
+        fn drop(&mut self) {
+            *CURRENT_USER_CACHE.lock() = None;
+        }
+    }
+    let _reset = CacheResetGuard;
+
+    // Stands in for the WAN round trip the issue measured at ~380-540ms.
+    const BACKEND_LATENCY: Duration = Duration::from_millis(600);
+
+    let app = axum::Router::new().route(
+        "/auth/me",
+        axum::routing::get(|| async move {
+            tokio::time::sleep(BACKEND_LATENCY).await;
+            axum::Json(json!({ "success": true, "data": { "firstName": "steven" } }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let config = Config {
+        api_url: Some(format!("http://{addr}")),
+        ..Config::default()
+    };
+    refresh_current_user_now(&config, "tok", RefreshOrigin::Blocking)
+        .await
+        .expect("the stub answers /auth/me");
+
+    let age = CURRENT_USER_CACHE
+        .lock()
+        .as_ref()
+        .expect("the refresh committed an entry")
+        .fetched_at
+        .elapsed();
+
+    assert!(
+        age >= BACKEND_LATENCY,
+        "the entry is {age:?} old immediately after a {BACKEND_LATENCY:?} fetch, so the clock \
+         was started on the response: the round trip has been folded into the next TTL window \
+         and the poll after next will skip its refresh (#6190)"
+    );
+}

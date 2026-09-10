@@ -199,16 +199,13 @@ async fn fetch_current_user_cached(
             // trip under every `app_state_snapshot` (#6180: 732 calls in 3.5h,
             // not one of them under 500ms).
             //
-            // This does move the refresh cadence, and it is worth being exact
-            // about how: the background refresh stamps `fetched_at` when it
-            // *completes*, so the next poll finds the entry still inside the
-            // TTL and serves it without revalidating. `GET /auth/me` is
-            // therefore refreshed about every other poll (~10s) rather than
-            // every poll (~5.5s). That is acceptable because this payload is
-            // display-only profile data (`firstName`, `lastName`, `username`,
-            // `_id`) and not the session-validity check, and it halves this
-            // endpoint's share of the background RPC load #6180 also reports.
-            // The snapshot keeps reporting the true age it is serving in
+            // The refresh cadence is unchanged by this: `refresh_current_user_now`
+            // stamps `fetched_at` when the request goes out, not when it lands,
+            // so the round trip is not folded into the next TTL window and the
+            // poll after this one expires on the same schedule it always did.
+            // Stamping at completion would have quietly halved the cadence —
+            // see the note there (#6190 review). The snapshot keeps reporting
+            // the true age of the data it is serving in
             // `current_user_stale_seconds`.
             //
             // Only the expired-entry path revalidates in the background. With
@@ -359,6 +356,24 @@ async fn refresh_current_user_now(
     origin: RefreshOrigin,
 ) -> Result<Option<Value>, CurrentUserFetchError> {
     let api_base = current_user_api_base(config);
+    // The TTL clock starts when the request goes out, not when it lands.
+    //
+    // `fetched_at` is what `CURRENT_USER_REFRESH_TTL` is measured against, and
+    // the poll loop schedules itself from the previous *response*. Stamping at
+    // completion would therefore fold the round trip into the next window: a
+    // refresh taking `L` leaves the following poll only `TTL - L` from expiry,
+    // it reads the entry as fresh, and the refresh after that is skipped
+    // entirely — halving the cadence as a side effect of not blocking (#6190
+    // review). Stamping at initiation keeps the wall-clock refresh cadence
+    // exactly what it was before this path became non-blocking; the only thing
+    // that changed is who waits for it.
+    //
+    // It also errs the safe way. The data itself arrives at `started_at + L`,
+    // so calling it `started_at` slightly *overstates* its age and expires the
+    // entry sooner — never later. `note_current_user_success` below is the
+    // stamp that answers "how old is the data we are showing", and it stays at
+    // completion, because that is when the data actually arrived.
+    let started_at = Instant::now();
     let fetched = match fetch_current_user(config, token).await {
         Ok(user) => sanitize_snapshot_user(user),
         Err(error) => {
@@ -403,7 +418,7 @@ async fn refresh_current_user_now(
                     *cache = Some(CachedCurrentUser {
                         api_base: api_base.clone(),
                         token: token.to_string(),
-                        fetched_at: Instant::now(),
+                        fetched_at: started_at,
                         user,
                     });
                 }
