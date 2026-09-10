@@ -214,3 +214,56 @@ async fn a_segment_with_no_turns_left_is_skipped() {
         "a segment with no turns was summarised anyway: {methods:?}"
     );
 }
+
+/// A queue whose head is exhausted still lets the segments behind it recover.
+///
+/// The batch cap alone did not do this, and that was a real bug in the first
+/// version of this pass (caught in review of #6183). `segments_pending_summary`
+/// orders oldest-first and takes a `limit`, so asking for exactly the batch size
+/// returns the oldest rows *before* the ledger filters them: once those exhaust
+/// their attempts they occupy every result forever and nothing behind them is
+/// ever reached. The pass reads a window and counts only eligible segments
+/// against the batch.
+///
+/// Asserted on the **count** of `episodic.session_turns` calls, because that is
+/// the call every attempted segment makes and the recording driver does not
+/// carry arguments. Against the old code the third pass records zero.
+#[tokio::test]
+async fn an_exhausted_queue_head_does_not_block_the_segments_behind_it() {
+    let recording = Arc::new(
+        RecordingProvider::new()
+            .with_session_turns(turns())
+            .with_pending_segments(vec![
+                pending("seg-head-a"),
+                pending("seg-head-b"),
+                pending("seg-head-c"),
+                pending("seg-behind"),
+            ]),
+    );
+    let hook = hook_over(&recording);
+
+    let turn_reads = |recording: &RecordingProvider| {
+        methods(recording)
+            .iter()
+            .filter(|m| *m == "episodic.session_turns")
+            .count()
+    };
+
+    // Two passes spend the three heads' whole two-attempt budget.
+    hook.resummarise_pending(300.0).await;
+    hook.resummarise_pending(301.0).await;
+    let after_two = turn_reads(&recording);
+    assert_eq!(
+        after_two, 6,
+        "the first two passes should each have attempted the three heads"
+    );
+
+    // The third finds them exhausted and must scan past them.
+    hook.resummarise_pending(302.0).await;
+
+    assert_eq!(
+        turn_reads(&recording) - after_two,
+        1,
+        "the segment behind three exhausted heads was never reached"
+    );
+}

@@ -263,13 +263,22 @@ impl MemoryEpisodic for RecordingProvider {
 
     async fn segments_pending_summary(
         &self,
-        _limit: u32,
+        limit: u32,
     ) -> Result<
         Vec<crate::openhuman::memory::api::provider::episodic::ConversationSegment>,
         MemoryError,
     > {
         self.record(Call::plain("episodic.segments_pending_summary"));
-        Ok(self.pending_segments.lock().unwrap().clone())
+        // Honour `limit` — a fake that ignored it would let a test drive more
+        // segments than the caller asked for and hide a bounded-recovery bug.
+        Ok(self
+            .pending_segments
+            .lock()
+            .unwrap()
+            .iter()
+            .take(limit as usize)
+            .cloned()
+            .collect())
     }
 
     async fn create_segment(

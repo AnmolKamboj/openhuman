@@ -34,7 +34,24 @@ use crate::openhuman::memory::api::provider::episodic::EpisodicTurn;
 /// the queue drains across many passes rather than in one long stall; a large
 /// batch would put a run of inference calls behind a single close, and
 /// `flush_open_segment` is awaited at session wind-down.
-const RESUMMARISE_BATCH: u32 = 3;
+const RESUMMARISE_BATCH: usize = 3;
+
+/// How far down the pending queue one pass will look to find those segments.
+///
+/// The batch cap alone is not enough, and this is the correction to the first
+/// version of this pass. `segments_pending_summary` orders oldest-first and
+/// takes a `limit`, so asking for exactly [`RESUMMARISE_BATCH`] returns the
+/// three oldest rows *before* the attempt ledger filters them. Once those three
+/// exhaust their attempts they still occupy every result, and a fourth pending
+/// segment can never be reached until the process restarts — the head-of-queue
+/// trap, moved one layer out rather than solved.
+///
+/// So the pass reads a window and stops after [`RESUMMARISE_BATCH`] **eligible**
+/// segments. Bounded rather than unbounded because the point is to make
+/// progress past a stuck head, not to walk an arbitrarily long backlog inside
+/// one segment close; a queue deeper than this drains across passes, which is
+/// what the batch cap is for.
+const RESUMMARISE_SCAN: u32 = 25;
 
 /// How many times one segment may be attempted before this process gives up on
 /// it.
@@ -90,7 +107,7 @@ impl ArchivistHook {
             return;
         };
 
-        let pending = match episodic.segments_pending_summary(RESUMMARISE_BATCH).await {
+        let pending = match episodic.segments_pending_summary(RESUMMARISE_SCAN).await {
             Ok(pending) => pending,
             Err(e) => {
                 tracing::debug!("[archivist] resummarise: cannot read the pending queue: {e}");
@@ -106,7 +123,11 @@ impl ArchivistHook {
             pending.len()
         );
 
+        let mut attempted = 0_usize;
         for segment in pending {
+            if attempted >= RESUMMARISE_BATCH {
+                break;
+            }
             if exhausted(&segment.segment_id) {
                 tracing::debug!(
                     "[archivist] resummarise: segment={} already attempted {} times in this \
@@ -126,6 +147,10 @@ impl ArchivistHook {
             // belongs to a segment by stable per-session sequence or row id,
             // not by timestamp, because the md store rounds to milliseconds and
             // can sort a fast turn just before its own segment's start.
+            // Counted here rather than at the top of the loop: a skipped
+            // exhausted segment must not consume the batch, which is the whole
+            // point of scanning past it.
+            attempted += 1;
             let entries = self.read_session_entries(&segment.session_id).await;
             let segment_entries: Vec<&EpisodicTurn> = entries
                 .iter()
