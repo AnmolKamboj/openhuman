@@ -15,8 +15,11 @@ use crate::openhuman::agent::context::prompt::{
     render_datetime, render_identity, render_tools, render_user_files, render_workspace,
     ConnectedIntegration, PromptContext, ToolCallFormat,
 };
+use crate::openhuman::agent::harness::definition::SubagentEntry;
+use crate::openhuman::agent::registry::AgentDefinitionRegistry;
 use crate::openhuman::skills::ops_types::Workflow;
 use crate::openhuman::tools::orchestrator_tools::sanitise_slug;
+use crate::openhuman::tools::toolpacks;
 use anyhow::Result;
 use std::fmt::Write;
 
@@ -61,6 +64,12 @@ pub fn build(ctx: &PromptContext<'_>) -> Result<String> {
         out.push_str("\n\n");
     }
 
+    let withheld = render_withheld_specialists(ctx);
+    if !withheld.trim().is_empty() {
+        out.push_str(withheld.trim_end());
+        out.push_str("\n\n");
+    }
+
     let integrations = render_delegation_guide(ctx.connected_integrations, ctx.tool_call_format);
     if !integrations.trim().is_empty() {
         out.push_str(integrations.trim_end());
@@ -99,6 +108,100 @@ pub fn build(ctx: &PromptContext<'_>) -> Result<String> {
     }
 
     Ok(out)
+}
+
+/// Render `## Capabilities not in your tool list` — the specialists whose
+/// delegate tool a tool pack is currently withholding.
+///
+/// This block is **generated, not written**, and that is the whole point. The
+/// routing table it replaces was prose in `prompt.md` naming fifteen tools,
+/// none of it conditioned on the live tool set, and ten of those names were
+/// tools a pack had withheld: the prompt taught the model to call something it
+/// could not see, and nothing in the build compared the two. Deriving the rows
+/// from the same registry `collect_orchestrator_tools` synthesises the
+/// delegates from means a pack change moves both halves at once.
+///
+/// **Advertised specialists are deliberately absent.** Their `when_to_use` is
+/// already their tool description on the wire, and restating it here would be
+/// the duplication `orchestrator/agent.toml` warns about, charged twice per
+/// turn. Only a withheld specialist needs prose, because its description is
+/// the thing the model cannot see.
+fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
+    // Empty is the harness's "everything is visible" sentinel, not "nothing
+    // visible" — with no filter, nothing is withheld and the section is void.
+    if ctx.visible_tool_names.is_empty() {
+        return String::new();
+    }
+    let Some(registry) = AgentDefinitionRegistry::global() else {
+        tracing::debug!("[orchestrator-prompt] no agent registry; withheld-specialist section omitted");
+        return String::new();
+    };
+    let Some(definition) = registry.get(ctx.agent_id) else {
+        return String::new();
+    };
+
+    let mut rows: Vec<(String, String, &'static str)> = Vec::new();
+    for entry in &definition.subagents {
+        // `Skills(_)` expands to `delegate_to_integrations_agent`, which the
+        // `## Connected Integrations` block below documents in full.
+        let SubagentEntry::AgentId(agent_id) = entry else {
+            continue;
+        };
+        // Runtime-only, never given a delegate tool — see the same skip in
+        // `collect_orchestrator_tools`.
+        if agent_id == "summarizer" {
+            continue;
+        }
+        let Some(target) = registry.get(agent_id) else {
+            continue;
+        };
+        let tool_name = target
+            .delegate_name
+            .clone()
+            .unwrap_or_else(|| format!("delegate_{}", target.id));
+        if ctx.visible_tool_names.contains(&tool_name) {
+            continue;
+        }
+        let Some(pack) = toolpacks::pack_for_tool(&tool_name) else {
+            // Not advertised and not packed: the agent is compiled out or the
+            // belt never listed it, so there is no route to describe.
+            continue;
+        };
+        rows.push((tool_name, first_sentence(&target.when_to_use), pack.id));
+    }
+
+    if rows.is_empty() {
+        return String::new();
+    }
+    tracing::debug!(
+        count = rows.len(),
+        "[orchestrator-prompt] rendering withheld-specialist routing"
+    );
+
+    let mut out = String::from(
+        "## Capabilities not in your tool list\n\n         These exist but their schemas are not loaded. Reach one with          `use_skill { \"skill\": \"<skill>\", \"tool\": \"<tool>\", \"args\": { … } }`;          call `use_skill` with the `skill` alone first to read the tool's arguments.          Do not tell the user a capability is unavailable because it is listed here.\n\n",
+    );
+    for (tool, intent, pack) in rows {
+        let _ = writeln!(out, "- {intent} — skill `{pack}`, tool `{tool}`.");
+    }
+    out
+}
+
+/// The first sentence of `text`, or a hard-capped prefix when it has none.
+///
+/// `when_to_use` is written as a paragraph for the tool description; one
+/// sentence is the routing signal and the rest is detail the model only needs
+/// once it has loaded the schema.
+fn first_sentence(text: &str) -> String {
+    let text = text.trim();
+    if let Some(end) = text.find(". ") {
+        return text[..=end].trim_end().to_string();
+    }
+    if text.chars().count() <= 200 {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(200).collect();
+    format!("{}…", cut.trim_end())
 }
 
 /// Render the `## Installed Skills` section listing locally installed
