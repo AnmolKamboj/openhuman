@@ -200,7 +200,19 @@ impl PromptSection for MemoryWriteSection {
 }
 
 /// The retrieval tools [`MemoryAccessSection`] is keyed on.
-pub const MEMORY_READ_TOOLS: [&str; 2] = ["memory_recall", "memory_search"];
+///
+/// `retrieve_memory` is the **delegate** to the memory sub-agent, synthesised
+/// from `delegate_name` in `memory/agent/agent/agent.toml`, and it belongs here
+/// for the same reason the two direct tools do: the section is a rule about
+/// what the model must do before claiming something is not stored, and an agent
+/// holding the delegate can retrieve. Keying only on the direct names meant an
+/// orchestrator whose memory arrives by delegation — which is how the
+/// orchestrator is configured — got the tool and no rule about using it. That
+/// is the shape of the bug #6040 and #6048 were both filed for.
+///
+/// [`any_tool_offered`] already receives the delegation tools separately, so
+/// this needed no new plumbing; the list was simply the wrong list.
+pub const MEMORY_READ_TOOLS: [&str; 3] = ["memory_recall", "memory_search", "retrieve_memory"];
 
 /// The tool a preference is written through.
 pub const SAVE_PREFERENCE_TOOL: &str = "save_preference";
