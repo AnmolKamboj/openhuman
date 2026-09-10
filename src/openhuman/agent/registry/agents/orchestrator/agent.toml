@@ -245,10 +245,7 @@ named = [
     # goals" because this allowlist never named the family — capability and
     # domain gates both pass at runtime (the driver advertises `goals`), so
     # this list was the only closed layer (#5875 test session).
-    "goals_list",
-    "goals_add",
-    "goals_edit",
-    "goals_delete",
+    "goals",
     # Memory-protocol close-out (#4116). A successful `memory_store` is a durable
     # write, so the memory-protocol middleware appends a "call `update_memory_md`
     # to keep the MEMORY.md index in sync" note to the tool result and warns at run
