@@ -48,8 +48,8 @@ use super::registry::PACKS;
 pub enum GroupMode {
     /// Schemas are on the wire on every provider call.
     Advertised,
-    /// Registered and executable, but reached only through `use_skill` /
-    /// `use_skill`. The compiled-in default for every pack.
+    /// Registered and executable, but reached only through `use_skill`.
+    /// The compiled-in default for every pack.
     #[default]
     Withheld,
     /// Not registered at all — the tools do not exist for this core.
