@@ -205,6 +205,7 @@ fn equivalent_workspace_paths_share_the_same_lock_registry_entry() {
         direct.lock_identity_for_test(),
         dotted.lock_identity_for_test()
     );
+    assert_eq!(direct.root_dir(), dotted.root_dir());
 }
 
 #[cfg(unix)]
@@ -223,6 +224,7 @@ fn symlinked_workspace_paths_share_the_same_lock_registry_entry() {
         direct.lock_identity_for_test(),
         linked.lock_identity_for_test()
     );
+    assert_eq!(direct.root_dir(), linked.root_dir());
 }
 
 // ── concurrency: search cold rebuild must not block concurrent append ────────
@@ -242,7 +244,7 @@ fn symlinked_workspace_paths_share_the_same_lock_registry_entry() {
 /// serialized through one shared lock.
 #[test]
 fn search_cold_rebuild_does_not_block_concurrent_append() {
-    use std::sync::{mpsc, Arc, Barrier};
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
 
@@ -259,6 +261,16 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
             parent_thread_id: None,
             id: "t1".to_string(),
             title: "Rebuild thread".to_string(),
+            created_at: ts.clone(),
+            labels: None,
+            personality_id: None,
+        })
+        .unwrap();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t2".to_string(),
+            title: "Concurrent append target".to_string(),
             created_at: ts.clone(),
             labels: None,
             personality_id: None,
@@ -285,21 +297,24 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
     let store_search = store.clone();
     let store_append = store.clone();
 
-    // Both threads start at the same time.
-    let barrier = Arc::new(Barrier::new(2));
-    let b_search = Arc::clone(&barrier);
-    let b_append = Arc::clone(&barrier);
-
+    let (scanned_tx, scanned_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
     let search_handle = thread::spawn(move || {
-        b_search.wait();
-        store_search.search_cross_thread_messages("seed message", 5, None)
+        let _lifecycle = store_search.locks.lifecycle.read();
+        store_search.prime_index_if_cold_with_hook(|| {
+            scanned_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        })?;
+        store_search.with_index(|idx| idx.search("seed message", 5, None))
     });
 
+    scanned_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("cold rebuild did not reach the post-scan test seam");
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        b_append.wait();
         let result = store_append.append_message(
-            "t1",
+            "t2",
             ConversationMessage {
                 id: "concurrent-append".to_string(),
                 content: "written during cold rebuild".to_string(),
@@ -312,18 +327,18 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
         let _ = tx.send(result);
     });
 
-    // append_message must complete even if the rebuild is in progress. On the
-    // old code this blocked for the full rebuild duration; on fixed code the
-    // two operations proceed concurrently. The 30 s budget tolerates a slow CI
-    // runner — a genuine deadlock never completes, so a regression still fails.
+    // The unrelated append must finish while publication is deliberately
+    // paused. Releasing the rebuild first would let root-wide serialization
+    // pass this test eventually and prove nothing about overlap.
     let append_result = rx
-        .recv_timeout(Duration::from_secs(30))
-        .expect("append_message did not complete within 30 s — likely blocked by cold rebuild");
+        .recv_timeout(Duration::from_secs(5))
+        .expect("unrelated append blocked behind a cold rebuild");
     assert!(
         append_result.is_ok(),
         "append failed: {:?}",
         append_result.err()
     );
+    release_tx.send(()).unwrap();
 
     let search_result = search_handle.join().expect("search thread panicked");
     assert!(
@@ -331,6 +346,103 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
         "search failed: {:?}",
         search_result.err()
     );
+}
+
+#[test]
+fn delete_during_cold_prime_cannot_republish_stale_messages() {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    let (temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t1".to_string(),
+            title: "Delete race".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .unwrap();
+    store
+        .append_message(
+            "t1",
+            ConversationMessage {
+                id: "m1".to_string(),
+                content: "hello from a soon-deleted thread".to_string(),
+                message_type: "text".to_string(),
+                extra_metadata: serde_json::json!({}),
+                sender: "user".to_string(),
+                created_at: "2026-04-10T12:01:00Z".to_string(),
+            },
+        )
+        .unwrap();
+    let store_prime = store.clone();
+    let store_delete = store.clone();
+    let root = store.root_dir();
+    CONVERSATION_INDEX_CACHE.lock().remove(&root);
+
+    let (scanned_tx, scanned_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let prime = thread::spawn(move || {
+        let _lifecycle = store_prime.locks.lifecycle.read();
+        store_prime.prime_index_if_cold_with_hook(|| {
+            scanned_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        })
+    });
+    scanned_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("prime did not reach post-scan seam");
+
+    let (delete_tx, delete_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let result = store_delete.delete_thread("t1", "2026-04-10T12:02:00Z");
+        delete_tx.send(result).unwrap();
+    });
+    assert!(
+        delete_rx.recv_timeout(Duration::from_millis(100)).is_err(),
+        "delete must wait for the cold prime's lifecycle read guard"
+    );
+    release_tx.send(()).unwrap();
+    prime.join().unwrap().unwrap();
+    assert!(delete_rx
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+        .unwrap());
+
+    let hits = store
+        .search_cross_thread_messages("hello", 10, None)
+        .unwrap();
+    assert!(hits.is_empty(), "deleted content was republished: {hits:?}");
+    drop(temp);
+}
+
+#[test]
+fn delete_and_purge_evict_historical_thread_locks() {
+    let (_temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "t1".to_string(),
+            title: "Eviction".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .unwrap();
+    let _ = store.thread_lock_identity_for_test("t1");
+    assert_eq!(store.thread_lock_count_for_test(), 1);
+    assert!(store.delete_thread("t1", "2026-04-10T12:02:00Z").unwrap());
+    assert_eq!(store.thread_lock_count_for_test(), 0);
+
+    for index in 0..100 {
+        let _ = store.thread_lock_identity_for_test(&format!("historical-{index}"));
+    }
+    assert_eq!(store.thread_lock_count_for_test(), 100);
+    store.purge_threads().unwrap();
+    assert_eq!(store.thread_lock_count_for_test(), 0);
 }
 
 // ── legacy workspace (pre-Stats backfill path) ───────────────────────────────

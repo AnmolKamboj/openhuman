@@ -188,10 +188,15 @@ fn a_harness_runs_a_turn_against_the_provider_it_was_given() {
                         .await
                 });
             }
-            let mut outcomes = Vec::with_capacity(100);
-            while let Some(outcome) = turns.join_next().await {
-                outcomes.push(outcome.expect("concurrent turn task did not panic"));
-            }
+            let outcomes = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                let mut outcomes = Vec::with_capacity(100);
+                while let Some(outcome) = turns.join_next().await {
+                    outcomes.push(outcome.expect("concurrent turn task did not panic"));
+                }
+                outcomes
+            })
+            .await
+            .expect("100 concurrent turns did not settle within 20 seconds");
             let elapsed = started.elapsed();
             eprintln!("100 concurrent library turns completed in {elapsed:?}");
             assert!(

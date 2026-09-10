@@ -190,12 +190,14 @@ impl Drop for Harness {
             // `keep()` hands back the path without removing the directory so
             // we can do the retried removal ourselves.
             let root = temp.keep();
+            // Keep clearing through the whole bounded settling window. A
+            // successful first removal is not sufficient: a detached session
+            // writer can recreate the directory immediately afterward.
             for _ in 0..20 {
-                if std::fs::remove_dir_all(&root).is_ok() {
-                    break;
-                }
+                let _ = std::fs::remove_dir_all(&root);
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
+            let _ = std::fs::remove_dir_all(&root);
         }
         log::debug!("[embed][harness] released");
     }

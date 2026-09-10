@@ -113,7 +113,7 @@ pub struct ConversationPurgeStats {
 /// Workspace-rooted handle that reads and writes the JSONL conversation log.
 #[derive(Debug, Clone)]
 pub struct ConversationStore {
-    workspace_dir: PathBuf,
+    root_dir: PathBuf,
     locks: std::sync::Arc<locks::StoreLocks>,
 }
 
@@ -125,10 +125,10 @@ impl ConversationStore {
     /// `root_dir` in `store_index.rs`), so the caller's workspace is the whole
     /// input and there is nothing for a config type to add.
     pub fn new(workspace_dir: PathBuf) -> Self {
-        let root = workspace_dir.join("memory").join("conversations");
+        let root = locks::normalized_root(&workspace_dir.join("memory").join("conversations"));
         let locks = locks::for_root(&root);
         Self {
-            workspace_dir,
+            root_dir: root,
             locks,
         }
     }
@@ -141,6 +141,11 @@ impl ConversationStore {
     #[cfg(test)]
     pub(super) fn thread_lock_identity_for_test(&self, thread_id: &str) -> usize {
         std::sync::Arc::as_ptr(&self.locks.thread(thread_id)) as usize
+    }
+
+    #[cfg(test)]
+    pub(super) fn thread_lock_count_for_test(&self) -> usize {
+        self.locks.thread_count()
     }
 }
 

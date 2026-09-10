@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 
 use parking_lot::{Mutex, RwLock};
@@ -18,6 +19,7 @@ pub(super) struct StoreLocks {
     /// Serializes reads and appends of the root's shared `threads.jsonl`.
     pub(super) metadata: Mutex<()>,
     threads: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    deletion_generation: AtomicU64,
 }
 
 impl StoreLocks {
@@ -29,6 +31,29 @@ impl StoreLocks {
                 .or_insert_with(|| Arc::new(Mutex::new(()))),
         )
     }
+
+    pub(super) fn deletion_generation(&self) -> u64 {
+        self.deletion_generation.load(Ordering::Acquire)
+    }
+
+    pub(super) fn record_deletion(&self) {
+        self.deletion_generation.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Call only while holding the lifecycle write guard.
+    pub(super) fn remove_thread(&self, thread_id: &str) {
+        self.threads.lock().remove(thread_id);
+    }
+
+    /// Call only while holding the lifecycle write guard.
+    pub(super) fn clear_threads(&self) {
+        self.threads.lock().clear();
+    }
+
+    #[cfg(test)]
+    pub(super) fn thread_count(&self) -> usize {
+        self.threads.lock().len()
+    }
 }
 
 /// Separate `ConversationStore::new` calls for the same root must coordinate.
@@ -38,7 +63,7 @@ static ROOTS: LazyLock<Mutex<HashMap<PathBuf, Weak<StoreLocks>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub(super) fn for_root(root: &Path) -> Arc<StoreLocks> {
-    let root = stable_root_key(root);
+    let root = normalized_root(root);
     let mut roots = ROOTS.lock();
     if let Some(existing) = roots.get(&root).and_then(Weak::upgrade) {
         return existing;
@@ -51,7 +76,7 @@ pub(super) fn for_root(root: &Path) -> Arc<StoreLocks> {
 /// Resolve aliases even before the conversation directory itself exists.
 /// Canonicalizing the nearest existing ancestor handles symlinks and `..`;
 /// the missing suffix is then appended without touching the filesystem.
-fn stable_root_key(root: &Path) -> PathBuf {
+pub(super) fn normalized_root(root: &Path) -> PathBuf {
     if let Ok(canonical) = root.canonicalize() {
         return canonical;
     }

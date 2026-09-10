@@ -286,12 +286,16 @@ impl ConversationStore {
     /// Append a `Delete` entry and remove the thread's messages file. Returns
     /// `false` if the thread did not exist.
     pub fn delete_thread(&self, thread_id: &str, deleted_at: &str) -> Result<bool, String> {
-        let _lifecycle = self.locks.lifecycle.read();
+        // Deletion also evicts the thread's lock entry. Exclusive lifecycle
+        // ownership prevents a new operation from retaining the old lock
+        // while the registry entry is replaced.
+        let _lifecycle = self.locks.lifecycle.write();
         let thread_lock = self.locks.thread(thread_id);
         let _thread = thread_lock.lock();
         {
             let _metadata = self.locks.metadata.lock();
             if !self.thread_exists_unlocked(thread_id)? {
+                self.locks.remove_thread(thread_id);
                 return Ok(false);
             }
             let root = self.ensure_root()?;
@@ -303,6 +307,7 @@ impl ConversationStore {
                     deleted_at: deleted_at.to_string(),
                 },
             )?;
+            self.locks.record_deletion();
         }
         let messages_path = self.thread_messages_path(thread_id);
         match fs::remove_file(&messages_path) {
@@ -323,6 +328,7 @@ impl ConversationStore {
                 idx.remove_thread(thread_id);
             }
         }
+        self.locks.remove_thread(thread_id);
         Ok(true)
     }
 
@@ -343,6 +349,8 @@ impl ConversationStore {
             let mut cache = CONVERSATION_INDEX_CACHE.lock();
             cache.remove(&root);
         }
+        self.locks.record_deletion();
+        self.locks.clear_threads();
         Ok(stats)
     }
 }

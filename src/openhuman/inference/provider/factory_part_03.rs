@@ -529,6 +529,13 @@ pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    verify_backend_session_active(config)
+}
+
+/// Managed `OpenhumanJwt` inference always needs the backend bearer, including
+/// in a Library host. Library mode exempts caller-owned provider credentials;
+/// it cannot manufacture a TinyHumans account credential.
+pub(crate) fn verify_backend_session_active(config: &Config) -> anyhow::Result<()> {
     // Fast path: the scheduler gate already knows the session is dead.
     if crate::openhuman::cron::scheduler_gate::is_signed_out() {
         anyhow::bail!(
