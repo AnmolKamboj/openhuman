@@ -525,6 +525,26 @@ async fn build_session_agent_uses_profile_memory_instead_of_root_memory() {
 /// #6040 — the memory-access instruction is about the memory tools, not the
 /// learning subsystem, so it must be in the prompt with `learning.enabled`
 /// off (the default) whenever a retrieval tool is registered and visible.
+///
+/// Passes the definition explicitly via [`builtin_def`] rather than letting the
+/// factory resolve `"orchestrator"` from the registry, and that is load-bearing
+/// rather than ceremony.
+///
+/// The section is gated on `memory_recall` being **registered and visible after
+/// tool filtering** (`any_tool_offered`), and the visible set comes from the
+/// resolved definition's tool scope. With `None` here the factory reads
+/// `AgentDefinitionRegistry`'s `static GLOBAL: OnceLock<…>`
+/// (`harness/definition_part_02.rs:24`) — first-write-wins and never reset — so
+/// the test was asserting against whichever definition set some *other* test in
+/// the binary had installed first. That is exactly the hazard `builtin_def`
+/// was written for: it loads fresh from the bundled TOML, "entirely independent
+/// of the global registry singleton".
+///
+/// It is why this passed run alone and failed inside the full
+/// `openhuman::agent` run (`ci-lite` scopes the Rust lane per changed domain,
+/// so the whole scope only runs when a PR touches `agent/`), and why the
+/// sibling write-side test in `builder_tests_part_03_tests.rs` never flaked —
+/// it already supplied `builtin_def("orchestrator")`.
 #[tokio::test]
 async fn memory_access_instruction_is_present_with_learning_disabled() {
     use crate::openhuman::agent::context::prompt::LearnedContextData;
@@ -535,11 +555,20 @@ async fn memory_access_instruction_is_present_with_learning_disabled() {
     let mut config = test_config(&tmp);
     config.learning.enabled = false;
 
-    let agent = Agent::build_session_agent_inner(&config, "orchestrator", None, None, false, None)
-        .expect("build session agent");
+    let orchestrator = builtin_def("orchestrator");
+    let agent = Agent::build_session_agent_inner(
+        &config,
+        "orchestrator",
+        Some(&orchestrator),
+        None,
+        false,
+        None,
+    )
+    .expect("build session agent");
     let prompt = agent
         .build_system_prompt(LearnedContextData::default())
         .expect("build_system_prompt");
+
     assert!(
         prompt.contains(MEMORY_ACCESS_INSTRUCTION.trim()),
         "the memory-access section must not be gated on learning.enabled"
