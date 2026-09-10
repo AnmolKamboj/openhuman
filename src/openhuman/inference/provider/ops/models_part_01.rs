@@ -92,16 +92,36 @@ fn url_is_credential_safe(url: &str) -> bool {
 /// not a broken provider. For a BYOK provider a 401 IS the actionable error (a
 /// wrong or revoked API key); swallowing it there would strand the user with a
 /// silently empty dropdown and no clue why.
+/// Whether the app session token will actually be attached to the managed
+/// request — the input to [`managed_401_means_signed_out`].
+///
+/// This is deliberately not "is there a session": `url_is_credential_safe`
+/// refuses to put a bearer token on a non-https, non-loopback URL, and in that
+/// case the request goes out unauthenticated even though a live session exists.
+/// A 401 on that request describes the misconfigured URL, not the session.
+///
+/// Note the token-emptiness check in the caller is subsumed here: whenever
+/// `managed_token` is non-empty it *is* the token being sent, so a non-empty
+/// managed token plus a safe URL is exactly the attach condition.
+fn managed_session_attaches(managed_token: &str, url: &str) -> bool {
+    !managed_token.is_empty() && url_is_credential_safe(url)
+}
+
 fn managed_401_means_signed_out(
     status: u16,
     auth_style: crate::openhuman::config::schema::cloud_providers::AuthStyle,
-    managed_token: &str,
+    managed_session_attached: bool,
 ) -> bool {
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
-    // `managed_token` non-empty means the request actually carried the app
-    // session. When it is empty the request went out with the provider-scoped
-    // fallback key instead, and a 401 then means THAT key is wrong or revoked —
-    // an actionable credential error that must not be hidden behind an empty
-    // catalog just because the entry's auth_style is OpenhumanJwt (review, #6206).
-    status == 401 && auth_style == AuthStyle::OpenhumanJwt && !managed_token.is_empty()
+    // Only a 401 on a request that actually carried the app session token says
+    // anything about the session. The two other ways to reach a 401 here are
+    // real, actionable faults that must not be hidden behind an empty catalog
+    // just because the entry's auth_style is OpenhumanJwt (review, #6206):
+    //
+    //   * no session, so the request went out on the provider-scoped fallback
+    //     key — a 401 means THAT key is wrong or revoked.
+    //   * a live session that the credential-safety guard refused to attach
+    //     (non-https, non-loopback backend URL) — the request was
+    //     unauthenticated, and the misconfigured URL is the thing to report.
+    status == 401 && auth_style == AuthStyle::OpenhumanJwt && managed_session_attached
 }

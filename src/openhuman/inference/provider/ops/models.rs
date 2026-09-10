@@ -214,6 +214,11 @@ pub async fn list_configured_models_from_config(
         validate_openrouter_api_key(&client, &routing.endpoint, &api_key).await?;
     }
 
+    // Whether the app session token actually made it onto the wire. It is not
+    // the same question as "is `managed_token` non-empty": the credential-safety
+    // guard below can decline to attach it, and a 401 on an unauthenticated
+    // request must not be read as a stale session (review, #6206).
+    let mut managed_session_attached = false;
     let mut request = client.get(&models_url);
     if routing.using_oauth {
         request = request
@@ -249,6 +254,7 @@ pub async fn list_configured_models_from_config(
             } else {
                 api_key.as_str()
             };
+            managed_session_attached = managed_session_attaches(&managed_token, &models_url);
             // Never put a bearer credential on the wire in clear text. `https`
             // or a loopback host only — loopback stays allowed so a local
             // backend (BACKEND_URL=http://127.0.0.1:...) still works in dev.
@@ -292,7 +298,8 @@ pub async fn list_configured_models_from_config(
         // Scoped to the managed provider on purpose: for a BYOK provider a 401
         // IS the actionable error (a wrong or revoked API key), and hiding it
         // would strand the user with a silently empty dropdown.
-        if managed_401_means_signed_out(status.as_u16(), entry.auth_style, &managed_token) {
+        if managed_401_means_signed_out(status.as_u16(), entry.auth_style, managed_session_attached)
+        {
             log::info!(
                 "[providers][list_models] managed catalog unavailable — backend rejected the session token (401); returning an empty list"
             );

@@ -1,6 +1,6 @@
 use super::{
-    managed_401_means_signed_out, resolve_local_runtime_key, synthesize_managed_entry,
-    url_is_credential_safe,
+    managed_401_means_signed_out, managed_session_attaches, resolve_local_runtime_key,
+    synthesize_managed_entry, url_is_credential_safe,
 };
 use crate::openhuman::config::Config;
 
@@ -94,7 +94,7 @@ fn a_managed_401_reads_as_signed_out() {
     assert!(managed_401_means_signed_out(
         401,
         AuthStyle::OpenhumanJwt,
-        "session-jwt"
+        true
     ));
 }
 
@@ -107,7 +107,52 @@ fn a_401_against_the_fallback_key_still_surfaces() {
     assert!(!managed_401_means_signed_out(
         401,
         AuthStyle::OpenhumanJwt,
-        ""
+        false
+    ));
+}
+
+/// A live session is not enough on its own: the credential-safety guard refuses
+/// to attach a bearer token to a non-https, non-loopback URL, so the request
+/// goes out unauthenticated. Reporting that 401 as signed-out would hide the
+/// misconfigured backend URL behind an empty catalog — the same failure this
+/// whole change exists to stop.
+#[test]
+fn a_session_is_not_attached_to_an_unsafe_url() {
+    for url in [
+        "http://api.example.com/openai/v1/models",
+        "http://192.168.1.10:8080/openai/v1/models",
+    ] {
+        assert!(
+            !managed_session_attaches("session-jwt", url),
+            "a live session must not be attached to {url}"
+        );
+    }
+    for url in [
+        "https://api.tinyhumans.ai/openai/v1/models",
+        "http://127.0.0.1:8787/openai/v1/models",
+    ] {
+        assert!(
+            managed_session_attaches("session-jwt", url),
+            "a live session must be attached to {url}"
+        );
+    }
+    // No session: nothing to attach, whatever the URL.
+    assert!(!managed_session_attaches(
+        "",
+        "https://api.tinyhumans.ai/openai/v1/models"
+    ));
+}
+
+/// The two halves composed: a live session withheld by the safety guard reaches
+/// the 401 classifier as "not attached", so the error still surfaces.
+#[test]
+fn a_401_on_a_token_the_safety_guard_withheld_still_surfaces() {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    let attached = managed_session_attaches("session-jwt", "http://api.example.com/v1/models");
+    assert!(!managed_401_means_signed_out(
+        401,
+        AuthStyle::OpenhumanJwt,
+        attached
     ));
 }
 
@@ -119,13 +164,13 @@ fn other_statuses_and_providers_still_surface_the_error() {
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
     for style in [AuthStyle::Bearer, AuthStyle::Anthropic, AuthStyle::None] {
         assert!(
-            !managed_401_means_signed_out(401, style, "session-jwt"),
+            !managed_401_means_signed_out(401, style, true),
             "{style:?} 401"
         );
     }
     for status in [400, 403, 404, 429, 500, 503] {
         assert!(
-            !managed_401_means_signed_out(status, AuthStyle::OpenhumanJwt, "session-jwt"),
+            !managed_401_means_signed_out(status, AuthStyle::OpenhumanJwt, true),
             "managed {status}"
         );
     }
