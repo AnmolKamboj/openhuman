@@ -1,4 +1,7 @@
-use super::{resolve_local_runtime_key, synthesize_managed_entry, url_is_credential_safe};
+use super::{
+    managed_401_means_signed_out, resolve_local_runtime_key, synthesize_managed_entry,
+    url_is_credential_safe,
+};
 use crate::openhuman::config::Config;
 
 #[test]
@@ -78,5 +81,32 @@ fn managed_entry_is_synthesized_when_the_config_row_is_missing() {
 fn other_slugs_do_not_synthesize_a_managed_entry() {
     for slug in ["openai", "openrouter", "ollama", "", "openhuman-x"] {
         assert!(synthesize_managed_entry(slug).is_none(), "{slug}");
+    }
+}
+
+/// A managed 401 is a signed-out state, not a provider failure: the stored
+/// session was rejected server-side while its local `exp` was still valid, so
+/// the picker rendered "could not load models" for a user whose only problem
+/// was a stale session.
+#[test]
+fn a_managed_401_reads_as_signed_out() {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    assert!(managed_401_means_signed_out(401, AuthStyle::OpenhumanJwt));
+}
+
+/// Everything else must keep surfacing the error. A BYOK 401 is the actionable
+/// case (wrong or revoked key) and must not be swallowed into an empty list,
+/// and a managed non-401 is a genuine provider failure.
+#[test]
+fn other_statuses_and_providers_still_surface_the_error() {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    for style in [AuthStyle::Bearer, AuthStyle::Anthropic, AuthStyle::None] {
+        assert!(!managed_401_means_signed_out(401, style), "{style:?} 401");
+    }
+    for status in [400, 403, 404, 429, 500, 503] {
+        assert!(
+            !managed_401_means_signed_out(status, AuthStyle::OpenhumanJwt),
+            "managed {status}"
+        );
     }
 }

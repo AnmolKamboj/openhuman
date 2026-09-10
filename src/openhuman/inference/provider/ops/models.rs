@@ -255,6 +255,28 @@ pub async fn list_configured_models_from_config(
 
     let status = response.status();
     if !status.is_success() {
+        // A 401 from the MANAGED catalog means the caller is not signed in —
+        // the stored session was rejected server-side even though its local
+        // `exp` was still valid, so `require_live_session_token` handed us a
+        // token the backend no longer honours. That is a signed-out state, not
+        // a provider failure, and rendering it as "could not load models" put a
+        // red error under managed for a user whose only problem is a stale
+        // session. Managed stays selectable on its automatic routing, so return
+        // an empty catalog and let the app's normal auth surfaces prompt for
+        // re-authentication.
+        //
+        // Scoped to the managed provider on purpose: for a BYOK provider a 401
+        // IS the actionable error (a wrong or revoked API key), and hiding it
+        // would strand the user with a silently empty dropdown.
+        if managed_401_means_signed_out(status.as_u16(), entry.auth_style) {
+            log::info!(
+                "[providers][list_models] managed catalog unavailable — backend rejected the session token (401); returning an empty list"
+            );
+            return Ok(crate::rpc::RpcOutcome::new(
+                serde_json::json!({ "models": Vec::<ModelInfo>::new() }),
+                vec!["session not accepted; managed catalog is empty".to_string()],
+            ));
+        }
         let body = response.text().await.unwrap_or_default();
         let sanitized = sanitize_api_error(&body);
         let truncated = crate::openhuman::util::truncate_with_ellipsis(&sanitized, 300);
@@ -591,6 +613,23 @@ pub fn model_items_from_body(body: &serde_json::Value) -> Option<Vec<serde_json:
         .and_then(|d| d.as_array())
         .or_else(|| body.get("models").and_then(|d| d.as_array()))
         .cloned()
+}
+
+/// Whether a non-2xx from a `/models` probe should be read as "signed out"
+/// rather than a provider failure.
+///
+/// Only for the MANAGED provider, and only on 401. A managed 401 means the
+/// stored session was rejected server-side — often while its local `exp` is
+/// still valid, so nothing upstream flagged it — which is a signed-out state,
+/// not a broken provider. For a BYOK provider a 401 IS the actionable error (a
+/// wrong or revoked API key); swallowing it there would strand the user with a
+/// silently empty dropdown and no clue why.
+fn managed_401_means_signed_out(
+    status: u16,
+    auth_style: crate::openhuman::config::schema::cloud_providers::AuthStyle,
+) -> bool {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    status == 401 && auth_style == AuthStyle::OpenhumanJwt
 }
 
 /// Whether a bearer credential may be attached to this URL.
