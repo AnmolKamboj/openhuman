@@ -346,6 +346,7 @@ impl Tool for NamedTool {
     }
 }
 
+/// A dynamic-tool list carrying exactly these names, in this order.
 fn dynamic(names: &[&'static str]) -> Vec<Box<dyn Tool>> {
     names
         .iter()
@@ -353,14 +354,15 @@ fn dynamic(names: &[&'static str]) -> Vec<Box<dyn Tool>> {
         .collect()
 }
 
+/// The surviving names, so a test can assert on content *and* order.
 fn names_of(tools: &[Box<dyn Tool>]) -> Vec<&str> {
     tools.iter().map(|t| t.name()).collect()
 }
 
+/// The shape the runner actually builds: Composio actions plus the
+/// progressive-disclosure handoff tool, with spawn tools interleaved.
 #[test]
 fn dynamic_tools_keep_ordinary_actions_and_lose_spawn_tools() {
-    // The shape the runner actually builds: Composio actions plus the
-    // progressive-disclosure handoff tool, with spawn tools interleaved.
     let mut tools = dynamic(&[
         "GMAIL_FETCH_EMAILS",
         "spawn_subagent",
@@ -383,11 +385,11 @@ fn dynamic_tools_keep_ordinary_actions_and_lose_spawn_tools() {
     );
 }
 
+/// The whole reason the strip lives here rather than relying on the
+/// registration-time backstop: that backstop matches `delegate_*` by prefix and
+/// would keep `plan`, which is `planner`'s `delegate_name`.
 #[test]
 fn dynamic_tools_lose_unprefixed_delegate_name_overrides() {
-    // The whole reason the strip lives here rather than relying on the
-    // registration-time backstop: that backstop matches `delegate_*` by prefix
-    // and would keep `plan`, which is `planner`'s `delegate_name`.
     let tmp = tempfile::TempDir::new().unwrap();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global(tmp.path())
         .unwrap();
@@ -402,10 +404,10 @@ fn dynamic_tools_lose_unprefixed_delegate_name_overrides() {
     );
 }
 
+/// The live case today: no dynamic tool is named after a spawn tool, so the
+/// strip must be a no-op rather than a silent narrowing of the surface.
 #[test]
 fn a_dynamic_tool_list_without_spawn_tools_is_untouched() {
-    // The live case today: no dynamic tool is named after a spawn tool, so the
-    // strip must be a no-op rather than a silent narrowing of the surface.
     let mut tools = dynamic(&["GMAIL_FETCH_EMAILS", "extract_from_result"]);
     strip_spawn_tools_from_dynamic(&mut tools, "researcher");
 

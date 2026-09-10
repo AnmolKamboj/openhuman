@@ -452,6 +452,7 @@ async fn cap_hit_summarizes_a_resumable_checkpoint() {
 struct WarnSink(Arc<std::sync::Mutex<Vec<String>>>);
 
 impl WarnSink {
+    /// Every captured message containing `marker`, in emission order.
     fn matching(&self, marker: &str) -> Vec<String> {
         self.0
             .lock()
@@ -466,6 +467,7 @@ impl WarnSink {
 struct WarnLayer(WarnSink);
 
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnLayer {
+    /// Record the `message` field of every `WARN` event; ignore other levels.
     fn on_event(
         &self,
         event: &tracing::Event<'_>,
@@ -476,6 +478,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnLayer {
         }
         struct Message(Option<String>);
         impl tracing::field::Visit for Message {
+            /// Keep the formatted `message` field and discard the rest.
             fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
                 if field.name() == "message" {
                     self.0 = Some(format!("{value:?}"));
@@ -497,15 +500,19 @@ struct SpawnProbeTool(Arc<std::sync::atomic::AtomicBool>);
 
 #[async_trait]
 impl Tool for SpawnProbeTool {
+    /// The exact name the #4452 strip must match.
     fn name(&self) -> &str {
         "spawn_subagent"
     }
+    /// Irrelevant to the strip, which reads only the name.
     fn description(&self) -> &str {
         "spawn a sub-agent"
     }
+    /// Irrelevant to the strip, which reads only the name.
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object"})
     }
+    /// Records the dispatch. Reaching this line means the test has failed.
     async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
         self.0.store(true, Ordering::SeqCst);
         Ok(ToolResult::success("spawned"))
@@ -519,10 +526,12 @@ struct SpawnAttemptProvider {
 
 #[async_trait]
 impl ChatModel<()> for SpawnAttemptProvider {
+    /// Native tool calling, so the harness advertises tools normally.
     fn profile(&self) -> Option<&ModelProfile> {
         Some(native_tool_profile())
     }
 
+    /// Ask for `spawn_subagent` on the first turn, then finish on the second.
     async fn invoke(
         &self,
         _state: &(),
@@ -590,12 +599,12 @@ async fn run_with_spawn_tool_in_parent_surface(allowed: HashSet<String>) -> (boo
     (executed.load(Ordering::SeqCst), sink.matching(REFUSAL))
 }
 
+/// The real shape: `run_typed_mode` has already stripped `spawn_subagent` from
+/// the allowlist, so the registration-time backstop is re-refusing a name that
+/// was never admitted. That is the happy path and must not warn (#6157) — the
+/// old unconditional warn fired here on every sub-agent run.
 #[tokio::test]
 async fn a_sub_agent_cannot_reach_a_spawn_tool_and_the_healthy_run_is_quiet() {
-    // The real shape: `run_typed_mode` has already stripped `spawn_subagent`
-    // from the allowlist, so the registration-time backstop is re-refusing a
-    // name that was never admitted. That is the happy path and must not warn
-    // (#6157) — the old unconditional warn fired here on every sub-agent run.
     let allowed = HashSet::from(["echo".to_string()]);
     let (executed, warnings) = run_with_spawn_tool_in_parent_surface(allowed).await;
 
@@ -609,11 +618,11 @@ async fn a_sub_agent_cannot_reach_a_spawn_tool_and_the_healthy_run_is_quiet() {
     );
 }
 
+/// The misbuilt-allowlist case the backstop exists for: `spawn_subagent` is
+/// admitted, so registration must still refuse it *and* say so — this is the one
+/// shape in which the warning carries information.
 #[tokio::test]
 async fn an_allowlist_that_readmits_a_spawn_tool_is_refused_loudly() {
-    // The misbuilt-allowlist case the backstop exists for: `spawn_subagent` is
-    // admitted, so registration must still refuse it *and* say so — this is the
-    // one shape in which the warning carries information.
     let allowed = HashSet::from(["echo".to_string(), "spawn_subagent".to_string()]);
     let (executed, warnings) = run_with_spawn_tool_in_parent_surface(allowed).await;
 
