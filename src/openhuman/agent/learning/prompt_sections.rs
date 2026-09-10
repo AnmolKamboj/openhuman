@@ -155,14 +155,19 @@ impl PromptSection for MemoryAccessSection {
 pub struct MemoryWriteSection {
     preferences: bool,
     facts: bool,
+    delegate: bool,
 }
 
 impl MemoryWriteSection {
     /// `preferences` = `save_preference` is offered here, `facts` =
-    /// `memory_store` is.
+    /// `memory_store` is, `delegate` = [`MEMORY_WRITE_DELEGATE_TOOL`] is.
     #[must_use]
-    pub fn new(preferences: bool, facts: bool) -> Self {
-        Self { preferences, facts }
+    pub fn new(preferences: bool, facts: bool, delegate: bool) -> Self {
+        Self {
+            preferences,
+            facts,
+            delegate,
+        }
     }
 }
 
@@ -173,11 +178,14 @@ impl MemoryWriteSection {
 /// Empty when neither tool is offered — which is also when nothing registers
 /// the section, so the empty string is a guard, not a path in normal use.
 #[must_use]
-pub fn memory_write_instruction(preferences: bool, facts: bool) -> String {
+pub fn memory_write_instruction(preferences: bool, facts: bool, delegate: bool) -> String {
     let route = match (preferences, facts) {
         (true, true) => "— `save_preference` for preferences, `memory_store` for everything else",
         (true, false) => "with `save_preference`",
         (false, true) => "with `memory_store`",
+        // Only when neither direct tool is held, so an agent that has one
+        // renders exactly the text it rendered before this arm existed.
+        (false, false) if delegate => "with `manage_profile_memory`",
         (false, false) => return String::new(),
     };
     format!(
@@ -195,7 +203,11 @@ impl PromptSection for MemoryWriteSection {
     }
 
     fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
-        Ok(memory_write_instruction(self.preferences, self.facts))
+        Ok(memory_write_instruction(
+            self.preferences,
+            self.facts,
+            self.delegate,
+        ))
     }
 }
 
@@ -219,6 +231,22 @@ pub const SAVE_PREFERENCE_TOOL: &str = "save_preference";
 
 /// The tool every other remembered fact is written through.
 pub const MEMORY_STORE_TOOL: &str = "memory_store";
+
+/// The delegate an agent writes through when it holds neither direct write
+/// tool.
+///
+/// Synthesised from `profile_memory_agent`'s `delegate_name`, and the write-side
+/// counterpart of `retrieve_memory` in [`MEMORY_READ_TOOLS`]. The orchestrator
+/// is configured this way: its visible set carries this delegate and neither
+/// [`MEMORY_STORE_TOOL`] nor [`SAVE_PREFERENCE_TOOL`], so keying the section on
+/// the direct pair alone dropped the rule for the agent that needed it most —
+/// the #6048 case, "got it, saved" with no tool call behind it.
+///
+/// The section's promise survives the indirection: `profile_memory_agent` is a
+/// synchronous `worker`-tier sub-agent holding **both** direct tools, so a
+/// delegated write reaches the same store and completes inside the parent's
+/// turn.
+pub const MEMORY_WRITE_DELEGATE_TOOL: &str = "manage_profile_memory";
 
 /// The writing tools [`MemoryWriteSection`] is keyed on.
 pub const MEMORY_WRITE_TOOLS: [&str; 2] = [MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL];

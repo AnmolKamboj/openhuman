@@ -268,13 +268,21 @@ impl ArchivistHook {
                     "[archivist] summarize_entries: LLM recap segment={segment_id} entries={}",
                     entries.len()
                 );
+                // #6200: timed because this await is on the turn path — the
+                // caller's `flush_open_segment` is awaited before a turn
+                // returns — and the only bound under it today is
+                // tinyinference's 600s request default. The measurement is
+                // what a deadline should be chosen from; logging it first
+                // means the number comes from real folds rather than a guess.
+                let started = std::time::Instant::now();
                 let summary_result = fold_through_driver(&corpus_inputs, &summary_ctx).await;
+                let elapsed_ms = started.elapsed().as_millis();
 
                 match summary_result {
                     Ok(output) if !output.content.is_empty() => {
                         tracing::debug!(
                             "[archivist] summarize_entries: LLM recap ok segment={segment_id} \
-                             chars={}",
+                             chars={} elapsed_ms={elapsed_ms}",
                             output.content.len()
                         );
                         return (output.content, true);
@@ -282,13 +290,14 @@ impl ArchivistHook {
                     Ok(_) => {
                         tracing::debug!(
                             "[archivist] summarize_entries: LLM returned empty — \
-                             heuristic fallback segment={segment_id}"
+                             heuristic fallback segment={segment_id} elapsed_ms={elapsed_ms}"
                         );
                     }
                     Err(e) => {
                         tracing::warn!(
                             "[archivist] summarize_entries: LLM recap failed (non-fatal) \
-                             segment={segment_id}: {e} — heuristic fallback"
+                             segment={segment_id} elapsed_ms={elapsed_ms}: {e} — \
+                             heuristic fallback"
                         );
                     }
                 }
