@@ -665,5 +665,57 @@ fn legacy_workspace_cold_rebuild_does_not_block_concurrent_append() {
     );
 }
 
+#[test]
+fn delete_error_still_evicts_tombstoned_thread_from_warm_index() {
+    let (_temp, store) = make_store();
+    store
+        .ensure_thread(CreateConversationThread {
+            parent_thread_id: None,
+            id: "delete-error".to_string(),
+            title: "Delete error".to_string(),
+            created_at: "2026-04-10T12:00:00Z".to_string(),
+            labels: None,
+            personality_id: None,
+        })
+        .unwrap();
+    store
+        .append_message(
+            "delete-error",
+            ConversationMessage {
+                id: "indexed-before-delete-error".to_string(),
+                content: "must disappear after tombstone".to_string(),
+                message_type: "text".to_string(),
+                extra_metadata: json!({}),
+                sender: "user".to_string(),
+                created_at: "2026-04-10T12:01:00Z".to_string(),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .search_cross_thread_messages("disappear after tombstone", 10, None)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // A directory at the transcript path makes remove_file fail after the
+    // metadata tombstone has already become durable.
+    let transcript = store.thread_messages_path("delete-error");
+    std::fs::remove_file(&transcript).unwrap();
+    std::fs::create_dir(&transcript).unwrap();
+    assert!(store
+        .delete_thread("delete-error", "2026-04-10T12:02:00Z")
+        .is_err());
+
+    let hits = store
+        .search_cross_thread_messages("disappear after tombstone", 10, None)
+        .unwrap();
+    assert!(
+        hits.is_empty(),
+        "tombstoned thread remained indexed: {hits:?}"
+    );
+}
+
 #[path = "store_concurrency_tests.rs"]
 mod concurrency;
