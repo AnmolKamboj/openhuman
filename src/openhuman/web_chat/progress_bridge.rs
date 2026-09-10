@@ -342,7 +342,7 @@ pub(crate) fn spawn_progress_bridge(
         AgentRunKind, AgentRunStatus, AgentRunUpsert, RunEventAppend, RunTelemetryUpsert,
     };
 
-    let bridge = async move {
+    tokio::spawn(async move {
         log::debug!(
             "[web_channel][bridge] spawned client_id={} thread_id={} request_id={} speak_reply={:?} source={:?} session_id={:?}",
             client_id,
@@ -1539,10 +1539,7 @@ pub(crate) fn spawn_progress_bridge(
             round,
             events_seen,
         );
-    };
-    tokio::spawn(crate::core::runtime::context::CoreContext::propagate(
-        bridge,
-    ));
+    });
 }
 
 #[cfg(test)]
