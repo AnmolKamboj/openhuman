@@ -505,7 +505,7 @@ pub fn spawn_socket_auto_connect(
                 }
             };
             let api_url = crate::api::config::effective_backend_api_url(&config.api_url);
-            let _initial_token = match crate::api::jwt::get_session_token(&config) {
+            let initial_token = match crate::api::jwt::get_session_token(&config) {
                 Ok(Some(t)) => t,
                 Ok(None) => {
                     log::info!(
@@ -527,6 +527,27 @@ pub fn spawn_socket_auto_connect(
             // changed since CoreRuntime::build(), so the build-time Config is
             // not authoritative here.
             let _rebind = socket_mgr.lock_identity_rebind().await;
+            // The renderer's `socket_connect_with_session` RPC connects the same
+            // core to the same backend with the same token. Whichever path runs
+            // second used to tear the other's live socket down and redo the
+            // handshake (#6181); if it is already up for this identity there is
+            // nothing to rebind.
+            if socket_mgr.is_live_for(&api_url, &initial_token) {
+                // The socket is reusable, the bridge is not: it is pinned to the
+                // `Config` resolved above, which a workspace switch invalidates.
+                // `set_workflow_bridge` re-advertises over a live socket by
+                // design, so reinstall and skip only the handshake.
+                #[cfg(feature = "flows")]
+                if _flows_enabled {
+                    crate::openhuman::flows::medulla_bridge::install(std::sync::Arc::clone(
+                        &config,
+                    ));
+                }
+                log::info!(
+                    "[socket] Auto-connect: {api_url} already connected with this session — refreshed the workflow bridge, kept the socket"
+                );
+                return;
+            }
             if let Err(e) = socket_mgr.disconnect().await {
                 log::error!("[socket] Auto-connect could not stop the prior connection: {e}");
                 return;
