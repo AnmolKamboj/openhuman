@@ -135,6 +135,8 @@ pub const PACKS: &[ToolPack] = &[
             "install_workflow_from_url",
             "uninstall_workflow",
             "read_workflow_resource",
+            // The delegate into `skill_creator`, which owns this pack.
+            "create_skill",
         ],
         owners: &[
             "skill_setup",
@@ -145,8 +147,16 @@ pub const PACKS: &[ToolPack] = &[
     },
     ToolPack {
         id: "documents",
-        summary: "Generate a .docx document or a .pptx presentation as a workspace artifact.",
-        tools: &["generate_document", "generate_presentation"],
+        summary: "Build a slide deck or a .docx/.pptx document as a workspace artifact.",
+        tools: &[
+            "generate_document",
+            "generate_presentation",
+            // The delegate, not just the leaf tools: an orchestrator that can
+            // see `make_presentation` pays its schema on every turn to route a
+            // request that arrives in a small minority of them, and the pack
+            // it would route into is already withheld.
+            "make_presentation",
+        ],
         owners: &["presentation_agent"],
     },
     ToolPack {
@@ -189,8 +199,29 @@ pub const PACKS: &[ToolPack] = &[
             "daemon_host_prefs_get",
             "daemon_host_prefs_set",
             "proxy_config",
+            // The delegate into this same family. `settings_agent` owns the
+            // pack, so it keeps seeing the whole belt including this.
+            "manage_settings",
         ],
         owners: &["settings_agent"],
+    },
+    ToolPack {
+        id: "media",
+        summary: "Generate an image or a video, and list the models available for either.",
+        tools: &[
+            "create_image",
+            "create_video",
+            "media_generate_image",
+            "media_generate_video",
+            "media_list_models",
+        ],
+        owners: &["image_agent", "video_agent"],
+    },
+    ToolPack {
+        id: "tasks",
+        summary: "The agent task board: create, edit, approve, clear and summarize agent tasks, task sources and their artifacts.",
+        tools: &["manage_tasks"],
+        owners: &["task_manager_agent"],
     },
     ToolPack {
         id: "goals",
