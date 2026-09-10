@@ -281,7 +281,7 @@ export function ProviderModelPickerDialog({
           autoFocus
         />
       </div>
-      <div className="grid min-h-80 grid-cols-1 divide-y divide-line-subtle md:grid-cols-[13rem_1fr] md:divide-x md:divide-y-0">
+      <div className="grid min-h-80 grid-cols-1 divide-y divide-line-subtle md:grid-cols-[15rem_1fr] md:divide-x md:divide-y-0">
         <div className="p-2">
           <p className="px-2 pb-2 text-xs font-medium text-content-muted">
             {t('settings.ai.picker.providersLabel')}
@@ -305,11 +305,21 @@ export function ProviderModelPickerDialog({
                     label={sourceLabel(candidate, cloudProviders, t)}
                     tone={slugTone(sourceSlug(candidate))}
                   />
-                  <span className="flex min-w-0 flex-col items-start gap-0.5">
-                    <span className="truncate text-sm font-medium">
+                  {/* `flex-1` + `min-w-0` is load-bearing, not cosmetic:
+                      without it this wrapper sizes to its content instead of
+                      shrinking, and a long provider name overflows the column
+                      into the detail pane instead of wrapping inside it.
+                      `min-w-0` alone does not shrink a flex item that was never
+                      told it may flex.
+
+                      The name wraps rather than truncating — a provider the
+                      user cannot fully read is not a provider they can choose
+                      between. The row is `h-auto`, so it grows to fit. */}
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span className="w-full text-left text-sm font-medium break-words whitespace-normal">
                       {sourceLabel(candidate, cloudProviders, t)}
                     </span>
-                    <span className="text-xs font-normal text-content-muted">
+                    <span className="w-full text-left text-xs font-normal break-words whitespace-normal text-content-muted">
                       {sourceDetail(candidate, t)}
                     </span>
                   </span>
