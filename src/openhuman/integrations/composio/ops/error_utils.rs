@@ -74,6 +74,45 @@ pub(crate) fn direct_mode_without_key(config: &Config) -> OpResult<bool> {
     Ok(!has_key)
 }
 
+/// True when the user is in Composio **backend** mode (the default) but has no
+/// app-session JWT yet — a fresh install before sign-in, or signed out.
+///
+/// Like [`direct_mode_without_key`], this is a valid *setup* state, not an
+/// operation failure. Without a session there is no proxy route to give the
+/// connector module: `modules::connectors::module_config` fails, `ensure_routed`
+/// reconfigures the module with `{"route": "none"}`, and every routed member
+/// answers "this module was loaded without a connector route" — which the op
+/// layer then reported at error level (and to Sentry) once at boot from the
+/// memory-source reconcile and again on every periodic tick, for a user who
+/// simply has not signed in (#6176). Callers short-circuit to an empty result
+/// instead.
+///
+/// Session presence MUST mirror the module route's own resolution:
+/// `module_config` calls `integrations::build_client`, whose only token source
+/// is the app-session JWT (`crate::api::jwt::get_session_token`). Read that
+/// same source — not `build_client` itself, which logs a warning per call and
+/// would recreate the noise this guard removes.
+///
+/// A *failed* token lookup (store unreadable) deliberately returns `false`:
+/// that is a real fault, and it must keep surfacing through the normal error
+/// path rather than being read as "not signed in".
+pub(crate) fn backend_mode_without_session(config: &Config) -> bool {
+    let mode = config.composio.mode.trim();
+    if !(mode.is_empty() || mode == crate::openhuman::config::schema::COMPOSIO_MODE_BACKEND) {
+        return false;
+    }
+    match crate::api::jwt::get_session_token(config) {
+        Ok(token) => token.as_deref().map(str::trim).is_none_or(str::is_empty),
+        Err(error) => {
+            tracing::warn!(
+                "[composio] backend_mode_without_session: session lookup failed ({error}); \
+                 not treating as signed out"
+            );
+            false
+        }
+    }
+}
+
 /// Defense-in-depth Sentry funnel for composio op-layer errors.
 ///
 /// The shared [`crate::openhuman::integrations::IntegrationClient`]
