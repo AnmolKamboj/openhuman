@@ -673,13 +673,26 @@ impl Agent {
         // archivist sub-agent that will distil durable facts into the
         // workspace MEMORY.md file via the `update_memory_md` tool.
         //
-        // The spawn is fire-and-forget: the main turn returns the
-        // user-visible response immediately, and the archivist runs
-        // asynchronously on the `agentic` tier. We optimistically mark
-        // the extraction complete right away — if it actually fails,
-        // we'll just retry on the next threshold window (a few turns
-        // later), which is the right amount of retry behaviour for a
-        // librarian task that's idempotent across reruns.
+        // The archivist sub-agent itself is spawned and runs asynchronously
+        // on the `agentic` tier. We optimistically mark the extraction
+        // complete right away — if it actually fails, we'll just retry on the
+        // next threshold window (a few turns later), which is the right amount
+        // of retry behaviour for a librarian task that's idempotent across
+        // reruns.
+        //
+        // This call is NOT fire-and-forget, despite spawning one (#6200). It
+        // is awaited, and before it spawns anything it awaits
+        // `flush_open_segment`, so the trailing segment's recap runs on this
+        // path — `result` below is returned only afterwards. The comment here
+        // used to claim the turn returned immediately; it did not, and with
+        // `tinyinference`'s 600 s request default underneath that was up to ten
+        // minutes of a held-open turn. `RECAP_DEADLINE` in `archivist::recap`
+        // is what bounds it now.
+        //
+        // Detaching the flush instead would match the old comment, but it would
+        // drop the `GUARANTEE:` documented at the flush site — that the
+        // trailing segment always receives its recap before wind-down. Bounding
+        // the wait keeps that promise and removes the hazard.
         if result.is_ok() && self.context.should_extract_session_memory() {
             self.spawn_session_memory_extraction(session_memory_parent_context)
                 .await;
