@@ -101,17 +101,17 @@ fn packed_names_are_withheld_and_replaced() {
 
     assert!(!visible.contains(sample), "packed tool stayed advertised");
     assert!(visible.contains("file_read"), "unpacked tool was dropped");
-    assert!(visible.contains(LOAD_SKILL) && visible.contains(USE_SKILL));
+    assert!(visible.contains(USE_SKILL));
 }
 
 #[test]
 fn an_agent_that_lost_nothing_gains_nothing() {
-    // A narrow sub-agent must not grow two tools that can only report an empty
-    // skill, so the pack tools are added only when something was withheld.
+    // A narrow sub-agent must not grow a tool that can only report an empty
+    // skill, so the pack tool is added only when something was withheld.
     let mut visible: HashSet<String> = ["file_read".to_string()].into_iter().collect();
     strip_packed_from_visible(&mut visible, "orchestrator");
     assert_eq!(visible.len(), 1);
-    assert!(!visible.contains(LOAD_SKILL));
+    assert!(!visible.contains(USE_SKILL));
 }
 
 #[test]
@@ -123,10 +123,10 @@ fn an_empty_visible_set_is_left_alone() {
 }
 
 #[tokio::test]
-async fn load_skill_renders_the_schema_of_a_present_tool() {
+async fn use_skill_without_a_tool_renders_the_schema_of_a_present_tool() {
     let name = pack("crypto").unwrap().tools[0];
     let tools = registry_with(name, PermissionLevel::ReadOnly);
-    let result = find(&tools, LOAD_SKILL)
+    let result = find(&tools, USE_SKILL)
         .execute(json!({"skill": "crypto"}))
         .await
         .unwrap();
@@ -140,9 +140,9 @@ async fn load_skill_renders_the_schema_of_a_present_tool() {
 }
 
 #[tokio::test]
-async fn load_skill_rejects_an_unknown_skill() {
+async fn use_skill_rejects_an_unknown_skill() {
     let tools = registry_with("do_crypto", PermissionLevel::ReadOnly);
-    let result = find(&tools, LOAD_SKILL)
+    let result = find(&tools, USE_SKILL)
         .execute(json!({"skill": "nope"}))
         .await
         .unwrap();
@@ -429,7 +429,7 @@ fn a_packs_owner_keeps_its_belt_advertised() {
         visible.contains("doctor_health"),
         "the system pack's owner lost its own tool"
     );
-    assert!(!visible.contains(LOAD_SKILL), "owner gained pack tools");
+    assert!(!visible.contains(USE_SKILL), "owner gained pack tools");
 }
 
 #[test]
@@ -445,7 +445,7 @@ fn a_packs_owner_still_loses_every_other_pack() {
         !visible.contains("wallet_status"),
         "non-owned pack survived"
     );
-    assert!(visible.contains(LOAD_SKILL) && visible.contains(USE_SKILL));
+    assert!(visible.contains(USE_SKILL));
 }
 
 #[test]
