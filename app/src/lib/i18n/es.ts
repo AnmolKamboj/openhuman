@@ -6203,6 +6203,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Sugerencias de enrutamiento',
   'settings.agents.editor.modelTiers': 'Niveles de modelo',
   'settings.agents.editor.modelCustom': 'ID de modelo personalizado…',
+  'settings.agents.editor.modelManaged': 'Modelos gestionados',
   'settings.agents.editor.modelCustomPlaceholder': 'ej. anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Agregar herramientas',
   'settings.agents.editor.toolsAllSelected': 'Todas las herramientas',
