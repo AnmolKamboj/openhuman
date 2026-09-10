@@ -120,10 +120,7 @@ async fn a_packed_delegate_in_the_synthesised_set_is_reachable() {
 
     // Disclosure half: the schema must render even though the tool is in the
     // other registry.
-    let rendered = use_skill
-        .execute(json!({"skill": "crypto"}))
-        .await
-        .unwrap();
+    let rendered = use_skill.execute(json!({"skill": "crypto"})).await.unwrap();
     assert!(!rendered.is_error, "{}", rendered.text());
     assert!(
         format!("{:?}", rendered.content).contains("do_crypto"),
@@ -135,7 +132,11 @@ async fn a_packed_delegate_in_the_synthesised_set_is_reachable() {
         .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {"marker": "x"}}))
         .await
         .unwrap();
-    assert!(!ran.is_error, "packed delegate was not dispatchable: {}", ran.text());
+    assert!(
+        !ran.is_error,
+        "packed delegate was not dispatchable: {}",
+        ran.text()
+    );
     assert!(format!("{:?}", ran.content).contains("marker"));
 }
 
@@ -165,7 +166,11 @@ async fn rebinding_the_synthesised_set_repoints_the_handle() {
         .execute(json!({"skill": "crypto", "tool": "wallet_status", "args": {}}))
         .await
         .unwrap();
-    assert!(!ran.is_error, "handle did not follow the rebind: {}", ran.text());
+    assert!(
+        !ran.is_error,
+        "handle did not follow the rebind: {}",
+        ran.text()
+    );
     // And the retired instance is gone with its allocation.
     let stale = use_skill
         .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {}}))

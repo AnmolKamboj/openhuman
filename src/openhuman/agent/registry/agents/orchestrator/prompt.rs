@@ -133,7 +133,9 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
         return String::new();
     }
     let Some(registry) = AgentDefinitionRegistry::global() else {
-        tracing::debug!("[orchestrator-prompt] no agent registry; withheld-specialist section omitted");
+        tracing::debug!(
+            "[orchestrator-prompt] no agent registry; withheld-specialist section omitted"
+        );
         return String::new();
     };
     let Some(definition) = registry.get(ctx.agent_id) else {
