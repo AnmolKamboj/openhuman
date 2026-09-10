@@ -144,10 +144,23 @@ pub async fn list_configured_models_from_config(
     // an error on a backend that has not enabled it.
     let mut managed_token = String::new();
     if entry.auth_style == AuthStyle::OpenhumanJwt {
-        managed_token =
-            crate::openhuman::security::credentials::session_support::require_live_session_token(
-                config,
-            )?;
+        // Do NOT propagate a missing session: a self-hosted entry may carry a
+        // provider-scoped key instead, and the auth arm below documents that
+        // fallback. Only fail when neither credential exists, so the error the
+        // caller sees names the real problem. `require_live_session_token` also
+        // publishes `SessionExpired` for a locally-expired token, which we still
+        // want on the session path.
+        match crate::openhuman::security::credentials::session_support::require_live_session_token(
+            config,
+        ) {
+            Ok(token) => managed_token = token,
+            Err(err) if api_key.is_empty() => return Err(err),
+            Err(err) => {
+                log::debug!(
+                    "[providers][list_models] no live session ({err}); falling back to the provider-scoped key"
+                );
+            }
+        }
         let base = crate::api::config::effective_backend_api_url(&config.api_url);
         models_url = append_query_param(
             &crate::api::config::api_url(&base, "/openai/v1/models"),
@@ -199,8 +212,22 @@ pub async fn list_configured_models_from_config(
             } else {
                 api_key.as_str()
             };
-            if !token.is_empty() {
-                request.header("Authorization", format!("Bearer {}", token))
+            // Never put a bearer credential on the wire in clear text. `https`
+            // or a loopback host only — loopback stays allowed so a local
+            // backend (BACKEND_URL=http://127.0.0.1:...) still works in dev.
+            if !token.is_empty() && url_is_credential_safe(&models_url) {
+                // Managed traffic is attributed per embedding product
+                // (OpenCompany / Medulla / desktop); the generic provider client
+                // does not carry it, so attach it explicitly.
+                let (name, value) = crate::api::product::product_identity_header();
+                request
+                    .header("Authorization", format!("Bearer {}", token))
+                    .header(name, value)
+            } else if !token.is_empty() {
+                log::warn!(
+                    "[providers][list_models] refusing to send a bearer token to a non-https, non-loopback URL"
+                );
+                request
             } else {
                 request
             }
@@ -519,6 +546,28 @@ pub fn model_items_from_body(body: &serde_json::Value) -> Option<Vec<serde_json:
         .and_then(|d| d.as_array())
         .or_else(|| body.get("models").and_then(|d| d.as_array()))
         .cloned()
+}
+
+/// Whether a bearer credential may be attached to this URL.
+///
+/// `https` always, plus loopback over plain `http` so a locally-hosted backend
+/// (`BACKEND_URL=http://127.0.0.1:5005`) still authenticates in development. Any
+/// other plaintext destination gets the request without the credential rather
+/// than leaking it.
+fn url_is_credential_safe(url: &str) -> bool {
+    match reqwest::Url::parse(url) {
+        Ok(parsed) => {
+            if parsed.scheme() == "https" {
+                return true;
+            }
+            matches!(
+                parsed.host_str(),
+                Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+            )
+        }
+        // Unparseable: treat as unsafe rather than guessing.
+        Err(_) => false,
+    }
 }
 
 fn model_info_from_catalog_item(item: &serde_json::Value) -> Option<ModelInfo> {
