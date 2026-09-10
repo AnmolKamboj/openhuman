@@ -6107,6 +6107,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Petunjuk rute',
   'settings.agents.editor.modelTiers': 'Tingkatan model',
   'settings.agents.editor.modelCustom': 'ID model kustom…',
+  'settings.agents.editor.modelManaged': 'Model terkelola',
   'settings.agents.editor.modelCustomPlaceholder': 'mis. anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Tambah alat',
   'settings.agents.editor.toolsAllSelected': 'Semua alat',

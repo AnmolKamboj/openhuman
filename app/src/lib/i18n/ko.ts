@@ -6007,6 +6007,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': '라우트 힌트',
   'settings.agents.editor.modelTiers': '모델 등급',
   'settings.agents.editor.modelCustom': '사용자 정의 모델 ID…',
+  'settings.agents.editor.modelManaged': '관리형 모델',
   'settings.agents.editor.modelCustomPlaceholder': '예: anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': '도구 추가',
   'settings.agents.editor.toolsAllSelected': '모든 도구',

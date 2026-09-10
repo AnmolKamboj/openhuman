@@ -6176,6 +6176,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Dicas de roteamento',
   'settings.agents.editor.modelTiers': 'Níveis de modelo',
   'settings.agents.editor.modelCustom': 'ID de modelo personalizado…',
+  'settings.agents.editor.modelManaged': 'Modelos geridos',
   'settings.agents.editor.modelCustomPlaceholder': 'ex.: anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Adicionar ferramentas',
   'settings.agents.editor.toolsAllSelected': 'Todas as ferramentas',

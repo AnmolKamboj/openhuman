@@ -6078,6 +6078,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'রুট হিন্টস',
   'settings.agents.editor.modelTiers': 'মডেল স্তর',
   'settings.agents.editor.modelCustom': 'কাস্টম মডেল আইডি…',
+  'settings.agents.editor.modelManaged': 'পরিচালিত মডেল',
   'settings.agents.editor.modelCustomPlaceholder': 'যেমন anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'টুল যোগ করুন',
   'settings.agents.editor.toolsAllSelected': 'সব টুল',
