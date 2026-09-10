@@ -14,6 +14,9 @@ use crate::openhuman::memory::guard::test_support::RecordingProvider;
 
 const SESSION: &str = "lifecycle-6156";
 
+/// One episodic turn. `id` is load-bearing: the episodic read path builds its
+/// `SessionEntry`s with `sequence: None`, so segment membership is decided on
+/// `turn.id` against the segment's episodic-id bounds.
 fn turn(id: i64, role: &str, content: &str) -> EpisodicTurn {
     EpisodicTurn {
         id: Some(id),
@@ -50,6 +53,7 @@ fn segment() -> ConversationSegment {
     }
 }
 
+/// The driver's call log reduced to method names — what these tests assert on.
 fn methods(recording: &RecordingProvider) -> Vec<String> {
     recording.calls().into_iter().map(|c| c.method).collect()
 }
