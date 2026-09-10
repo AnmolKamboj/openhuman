@@ -383,9 +383,17 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "install_workflow_from_url",
                 "uninstall_workflow",
                 "read_workflow_resource",
+                "create_skill",
             ],
         ),
-        ("documents", &["generate_document", "generate_presentation"]),
+        (
+            "documents",
+            &[
+                "generate_document",
+                "generate_presentation",
+                "make_presentation",
+            ],
+        ),
         (
             "audio",
             &[
@@ -423,8 +431,20 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "daemon_host_prefs_get",
                 "daemon_host_prefs_set",
                 "proxy_config",
+                "manage_settings",
             ],
         ),
+        (
+            "media",
+            &[
+                "create_image",
+                "create_video",
+                "media_generate_image",
+                "media_generate_video",
+                "media_list_models",
+            ],
+        ),
+        ("tasks", &["manage_tasks"]),
         ("goals", &["goal_set", "goal_get", "goal_complete"]),
         ("app_update", &["update_check", "update_apply"]),
     ];
