@@ -68,11 +68,31 @@ const MANAGED_MODEL_SLUGS: &[&str] = &[
 /// path is untouched by this classification.
 pub fn route_for_model(model: &str) -> CostRoute {
     let normalized = normalize_model_id(model);
-    if MANAGED_MODEL_SLUGS.contains(&normalized.as_str()) {
+    if MANAGED_MODEL_SLUGS.contains(&normalized.as_str()) || is_managed_passthrough_id(&normalized)
+    {
         CostRoute::Managed
     } else {
         CostRoute::Byok
     }
+}
+
+/// `openrouter/<author>/<slug>` ids served by the managed backend's OpenRouter
+/// passthrough (`OPENROUTER_PASSTHROUGH_ENABLED`).
+///
+/// These are **managed** spend even though they are not tier slugs: the request
+/// goes to our backend, is billed against managed credits, and never touches a
+/// user-held key. Without this they fell to the `Byok` default and silently
+/// stopped counting toward the local managed cap — the same failure the
+/// `hint:` / `openhuman/` decoration stripping in [`normalize_model_id`] exists
+/// to prevent, reached by a different route.
+///
+/// A BYOK OpenRouter provider addresses models by their bare upstream slug
+/// (`deepseek/deepseek-v4-flash`), never with this `openrouter/` qualifier, so
+/// the two cannot be confused.
+fn is_managed_passthrough_id(normalized: &str) -> bool {
+    normalized
+        .strip_prefix("openrouter/")
+        .is_some_and(|rest| rest.split('/').filter(|seg| !seg.is_empty()).count() == 2)
 }
 
 /// Lower-case, trim, and strip the decorations a model id can pick up on its

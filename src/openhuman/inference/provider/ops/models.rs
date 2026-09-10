@@ -14,6 +14,15 @@ pub struct ModelInfo {
     pub owned_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
+    /// Human-readable name when the listing supplies one (the managed
+    /// `?catalog=` listing does; a bare OpenAI-compatible `/models` does not).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Charged price in USD per 1M tokens, when the listing publishes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_per_1m: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_per_1m: Option<f64>,
 }
 
 /// Resolve the API key used to probe a provider's `/models` endpoint.
@@ -113,6 +122,44 @@ pub async fn list_configured_models_from_config(
     );
 
     use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+
+    // Managed backend (`openhuman`) needs a different URL *and* a different
+    // credential than every BYOK provider above, so neither `entry.endpoint`
+    // nor `lookup_key_for_slug` is usable here:
+    //
+    //   * the seeded entry's endpoint is the *chat* base
+    //     (`https://api.openhuman.ai/v1`), so `{endpoint}/models` would probe
+    //     the wrong host entirely — the hosted API is resolved by
+    //     `effective_backend_api_url`, which also ignores an `api_url`
+    //     override pointing at a local/third-party inference host.
+    //   * the session JWT lives in the `app-session` auth profile, not
+    //     `provider:openhuman`, so `lookup_key_for_slug` returns "" and the
+    //     request would go out unauthenticated (401).
+    //
+    // `?catalog=openrouter` is required: without it the backend returns only
+    // the curated tier list (chat-v1, reasoning-v1, ...), which is deliberately
+    // byte-identical to the legacy payload. The catalog listing is gated
+    // server-side by OPENROUTER_PASSTHROUGH_ENABLED and returns an empty set
+    // when the passthrough is off, so this degrades to "no models" rather than
+    // an error on a backend that has not enabled it.
+    let mut managed_token = String::new();
+    if entry.auth_style == AuthStyle::OpenhumanJwt {
+        managed_token =
+            crate::openhuman::security::credentials::session_support::require_live_session_token(
+                config,
+            )?;
+        let base = crate::api::config::effective_backend_api_url(&config.api_url);
+        models_url = append_query_param(
+            &crate::api::config::api_url(&base, "/openai/v1/models"),
+            "catalog",
+            "openrouter",
+        );
+        log::debug!(
+            "[providers][list_models] managed catalog url={}",
+            models_url
+        );
+    }
+
     if is_openrouter_provider(&entry) {
         validate_openrouter_api_key(&client, &routing.endpoint, &api_key).await?;
     }
@@ -144,8 +191,16 @@ pub async fn list_configured_models_from_config(
             r
         }
         AuthStyle::OpenhumanJwt => {
-            if !api_key.is_empty() {
-                request.header("Authorization", format!("Bearer {}", api_key))
+            // Prefer the live session JWT resolved above; fall back to a
+            // provider-scoped key so a self-hosted entry that stores one still
+            // authenticates.
+            let token = if !managed_token.is_empty() {
+                managed_token.as_str()
+            } else {
+                api_key.as_str()
+            };
+            if !token.is_empty() {
+                request.header("Authorization", format!("Bearer {}", token))
             } else {
                 request
             }
@@ -427,6 +482,9 @@ pub fn merge_openai_codex_model_hints(models: &mut Vec<ModelInfo>) {
                 id: (*id).to_string(),
                 owned_by: Some("openai-codex".to_string()),
                 context_window: None,
+                display_name: None,
+                input_per_1m: None,
+                output_per_1m: None,
             });
         }
     }
@@ -469,6 +527,9 @@ fn model_info_from_catalog_item(item: &serde_json::Value) -> Option<ModelInfo> {
             id: id.to_string(),
             owned_by: None,
             context_window: None,
+            display_name: None,
+            input_per_1m: None,
+            output_per_1m: None,
         });
     }
 
@@ -490,10 +551,29 @@ fn model_info_from_catalog_item(item: &serde_json::Value) -> Option<ModelInfo> {
         .or_else(|| item.get("context_window"))
         .or_else(|| item.get("max_context_window"))
         .and_then(|v| v.as_u64());
+    let display_name = item
+        .get("display_name")
+        .or_else(|| item.get("name"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    // `pricing` is already the CHARGED price per 1M tokens on the managed
+    // catalog listing, so it can be surfaced verbatim — no margin math here.
+    let pricing = item.get("pricing");
+    let price = |key: &str| -> Option<f64> {
+        pricing
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_f64())
+            .filter(|n| n.is_finite() && *n >= 0.0)
+    };
     Some(ModelInfo {
         id,
         owned_by,
         context_window,
+        display_name,
+        input_per_1m: price("inputPer1M"),
+        output_per_1m: price("outputPer1M"),
     })
 }
 
