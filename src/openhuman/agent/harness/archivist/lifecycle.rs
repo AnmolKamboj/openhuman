@@ -331,12 +331,20 @@ impl ArchivistHook {
     ///
     /// Soft-fallback contract (mirrors `LlmSummariser`): this function
     /// never returns `Err`; all failures are logged and ignored.
+    /// Returns whether a usable LLM recap was produced for this segment.
+    ///
+    /// The caller uses it as a liveness signal, not as a success code: a `true`
+    /// means the summariser answered *just now*, which is the only first-hand
+    /// evidence the app gets that it is reachable. `false` covers every reason
+    /// a recap did not happen — no driver, no entries, no summariser, or a
+    /// summariser that failed — because none of them are a moment to spend
+    /// budget re-trying older segments against the same provider (#6186).
     pub(super) async fn on_segment_closed(
         &self,
         segment: &ConversationSegment,
         session_id: &str,
         now: f64,
-    ) {
+    ) -> bool {
         // Gather the conversation text for this segment. Prefer the
         // md-backed memory_archivist read when config is available; fall
         // back to the driver's episodic family otherwise.
@@ -356,7 +364,7 @@ impl ArchivistHook {
                 "[archivist] segment={} has no entries — skipping recap",
                 segment.segment_id
             );
-            return;
+            return false;
         }
 
         // Build segment text from user messages (for event extraction).
@@ -376,7 +384,7 @@ impl ArchivistHook {
         // driver, not the summary: with no episodic family there is nothing to
         // write on either arm, and this is the exit that path has always taken.
         let Some(episodic) = self.episodic() else {
-            return;
+            return false;
         };
 
         if recap_is_usable(from_llm, &summary) {
@@ -557,6 +565,8 @@ impl ArchivistHook {
                 );
             }
         }
+
+        recap_is_usable(from_llm, &summary)
     }
 
     /// Embed `summary` for `segment_id` and write the per-model embedding row.

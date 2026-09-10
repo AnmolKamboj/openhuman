@@ -77,7 +77,16 @@ async fn heuristic_recap_is_not_persisted_or_embedded() {
     let provider: Arc<dyn MemoryProvider> = recording.clone();
     let hook = ArchivistHook::new(provider, true);
 
-    hook.on_segment_closed(&segment(), SESSION, 200.0).await;
+    let recap_succeeded = hook.on_segment_closed(&segment(), SESSION, 200.0).await;
+
+    // #6186: the caller gates the re-summarisation pass on this. Reporting
+    // `true` here would make an outage spend every pending segment's retry
+    // budget against the provider that is still down, and skip them for the
+    // rest of the process — including after it recovers.
+    assert!(
+        !recap_succeeded,
+        "a heuristic recap must not report the summariser as answering"
+    );
 
     let methods = methods(&recording);
     assert!(
