@@ -132,19 +132,21 @@ impl fmt::Display for TooFrequent {
     }
 }
 
-/// Two consecutive runs of `schedule` after `from` that are closer together
-/// than `min_gap`, if there are any.
+/// The two consecutive runs of `schedule` after `from` that are closest
+/// together, if that gap is under `min_gap`.
 ///
-/// Consecutive occurrences are walked in order, so an irregular expression
-/// such as `1,2,30 * * * *` is judged by its shortest gap and not by whichever
-/// pair happens to follow `from`. The shortest gap is what counts, including
-/// the wrap-around one: `*/7 * * * *` fires at :56 and then at :00, four
-/// minutes apart, and is reported as such.
+/// Consecutive occurrences are walked in order and the smallest gap is kept,
+/// so an irregular expression such as `1,3,4,30 * * * *` is judged by its
+/// :03 → :04 pair — not by the first pair under the floor (:01 → :03) and not
+/// by whichever pair happens to follow `from`. The wrap-around gap counts too:
+/// `*/7 * * * *` fires at :56 and then at :00, four minutes apart, and is
+/// reported as such. Ties keep the earliest pair.
 ///
 /// The walk is bounded ([`RUN_GAP_SCAN_OCCURRENCES`] runs, one shared
 /// [`ACTIVE_WINDOW_CANDIDATE_LIMIT`] budget), so a sparse or window-restricted
-/// expression stays cheap. An expression that cannot be parsed, or that has no
-/// second occurrence, is not evidence of anything and yields `None`;
+/// expression stays cheap; if the budget runs out mid-walk, the closest pair
+/// seen so far is still reported. An expression that cannot be parsed, or that
+/// has no second occurrence, is not evidence of anything and yields `None`;
 /// [`validate_schedule`] is where a bad expression gets rejected.
 pub fn runs_closer_than(
     schedule: &Schedule,
@@ -165,17 +167,23 @@ pub fn runs_closer_than(
             let plan = CronPlan::parse(expr, tz.as_deref(), active_hours.as_ref()).ok()?;
             let mut budget = ACTIVE_WINDOW_CANDIDATE_LIMIT;
             let mut previous = plan.next_after(from, &mut budget).ok()?;
+            let mut closest: Option<TooFrequent> = None;
             for _ in 1..RUN_GAP_SCAN_OCCURRENCES {
-                let next = plan.next_after(previous, &mut budget).ok()?;
-                if next - previous < min_gap {
-                    return Some(TooFrequent::ConsecutiveRuns {
+                // Running out of budget (or of occurrences) ends the walk but
+                // does not discard a pair already found.
+                let Ok(next) = plan.next_after(previous, &mut budget) else {
+                    break;
+                };
+                let gap = next - previous;
+                if gap < min_gap && closest.is_none_or(|seen| gap < seen.gap()) {
+                    closest = Some(TooFrequent::ConsecutiveRuns {
                         first: previous,
                         second: next,
                     });
                 }
                 previous = next;
             }
-            None
+            closest
         }
     }
 }

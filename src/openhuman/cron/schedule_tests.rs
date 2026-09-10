@@ -351,6 +351,32 @@ fn runs_closer_than_does_not_depend_on_the_instant_it_starts_from() {
     }
 }
 
+/// The closest pair is reported, not the first one under the floor: `1,3,4,30`
+/// has :01 → :03 (2 min) before :03 → :04 (1 min), and the message must name
+/// the latter. Ties keep the earliest pair.
+#[test]
+fn runs_closer_than_reports_the_closest_pair_not_the_first_one_under_the_floor() {
+    let from = Utc.with_ymd_and_hms(2026, 3, 2, 10, 0, 0).unwrap();
+    let hit =
+        runs_closer_than(&utc_cron("1,3,4,30 * * * *"), from, MIN_AGENT_JOB_INTERVAL).unwrap();
+    assert_eq!(
+        hit,
+        TooFrequent::ConsecutiveRuns {
+            first: Utc.with_ymd_and_hms(2026, 3, 2, 10, 3, 0).unwrap(),
+            second: Utc.with_ymd_and_hms(2026, 3, 2, 10, 4, 0).unwrap(),
+        }
+    );
+    // All gaps equal: the earliest pair wins.
+    let hit = runs_closer_than(&utc_cron("*/2 * * * *"), from, MIN_AGENT_JOB_INTERVAL).unwrap();
+    assert_eq!(
+        hit,
+        TooFrequent::ConsecutiveRuns {
+            first: Utc.with_ymd_and_hms(2026, 3, 2, 10, 2, 0).unwrap(),
+            second: Utc.with_ymd_and_hms(2026, 3, 2, 10, 4, 0).unwrap(),
+        }
+    );
+}
+
 /// `*/7` is 0,7,…,56: the :56 → :00 step is four minutes, and it counts.
 #[test]
 fn runs_closer_than_counts_the_wrap_around_gap() {
@@ -422,7 +448,9 @@ fn runs_closer_than_judges_the_effective_cadence_inside_the_active_window() {
     // Every minute, but only during one minute of the day: effectively daily.
     let daily = every_minute_during("09:00", "09:00");
     assert!(runs_closer_than(&daily, from, MIN_AGENT_JOB_INTERVAL).is_none());
-    // A two-minute window lets two adjacent runs through.
+    // A two-minute window lets two adjacent runs through. Skipping ~1,438
+    // out-of-window candidates per day exhausts the shared budget long before
+    // the 1,000-run walk ends; the pair found before that is still reported.
     let hit = runs_closer_than(
         &every_minute_during("09:00", "09:01"),
         from,

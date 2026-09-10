@@ -139,6 +139,11 @@ async fn rejects_tightening_an_agent_job_below_five_minutes() {
         "{:?}",
         result.output()
     );
+    // A rejected patch must not have been written before the error came back.
+    assert_eq!(
+        cron::get_job(&cfg, &job.id).unwrap().schedule,
+        Schedule::Every { every_ms: 600_000 }
+    );
 
     let result = tool
         .execute(json!({
