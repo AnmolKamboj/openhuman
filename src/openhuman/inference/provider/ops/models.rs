@@ -83,6 +83,7 @@ pub async fn list_configured_models_from_config(
         .find(|e| e.id == provider_id || e.slug == provider_id)
         .cloned()
         .or_else(|| synthesize_local_runtime_entry(&provider_id, config))
+        .or_else(|| synthesize_managed_entry(&provider_id))
         .ok_or_else(|| format!("no cloud provider with id or slug '{}' found", provider_id))?;
 
     let looked_up =
@@ -154,7 +155,19 @@ pub async fn list_configured_models_from_config(
             config,
         ) {
             Ok(token) => managed_token = token,
-            Err(err) if api_key.is_empty() => return Err(err),
+            // Signed out is not a provider failure. The managed catalog simply
+            // has nothing to offer until there is a session, and the picker
+            // still shows managed with its automatic routing — so return an
+            // empty list rather than surfacing "could not load models".
+            Err(err) if api_key.is_empty() => {
+                log::info!(
+                    "[providers][list_models] managed catalog unavailable — no live session ({err}); returning an empty list"
+                );
+                return Ok(crate::rpc::RpcOutcome::new(
+                    serde_json::json!({ "models": Vec::<ModelInfo>::new() }),
+                    vec!["no live session; managed catalog is empty".to_string()],
+                ));
+            }
             Err(err) => {
                 log::debug!(
                     "[providers][list_models] no live session ({err}); falling back to the provider-scoped key"
@@ -463,6 +476,38 @@ fn json_value_kind(v: &serde_json::Value) -> &'static str {
 /// Returns `None` for any slug that is not a recognized local-runtime
 /// alias — callers continue down the normal "no cloud provider" error
 /// path for `openai` / `anthropic` / opaque ids / typos.
+/// Synthesize the managed (`openhuman`) provider entry when `cloud_providers`
+/// has no row for it.
+///
+/// The row is normally seeded by the `unify_ai_provider_settings` migration,
+/// but it is absent in a freshly created profile — which is exactly what the
+/// app falls back to when a stored session is rejected server-side. Managed is
+/// the product's own backend, not user-supplied configuration, so requiring a
+/// config row to list its models turned "signed out" into
+/// "no cloud provider with id or slug 'openhuman' found".
+///
+/// Endpoint and auth style only have to identify the entry as managed: the
+/// caller replaces the URL with `effective_backend_api_url` and the credential
+/// with the live session token before the request goes out.
+fn synthesize_managed_entry(
+    slug: &str,
+) -> Option<crate::openhuman::config::schema::cloud_providers::CloudProviderCreds> {
+    use crate::openhuman::config::schema::cloud_providers::{AuthStyle, CloudProviderCreds};
+    if slug != "openhuman" {
+        return None;
+    }
+    Some(CloudProviderCreds {
+        id: "openhuman".to_string(),
+        slug: "openhuman".to_string(),
+        label: "OpenHuman".to_string(),
+        endpoint: crate::openhuman::config::schema::cloud_providers::CloudProviderType::Openhuman
+            .default_endpoint()
+            .to_string(),
+        auth_style: AuthStyle::OpenhumanJwt,
+        ..Default::default()
+    })
+}
+
 pub fn synthesize_local_runtime_entry(
     slug: &str,
     config: &crate::openhuman::config::Config,

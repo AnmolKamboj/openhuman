@@ -1,4 +1,4 @@
-use super::{resolve_local_runtime_key, url_is_credential_safe};
+use super::{resolve_local_runtime_key, synthesize_managed_entry, url_is_credential_safe};
 use crate::openhuman::config::Config;
 
 #[test]
@@ -55,5 +55,28 @@ fn credentials_are_withheld_from_remote_plaintext_and_junk_urls() {
         "",
     ] {
         assert!(!url_is_credential_safe(url), "{url}");
+    }
+}
+
+/// The managed row is normally seeded by a migration, but a freshly created
+/// profile has none — which is what the app falls back to when a stored session
+/// is rejected. Managed is the product's own backend, so it must not depend on a
+/// user-config row; without this, being signed out surfaced
+/// "no cloud provider with id or slug 'openhuman' found".
+#[test]
+fn managed_entry_is_synthesized_when_the_config_row_is_missing() {
+    use crate::openhuman::config::schema::cloud_providers::AuthStyle;
+    let entry = synthesize_managed_entry("openhuman").expect("managed entry");
+    assert_eq!(entry.slug, "openhuman");
+    assert_eq!(entry.auth_style, AuthStyle::OpenhumanJwt);
+    assert!(!entry.endpoint.is_empty());
+}
+
+/// Only the managed slug synthesizes: anything else must keep reporting an
+/// unknown provider rather than being silently treated as managed.
+#[test]
+fn other_slugs_do_not_synthesize_a_managed_entry() {
+    for slug in ["openai", "openrouter", "ollama", "", "openhuman-x"] {
+        assert!(synthesize_managed_entry(slug).is_none(), "{slug}");
     }
 }
