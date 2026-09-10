@@ -1,4 +1,4 @@
-//! The two always-on tools that stand in for every packed tool.
+//! The always-on tool that stands in for every packed tool.
 
 use std::sync::{Arc, RwLock, Weak};
 
@@ -9,6 +9,12 @@ use super::registry;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 use tinytools::ToolRunContext;
 
+/// The retired name of the disclosure half, kept as a call-name alias.
+///
+/// `load_skill` and `use_skill` were separate tools, each rendering the whole
+/// pack index into its own description. They are one tool now, but a model
+/// that learned the old name still emits it, so `normalize_tool_call`
+/// rewrites such a call onto [`USE_SKILL`] rather than failing the turn.
 pub const LOAD_SKILL: &str = "load_skill";
 pub const USE_SKILL: &str = "use_skill";
 
@@ -38,7 +44,7 @@ impl PackRegistryHandle {
     /// [`super::bind_pack_registry`]'s own instruction to "re-bind after any
     /// later rebuild of this `Arc`": once an agent replaced its tool vector the
     /// handle still pointed at the old allocation, the `Weak` failed to
-    /// upgrade, and every `load_skill` / `use_skill` call reported the registry
+    /// upgrade, and every `use_skill` call reported the registry
     /// as unavailable for the rest of the session. Last write wins.
     pub fn bind(&self, registry: ToolRegistryRef) {
         match self.inner.write() {
