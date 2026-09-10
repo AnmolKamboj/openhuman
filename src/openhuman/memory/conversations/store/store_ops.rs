@@ -167,6 +167,15 @@ impl ConversationStore {
         // re-reading this file.
         {
             let _metadata = self.locks.metadata.lock();
+            // The transcript row is already durable. Publish it to an active
+            // cold-build journal and any warm cache before the derived stats
+            // append, which may fail independently.
+            self.locks.record_index_append(thread_id, &message);
+            let mut cache = CONVERSATION_INDEX_CACHE.lock();
+            if let Some(idx) = cache.get_mut(&self.root_dir()) {
+                idx.insert(thread_id, message.clone());
+            }
+            drop(cache);
             let threads_path = self.root_dir().join(THREADS_FILENAME);
             append_jsonl(
                 &threads_path,
@@ -175,15 +184,6 @@ impl ConversationStore {
                     last_message_at: message.created_at.clone(),
                 },
             )?;
-            // A cold builder scans without holding metadata. Journal the
-            // completed append before touching the cache so publication can
-            // fold it in; once publication finishes, this same critical
-            // section observes and updates the warm cache instead.
-            self.locks.record_index_append(thread_id, &message);
-            let mut cache = CONVERSATION_INDEX_CACHE.lock();
-            if let Some(idx) = cache.get_mut(&self.root_dir()) {
-                idx.insert(thread_id, message.clone());
-            }
         }
         Ok(message)
     }

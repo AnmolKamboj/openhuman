@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 #[test]
 fn search_cross_thread_messages_finds_japanese_bigram_match() {
@@ -180,13 +181,14 @@ fn one_hundred_agent_threads_use_independent_message_locks() {
     let store = ConversationStore::new(temp.path().to_path_buf());
     let root_lock = store.lock_identity_for_test();
     let mut message_locks = std::collections::HashSet::new();
+    let mut retained_locks = Vec::new();
 
     for index in 0..100 {
         let clone = ConversationStore::new(temp.path().to_path_buf());
         assert_eq!(clone.lock_identity_for_test(), root_lock);
-        assert!(
-            message_locks.insert(clone.thread_lock_identity_for_test(&format!("agent-{index}")))
-        );
+        let lock = clone.locks.thread(&format!("agent-{index}"));
+        assert!(message_locks.insert(Arc::as_ptr(&lock) as usize));
+        retained_locks.push(lock);
     }
 
     assert_eq!(message_locks.len(), 100);
@@ -456,17 +458,19 @@ fn delete_and_purge_evict_historical_thread_locks() {
             personality_id: None,
         })
         .unwrap();
-    let _ = store.thread_lock_identity_for_test("t1");
+    let t1_lock = store.locks.thread("t1");
     assert_eq!(store.thread_lock_count_for_test(), 1);
     assert!(store.delete_thread("t1", "2026-04-10T12:02:00Z").unwrap());
     assert_eq!(store.thread_lock_count_for_test(), 0);
+    drop(t1_lock);
 
-    for index in 0..100 {
-        let _ = store.thread_lock_identity_for_test(&format!("historical-{index}"));
-    }
+    let historical_locks = (0..100)
+        .map(|index| store.locks.thread(&format!("historical-{index}")))
+        .collect::<Vec<_>>();
     assert_eq!(store.thread_lock_count_for_test(), 100);
     store.purge_threads().unwrap();
     assert_eq!(store.thread_lock_count_for_test(), 0);
+    drop(historical_locks);
 }
 
 // ── legacy workspace (pre-Stats backfill path) ───────────────────────────────

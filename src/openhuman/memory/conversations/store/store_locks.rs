@@ -21,7 +21,7 @@ pub(super) struct StoreLocks {
     pub(super) metadata: Mutex<()>,
     /// Only one cold scan may construct this root's in-memory index.
     pub(super) index_build: Mutex<()>,
-    threads: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    threads: Mutex<HashMap<String, Weak<Mutex<()>>>>,
     /// Appends completed while a cold scan is in flight. `None` means no scan
     /// is active, so the warm-cache path alone owns index maintenance.
     pending_index_appends: Mutex<Option<Vec<(String, ConversationMessage)>>>,
@@ -30,11 +30,13 @@ pub(super) struct StoreLocks {
 impl StoreLocks {
     pub(super) fn thread(&self, thread_id: &str) -> Arc<Mutex<()>> {
         let mut locks = self.threads.lock();
-        Arc::clone(
-            locks
-                .entry(thread_id.to_string())
-                .or_insert_with(|| Arc::new(Mutex::new(()))),
-        )
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(thread_id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        locks.insert(thread_id.to_string(), Arc::downgrade(&lock));
+        lock
     }
 
     pub(super) fn begin_index_build(&self) {
@@ -68,7 +70,11 @@ impl StoreLocks {
 
     #[cfg(test)]
     pub(super) fn thread_count(&self) -> usize {
-        self.threads.lock().len()
+        self.threads
+            .lock()
+            .values()
+            .filter(|lock| lock.strong_count() > 0)
+            .count()
     }
 }
 
