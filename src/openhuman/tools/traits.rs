@@ -29,7 +29,7 @@ use crate::openhuman::tools::toolpacks::PackRegistryHandle;
 
 /// Reads a tool's pack-registry handle back out of the erased host extension.
 ///
-/// `load_skill` / `use_skill` read the registry they themselves live in, so
+/// `use_skill` reads the registry it itself lives in, so
 /// they cannot be handed it at construction; `toolpacks::bind_pack_registry`
 /// finds them in an already-built registry and hands them a `Weak` view of it.
 ///

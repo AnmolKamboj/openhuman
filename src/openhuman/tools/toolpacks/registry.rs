@@ -256,7 +256,7 @@ pub fn packed_tool_names_for_agent(agent_id: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// The always-on index: one line per pack, rendered into `load_skill`'s own
+/// The always-on index: one line per pack, rendered into `use_skill`'s own
 /// description so the model can pick a pack without a round trip.
 pub fn pack_index_markdown() -> String {
     let mut out = String::new();

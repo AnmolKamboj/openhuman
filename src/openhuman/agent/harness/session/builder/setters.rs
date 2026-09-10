@@ -496,7 +496,7 @@ impl AgentBuilder {
             .clone()
             .unwrap_or_else(|| "main".to_string());
         // On-demand tool disclosure: withhold packed tools' schemas from the
-        // provider and advertise `load_skill` / `use_skill` in their place. The
+        // provider and advertise `use_skill` in their place. The
         // tools stay in the registry below and stay executable — only the
         // advertised surface shrinks. Applied here, before the policy filter,
         // so the visible set and the policy session cannot disagree.

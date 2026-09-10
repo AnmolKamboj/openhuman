@@ -139,7 +139,7 @@ impl HarnessBuilder {
     ///
     /// [`domains`](Self::domains) decides which families *exist*; this decides
     /// how the tools of the families that do exist are disclosed — schemas on
-    /// the wire, withheld behind `load_skill` / `use_skill`, or not registered
+    /// the wire, withheld behind `use_skill`, or not registered
     /// at all.
     ///
     /// Defaults to every group withheld, matching the desktop app. Reach for
