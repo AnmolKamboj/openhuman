@@ -15,25 +15,61 @@ pub fn append_pack_tools(tools: &mut Vec<Box<dyn Tool>>) {
     tools.push(Box::new(UseSkillTool::new(PackRegistryHandle::default())));
 }
 
-/// Point the pack tool at the registry it lives in.
+/// Point the pack tool at the durable registry it lives in.
 ///
 /// The handle holds a [`Weak`], so the pack tool referencing the very vector
 /// that owns it does not leak. Call this after **every** rebinding of the
 /// agent's tool `Arc`; a stale handle degrades to "skill unavailable" rather
 /// than dispatching to the wrong registry.
+///
+/// This is only half the registry. Every `delegate_*` tool lives in the agent's
+/// separate `synthesized_tools` `Arc`, so a packed delegate is reachable only
+/// once [`bind_synthesized_pack_registry`] has run too.
 pub fn bind_pack_registry(tools: &Arc<Vec<Box<dyn Tool>>>) {
     let weak: Weak<Vec<Box<dyn Tool>>> = Arc::downgrade(tools);
+    let bound = for_each_pack_tool(tools, |handle| handle.bind(weak.clone()));
+    tracing::debug!(bound, "[toolpacks] bound pack tool to durable registry");
+}
+
+/// Point the pack tool at the synthesised delegate set.
+///
+/// `synthesized` is the agent's `synthesized_tools` `Arc`; `durable` is where
+/// the pack tool itself lives, since that is the vector to search for it.
+///
+/// **Call this after every delegation refresh.** `refresh_delegation_tools`
+/// replaces the synthesised `Arc` wholesale, and a handle still holding the old
+/// `Weak` stops upgrading as soon as the last reader of that allocation goes —
+/// at which point every packed delegate reports "no tool in skill" instead of
+/// running.
+pub fn bind_synthesized_pack_registry(
+    durable: &Arc<Vec<Box<dyn Tool>>>,
+    synthesized: &Arc<Vec<Box<dyn Tool>>>,
+) {
+    let weak: Weak<Vec<Box<dyn Tool>>> = Arc::downgrade(synthesized);
+    let bound = for_each_pack_tool(durable, |handle| handle.bind_synthesized(weak.clone()));
+    tracing::debug!(
+        bound,
+        delegates = synthesized.len(),
+        "[toolpacks] bound pack tool to synthesised delegate set"
+    );
+}
+
+/// Apply `edit` to every pack tool's handle in `tools`, returning how many.
+fn for_each_pack_tool(
+    tools: &Arc<Vec<Box<dyn Tool>>>,
+    mut edit: impl FnMut(&super::tools::PackRegistryHandle),
+) -> usize {
     let mut bound = 0usize;
     for tool in tools.iter() {
         if tool.name() != USE_SKILL {
             continue;
         }
         if let Some(handle) = crate::openhuman::tools::traits::pack_registry_handle(tool.as_ref()) {
-            handle.bind(weak.clone());
+            edit(handle);
             bound += 1;
         }
     }
-    tracing::debug!(bound, "[toolpacks] bound pack tool to live registry");
+    bound
 }
 
 /// Remove packed tool names from an agent's advertised set.
