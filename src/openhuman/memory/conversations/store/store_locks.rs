@@ -81,6 +81,10 @@ static ROOTS: LazyLock<Mutex<HashMap<PathBuf, Weak<StoreLocks>>>> =
 pub(super) fn for_root(root: &Path) -> Arc<StoreLocks> {
     let root = normalized_root(root);
     let mut roots = ROOTS.lock();
+    // A process may open many ephemeral workspaces over its lifetime. The
+    // weak value avoids retaining each lock set; pruning dead values here also
+    // prevents their path keys from making the registry itself grow forever.
+    roots.retain(|_, locks| locks.strong_count() > 0);
     if let Some(existing) = roots.get(&root).and_then(Weak::upgrade) {
         return existing;
     }
