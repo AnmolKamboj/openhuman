@@ -16,7 +16,9 @@ use super::super::types::{
     ComposioAuthorizeRequest, ComposioAuthorizeResponse, ComposioConnectionsResponse,
     ComposioDeleteConnectionRequest, ComposioDeleteResponse,
 };
-use super::error_utils::{direct_mode_without_key, report_composio_op_error, OpResult};
+use super::error_utils::{
+    backend_mode_without_session, direct_mode_without_key, report_composio_op_error, OpResult,
+};
 use super::memory_cleanup::composio_memory_targets_for_connection;
 use tinymemory_api::composio::normalize_connection_identifier;
 
@@ -34,6 +36,18 @@ pub async fn composio_list_connections(
                 connections: Vec::new(),
             },
             vec!["composio: direct mode — no api key configured yet, 0 connection(s)".to_string()],
+        ));
+    }
+    if backend_mode_without_session(config) {
+        tracing::debug!(
+            "[composio] list_connections: backend mode selected, not signed in yet \
+             — returning empty connection list (valid setup state, not an error)"
+        );
+        return Ok(RpcOutcome::new(
+            ComposioConnectionsResponse {
+                connections: Vec::new(),
+            },
+            vec!["composio: backend mode — not signed in yet, 0 connection(s)".to_string()],
         ));
     }
     // The connector module owns the backend-proxied route. Direct mode stays

@@ -83,20 +83,28 @@ async fn composio_list_capabilities_does_not_require_session() {
 }
 
 #[tokio::test]
-async fn composio_list_connections_errors_without_session() {
+async fn composio_list_connections_returns_empty_without_session() {
     let _serialised = module_guard().await;
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    let err = composio_list_connections(&config).await.unwrap_err();
-    // Same contract as `composio_list_toolkits_errors_without_session`: it
-    // fails rather than answering with an empty list, and says what is missing.
+    // Backend mode (the default) with no app-session JWT is the fresh-install /
+    // signed-out state, not a failure: the module has no proxy route to be
+    // given, so the old `Err` path reported "loaded without a connector route"
+    // at error level on every boot and periodic tick (#6176). Unlike
+    // `composio_list_toolkits_errors_without_session`, this member answers with
+    // an empty list — exactly as the direct-mode-without-key guard does
+    // (TAURI-RUST-R4) — and the log says why the list is empty.
+    let outcome = composio_list_connections(&config)
+        .await
+        .expect("backend mode without a session must return an empty list, not an error");
     assert!(
-        err.to_lowercase().contains("composio"),
-        "the error should name the domain: {err}"
+        outcome.value.connections.is_empty(),
+        "no session → no route → no connections"
     );
     assert!(
-        err.contains("no backend session") || err.contains("unavailable") || err.contains("route"),
-        "the error should say what is missing: {err}"
+        outcome.logs.iter().any(|l| l.contains("not signed in")),
+        "log must explain the empty list is the signed-out setup state, got {:?}",
+        outcome.logs
     );
 }
 
