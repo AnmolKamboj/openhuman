@@ -185,7 +185,20 @@ pub fn memory_write_instruction(preferences: bool, facts: bool, delegate: bool) 
         (false, true) => "with `memory_store`",
         // Only when neither direct tool is held, so an agent that has one
         // renders exactly the text it rendered before this arm existed.
-        (false, false) if delegate => "with `manage_profile_memory`",
+        //
+        // `blocking: true` is not a stylistic detail, it is what makes the
+        // sentence above true (#6200 review). `ArchetypeDelegationTool`
+        // defaults an omitted `blocking` to `false` and dispatches
+        // `PreferAsync`, which hands back an immediate reference while the
+        // worker runs later — so a model told merely to "write with
+        // `manage_profile_memory`" would confirm a save that had not happened,
+        // which is the #6048 bug arriving by a new route. The argument is
+        // advertised on the tool's own schema, so this is a demand the model
+        // can actually satisfy.
+        (false, false) if delegate => {
+            "with `manage_profile_memory` (pass `blocking: true` so the write \
+             gates your reply)"
+        }
         (false, false) => return String::new(),
     };
     format!(
@@ -242,14 +255,27 @@ pub const MEMORY_STORE_TOOL: &str = "memory_store";
 /// the direct pair alone dropped the rule for the agent that needed it most —
 /// the #6048 case, "got it, saved" with no tool call behind it.
 ///
-/// The section's promise survives the indirection: `profile_memory_agent` is a
-/// synchronous `worker`-tier sub-agent holding **both** direct tools, so a
-/// delegated write reaches the same store and completes inside the parent's
-/// turn.
+/// The section's promise survives the indirection **only under a blocking
+/// delegation**. `profile_memory_agent` holds both direct tools, so a delegated
+/// write reaches the same store — but `ArchetypeDelegationTool` defaults to an
+/// async dispatch that returns before the worker runs, so the route text demands
+/// `blocking: true`. Without that the parent could confirm a save that had not
+/// happened yet, which is exactly the bug this section exists to prevent.
 pub const MEMORY_WRITE_DELEGATE_TOOL: &str = "manage_profile_memory";
 
-/// The writing tools [`MemoryWriteSection`] is keyed on.
-pub const MEMORY_WRITE_TOOLS: [&str; 2] = [MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL];
+/// The writing routes [`MemoryWriteSection`] is keyed on, delegate included.
+///
+/// Mirrors [`MEMORY_READ_TOOLS`], which lists `retrieve_memory` beside its two
+/// direct tools for the same reason. The live gate in `add_memory_prompt_sections`
+/// asks about each of these separately rather than reading this array — the
+/// section names the route it found, so it cannot treat them interchangeably —
+/// but a reader reaching for "what does the write section care about" should get
+/// the whole answer here (#6200 review).
+pub const MEMORY_WRITE_TOOLS: [&str; 3] = [
+    MEMORY_STORE_TOOL,
+    SAVE_PREFERENCE_TOOL,
+    MEMORY_WRITE_DELEGATE_TOOL,
+];
 
 /// Whether any of `names` is registered on this session **and** survives tool
 /// filtering.

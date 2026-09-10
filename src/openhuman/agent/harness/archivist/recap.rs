@@ -316,6 +316,7 @@ impl ArchivistHook {
                 {
                     Ok(result) => result,
                     Err(_) => {
+                        let elapsed_ms = started.elapsed().as_millis();
                         // WARN, not debug: a fold that outlasts the deadline
                         // held the turn for the whole of it, and that is the
                         // symptom worth finding in a log. Falls through to
@@ -323,8 +324,9 @@ impl ArchivistHook {
                         // so nothing is persisted and the segment keeps the
                         // marker a later pass selects on.
                         tracing::warn!(
-                            "[archivist] summarize_entries: recap exceeded {:?} — \
-                                 segment={segment_id} left unsummarised for a later pass",
+                            "[archivist] summarize_entries: recap exceeded {:?} \
+                                 elapsed_ms={elapsed_ms} — segment={segment_id} left \
+                                 unsummarised for a later pass",
                             RECAP_DEADLINE
                         );
                         return (

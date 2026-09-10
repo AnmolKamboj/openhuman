@@ -499,6 +499,16 @@ fn a_delegate_only_agent_gets_the_write_rule_naming_the_delegate() {
         rendered.contains(MEMORY_WRITE_DELEGATE_TOOL),
         "the rule must name the delegate: {rendered}"
     );
+    // #6200 review (Codex P1). `ArchetypeDelegationTool` defaults an omitted
+    // `blocking` to `false` and dispatches async, returning before the worker
+    // runs. Without demanding `blocking: true` this section would tell the model
+    // to confirm a save that has not happened — #6048 arriving by a new route,
+    // through the very rule meant to prevent it.
+    assert!(
+        rendered.contains("blocking: true"),
+        "a delegated write must be demanded as blocking, or the reply can \
+         confirm before the write lands: {rendered}"
+    );
     for absent in [MEMORY_STORE_TOOL, SAVE_PREFERENCE_TOOL] {
         assert!(
             !rendered.contains(absent),
