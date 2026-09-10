@@ -45,7 +45,15 @@ pub async fn disconnect(manager: &SocketManager) -> Result<SocketState, String> 
 /// bootstrap auto-connect and this RPC both fire on a cold start, roughly two
 /// seconds apart, and each used to tear the other's freshly handshaked socket
 /// down. When the live connection already serves this exact url+token there is
-/// nothing to rebind — no disconnect, no bridge swap, no second EIO session.
+/// no second EIO session to open.
+///
+/// The socket is reusable; the workflow bridge is not. It is pinned to a
+/// `Config` that a workspace switch invalidates, and `connect_static` clears it
+/// outright while leaving a matching connection identity behind — so skipping
+/// `install_bridge` on the reuse path would leave the workflow plane pointing at
+/// a stale workspace, or disabled entirely. `set_workflow_bridge` re-advertises
+/// over an already-`ready` socket by design, so the install runs on both paths
+/// and only the handshake is skipped.
 async fn connect_with_session_using(
     manager: &SocketManager,
     url: &str,
@@ -55,6 +63,7 @@ async fn connect_with_session_using(
 ) -> Result<SocketState, String> {
     let _rebind = manager.lock_identity_rebind().await;
     if manager.is_live_for(url, token) {
+        install_bridge();
         log::info!(
             "[socket:rpc] connect_with_session — {url} already connected with this session; reusing the live socket"
         );

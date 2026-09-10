@@ -533,8 +533,18 @@ pub fn spawn_socket_auto_connect(
             // handshake (#6181); if it is already up for this identity there is
             // nothing to rebind.
             if socket_mgr.is_live_for(&api_url, &initial_token) {
+                // The socket is reusable, the bridge is not: it is pinned to the
+                // `Config` resolved above, which a workspace switch invalidates.
+                // `set_workflow_bridge` re-advertises over a live socket by
+                // design, so reinstall and skip only the handshake.
+                #[cfg(feature = "flows")]
+                if _flows_enabled {
+                    crate::openhuman::flows::medulla_bridge::install(std::sync::Arc::clone(
+                        &config,
+                    ));
+                }
                 log::info!(
-                    "[socket] Auto-connect: {api_url} already connected with this session — nothing to do"
+                    "[socket] Auto-connect: {api_url} already connected with this session — refreshed the workflow bridge, kept the socket"
                 );
                 return;
             }

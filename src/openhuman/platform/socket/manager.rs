@@ -62,6 +62,13 @@ pub(super) struct SharedState {
     /// (e.g. "backend redirected ws→wss; update BACKEND_URL"). Cleared on every
     /// successful handshake and on disconnect.
     pub(super) error: RwLock<Option<String>>,
+    /// `(url, token)` the background loop is currently authenticating with, and
+    /// the reason it lives here rather than on the handle: `ws_loop` re-reads the
+    /// token provider before **every** attempt, so a refresh mid-session would
+    /// leave a manager-side copy naming a credential this socket no longer uses.
+    /// Seeded by `spawn_loop` and rewritten by the loop on each attempt; cleared
+    /// on disconnect. Read by [`SocketManager::is_live_for`].
+    pub(super) connection_identity: RwLock<Option<(String, String)>>,
 }
 
 /// The connection's readiness flag, guarded by a lock so a reader can hold the
@@ -170,13 +177,6 @@ pub struct SocketManager {
     /// Serializes identity-sensitive disconnect → bridge bind → connect
     /// transactions while still allowing ordinary emits and state reads.
     identity_rebind: tokio::sync::Mutex<()>,
-    /// `(url, token)` the background loop is currently serving, recorded when a
-    /// loop is spawned and cleared on disconnect. Read by [`is_live_for`] so a
-    /// redundant connect for the identity that is already live can be skipped
-    /// instead of re-running the whole handshake (#6181).
-    ///
-    /// [`is_live_for`]: SocketManager::is_live_for
-    connection_identity: RwLock<Option<(String, String)>>,
 }
 
 impl SocketManager {
@@ -190,12 +190,12 @@ impl SocketManager {
                 status: RwLock::new(ConnectionStatus::Disconnected),
                 socket_id: RwLock::new(None),
                 error: RwLock::new(None),
+                connection_identity: RwLock::new(None),
             }),
             emit_tx: tokio::sync::Mutex::new(None),
             shutdown_tx: tokio::sync::Mutex::new(None),
             loop_handle: tokio::sync::Mutex::new(None),
             identity_rebind: tokio::sync::Mutex::new(()),
-            connection_identity: RwLock::new(None),
         }
     }
 
@@ -242,10 +242,14 @@ impl SocketManager {
     /// Deliberately conservative: a different URL, a different token, or any
     /// status other than `Connected` all report `false`, so an account switch
     /// (same URL, new token) still forces a real reconnect and an unhealthy
-    /// socket is still replaced.
+    /// socket is still replaced. The token compared against is the one
+    /// `ws_loop` used for its most recent attempt, not the one this manager was
+    /// handed at spawn — a provider that refreshes the session mid-loop keeps
+    /// matching instead of forcing a pointless reconnect.
     pub fn is_live_for(&self, url: &str, token: &str) -> bool {
         self.is_connected()
             && self
+                .shared
                 .connection_identity
                 .read()
                 .as_ref()
@@ -338,12 +342,13 @@ impl SocketManager {
 
         self.disconnect().await?;
 
-        // Record the identity this loop will serve so a redundant connect for
-        // the same url+token can be skipped (see `is_live_for`). This is the
-        // token the caller already validated, not a fresh provider call: the two
-        // must agree, or the guard could match on a credential this connection
-        // never used.
-        *self.connection_identity.write() = Some((url.to_string(), token));
+        // Seed the identity this loop will serve so a redundant connect for the
+        // same url+token can be skipped (see `is_live_for`). This is the token
+        // the caller already validated, not a fresh provider call: the two must
+        // agree, or the guard could match on a credential this connection never
+        // used. `ws_loop` rewrites it before every attempt, so a token refreshed
+        // mid-session replaces this seed rather than going stale behind it.
+        *self.shared.connection_identity.write() = Some((url.to_string(), token));
 
         log::info!("[socket] Connecting to {}", url);
 
@@ -404,7 +409,7 @@ impl SocketManager {
         *self.shared.status.write() = ConnectionStatus::Disconnected;
         *self.shared.socket_id.write() = None;
         *self.shared.error.write() = None;
-        *self.connection_identity.write() = None;
+        *self.shared.connection_identity.write() = None;
         emit_state_change(&self.shared);
         log::debug!("[socket] Disconnected");
         Ok(())

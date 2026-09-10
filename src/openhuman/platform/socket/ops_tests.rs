@@ -26,7 +26,7 @@ async fn static_token_connection_clears_identity_state_after_disconnect() {
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use crate::openhuman::platform::socket::token_provider::static_token_provider;
+use crate::openhuman::platform::socket::token_provider::{static_token_provider, TokenProvider};
 use crate::openhuman::platform::socket::types::ConnectionStatus;
 
 const TOKEN_A: &str = "session-token-a";
@@ -64,6 +64,50 @@ async fn spawn_accept_counting_eio_server() -> (Arc<AtomicUsize>, std::net::Sock
         }
     });
     (accepts, addr)
+}
+
+/// EIO v4 mock that completes one handshake and then holds the connection open
+/// until the returned sender says to hang up, so a test can decide exactly when
+/// the loop is forced to reconnect. Later connections are held indefinitely.
+async fn spawn_server_that_hangs_up_on_cue(
+) -> (std::net::SocketAddr, tokio::sync::watch::Sender<bool>) {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::{accept_async, tungstenite::Message as WsMessage};
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (hang_up, rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        let mut first = true;
+        while let Ok((stream, _)) = listener.accept().await {
+            let mut rx = rx.clone();
+            let hang_up_this_one = std::mem::take(&mut first);
+            tokio::spawn(async move {
+                let Ok(ws) = accept_async(stream).await else {
+                    return;
+                };
+                let (mut write, mut read) = ws.split();
+                let open = r#"0{"sid":"mock-eio-sid","upgrades":[],"pingInterval":30000,"pingTimeout":30000}"#;
+                let _ = write.send(WsMessage::Text(open.into())).await;
+                let _ = read.next().await; // client SIO CONNECT
+                let _ = write
+                    .send(WsMessage::Text(r#"40{"sid":"mock-sio-sid"}"#.into()))
+                    .await;
+                if hang_up_this_one {
+                    while rx.changed().await.is_ok() {
+                        if *rx.borrow() {
+                            break;
+                        }
+                    }
+                    let _ = write.close().await;
+                    return;
+                }
+                while let Some(Ok(_)) = read.next().await {}
+            });
+        }
+    });
+    (addr, hang_up)
 }
 
 async fn wait_for_connected(manager: &SocketManager) {
@@ -113,13 +157,13 @@ async fn a_redundant_session_connect_reuses_the_live_socket() {
 
     bootstrap_auto_connect(&manager, &url, TOKEN_A).await;
 
-    let rebound = AtomicBool::new(false);
+    let bridge_installed = AtomicBool::new(false);
     let state = connect_with_session_using(
         &manager,
         &url,
         TOKEN_A,
         static_token_provider(TOKEN_A.to_string()),
-        || rebound.store(true, Ordering::SeqCst),
+        || bridge_installed.store(true, Ordering::SeqCst),
     )
     .await
     .unwrap();
@@ -130,13 +174,98 @@ async fn a_redundant_session_connect_reuses_the_live_socket() {
         1,
         "a redundant connect for an identical identity opened a duplicate EIO session"
     );
-    assert!(
-        !rebound.load(Ordering::SeqCst),
-        "identity rebind ran for a session that was already live"
-    );
-    // The caller also gets the live socket's state back, not the `Connecting`
-    // of a handshake that has only just been kicked off.
+    // The caller gets the live socket's state back, not the `Connecting` of a
+    // handshake that has only just been kicked off.
     assert_eq!(state.status, ConnectionStatus::Connected);
+    // Reusing the socket must not skip the bridge: it is pinned to a `Config`,
+    // and `connect_static` can have cleared it while leaving a matching identity
+    // behind, so the workflow plane would be left stale or disabled.
+    assert!(
+        bridge_installed.load(Ordering::SeqCst),
+        "reusing the socket skipped the workflow-bridge install"
+    );
+}
+
+/// The bridge half of the reuse path, end to end through the operation that
+/// clears it: `openhuman.socket_connect` disables the identity-bound workflow
+/// plane and leaves a matching connection identity behind, so a following
+/// `connect_with_session` for the same url+token must still restore it.
+#[tokio::test]
+async fn a_reused_socket_still_restores_a_bridge_a_static_connect_cleared() {
+    let (accepts, addr) = spawn_accept_counting_eio_server().await;
+    let url = format!("http://{addr}");
+    let manager = SocketManager::new();
+
+    let cleared = AtomicBool::new(false);
+    connect_static_using(&manager, &url, TOKEN_A, || {
+        cleared.store(true, Ordering::SeqCst)
+    })
+    .await
+    .unwrap();
+    wait_for_connected(&manager).await;
+    assert!(cleared.load(Ordering::SeqCst));
+
+    let bridge_installed = AtomicBool::new(false);
+    connect_with_session_using(
+        &manager,
+        &url,
+        TOKEN_A,
+        static_token_provider(TOKEN_A.to_string()),
+        || bridge_installed.store(true, Ordering::SeqCst),
+    )
+    .await
+    .unwrap();
+
+    settle_for_a_second_accept(&accepts).await;
+    assert!(
+        bridge_installed.load(Ordering::SeqCst),
+        "the workflow plane stayed disabled after a static connect cleared it"
+    );
+    assert_eq!(
+        accepts.load(Ordering::SeqCst),
+        1,
+        "restoring the bridge should not cost a fresh EIO session"
+    );
+}
+
+/// `ws_loop` re-reads the token provider before every attempt, so a session
+/// refreshed mid-loop leaves the socket authenticated with a token the manager
+/// was never handed. The recorded identity has to follow, or the next session
+/// connect tears down a perfectly healthy socket.
+#[tokio::test]
+async fn a_token_refreshed_mid_loop_updates_the_recorded_identity() {
+    let (addr, hang_up) = spawn_server_that_hangs_up_on_cue().await;
+    let url = format!("http://{addr}");
+    let manager = SocketManager::new();
+
+    // A provider whose answer changes under the loop, exactly as a live session
+    // refresh does.
+    let refreshed = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&refreshed);
+    let provider: TokenProvider = Arc::new(move || {
+        Ok(if seen.load(Ordering::SeqCst) {
+            TOKEN_B.to_string()
+        } else {
+            TOKEN_A.to_string()
+        })
+    });
+
+    manager.connect_with_provider(&url, provider).await.unwrap();
+    wait_for_connected(&manager).await;
+    assert!(manager.is_live_for(&url, TOKEN_A));
+
+    // Refresh the session, then drop the socket so the loop reconnects with the
+    // new token.
+    refreshed.store(true, Ordering::SeqCst);
+    let _ = hang_up.send(true);
+
+    for _ in 0..200 {
+        if manager.is_live_for(&url, TOKEN_B) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("the recorded identity still names the pre-refresh token after a reconnect");
 }
 
 /// The other half of the guard: an account switch keeps the same backend URL but
@@ -150,20 +279,20 @@ async fn a_session_connect_with_a_different_token_still_rebinds() {
 
     bootstrap_auto_connect(&manager, &url, TOKEN_A).await;
 
-    let rebound = AtomicBool::new(false);
+    let bridge_installed = AtomicBool::new(false);
     connect_with_session_using(
         &manager,
         &url,
         TOKEN_B,
         static_token_provider(TOKEN_B.to_string()),
-        || rebound.store(true, Ordering::SeqCst),
+        || bridge_installed.store(true, Ordering::SeqCst),
     )
     .await
     .unwrap();
     wait_for_connected(&manager).await;
 
     assert!(
-        rebound.load(Ordering::SeqCst),
+        bridge_installed.load(Ordering::SeqCst),
         "a new session token must still rebind the identity-bound workflow plane"
     );
     assert_eq!(
