@@ -304,6 +304,64 @@ async fn composio_list_connections_via_mock_counts_active() {
     assert!(outcome.logs.iter().any(|l| l.contains("2 active")));
 }
 
+#[cfg(feature = "modules")]
+#[tokio::test]
+async fn composio_list_connections_drops_the_module_route_once_signed_out() {
+    use crate::openhuman::integrations::composio::module_client::methods;
+    use crate::openhuman::modules::connectors::{last_route_is_none, proxy_without_reconcile};
+
+    let _serialised = module_guard().await;
+    let app = Router::new().route(
+        "/agent-integrations/composio/connections",
+        get(|| async {
+            Json(json!({
+                "success": true,
+                "data": {"connections": [{"id":"c1","toolkit":"gmail","status":"ACTIVE"}]}
+            }))
+        }),
+    );
+    let base = start_mock_backend(app).await;
+    let signed_in_tmp = tempfile::tempdir().unwrap();
+    let signed_in = config_with_backend(&signed_in_tmp, base);
+    // Signed in: the module is loaded and routed to the mock backend.
+    let outcome = composio_list_connections(&signed_in).await.unwrap();
+    assert_eq!(outcome.value.connections.len(), 1);
+    assert!(
+        !last_route_is_none(),
+        "the signed-in call must have routed the module"
+    );
+
+    // Signed out: a config whose auth store holds no session. The guard
+    // answers without a module call — but the module still holds the
+    // signed-in bearer, and telling it to drop that is the host's job (the
+    // module chooses no route on its own), so the guard must do so before
+    // answering.
+    let signed_out_tmp = tempfile::tempdir().unwrap();
+    let signed_out = test_config(&signed_out_tmp);
+    let err = composio_list_connections(&signed_out).await.unwrap_err();
+    assert!(err.contains("no backend session token"), "{err}");
+    assert!(
+        last_route_is_none(),
+        "the module must have been told to drop its route"
+    );
+    // And the module really did drop it: a proxy that does NOT reconcile the
+    // route first gets the module's own no-route answer, not the mock's list.
+    let proxy = proxy_without_reconcile()
+        .await
+        .expect("the module is serving");
+    let err = proxy
+        .call::<crate::openhuman::integrations::composio::types::ComposioConnectionsResponse>(
+            methods::LIST_CONNECTIONS,
+            (),
+        )
+        .await
+        .expect_err("a module without a route cannot list connections");
+    assert!(
+        err.to_string().contains("without a connector route"),
+        "{err}"
+    );
+}
+
 #[tokio::test]
 async fn composio_authorize_clears_pending_meta_connection_before_handoff() {
     let _serialised = module_guard().await;

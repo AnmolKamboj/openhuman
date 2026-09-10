@@ -54,6 +54,17 @@ pub async fn composio_list_connections(
             "[composio] list_connections: backend mode selected, not signed in yet \
              — connections unavailable until sign-in (valid setup state, not reported)"
         );
+        // A module configured while the user was signed in still holds that
+        // bearer, and the per-call route reconciliation that would tell it to
+        // drop it is exactly what answering here skips. Give an already-loaded
+        // module the instruction now; a module that was never loaded holds no
+        // credential and is not loaded for this.
+        if let Err(error) = connectors::reconcile_route_if_loaded(config).await {
+            tracing::warn!(
+                "[composio] list_connections: could not drop the connector module's route \
+                 after sign-out ({error}); the next routed call retries"
+            );
+        }
         return Err(COMPOSIO_NO_SESSION.to_string());
     }
     // The connector module owns the backend-proxied route. Direct mode stays
