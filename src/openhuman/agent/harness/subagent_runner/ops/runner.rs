@@ -32,7 +32,8 @@ use crate::openhuman::agent::harness::subagent_runner::handoff::ResultHandoffCac
 use crate::openhuman::agent::harness::subagent_runner::subagent_iter_cap_with_autonomous_lift;
 use crate::openhuman::agent::harness::subagent_runner::tool_prep::{
     build_text_mode_tool_instructions, filter_tool_indices, is_subagent_spawn_tool,
-    load_prompt_source, select_actions_with_essentials, top_k_for_toolkit,
+    load_prompt_source, select_actions_with_essentials, strip_spawn_tools_from_dynamic,
+    top_k_for_toolkit,
 };
 use crate::openhuman::agent::harness::subagent_runner::types::{
     SubagentMode, SubagentRunError, SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus,
@@ -1234,6 +1235,11 @@ async fn run_typed_mode(
     } else {
         None
     };
+
+    // Dynamic tools never pass through `allowed_indices`, so the strip above has
+    // not seen them — the one route by which a spawn/delegate name can reach a
+    // child admitted (issue #6157). Strip before their five consumers below.
+    strip_spawn_tools_from_dynamic(&mut dynamic_tools, &definition.id);
 
     // Build provider-visible tool schemas in EXECUTION-PRECEDENCE order:
     // `dynamic_tools` (extra_tools at runtime) before parent specs.
