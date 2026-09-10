@@ -10,6 +10,7 @@
 //! model is built, resolved or called anywhere in these tests.
 
 use super::*;
+use crate::openhuman::memory::api::provider::SegmentStatus;
 use crate::openhuman::memory::guard::test_support::RecordingProvider;
 
 const SESSION: &str = "lifecycle-6156";
@@ -48,6 +49,9 @@ fn segment() -> ConversationSegment {
         summary: None,
         embedding: None,
         open: false,
+        // #6186: the lifecycle marker the contract now carries. `Closed`
+        // is what a segment whose recap failed is left as.
+        status: Some(SegmentStatus::Closed),
         start_seq: None,
         end_seq: None,
     }

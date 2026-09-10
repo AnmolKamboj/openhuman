@@ -1,4 +1,5 @@
 use super::*;
+use crate::openhuman::memory::api::provider::SegmentStatus;
 
 fn segment() -> ConversationSegment {
     ConversationSegment {
@@ -13,6 +14,9 @@ fn segment() -> ConversationSegment {
         summary: None,
         embedding: None,
         open: false,
+        // #6186: the lifecycle marker the contract now carries. `Closed`
+        // is what a segment whose recap failed is left as.
+        status: Some(SegmentStatus::Closed),
         start_seq: Some(10),
         end_seq: Some(14),
     }

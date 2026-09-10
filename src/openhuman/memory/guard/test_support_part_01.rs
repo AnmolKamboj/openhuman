@@ -21,8 +21,9 @@ use crate::openhuman::memory::api::provider::types::{
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
-    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
-    EpisodicEvent, EpisodicTurn, FacetType, FastRetrieveQuery, MemoryChunks, MemoryCodingSessions,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, ConversationSegment,
+    CoverWindowQuery, EntityMatch, EpisodicEvent, EpisodicTurn, FacetType, FastRetrieveQuery,
+    MemoryChunks, MemoryCodingSessions,
     MemoryCore,
     MemoryDiff, MemoryDocuments, MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph,
     MemoryIngest, MemoryMaintenance, MemoryPeople, MemoryPortability, MemoryProfile,
@@ -90,6 +91,9 @@ pub struct RecordingProvider {
     /// What `session_turns` returns, so the archivist's finalize path can be
     /// driven past its empty-entries early return without an engine behind it.
     session_turns: Mutex<Vec<EpisodicTurn>>,
+    /// What `segments_pending_summary` returns, so the re-summarisation pass
+    /// (#6186) can be driven over a known queue.
+    pending_segments: Mutex<Vec<ConversationSegment>>,
 }
 
 impl Default for RecordingProvider {

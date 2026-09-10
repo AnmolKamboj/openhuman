@@ -159,6 +159,18 @@ impl PostTurnHook for ArchivistHook {
         if let Some(ref segment) = closed_segment {
             let now = Self::now_timestamp();
             self.on_segment_closed(segment, session_id, now).await;
+            // Recover segments an earlier failed recap left unsummarised
+            // (#6186). Driven from here rather than from a timer because a
+            // close that just happened is first-hand evidence that the
+            // summariser is answering *now* — a scheduler would have to guess,
+            // and would spend its budget against a provider that is still down.
+            //
+            // Deliberately not called from `flush_open_segment`, the other
+            // caller of `on_segment_closed`: that one is awaited unbounded at
+            // session wind-down, and opportunistic recovery must never be
+            // charged to how long the app takes to close. This path is a
+            // detached post-turn hook, so the time is invisible.
+            self.resummarise_pending(now).await;
         }
 
         tracing::debug!("[archivist] turn indexed successfully: session={session_id}");

@@ -261,6 +261,17 @@ impl MemoryEpisodic for RecordingProvider {
         Ok(None)
     }
 
+    async fn segments_pending_summary(
+        &self,
+        _limit: u32,
+    ) -> Result<
+        Vec<crate::openhuman::memory::api::provider::episodic::ConversationSegment>,
+        MemoryError,
+    > {
+        self.record(Call::plain("episodic.segments_pending_summary"));
+        Ok(self.pending_segments.lock().unwrap().clone())
+    }
+
     async fn create_segment(
         &self,
         _segment_id: &str,

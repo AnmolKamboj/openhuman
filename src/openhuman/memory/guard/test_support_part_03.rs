@@ -15,6 +15,7 @@ impl RecordingProvider {
             namespace_hits: Mutex::new(Vec::new()),
             namespace_summaries: Mutex::new(Vec::new()),
             session_turns: Mutex::new(Vec::new()),
+            pending_segments: Mutex::new(Vec::new()),
         }
     }
 
@@ -50,6 +51,14 @@ impl RecordingProvider {
     /// reaches the recap it is being tested for.
     pub fn with_session_turns(self, turns: Vec<EpisodicTurn>) -> Self {
         *self.session_turns.lock().unwrap() = turns;
+        self
+    }
+
+    /// Seed the re-summarisation queue (#6186). The default is empty, so a
+    /// test that does not set this drives the pass over nothing — which is
+    /// the state a healthy store is in.
+    pub fn with_pending_segments(self, segments: Vec<ConversationSegment>) -> Self {
+        *self.pending_segments.lock().unwrap() = segments;
         self
     }
 
