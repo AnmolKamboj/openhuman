@@ -125,7 +125,7 @@ impl Agent {
                 // (`OPENHUMAN_SESSION_DUAL_WRITE` is a kill switch). Only runs
                 // after the legacy JSONL append above succeeds; the legacy path
                 // is primary and untouched (issue #4249, 04.1).
-                self.maybe_dual_write_session_store(&path, messages, &meta, turn_usage);
+                self.maybe_dual_write_session_store(&path);
             }
             Err(err) => {
                 // Restore the tracked state so a transient failure doesn't make
@@ -150,13 +150,7 @@ impl Agent {
     /// chat turn. Records reuse the importer's normalization
     /// ([`crate::openhuman::agent::session_import`]) so live and imported records are
     /// shape-identical. Reads stay 100% legacy until 04.2.
-    fn maybe_dual_write_session_store(
-        &self,
-        path: &std::path::Path,
-        messages: &[ChatMessage],
-        meta: &transcript::TranscriptMeta,
-        turn_usage: Option<&transcript::TurnUsage>,
-    ) {
+    fn maybe_dual_write_session_store(&self, path: &std::path::Path) {
         use crate::openhuman::agent::session_import::live;
 
         // Config flag (default ON) gates the mirror; the env kill switch can
@@ -179,26 +173,35 @@ impl Agent {
             return;
         };
 
-        // Rebuild the exact message shape the importer sees after a JSONL
-        // round-trip: attach this turn's usage to the last assistant message so
-        // its `openhuman_turn_usage` metadata matches an imported record.
-        let mut msgs = messages.to_vec();
-        if let Some(usage) = turn_usage {
-            if let Some(idx) = msgs.iter().rposition(|m| m.role == "assistant") {
-                transcript::attach_turn_usage_metadata(&mut msgs[idx], usage);
-            }
-        }
-        let session_transcript = transcript::SessionTranscript {
-            meta: meta.clone(),
-            messages: msgs,
-        };
         let workspace = self.workspace_dir.clone();
+        let path = path.to_path_buf();
 
         log::debug!(
             "[session-store] dual-write scheduled stem={stem} workspace={}",
             workspace.display()
         );
         tokio::spawn(async move {
+            // Mirror the exact transcript the shadow reader compares against.
+            // `shadow_read_compare` normalizes `read_transcript(path)` — the
+            // legacy JSONL after its write→read round-trip — so build the store
+            // record from that same read rather than from the in-memory turn.
+            // Reconstructing it by hand let sidecar `extra_metadata` (turn-usage,
+            // tool-failure marker, reasoning) diverge on resumed sessions even
+            // though every message body, id and role matched, which is what the
+            // parity soak flagged as `[session_shadow_read] DIVERGENCE` (#6149).
+            // Read-and-mirror runs here on the same best-effort background task
+            // that already fully rewrites the journal stream; on a read error,
+            // skip the mirror for this turn (legacy stays authoritative).
+            let session_transcript = match transcript::read_transcript(&path) {
+                Ok(t) => t,
+                Err(err) => {
+                    log::debug!(
+                        "[session-store] dual-write skipped: transcript read-back failed for {}: {err:#}",
+                        path.display()
+                    );
+                    return;
+                }
+            };
             if let Err(err) = live::write_live_turn(&workspace, &stem, &session_transcript).await {
                 log::warn!("[session-store] dual-write failed stem={stem}: {err:#}");
             }
