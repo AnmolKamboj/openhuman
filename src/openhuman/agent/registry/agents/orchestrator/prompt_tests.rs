@@ -3,7 +3,7 @@ use crate::openhuman::agent::context::prompt::{LearnedContextData, ToolCallForma
 use std::collections::HashSet;
 
 #[test]
-fn render_installed_skills_lists_skills_and_steers_to_run_skill() {
+fn render_installed_skills_lists_skills_and_steers_to_the_skills_pack() {
     let skills = vec![
         Workflow {
             dir_name: "ascii-art".into(),
@@ -19,10 +19,19 @@ fn render_installed_skills_lists_skills_and_steers_to_run_skill() {
     ];
     let out = render_installed_skills(&skills);
     assert!(out.contains("## Installed Skills"));
+    // Every tool that runs or inspects a skill is packed, so the catalogue
+    // must steer to the pack route rather than naming a tool the model
+    // cannot see. Naming one here is what this assertion exists to stop.
     assert!(
-        out.contains("run_skill"),
-        "catalogue must steer to run_skill"
+        out.contains("use_skill") && out.contains("`skills`"),
+        "catalogue must steer to the skills pack via use_skill"
     );
+    for withheld in ["run_skill", "describe_workflow", "skill_registry_browse"] {
+        assert!(
+            !out.contains(withheld),
+            "catalogue names the withheld tool `{withheld}` as if callable"
+        );
+    }
     assert!(out.contains("Handoff Plan"));
     assert!(out.contains("- **ascii-art**: ASCII art via pyfiglet"));
     assert!(out.contains("- **no-dir**: (no description)"));
@@ -470,9 +479,19 @@ fn build_hides_unconnected_integrations() {
 #[test]
 fn build_routes_prompt_heavy_domains_to_specialists() {
     let body = build(&ctx_with(&[])).unwrap();
-    assert!(body.contains("`ask_docs`"));
-    assert!(body.contains("`schedule_task`"));
-    assert!(body.contains("`make_presentation`"));
+    // The hand-written intent table this used to assert on is gone: for a
+    // specialist the model can see, its `when_to_use` is already the tool
+    // description on the wire, and restating it here charged the same prose
+    // twice per turn. What must survive is the routing *policy* — delegate
+    // rather than improvise — and the pointer to the withheld ones.
+    assert!(
+        body.contains("**Needs a specialist**"),
+        "the direct-first decision tree must still route to specialists"
+    );
+    assert!(
+        body.contains("Capabilities not in your tool list"),
+        "the prompt must point at the withheld-specialist section"
+    );
     assert!(
         !body.contains("## Presentation generation"),
         "presentation-specific grounding policy belongs in presentation_agent"
@@ -510,4 +529,61 @@ fn build_omits_guide_when_no_integrations_connected() {
     }];
     let body = build(&ctx_with(&integrations)).unwrap();
     assert!(!body.contains("## Connected Integrations"));
+}
+
+/// The archetype must never name a tool a pack is withholding.
+///
+/// This is the drift class the generated routing block exists to close. The
+/// static markdown named fifteen tools and ten of them were packed, so the
+/// prompt taught a call the model could not make: it emits the name, the
+/// harness answers "unknown tool", and the iteration is spent. Nothing in the
+/// build compared the two lists, which is why it survived.
+///
+/// The rule is deliberately about *packed* names, not about every tool: a name
+/// that is simply off this agent's belt (`cron_add`, say) is discussed in prose
+/// that already conditions on "when they appear in your tool list", while a
+/// packed name is one the model provably cannot see and must reach through
+/// `use_skill`.
+#[test]
+fn the_archetype_never_names_a_withheld_tool() {
+    let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
+    let named: Vec<&str> = packed
+        .iter()
+        .copied()
+        .filter(|name| ARCHETYPE.contains(&format!("`{name}`")))
+        .collect();
+    assert!(
+        named.is_empty(),
+        "orchestrator/prompt.md names withheld tools as if directly callable: {named:?}. \
+         Route them through `use_skill` instead, or unpack them."
+    );
+}
+
+/// The same rule over the whole rendered prompt, not just the static half.
+///
+/// `render_installed_skills` was the other offender — it named five packed
+/// tools in a Rust string literal, where the archetype check above cannot see
+/// them.
+#[test]
+fn the_rendered_prompt_never_names_a_withheld_tool() {
+    let body = build(&ctx_with(&[])).unwrap();
+    let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
+    // The generated withheld-specialist block names packed tools on purpose —
+    // that is the route, not a claim they are callable. It is absent here
+    // because `ctx_with` supplies an empty visible set (the "everything is
+    // visible" sentinel), so nothing is withheld and nothing is rendered.
+    assert!(
+        !body.contains("## Capabilities not in your tool list"),
+        "an empty visible set means no filter, so nothing can be withheld"
+    );
+    let named: Vec<&str> = packed
+        .iter()
+        .copied()
+        .filter(|name| body.contains(&format!("`{name}`")))
+        .collect();
+    assert!(
+        named.is_empty(),
+        "the rendered orchestrator prompt names withheld tools as if directly \
+         callable: {named:?}"
+    );
 }
