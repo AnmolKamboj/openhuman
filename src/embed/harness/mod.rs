@@ -195,11 +195,22 @@ impl Drop for Harness {
             // `keep()` hands back the path without removing the directory so
             // we can do the retried removal ourselves.
             let root = temp.keep();
-            // Keep clearing through the whole bounded settling window. A
-            // successful first removal is not sufficient: a detached session
-            // writer can recreate the directory immediately afterward.
+            // Require a short quiet period rather than trusting one successful
+            // removal: a detached session writer can recreate the directory
+            // immediately afterward. Most drops finish in ~200 ms; repeated
+            // writes retain the one-second hard cap.
+            let mut quiet_passes = 0;
             for _ in 0..20 {
-                let _ = std::fs::remove_dir_all(&root);
+                match std::fs::remove_dir_all(&root) {
+                    Ok(()) => quiet_passes += 1,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        quiet_passes += 1;
+                    }
+                    Err(_) => quiet_passes = 0,
+                }
+                if quiet_passes >= 5 {
+                    break;
+                }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             let _ = std::fs::remove_dir_all(&root);

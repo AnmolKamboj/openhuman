@@ -309,16 +309,19 @@ impl ConversationStore {
             )?;
         }
         let messages_path = self.thread_messages_path(thread_id);
-        match fs::remove_file(&messages_path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "delete conversation messages {}: {error}",
-                    messages_path.display()
-                ));
-            }
-        }
+        let remove_result = match fs::remove_file(&messages_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "delete conversation messages {}: {error}",
+                messages_path.display()
+            )),
+        };
+        // Evict on every path after the tombstone is durable, including a
+        // filesystem deletion error. The lifecycle write guard prevents a new
+        // operation from observing a replacement lock before this one drops.
+        self.locks.remove_thread(thread_id);
+        remove_result?;
         // Drop every indexed message for this thread so future searches
         // don't surface stale content.
         {
@@ -327,7 +330,6 @@ impl ConversationStore {
                 idx.remove_thread(thread_id);
             }
         }
-        self.locks.remove_thread(thread_id);
         Ok(true)
     }
 
