@@ -250,7 +250,7 @@ fn an_unbound_handle_degrades_closed() {
 #[test]
 fn every_pack_declares_the_tools_it_is_named_for() {
     // Membership is compiled-in data, so a typo here is invisible until a
-    // `load_skill` at runtime renders a pack that withheld nothing. Pin the
+    // `use_skill` at runtime renders a pack that withheld nothing. Pin the
     // exact set per pack rather than a count.
     let expect: &[(&str, &[&str])] = &[
         (
@@ -420,7 +420,7 @@ fn every_pack_declares_the_tools_it_is_named_for() {
 #[test]
 fn a_packs_owner_keeps_its_belt_advertised() {
     // `settings_agent` IS the system family. Withholding its own belt would
-    // buy a `load_skill` round trip per turn and hide nothing that is idle.
+    // buy a `use_skill` round trip per turn and hide nothing that is idle.
     let mut visible: HashSet<String> = ["doctor_health".to_string(), "file_read".to_string()]
         .into_iter()
         .collect();
@@ -473,7 +473,7 @@ fn every_owner_names_a_pack_tool_it_actually_declares() {
 
 #[test]
 fn the_reactive_fleet_tools_are_never_packed() {
-    // Packing these would put a `load_skill` round-trip between an async
+    // Packing these would put a `use_skill` round-trip between an async
     // worker returning and the parent being able to steer or collect it.
     // See `DELIBERATELY_UNPACKED_FLEET_TOOLS` for the full reasoning.
     for name in registry::DELIBERATELY_UNPACKED_FLEET_TOOLS {
@@ -490,7 +490,7 @@ fn rebinding_a_pack_handle_repoints_it_at_the_new_registry() {
     // rebinding of the agent's tool `Arc`", but the handle used to hold a
     // `OnceLock`, so the second write was dropped on the floor. An agent that
     // rebuilt its tool vector kept a `Weak` into the old allocation; once that
-    // allocation went away the upgrade failed and every `load_skill` /
+    // allocation went away the upgrade failed and every `use_skill`
     // `use_skill` reported the registry as unavailable for the rest of the
     // session. Last write must win.
     let name = pack("crypto").unwrap().tools[0];
