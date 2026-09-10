@@ -31,6 +31,19 @@ const DIRECT_TOOL_NAMES: &[&str] = &[
 /// When this pattern appears, rewrite it into a direct tool call so the turn
 /// can proceed without a manual retry.
 pub(super) fn normalize_tool_call<'a>(call: &'a ParsedToolCall) -> Cow<'a, ParsedToolCall> {
+    // `load_skill` merged into `use_skill`: the pack index each carried in its
+    // own description was one list charged twice, and splitting disclosure from
+    // dispatch made the first call of any packed tool a mandatory round trip.
+    // The retired name took the same `skill` argument the merged tool takes, so
+    // rewrite it rather than spending the iteration on an unknown-tool error.
+    if call.name == crate::openhuman::tools::toolpacks::LOAD_SKILL {
+        log::warn!("[agent_loop] rewrote retired load_skill call into use_skill");
+        return Cow::Owned(ParsedToolCall {
+            name: crate::openhuman::tools::toolpacks::USE_SKILL.to_string(),
+            arguments: call.arguments.clone(),
+            tool_call_id: call.tool_call_id.clone(),
+        });
+    }
     if call.name != "run_workflow" && call.name != "run_skill" {
         return Cow::Borrowed(call);
     }
