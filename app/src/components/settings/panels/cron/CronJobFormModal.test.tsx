@@ -279,7 +279,12 @@ describe('<CronJobFormModal />', () => {
       expect(screen.getByTestId('cron-form-error')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('cron-form-error')).toHaveTextContent('Failed to save job');
+    // The core's reason is shown alongside the generic label: a schedule
+    // rejected for being tighter than the agent floor must say so here, not
+    // only in the panel's status line behind the modal.
+    expect(screen.getByTestId('cron-form-error')).toHaveTextContent(
+      'Failed to save job: network error'
+    );
   });
 
   // ── Create: "at" schedule ───────────────────────────────────────────

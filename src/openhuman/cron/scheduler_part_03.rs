@@ -67,45 +67,37 @@ fn is_one_shot_auto_delete(job: &CronJob) -> bool {
     job.delete_after_run && matches!(job.schedule, Schedule::At { .. })
 }
 
-/// Whether an agent job runs oftener than every 5 minutes.
+/// Why an agent job counts as scheduled more often than every five minutes,
+/// if it does. `None` for shell and flow jobs, for one-shot `At` schedules,
+/// for anything at or above [`MIN_AGENT_JOB_INTERVAL`], and for an expression
+/// that cannot be read (that is not evidence of anything).
 ///
-/// Returns the verdict rather than only logging it, because the verdict is the
-/// part worth testing: the `Schedule::Cron` arm below was wrong, and no test
-/// could see it, because a function that only warns has nothing to assert.
-///
-/// The gap is measured between two *consecutive* runs. It used to be measured
-/// between the next run after now and the next run after now plus one second,
-/// which are the same instant unless a run happens to fall inside that second:
-/// `num_minutes()` of nothing is 0, 0 is under 5, so **every** cron-scheduled
-/// agent job warned, whatever its expression.
-fn is_high_frequency_agent_job(job: &CronJob) -> bool {
+/// Returns the verdict rather than only logging it, because the verdict is
+/// the part worth testing: the `Schedule::Cron` arm used to measure the gap
+/// between the next run after now and the next run after now plus one
+/// second — the same instant unless a run fell inside that second — so every
+/// cron-scheduled agent job warned, and no test could see it because a
+/// function that only warns has nothing to assert. The gap is now the
+/// shortest one between consecutive runs (`runs_closer_than`), so an
+/// irregular expression is judged by its tightest pair and not by whichever
+/// pair happens to follow the instant of the check.
+fn agent_job_too_frequent(job: &CronJob) -> Option<TooFrequent> {
     if !matches!(job.job_type, JobType::Agent) {
-        return false;
+        return None;
     }
-    match &job.schedule {
-        Schedule::Every { every_ms } => *every_ms < 5 * 60 * 1000,
-        Schedule::Cron { .. } => {
-            let now = Utc::now();
-            match next_run_for_schedule(&job.schedule, now) {
-                Ok(first) => match next_run_for_schedule(&job.schedule, first) {
-                    // Truncating division is what makes the boundary read the
-                    // way the message does: a gap of exactly 5 minutes is 5,
-                    // and not "more frequently than every 5 minutes".
-                    Ok(second) => (second - first).num_minutes() < 5,
-                    // An expression with no second occurrence is not frequent.
-                    Err(_) => false,
-                },
-                Err(_) => false,
-            }
-        }
-        Schedule::At { .. } => false,
-    }
+    runs_closer_than(&job.schedule, Utc::now(), MIN_AGENT_JOB_INTERVAL)
 }
 
+/// New agent jobs cannot be created below the floor (`validate_agent_schedule`
+/// rejects them), so a job that trips this predates the rule. It keeps
+/// running — silently skipping runs would turn its schedule into a lie — and
+/// this line is the operator's signal to edit it.
 fn warn_if_high_frequency_agent_job(job: &CronJob) {
-    if is_high_frequency_agent_job(job) {
+    if let Some(too_frequent) = agent_job_too_frequent(job) {
         tracing::warn!(
-            "Cron agent job '{}' is scheduled more frequently than every 5 minutes",
+            "Cron agent job '{}' is scheduled more frequently than every 5 minutes: it \
+             {too_frequent}. It was created before that floor was enforced; edit its \
+             schedule to silence this.",
             job.id
         );
     }
