@@ -562,7 +562,6 @@ fn the_archetype_never_names_a_withheld_tool() {
 #[test]
 fn the_rendered_prompt_never_names_a_withheld_tool() {
     let body = build(&ctx_with(&[])).unwrap();
-    let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
     // The generated withheld-specialist block names packed tools on purpose —
     // that is the route, not a claim they are callable. It is absent here
     // because `ctx_with` supplies an empty visible set (the "everything is
