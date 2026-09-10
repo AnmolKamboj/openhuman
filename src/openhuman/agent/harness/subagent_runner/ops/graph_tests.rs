@@ -636,3 +636,109 @@ async fn an_allowlist_that_readmits_a_spawn_tool_is_refused_loudly() {
         "the readmitted spawn tool warns exactly once: {warnings:?}"
     );
 }
+
+/// #5934 (item 1): a mirrored sub-agent **tool result** must not be painted as
+/// something the human typed.
+///
+/// Both worker-thread mirrors write tool output with `sender: "user"`, and the
+/// renderer maps every non-`"agent"` sender to `role: 'user'`
+/// (`app/src/providers/assistantUiMessages.ts:536`) while keying visibility
+/// only on `extraMetadata.hidden` (`:664`, and the same flag in
+/// `ChatThreadView.tsx:312` / `timeline/selectors.ts:50`). Worker threads are
+/// openable chats — `create_worker_thread` stamps `labels: ["tasks"]` and
+/// `threadFilter.ts` lists that tab — so an unflagged mirror row shows the
+/// tool's raw output in a right-aligned user bubble.
+///
+/// The invariant: every non-`"agent"` row these mirrors write is `hidden`. The
+/// record stays in the log for the process rail; it just stops being chat.
+#[test]
+fn mirrored_tool_results_are_hidden_from_the_worker_thread_chat() {
+    use crate::openhuman::memory::conversations::{self as store, CreateConversationThread};
+
+    let dir = std::env::temp_dir().join(format!("wt-5934-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let now = chrono::Utc::now().to_rfc3339();
+    for id in ["worker-typed", "worker-recovered"] {
+        store::ensure_thread(
+            dir.clone(),
+            CreateConversationThread {
+                id: id.to_string(),
+                title: "task".to_string(),
+                created_at: now.clone(),
+                parent_thread_id: Some("parent-1".to_string()),
+                labels: Some(vec!["tasks".to_string()]),
+                personality_id: None,
+            },
+        )
+        .unwrap();
+    }
+
+    const RAW: &str = "{\"events\":[{\"title\":\"raw tool output the human never typed\"}]}";
+
+    // The typed path (`ConversationMessage::ToolResults`), used on a normal run.
+    mirror_worker_thread(
+        &dir,
+        "worker-typed",
+        "researcher",
+        "task-1",
+        &[
+            ConversationMessage::AssistantToolCalls {
+                text: Some("checking the calendar".to_string()),
+                tool_calls: vec![crate::openhuman::inference::provider::ToolCall {
+                    id: "call-1".to_string(),
+                    name: "list_events".to_string(),
+                    arguments: "{}".to_string(),
+                    extra_content: None,
+                }],
+                reasoning_content: None,
+                extra_metadata: None,
+            },
+            ConversationMessage::ToolResults(vec![
+                crate::openhuman::agent::messages::ToolResultMessage {
+                    tool_call_id: "call-1".to_string(),
+                    content: RAW.to_string(),
+                },
+            ]),
+        ],
+        Some("Here is your week."),
+    );
+
+    // The error-recovery path (`role: "tool"`), used when a run fails mid-turn.
+    mirror_worker_thread_from_history(
+        &dir,
+        "worker-recovered",
+        "researcher",
+        "task-1",
+        &[
+            ChatMessage::assistant("checking the calendar"),
+            ChatMessage::tool(RAW),
+        ],
+        Some("[subagent run failed before completion]"),
+    );
+
+    // Collected, not asserted per row: both mirrors must be reported, so a
+    // failure names every path that is still painting a tool result as chat.
+    let mut painted_as_user_chat: Vec<String> = Vec::new();
+    for thread_id in ["worker-typed", "worker-recovered"] {
+        let rows = store::get_messages(dir.clone(), thread_id).unwrap();
+        assert!(
+            rows.iter().any(|r| r.content == RAW),
+            "{thread_id}: the mirror wrote no tool-result row to assert on"
+        );
+        for row in rows.iter().filter(|r| r.sender != "agent") {
+            if row.extra_metadata.get("hidden").and_then(|v| v.as_bool()) != Some(true) {
+                painted_as_user_chat.push(format!(
+                    "{thread_id}: sender={:?} not hidden: {}",
+                    row.sender, row.content
+                ));
+            }
+        }
+    }
+    assert!(
+        painted_as_user_chat.is_empty(),
+        "mirrored tool results render in a user chat bubble:\n{}",
+        painted_as_user_chat.join("\n")
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
