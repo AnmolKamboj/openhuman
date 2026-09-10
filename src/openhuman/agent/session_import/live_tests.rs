@@ -315,15 +315,26 @@ async fn in_memory_store_reconstruction_diverges_from_legacy_on_sidecar_metadata
 
     let legacy = read_transcript(&jsonl_path).expect("read legacy transcript");
     let outcome = shadow_read_compare(ws.path(), stem, &legacy).await;
-    assert!(
-        matches!(
-            outcome,
-            ShadowReadOutcome::Divergence {
-                first_diff: Some(_),
-                ..
-            }
-        ),
-        "the in-memory reconstruction must diverge on the dropped tool-failure marker, got {outcome:?}"
+
+    // Pin the divergence to the tool-failure message specifically. `Some(_)`
+    // would also accept a mismatch at any other index — including a count
+    // mismatch, which `first_diff` reports as the shorter length — so it could
+    // pass for a reason that has nothing to do with the dropped sidecar key.
+    // Both sides must render every fixture message, and the first difference
+    // must be the `tool` message carrying `openhuman_tool_failure`.
+    let rendered = base_messages.len();
+    let tool_failure_idx = base_messages
+        .iter()
+        .position(|m| m.role == "tool")
+        .expect("tool message present");
+    assert_eq!(
+        outcome,
+        ShadowReadOutcome::Divergence {
+            legacy: rendered,
+            shadow: rendered,
+            first_diff: Some(tool_failure_idx),
+        },
+        "the in-memory reconstruction must diverge on the dropped tool-failure marker at index {tool_failure_idx}, with both sides rendering {rendered} messages"
     );
 }
 

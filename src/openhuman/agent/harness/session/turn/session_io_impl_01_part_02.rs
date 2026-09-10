@@ -190,13 +190,27 @@ impl Agent {
             // though every message body, id and role matched, which is what the
             // parity soak flagged as `[session_shadow_read] DIVERGENCE` (#6149).
             // Read-and-mirror runs here on the same best-effort background task
-            // that already fully rewrites the journal stream; on a read error,
-            // skip the mirror for this turn (legacy stays authoritative).
-            let session_transcript = match transcript::read_transcript(&path) {
-                Ok(t) => t,
-                Err(err) => {
+            // that already fully rewrites the journal stream. The read itself is
+            // synchronous — `fs::read_to_string` plus a JSON parse over the whole
+            // append-only JSONL, which grows for the life of the session — so it
+            // goes to the blocking pool instead of stalling a Tokio worker for
+            // the length of the file. On a read error, skip the mirror for this
+            // turn (legacy stays authoritative).
+            let read_path = path.clone();
+            let read_back =
+                tokio::task::spawn_blocking(move || transcript::read_transcript(&read_path)).await;
+            let session_transcript = match read_back {
+                Ok(Ok(t)) => t,
+                Ok(Err(err)) => {
                     log::debug!(
                         "[session-store] dual-write skipped: transcript read-back failed for {}: {err:#}",
+                        path.display()
+                    );
+                    return;
+                }
+                Err(err) => {
+                    log::debug!(
+                        "[session-store] dual-write skipped: transcript read-back task failed for {}: {err}",
                         path.display()
                     );
                     return;
