@@ -216,18 +216,21 @@ fn render_installed_skills(skills: &[Workflow]) -> String {
         count = skills.len(),
         "[orchestrator-prompt] rendering installed skills section"
     );
+    // Every tool that runs, inspects or installs one of these lives in the
+    // `skills` or `workflows` pack, so none of them is on the wire. This block
+    // used to name five of them directly — `run_skill`, `describe_workflow`,
+    // `skill_registry_browse`, `skill_registry_search`, `build_workflow` —
+    // which told the model to call tools it could not see. Name the route
+    // instead; `use_skill`'s own description carries the pack index.
     let mut out = String::from(
         "## Installed Skills\n\n\
-         The following skills are installed locally. Run one with `run_skill` \
-         (name the skill and what you want done); it loads and runs the skill in an \
-         isolated worker and returns only the result, plus a `## Handoff Plan` for any \
-         step the worker couldn't perform — execute those steps yourself under the \
-         approval gate. Use `describe_workflow` for full details on one of THESE \
-         installed skills (it only knows about entries in this list, not Flows \
-         automations — do not call it with a Flows `workflow_id`, it will error). Use \
-         `skill_registry_browse` / `skill_registry_search` to find and install new skills. \
-         For Flows automations (build/inspect/run a tinyflows workflow), use \
-         `build_workflow` / the workflow_builder delegate instead.\n\n",
+         These skills are installed locally, and running one is the point of \
+         listing them: the tools that run, inspect and install a skill are in the \
+         `skills` pack (Flows automations are in `workflows`), so reach them \
+         through `use_skill` rather than by name. A skill runs in an isolated \
+         worker and returns only its result, plus a `## Handoff Plan` for any step \
+         the worker couldn't perform — carry those out yourself, under the approval \
+         gate.\n\n",
     );
     for skill in skills {
         let id = if skill.dir_name.is_empty() {
