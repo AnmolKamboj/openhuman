@@ -96,10 +96,9 @@ impl ConversationStore {
     /// **Cold path (first access):** snapshots the thread list under
     /// the root metadata lock (brief), then releases it before reading each
     /// JSONL file under its per-thread lock. This avoids blocking unrelated
-    /// threads during the potentially-long rebuild. A concurrent write during
-    /// the rebuild may mean the
-    /// rebuilt index misses that one message until the cache is evicted and
-    /// rebuilt — an accepted tradeoff for issue #2849.
+    /// threads during the potentially-long rebuild. Appends completed during
+    /// that scan are journaled and folded into the index atomically at
+    /// publication.
     pub fn search_cross_thread_messages(
         &self,
         query: &str,
@@ -176,10 +175,11 @@ impl ConversationStore {
                     last_message_at: message.created_at.clone(),
                 },
             )?;
-            self.locks.record_mutation();
-            // Keep publication and warm-cache insertion in the same metadata
-            // critical section. A concurrent cold build either observes this
-            // generation or publishes first and receives this insertion.
+            // A cold builder scans without holding metadata. Journal the
+            // completed append before touching the cache so publication can
+            // fold it in; once publication finishes, this same critical
+            // section observes and updates the warm cache instead.
+            self.locks.record_index_append(thread_id, &message);
             let mut cache = CONVERSATION_INDEX_CACHE.lock();
             if let Some(idx) = cache.get_mut(&self.root_dir()) {
                 idx.insert(thread_id, message.clone());

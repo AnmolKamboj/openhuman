@@ -7,10 +7,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Weak};
 
 use parking_lot::{Mutex, RwLock};
+
+use super::super::types::ConversationMessage;
 
 #[derive(Debug, Default)]
 pub(super) struct StoreLocks {
@@ -18,8 +19,12 @@ pub(super) struct StoreLocks {
     pub(super) lifecycle: RwLock<()>,
     /// Serializes reads and appends of the root's shared `threads.jsonl`.
     pub(super) metadata: Mutex<()>,
+    /// Only one cold scan may construct this root's in-memory index.
+    pub(super) index_build: Mutex<()>,
     threads: Mutex<HashMap<String, Arc<Mutex<()>>>>,
-    mutation_generation: AtomicU64,
+    /// Appends completed while a cold scan is in flight. `None` means no scan
+    /// is active, so the warm-cache path alone owns index maintenance.
+    pending_index_appends: Mutex<Option<Vec<(String, ConversationMessage)>>>,
 }
 
 impl StoreLocks {
@@ -32,12 +37,23 @@ impl StoreLocks {
         )
     }
 
-    pub(super) fn mutation_generation(&self) -> u64 {
-        self.mutation_generation.load(Ordering::Acquire)
+    pub(super) fn begin_index_build(&self) {
+        let previous = self.pending_index_appends.lock().replace(Vec::new());
+        debug_assert!(previous.is_none(), "index builds must be serialized");
     }
 
-    pub(super) fn record_mutation(&self) {
-        self.mutation_generation.fetch_add(1, Ordering::AcqRel);
+    pub(super) fn record_index_append(&self, thread_id: &str, message: &ConversationMessage) {
+        if let Some(pending) = self.pending_index_appends.lock().as_mut() {
+            pending.push((thread_id.to_string(), message.clone()));
+        }
+    }
+
+    pub(super) fn finish_index_build(&self) -> Vec<(String, ConversationMessage)> {
+        self.pending_index_appends.lock().take().unwrap_or_default()
+    }
+
+    pub(super) fn cancel_index_build(&self) {
+        self.pending_index_appends.lock().take();
     }
 
     /// Call only while holding the lifecycle write guard.
