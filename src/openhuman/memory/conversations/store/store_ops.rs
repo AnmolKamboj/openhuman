@@ -319,7 +319,6 @@ impl ConversationStore {
         // filesystem deletion error. The lifecycle write guard prevents a new
         // operation from observing a replacement lock before this one drops.
         self.locks.remove_thread(thread_id);
-        remove_result?;
         // Drop every indexed message for this thread so future searches
         // don't surface stale content.
         {
@@ -328,6 +327,7 @@ impl ConversationStore {
                 idx.remove_thread(thread_id);
             }
         }
+        remove_result?;
         Ok(true)
     }
 
