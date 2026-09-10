@@ -12,7 +12,7 @@ use super::super::types::{
 use super::{
     append_jsonl, find_message_by_id, normalize_labels, read_jsonl, rewrite_jsonl,
     ConversationPurgeStats, ConversationStore, ThreadLogEntry, CONVERSATION_INDEX_CACHE,
-    CONVERSATION_STORE_LOCK, THREADS_FILENAME,
+    THREADS_FILENAME,
 };
 
 impl ConversationStore {
@@ -21,7 +21,10 @@ impl ConversationStore {
         &self,
         request: CreateConversationThread,
     ) -> Result<ConversationThread, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(&request.id);
+        let _thread = thread_lock.lock();
+        let _metadata = self.locks.metadata.lock();
         let root = self.ensure_root()?;
         let threads_path = root.join(THREADS_FILENAME);
         let now = request.created_at.clone();
@@ -44,15 +47,20 @@ impl ConversationStore {
 
     /// List all live threads (folding the upsert/delete log).
     pub fn list_threads(&self) -> Result<Vec<ConversationThread>, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
-        self.list_threads_unlocked()
+        let _lifecycle = self.locks.lifecycle.read();
+        self.list_threads_coordinated()
     }
 
     /// Read every persisted message for a thread in append order.
     pub fn get_messages(&self, thread_id: &str) -> Result<Vec<ConversationMessage>, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
-        if !self.thread_exists_unlocked(thread_id)? {
-            return Ok(Vec::new());
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
+        {
+            let _metadata = self.locks.metadata.lock();
+            if !self.thread_exists_unlocked(thread_id)? {
+                return Ok(Vec::new());
+            }
         }
         let path = self.thread_messages_path(thread_id);
         if !path.exists() {
@@ -82,14 +90,14 @@ impl ConversationStore {
     ///
     /// # Lock strategy (issue #2849)
     ///
-    /// **Fast path (warm cache):** acquires only `CONVERSATION_INDEX_CACHE`
-    /// — no outer store lock — and returns immediately.
+    /// **Fast path (warm cache):** acquires the root lifecycle read guard and
+    /// `CONVERSATION_INDEX_CACHE`, with no metadata or thread lock.
     ///
     /// **Cold path (first access):** snapshots the thread list under
-    /// `CONVERSATION_STORE_LOCK` (brief), then releases it before reading JSONL
-    /// files to build the inverted index. This avoids blocking other store
-    /// operations during the potentially-long rebuild. JSONL files are
-    /// append-only, so a concurrent write during the rebuild may mean the
+    /// the root metadata lock (brief), then releases it before reading each
+    /// JSONL file under its per-thread lock. This avoids blocking unrelated
+    /// threads during the potentially-long rebuild. A concurrent write during
+    /// the rebuild may mean the
     /// rebuilt index misses that one message until the cache is evicted and
     /// rebuilt — an accepted tradeoff for issue #2849.
     pub fn search_cross_thread_messages(
@@ -98,14 +106,13 @@ impl ConversationStore {
         limit: usize,
         exclude_thread_id: Option<&str>,
     ) -> Result<Vec<CrossThreadHit>, String> {
-        // Warm the index outside the outer lock so concurrent
+        // Warm the index without the metadata lock so concurrent
         // append_message / get_messages calls are not stalled during the
         // cold JSONL rebuild. After this returns the cache entry is
         // guaranteed to exist, so with_index will not trigger a second
         // rebuild.
+        let _lifecycle = self.locks.lifecycle.read();
         self.prime_index_if_cold()?;
-
-        let _guard = CONVERSATION_STORE_LOCK.lock();
         self.with_index(|idx| idx.search(query, limit, exclude_thread_id))
     }
 
@@ -129,16 +136,21 @@ impl ConversationStore {
     /// The lookup is deliberately narrow. Every other id in the store is
     /// UUID-fresh by construction and cannot be re-presented, so it must not
     /// pay to have that verified: a lookup on *every* append would put a scan
-    /// of the thread's transcript on the hot write path, under the
-    /// process-wide store lock, and make growing a thread quadratic.
+    /// of the thread's transcript on every hot write and make growing a thread
+    /// quadratic.
     pub fn append_message(
         &self,
         thread_id: &str,
         message: ConversationMessage,
     ) -> Result<ConversationMessage, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
-        if !self.thread_exists_unlocked(thread_id)? {
-            return Err(format!("thread {} not found", thread_id));
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
+        {
+            let _metadata = self.locks.metadata.lock();
+            if !self.thread_exists_unlocked(thread_id)? {
+                return Err(format!("thread {} not found", thread_id));
+            }
         }
         let path = self.thread_messages_path(thread_id);
         if is_deterministic_message_id(&message.id) {
@@ -154,14 +166,17 @@ impl ConversationStore {
         // Bump the threads-log stat trail so subsequent `list_threads`
         // calls can compute (message_count, last_message_at) without
         // re-reading this file.
-        let threads_path = self.root_dir().join(THREADS_FILENAME);
-        append_jsonl(
-            &threads_path,
-            &ThreadLogEntry::MessageAppended {
-                thread_id: thread_id.to_string(),
-                last_message_at: message.created_at.clone(),
-            },
-        )?;
+        {
+            let _metadata = self.locks.metadata.lock();
+            let threads_path = self.root_dir().join(THREADS_FILENAME);
+            append_jsonl(
+                &threads_path,
+                &ThreadLogEntry::MessageAppended {
+                    thread_id: thread_id.to_string(),
+                    last_message_at: message.created_at.clone(),
+                },
+            )?;
+        }
         // Keep the inverted index in sync. We only update if the index has
         // already been materialized for this workspace — otherwise the next
         // search will lazily rebuild and pick up this message anyway, and we
@@ -182,7 +197,10 @@ impl ConversationStore {
         title: &str,
         updated_at: &str,
     ) -> Result<ConversationThread, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
+        let _metadata = self.locks.metadata.lock();
         let index = self.thread_index_unlocked()?;
         let entry = index
             .get(thread_id)
@@ -211,7 +229,10 @@ impl ConversationStore {
         labels: Vec<String>,
         updated_at: &str,
     ) -> Result<ConversationThread, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
+        let _metadata = self.locks.metadata.lock();
         let index = self.thread_index_unlocked()?;
         let entry = index
             .get(thread_id)
@@ -241,7 +262,9 @@ impl ConversationStore {
         message_id: &str,
         patch: ConversationMessagePatch,
     ) -> Result<ConversationMessage, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
         let path = self.thread_messages_path(thread_id);
         let mut messages = read_jsonl::<ConversationMessage>(&path)?;
         let mut updated: Option<ConversationMessage> = None;
@@ -263,19 +286,24 @@ impl ConversationStore {
     /// Append a `Delete` entry and remove the thread's messages file. Returns
     /// `false` if the thread did not exist.
     pub fn delete_thread(&self, thread_id: &str, deleted_at: &str) -> Result<bool, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
-        if !self.thread_exists_unlocked(thread_id)? {
-            return Ok(false);
+        let _lifecycle = self.locks.lifecycle.read();
+        let thread_lock = self.locks.thread(thread_id);
+        let _thread = thread_lock.lock();
+        {
+            let _metadata = self.locks.metadata.lock();
+            if !self.thread_exists_unlocked(thread_id)? {
+                return Ok(false);
+            }
+            let root = self.ensure_root()?;
+            let threads_path = root.join(THREADS_FILENAME);
+            append_jsonl(
+                &threads_path,
+                &ThreadLogEntry::Delete {
+                    thread_id: thread_id.to_string(),
+                    deleted_at: deleted_at.to_string(),
+                },
+            )?;
         }
-        let root = self.ensure_root()?;
-        let threads_path = root.join(THREADS_FILENAME);
-        append_jsonl(
-            &threads_path,
-            &ThreadLogEntry::Delete {
-                thread_id: thread_id.to_string(),
-                deleted_at: deleted_at.to_string(),
-            },
-        )?;
         let messages_path = self.thread_messages_path(thread_id);
         match fs::remove_file(&messages_path) {
             Ok(()) => {}
@@ -300,7 +328,8 @@ impl ConversationStore {
 
     /// Wipe the entire conversation directory and re-create an empty layout.
     pub fn purge_threads(&self) -> Result<ConversationPurgeStats, String> {
-        let _guard = CONVERSATION_STORE_LOCK.lock();
+        let _lifecycle = self.locks.lifecycle.write();
+        let _metadata = self.locks.metadata.lock();
         let stats = self.purge_stats_unlocked()?;
         let root = self.root_dir();
         if root.exists() {

@@ -2,16 +2,14 @@
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-//! use openhuman_core::{Access, Harness, Provider, Session, Workspace};
+//! use openhuman_core::{Access, Harness, Provider, Workspace};
 //!
 //! let harness = Harness::builder()
 //!     .provider(Provider::openai_compatible("https://api.example/v1", "sk-…").model("gpt-5"))
 //!     .workspace(Workspace::Ephemeral)
 //!     .access(Access::readonly())
-//!     // Both of these are effectively required when running on your own
-//!     // endpoint rather than a signed-in account — see "Running on your own
-//!     // endpoint" below. Omit them and the first turn fails SESSION_EXPIRED.
-//!     .session(Session::local("my-host"))
+//!     // Optional: point non-inference backend calls at the embedding
+//!     // product's backend. Caller-supplied inference needs no app login.
 //!     .backend_url("https://my-backend.example")
 //!     .build()
 //!     .await?;
@@ -41,20 +39,16 @@
 //!
 //! # Running on your own endpoint
 //!
-//! Supplying a [`Provider`] is not quite the whole story, because two things in
-//! the core are about the *account* rather than about where completions go:
+//! A harness identifies as [`HostKind::Library`](crate::core::types::HostKind::Library)
+//! by default. Supplying a [`Provider`] is therefore enough for inference: the
+//! library host is trusted to supply its endpoint and credentials, without an
+//! OpenHuman app login.
 //!
-//! - Routing at a custom provider is gated on an active app session. The gate
-//!   exists to stop an unregistered desktop user configuring every workload at
-//!   a custom endpoint and skipping registration, and it cannot tell that case
-//!   apart from a library host holding operator-supplied credentials — so the
-//!   host presents a session like anyone else. [`Session::local`] satisfies it
-//!   without asserting anything at the backend.
-//! - The core still makes non-inference backend calls (the session check,
-//!   integrations, telemetry). Left pointing at the hosted backend while signed
-//!   out, those are rejected — and a rejection publishes `SessionExpired`, which
-//!   fails the *next* turn's provider gate for reasons that have nothing to do
-//!   with the turn. [`HarnessBuilder::backend_url`] points them somewhere else.
+//! The core can still make non-inference backend calls (integrations,
+//! telemetry, managed services). Those need their own real session when the
+//! endpoint requires one. [`HarnessBuilder::backend_url`] points them at the
+//! embedding product's backend; [`HarnessBuilder::session`] installs a backend
+//! identity when required.
 //!
 //! Neither applies to [`Provider::inherit`] with [`Workspace::Inherit`], which
 //! runs exactly as the installed app does, session included.

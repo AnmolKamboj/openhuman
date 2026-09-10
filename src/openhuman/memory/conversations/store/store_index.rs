@@ -13,14 +13,14 @@ use super::super::types::{ConversationMessage, ConversationThread};
 use super::{
     append_jsonl, hex_encode, infer_labels, normalize_labels, read_jsonl, ConversationPurgeStats,
     ConversationStore, ThreadIndexEntry, ThreadLogEntry, CONVERSATION_INDEX_CACHE,
-    CONVERSATION_STORE_LOCK, THREADS_FILENAME, THREAD_MESSAGES_DIR,
+    THREADS_FILENAME, THREAD_MESSAGES_DIR,
 };
 
 impl ConversationStore {
     /// If no index entry exists for this workspace, snapshot the live thread
-    /// IDs under `CONVERSATION_STORE_LOCK` (fast — reads only `threads.jsonl`,
-    /// no per-thread I/O), release that lock, read all per-thread JSONL files
-    /// with no lock held (safe — append-only), then insert the built index
+    /// IDs under the root metadata lock (fast — reads only `threads.jsonl`,
+    /// no per-thread I/O), release it, read every JSONL file under its
+    /// per-thread lock, then insert the built index
     /// into `CONVERSATION_INDEX_CACHE` using `entry().or_insert()` so a
     /// concurrent prime that finished first wins and ours is discarded.
     ///
@@ -32,9 +32,9 @@ impl ConversationStore {
         if CONVERSATION_INDEX_CACHE.lock().contains_key(&key) {
             return Ok(());
         }
-        // Snapshot live thread IDs while holding the outer lock.
+        // Snapshot live thread IDs while holding the metadata lock.
         // `thread_index_unlocked` reads only `threads.jsonl` (header-only,
-        // O(threads), no per-thread file I/O) — the lock is released
+        // O(threads), no per-thread file I/O) — metadata is released
         // immediately after, so the slow content reads below never block
         // concurrent writers.
         //
@@ -42,23 +42,25 @@ impl ConversationStore {
         // thread has no `MessageAppended`/`Stats` history (common before the
         // Stats log was introduced), `list_threads_unlocked` triggers
         // `measure_messages_unlocked` + a `Stats` append per thread — all under
-        // `CONVERSATION_STORE_LOCK` — reintroducing the multi-second stall this
+        // the metadata lock — reintroducing the multi-second stall this
         // function is designed to avoid.
         let thread_ids: Vec<String> = {
-            let _guard = CONVERSATION_STORE_LOCK.lock();
+            let _metadata = self.locks.metadata.lock();
             // Re-check after acquiring: a concurrent prime may have just
-            // finished while we waited for the outer lock.
+            // finished while we waited for metadata.
             if CONVERSATION_INDEX_CACHE.lock().contains_key(&key) {
                 return Ok(());
             }
             self.thread_index_unlocked()?.into_keys().collect()
         };
-        // Build the index with no locks held.  The per-thread JSONL files are
-        // append-only so reads are safe without synchronisation. A message
+        // Build the index with no shared metadata lock held. Each JSONL file is
+        // read under its own thread lock. A message
         // appended during this window stays absent from the in-memory index
         // until the next cold rebuild — the accepted tradeoff for issue #2849.
         let mut idx = InvertedIndex::new();
         for thread_id in &thread_ids {
+            let thread_lock = self.locks.thread(thread_id);
+            let _thread = thread_lock.lock();
             let path = self.thread_messages_path(thread_id);
             if !path.exists() {
                 continue;
@@ -78,53 +80,19 @@ impl ConversationStore {
         Ok(())
     }
 
-    /// Acquire the cached inverted index for this workspace (building it from
-    /// JSONL on first access) and run `f` against it. Caller MUST hold
-    /// `CONVERSATION_STORE_LOCK` for the duration of the closure.
-    ///
-    /// In the normal path the index has already been warmed by
-    /// `prime_index_if_cold`, so the cold-build branch here is a safety net for
-    /// any future callers that bypass the priming step.
+    /// Acquire the cached inverted index for this workspace and run `f` against
+    /// it. `search_cross_thread_messages` warms it first while holding the
+    /// root's lifecycle read guard, so purge cannot remove it between the two.
     pub(super) fn with_index<R>(
         &self,
         f: impl FnOnce(&mut InvertedIndex) -> R,
     ) -> Result<R, String> {
         let key = self.root_dir();
         let mut cache = CONVERSATION_INDEX_CACHE.lock();
-        if !cache.contains_key(&key) {
-            let mut idx = InvertedIndex::new();
-            self.populate_index_unlocked(&mut idx)?;
-            cache.insert(key.clone(), idx);
-        }
-        let idx = cache.get_mut(&key).expect("inserted above if absent");
+        let idx = cache
+            .get_mut(&key)
+            .ok_or_else(|| "conversation index missing after prime".to_string())?;
         Ok(f(idx))
-    }
-
-    /// Walk every per-thread JSONL file in the workspace and insert each
-    /// message into `idx`. Used as the fallback cold-build path inside
-    /// `with_index`; `prime_index_if_cold` handles the normal first-access
-    /// case outside the outer lock. The JSONL files are the source of truth so
-    /// a rebuild after a process crash is always safe.
-    pub(super) fn populate_index_unlocked(&self, idx: &mut InvertedIndex) -> Result<(), String> {
-        // Caller (`with_index`) already holds `CONVERSATION_STORE_LOCK`, so we
-        // must NOT re-acquire it here — `parking_lot::Mutex` is not reentrant
-        // and doing so would deadlock. Use the `_unlocked` thread reader
-        // directly.
-        let threads = self.list_threads_unlocked()?;
-        for thread in threads {
-            let path = self.thread_messages_path(&thread.id);
-            if !path.exists() {
-                continue;
-            }
-            let messages = match read_jsonl::<ConversationMessage>(&path) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            for msg in messages {
-                idx.insert(&thread.id, msg);
-            }
-        }
-        Ok(())
     }
 
     /// Ensure the `memory/conversations` directory tree (and an empty
@@ -204,6 +172,62 @@ impl ConversationStore {
             }
         }
 
+        Ok(Self::threads_from_index(index))
+    }
+
+    /// Fold and repair thread metadata without inverting the lock order used
+    /// by message mutations. Recovery reads take the target thread lock before
+    /// metadata; a newly-created thread discovered between passes is handled
+    /// by the next iteration.
+    pub(super) fn list_threads_coordinated(&self) -> Result<Vec<ConversationThread>, String> {
+        loop {
+            let (index, missing) = {
+                let _metadata = self.locks.metadata.lock();
+                let index = self.thread_index_unlocked()?;
+                let missing = index
+                    .iter()
+                    .filter(|(_, entry)| {
+                        entry.message_count.is_none() || entry.last_message_at.is_none()
+                    })
+                    .map(|(thread_id, _)| thread_id.clone())
+                    .collect::<Vec<_>>();
+                (index, missing)
+            };
+            if missing.is_empty() {
+                return Ok(Self::threads_from_index(index));
+            }
+
+            for thread_id in missing {
+                let thread_lock = self.locks.thread(&thread_id);
+                let _thread = thread_lock.lock();
+                let _metadata = self.locks.metadata.lock();
+                let index = self.thread_index_unlocked()?;
+                let Some(entry) = index.get(&thread_id) else {
+                    continue;
+                };
+                if entry.message_count.is_some() && entry.last_message_at.is_some() {
+                    continue;
+                }
+                let Ok((count, last_message_at)) = self.measure_messages_unlocked(&thread_id)
+                else {
+                    // One unreadable transcript must not make navigation
+                    // unavailable or cause an unbounded retry loop.
+                    return Ok(Self::threads_from_index(index));
+                };
+                let resolved_last = last_message_at.unwrap_or_else(|| entry.created_at.clone());
+                append_jsonl(
+                    &self.ensure_root()?.join(THREADS_FILENAME),
+                    &ThreadLogEntry::Stats {
+                        thread_id,
+                        message_count: count,
+                        last_message_at: resolved_last,
+                    },
+                )?;
+            }
+        }
+    }
+
+    fn threads_from_index(index: BTreeMap<String, ThreadIndexEntry>) -> Vec<ConversationThread> {
         let mut threads: Vec<ConversationThread> = index
             .iter()
             .map(|(thread_id, entry)| {
@@ -231,7 +255,7 @@ impl ConversationStore {
                 .cmp(&timestamp_millis(&a.last_message_at))
                 .then_with(|| timestamp_millis(&b.created_at).cmp(&timestamp_millis(&a.created_at)))
         });
-        Ok(threads)
+        threads
     }
 
     /// Count messages and find the newest timestamp by reading the per-thread

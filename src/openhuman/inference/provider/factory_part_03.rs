@@ -519,6 +519,18 @@ pub(crate) fn create_local_chat_model_from_string(
 /// construction-time chokepoint can never diverge on what "session active"
 /// means.
 pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
+    // An in-process library host is given its provider URL and credential by
+    // its caller. It does not participate in the OpenHuman app's registration
+    // or auth-profile lifecycle, so requiring a fabricated local session here
+    // would mix desktop product policy into the library contract. The ambient
+    // context is installed by the dispatch chokepoint; all other host kinds
+    // retain the registration gate below.
+    if crate::core::runtime::context::CoreContext::current()
+        .is_some_and(|ctx| ctx.host_kind() == crate::core::types::HostKind::Library)
+    {
+        return Ok(());
+    }
+
     // Fast path: the scheduler gate already knows the session is dead.
     if crate::openhuman::cron::scheduler_gate::is_signed_out() {
         anyhow::bail!(

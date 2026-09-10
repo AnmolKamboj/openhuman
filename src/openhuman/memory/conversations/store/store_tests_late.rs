@@ -174,6 +174,24 @@ fn read_jsonl_skips_invalid_lines_but_keeps_valid_ones() {
     assert_eq!(messages[1].id, "m2");
 }
 
+#[test]
+fn one_hundred_agent_threads_use_independent_message_locks() {
+    let temp = TempDir::new().unwrap();
+    let store = ConversationStore::new(temp.path().to_path_buf());
+    let root_lock = store.lock_identity_for_test();
+    let mut message_locks = std::collections::HashSet::new();
+
+    for index in 0..100 {
+        let clone = ConversationStore::new(temp.path().to_path_buf());
+        assert_eq!(clone.lock_identity_for_test(), root_lock);
+        assert!(
+            message_locks.insert(clone.thread_lock_identity_for_test(&format!("agent-{index}")))
+        );
+    }
+
+    assert_eq!(message_locks.len(), 100);
+}
+
 // ── concurrency: search cold rebuild must not block concurrent append ────────
 
 /// Regression test for issue #2849.
@@ -181,14 +199,14 @@ fn read_jsonl_skips_invalid_lines_but_keeps_valid_ones() {
 /// Before the fix, `search_cross_thread_messages` held `CONVERSATION_STORE_LOCK`
 /// for the entire cold index rebuild, stalling every concurrent
 /// `append_message` call for as long as the rebuild took.  The fix
-/// moves the rebuild outside the outer lock (`prime_index_if_cold`), so
-/// an append in flight during a cold rebuild acquires the outer lock
-/// independently and completes promptly.
+/// moved the rebuild outside that lock (`prime_index_if_cold`). The current
+/// store additionally takes only the target thread lock while reading each
+/// transcript, so unrelated appends complete independently.
 ///
 /// The test seeds a fresh workspace (cold cache), races a search against
 /// an append using a barrier, and asserts the append finishes within a
 /// generous timeout that would be violated if the two operations were
-/// serialised through the outer lock.
+/// serialized through one shared lock.
 #[test]
 fn search_cold_rebuild_does_not_block_concurrent_append() {
     use std::sync::{mpsc, Arc, Barrier};
@@ -291,12 +309,13 @@ fn search_cold_rebuild_does_not_block_concurrent_append() {
 /// data written before the Stats log was introduced.  When
 /// `list_threads_unlocked` encounters such threads it calls
 /// `measure_messages_unlocked` per thread and appends a `Stats` entry to
-/// `threads.jsonl`, all while holding `CONVERSATION_STORE_LOCK`.
+/// `threads.jsonl`, formerly while holding `CONVERSATION_STORE_LOCK` and now
+/// while holding the root's metadata lock.
 ///
 /// `prime_index_if_cold` must NOT call `list_threads_unlocked`.  It uses
 /// `thread_index_unlocked` (header-only, no per-thread I/O) to snapshot
-/// thread IDs under the lock, then reads per-thread JSONL content outside
-/// the lock.  This test verifies that a cold search on such a workspace
+/// thread IDs under the metadata lock, then reads each JSONL file under its
+/// per-thread lock. This test verifies that a cold search on such a workspace
 /// still finds the correct messages, and that the former blocking code path
 /// is no longer reachable from `prime_index_if_cold`.
 #[test]
@@ -346,7 +365,7 @@ fn prime_index_cold_build_works_on_legacy_workspace_without_stats() {
     }
 
     // Cold build on a pre-Stats workspace must index all messages without
-    // triggering measure_messages_unlocked under CONVERSATION_STORE_LOCK.
+    // triggering measure_messages_unlocked under the metadata lock.
     let hits = store
         .search_cross_thread_messages("kitten", 10, None)
         .expect("search on legacy workspace");
@@ -476,3 +495,6 @@ fn legacy_workspace_cold_rebuild_does_not_block_concurrent_append() {
         search_result.err()
     );
 }
+
+#[path = "store_concurrency_tests.rs"]
+mod concurrency;

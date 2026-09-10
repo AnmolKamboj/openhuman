@@ -103,9 +103,9 @@ impl Core {
 
     /// Typed access to the session store.
     ///
-    /// Needed more often than it looks: routing a turn at a custom provider is
-    /// gated on an active session, so a host bringing its own endpoint still
-    /// has to present one. See [`Session`].
+    /// Use this when the embedded workload calls authenticated TinyHumans
+    /// backend services. A [`HostKind::Library`](crate::core::types::HostKind::Library)
+    /// runtime does not need an app session for caller-supplied inference.
     pub fn auth(&self) -> Auth<'_> {
         Auth(&self.rt)
     }
