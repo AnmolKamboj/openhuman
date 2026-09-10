@@ -349,18 +349,6 @@ enum RefreshOrigin {
     Background,
 }
 
-/// Whether the cache has moved to an identity other than this refresh's.
-///
-/// An *empty* cache is deliberately not "moved on": a background refresh that
-/// started before anything was cached is still the right answer for the
-/// identity that asked for it.
-fn cached_identity_moved_on(api_base: &str, token: &str) -> bool {
-    CURRENT_USER_CACHE
-        .lock()
-        .as_ref()
-        .is_some_and(|entry| entry.api_base != api_base || entry.token != token)
-}
-
 /// Go to the backend, then reconcile the caches and freshness stamps with what
 /// came back. The blocking half of [`fetch_current_user_cached`], split out so
 /// the background refresh runs exactly the same path rather than a parallel
@@ -385,21 +373,50 @@ async fn refresh_current_user_now(
     // reads that slot WITHOUT a key check (#926), so the regressed entry would
     // be embedded in the agent's prompts as the current user. The keyed reads
     // in `fetch_current_user_cached` would merely miss; that one would be
-    // wrong. Checked before the writes rather than at the cache lock, so a
-    // discarded refresh cannot clear the *newer* identity's failure record on
-    // its way out. The blocking path cannot race this way, so it never
-    // discards.
-    // A detached refresh can land after the app has moved to another identity,
-    // and every write below is process-global. Committing then would regress
-    // the cache to the previous user — and `peek_cached_current_user_identity`
-    // reads that slot WITHOUT a key check (#926), so the regressed entry would
-    // be embedded in the agent's prompts as the current user. The keyed reads
-    // in `fetch_current_user_cached` would merely miss; that one would be
-    // wrong. Checked before the writes rather than at the cache lock, so a
-    // discarded refresh cannot clear the *newer* identity's failure record on
-    // its way out. The blocking path cannot race this way, so it never
-    // discards.
-    if origin == RefreshOrigin::Background && cached_identity_moved_on(&api_base, token) {
+    // wrong.
+    //
+    // The check and the commit share ONE lock acquisition, and nothing between
+    // them can suspend or release it. Validating through a separate read would
+    // leave a window in which a blocking refresh for a newer identity commits
+    // after this one has already decided it is current — narrow, but the
+    // runtime is multi-threaded, so "narrow" is not "impossible".
+    //
+    // The failure and freshness stamps stay OUTSIDE this scope: they take their
+    // own locks, and this module's rule is that `LAST_CURRENT_USER_SUCCESS` is
+    // never nested inside `CURRENT_USER_CACHE`. They therefore run *after* the
+    // commit rather than before it, which is also what lets a discarded refresh
+    // leave the newer identity's `CURRENT_USER_FAILURE` record alone —
+    // `clear_current_user_failure` is unkeyed and would otherwise wipe it. The
+    // stamp is only ever read as an age in seconds, so moving it to the far
+    // side of the commit cannot change an observable answer.
+    let committed = {
+        let mut cache = CURRENT_USER_CACHE.lock();
+        let moved_on = cache
+            .as_ref()
+            .is_some_and(|entry| entry.api_base != api_base || entry.token != token);
+        if origin == RefreshOrigin::Background && moved_on {
+            false
+        } else {
+            match fetched.clone() {
+                Some(user) => {
+                    debug!("{LOG_PREFIX} refreshed current user from backend");
+                    *cache = Some(CachedCurrentUser {
+                        api_base: api_base.clone(),
+                        token: token.to_string(),
+                        fetched_at: Instant::now(),
+                        user,
+                    });
+                }
+                None => {
+                    debug!("{LOG_PREFIX} backend returned empty current user; clearing cache");
+                    *cache = None;
+                }
+            }
+            true
+        }
+    };
+
+    if !committed {
         debug!(
             "{LOG_PREFIX} discarding background current user refresh; the cache moved to \
              another identity while it was in flight"
@@ -414,28 +431,8 @@ async fn refresh_current_user_now(
     // for data that was never replaced. `clear_current_user_failure` still runs
     // either way: an empty answer is the backend being healthy, just not
     // useful, and it should not keep the backoff window open.
-    //
-    // Read before the cache lock rather than inside the `Some` arm below, so
-    // this never nests `LAST_CURRENT_USER_SUCCESS` inside `CURRENT_USER_CACHE`.
     if fetched.is_some() {
         note_current_user_success(&api_base, token);
-    }
-
-    let mut cache = CURRENT_USER_CACHE.lock();
-    match fetched.clone() {
-        Some(user) => {
-            debug!("{LOG_PREFIX} refreshed current user from backend");
-            *cache = Some(CachedCurrentUser {
-                api_base,
-                token: token.to_string(),
-                fetched_at: Instant::now(),
-                user,
-            });
-        }
-        None => {
-            debug!("{LOG_PREFIX} backend returned empty current user; clearing cache");
-            *cache = None;
-        }
     }
 
     Ok(fetched)
