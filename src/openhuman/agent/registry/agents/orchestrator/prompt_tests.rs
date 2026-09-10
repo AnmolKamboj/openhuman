@@ -546,12 +546,7 @@ fn build_omits_guide_when_no_integrations_connected() {
 /// `use_skill`.
 #[test]
 fn the_archetype_never_names_a_withheld_tool() {
-    let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
-    let named: Vec<&str> = packed
-        .iter()
-        .copied()
-        .filter(|name| ARCHETYPE.contains(&format!("`{name}`")))
-        .collect();
+    let named = withheld_names_presented_as_callable(ARCHETYPE);
     assert!(
         named.is_empty(),
         "orchestrator/prompt.md names withheld tools as if directly callable: {named:?}. \
@@ -576,14 +571,30 @@ fn the_rendered_prompt_never_names_a_withheld_tool() {
         !body.contains("## Capabilities not in your tool list"),
         "an empty visible set means no filter, so nothing can be withheld"
     );
-    let named: Vec<&str> = packed
-        .iter()
-        .copied()
-        .filter(|name| body.contains(&format!("`{name}`")))
-        .collect();
+    let named = withheld_names_presented_as_callable(&body);
     assert!(
         named.is_empty(),
         "the rendered orchestrator prompt names withheld tools as if directly \
          callable: {named:?}"
     );
+}
+
+/// Withheld tool names that `text` presents as directly callable.
+///
+/// A pack **id** may legitimately be backticked, because naming the skill is
+/// how the route is written — and one pack id (`composio`) is also a tool name
+/// inside that pack, so a bare substring check cannot tell a route from a call.
+/// Route mentions are always spelled `skill \`<id>\``, in the prose and in the
+/// generated block alike, so removing that exact form first is what makes the
+/// remaining occurrences calls.
+fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
+    let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
+    let mut prose = text.to_string();
+    for name in &packed {
+        prose = prose.replace(&format!("skill `{name}`"), "");
+    }
+    packed
+        .into_iter()
+        .filter(|name| prose.contains(&format!("`{name}`")))
+        .collect()
 }
