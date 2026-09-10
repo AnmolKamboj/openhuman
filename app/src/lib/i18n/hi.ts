@@ -6079,6 +6079,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'रूट संकेत',
   'settings.agents.editor.modelTiers': 'मॉडल स्तर',
   'settings.agents.editor.modelCustom': 'कस्टम मॉडल आईडी…',
+  'settings.agents.editor.modelManaged': 'प्रबंधित मॉडल',
   'settings.agents.editor.modelCustomPlaceholder': 'जैसे anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'टूल जोड़ें',
   'settings.agents.editor.toolsAllSelected': 'सभी टूल',

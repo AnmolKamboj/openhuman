@@ -5738,6 +5738,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': '路由提示',
   'settings.agents.editor.modelTiers': '模型层级',
   'settings.agents.editor.modelCustom': '自定义模型 ID…',
+  'settings.agents.editor.modelManaged': '托管模型',
   'settings.agents.editor.modelCustomPlaceholder': '例如 anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': '添加工具',
   'settings.agents.editor.toolsAllSelected': '所有工具',
