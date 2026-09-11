@@ -610,7 +610,7 @@ impl Agent {
         // previous synthesised spec set, then append the fresh one.
         {
             let specs_vec = Arc::make_mut(&mut self.tool_specs);
-            let _ = &old_synth;
+            specs_vec.retain(|s| !old_synth.contains(&s.name));
             specs_vec.extend(synthed_specs);
         }
 
