@@ -1,17 +1,11 @@
-//! `AgentBuilder` fluent setters and the `build()` validator.
-//!
-//! All setter methods return `Self` for chaining. `build()` validates that
-//! required fields are present and assembles the final [`Agent`].
+//! `AgentBuilder` fluent setters. See `builder_build.rs` for the `build()`
+//! validator that assembles the final [`Agent`].
 
-use super::{dedup_visible_tool_specs, visible_tool_specs_for_policy};
-use crate::openhuman::agent::context::ContextManager;
-use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
+use crate::openhuman::agent::harness::session::types::AgentBuilder;
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
 use crate::openhuman::config::ContextConfig;
 use crate::openhuman::memory::Memory;
-use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
-use crate::openhuman::tools::{Tool, ToolSpec};
-use anyhow::Result;
+use crate::openhuman::tools::Tool;
 use std::sync::Arc;
 
 impl AgentBuilder {
