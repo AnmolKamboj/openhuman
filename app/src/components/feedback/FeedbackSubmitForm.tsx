@@ -189,6 +189,10 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
             onClick={() => {
               // Changing the type is an edit like any other: the advice the last
               // submission came back with is no longer about what is on screen.
+              // Clicking the pill that is already selected is not an edit, so it
+              // must not discard advice an accepted-with-warning submission just
+              // produced -- easier to hit now that these are adjacent pills.
+              if (type === 'feature') return;
               setType('feature');
               setSubmittedQuality(null);
             }}
@@ -200,6 +204,7 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
             size="sm"
             className="rounded-full"
             onClick={() => {
+              if (type === 'bug') return;
               setType('bug');
               setSubmittedQuality(null);
             }}
