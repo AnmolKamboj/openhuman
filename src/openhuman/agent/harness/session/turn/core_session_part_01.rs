@@ -633,11 +633,20 @@ impl Agent {
         // at the provider seam either way (see
         // `message_convert::parse_native_assistant_envelope`, which exists
         // for precisely this seeded-transcript case).
+        // `bound_cached_transcript_messages` preserves a leading system
+        // message only "when present" — a resumed transcript that was never
+        // seeded with one (or was truncated ahead of it) hands back a
+        // `cached` prefix with no system entry at all. Dropping this turn's
+        // freshly-built system message(s) unconditionally would then leave
+        // the absorbed history with none, not the cached one's — so only
+        // drop them when the cached prefix actually supplies a replacement.
+        let cached_has_system = matches!(cached.first(), Some(msg) if msg.role == "system");
         let tail: Vec<ConversationMessage> = self
             .history
             .drain(..)
             .skip_while(|entry| {
-                matches!(entry, ConversationMessage::Chat(chat) if chat.role == "system")
+                cached_has_system
+                    && matches!(entry, ConversationMessage::Chat(chat) if chat.role == "system")
             })
             .collect();
         self.history = cached
