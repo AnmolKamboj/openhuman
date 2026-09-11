@@ -11,12 +11,21 @@ const upstream = new URL(process.env.CAPTURE_UPSTREAM || 'https://api.tinyhumans
 const outputPath = path.resolve(
   process.env.CAPTURE_OUTPUT || 'target/debug-logs/first-inference-request.json'
 );
+// `CAPTURE_ALL=1` records *every* inference request of the session, numbered, into
+// `CAPTURE_ALL_DIR`. The single-shot default answers "what does the first turn
+// cost"; only the sequence answers "does the cacheable prefix survive turn 2",
+// which is a different question and the one a prefix cache is graded on.
+const captureAll = process.env.CAPTURE_ALL === '1';
+const captureAllDir = path.resolve(
+  process.env.CAPTURE_ALL_DIR || 'target/debug-logs/inference-sequence'
+);
 
 if (upstream.protocol !== 'https:' && upstream.protocol !== 'http:') {
   throw new Error(`unsupported upstream protocol: ${upstream.protocol}`);
 }
 
 let captured = false;
+let sequenceIndex = 0;
 
 function isInferenceRequest(req) {
   return (
@@ -37,11 +46,20 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     const body = Buffer.concat(chunks);
 
-    if (!captured && isInferenceRequest(req)) {
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-      fs.writeFileSync(outputPath, body);
-      captured = true;
-      process.stdout.write(`[capture] wrote first inference body to ${outputPath}\n`);
+    if (isInferenceRequest(req)) {
+      if (!captured) {
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+        fs.writeFileSync(outputPath, body);
+        captured = true;
+        process.stdout.write(`[capture] wrote first inference body to ${outputPath}\n`);
+      }
+      if (captureAll) {
+        fs.mkdirSync(captureAllDir, { recursive: true });
+        const name = `req-${String(sequenceIndex).padStart(3, '0')}.json`;
+        fs.writeFileSync(path.join(captureAllDir, name), body);
+        sequenceIndex += 1;
+        process.stdout.write(`[capture] wrote ${name} (${body.length} B)\n`);
+      }
     }
 
     const headers = { ...req.headers, host: upstream.host };
@@ -76,7 +94,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(listenPort, listenHost, () => {
   process.stdout.write(
-    `[capture] listening on http://${listenHost}:${listenPort}; forwarding to ${upstream.origin}\n`
+    `[capture] listening on http://${listenHost}:${listenPort}; forwarding to ${upstream.origin}` +
+      `${captureAll ? `; recording every request under ${captureAllDir}` : ''}\n`
   );
 });
 
