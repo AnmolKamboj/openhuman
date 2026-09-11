@@ -628,6 +628,16 @@ impl Agent {
         // rest of their turn; those instances are freed when the last one goes.
         let previous_instances = self.synthesized_tools.len();
         self.synthesized_tools = Arc::new(synthed);
+        // The pack tool's handle holds a `Weak` into the allocation that was
+        // just replaced. Without this re-bind it stops upgrading once the last
+        // reader of the old set goes, and every packed delegate — `do_crypto`,
+        // `make_presentation`, `create_image`, … — answers "no tool in skill"
+        // instead of running: withheld from the wire and unreachable through
+        // the route that replaced it.
+        crate::openhuman::tools::toolpacks::bind_synthesized_pack_registry(
+            &self.tools,
+            &self.synthesized_tools,
+        );
 
         // `visible_tool_names` carries an explicit allowlist for
         // [`ToolScope::Named`] agents. Drop the previously-synthesised

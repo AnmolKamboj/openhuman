@@ -243,11 +243,16 @@ fn every_packed_tool_name_resolves_to_a_registered_tool() {
 
     let mut missing: Vec<String> = Vec::new();
     for pack in crate::openhuman::tools::toolpacks::PACKS {
-        // Registered only once the user is signed in to Composio
-        // (`all_composio_agent_tools` returns an empty vec otherwise,
-        // `integrations/composio/tools_part_03.rs:320-323`) — runtime auth
-        // state no unit test can satisfy, in any feature configuration.
-        if pack.id == "composio" {
+        // Registered only once the user is signed in: `composio`'s tools come
+        // from `all_composio_agent_tools`, which returns an empty vec without
+        // a session (`integrations/composio/tools_part_03.rs:320-323`), and
+        // `storage` / `media` are built behind `integrations::build_client`,
+        // which needs a session token (`file_storage/tools_part_02.rs`,
+        // `media/generation/tools.rs`). Runtime auth state no unit test can
+        // satisfy, in any feature configuration. Every name in those three is
+        // a real tool in the source it is built from, verified by hand at the
+        // time each pack was added — that is the check this skip replaces.
+        if matches!(pack.id, "composio" | "storage" | "media") {
             continue;
         }
         for name in pack.tools {

@@ -45,7 +45,7 @@ impl Tool for ArchetypeDelegationTool {
     }
 
     /// Publishes the routing target on the erased host-extension slot, the same
-    /// way `LoadSkillTool` publishes its pack handle. `traits::delegation_target`
+    /// way `UseSkillTool` publishes its pack handle. `traits::delegation_target`
     /// reads it back; every other tool returns `None` and pays nothing.
     fn host_extension(&self) -> Option<&(dyn std::any::Any + Send + Sync)> {
         Some(&self.agent_id)

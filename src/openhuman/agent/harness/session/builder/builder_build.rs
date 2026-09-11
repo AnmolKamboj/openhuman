@@ -55,7 +55,7 @@ impl AgentBuilder {
             .clone()
             .unwrap_or_else(|| "main".to_string());
         // On-demand tool disclosure: withhold packed tools' schemas from the
-        // provider and advertise `load_skill` / `use_skill` in their place. The
+        // provider and advertise `use_skill` in their place. The
         // tools stay in the registry below and stay executable — only the
         // advertised surface shrinks. Applied here, before the policy filter,
         // so the visible set and the policy session cannot disagree.
@@ -192,14 +192,22 @@ impl AgentBuilder {
             .unwrap_or_else(|| "session_raw".to_string());
 
         let tools = Arc::new(tools);
-        // The pack tools live inside this registry, so they can only be pointed
+        let synthesized_tools = Arc::new(synthesized_tools);
+        // The pack tool lives inside this registry, so it can only be pointed
         // at it once it exists. Re-bind after any later rebuild of this `Arc`.
         crate::openhuman::tools::toolpacks::bind_pack_registry(&tools);
+        // And at the delegates, which are NOT in that registry: every
+        // `delegate_*` is synthesised into its own `Arc`, so a packed delegate
+        // is unreachable through `use_skill` until this second binding runs.
+        crate::openhuman::tools::toolpacks::bind_synthesized_pack_registry(
+            &tools,
+            &synthesized_tools,
+        );
 
         Ok(Agent {
             turn_model_source,
             tools,
-            synthesized_tools: Arc::new(synthesized_tools),
+            synthesized_tools,
             tool_specs: Arc::new(tool_specs),
             durable_tool_specs: Arc::new(durable_tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),

@@ -469,7 +469,7 @@ impl CoreBuilder {
     }
 
     /// Choose how each tool group reaches the model (default: every group
-    /// withheld behind `load_skill` / `use_skill`, the desktop app's shape).
+    /// withheld behind `use_skill`, the desktop app's shape).
     ///
     /// The third narrowing axis, independent of both `services` and `domains`:
     /// `ServiceSet` picks the background services, `DomainSet` picks which

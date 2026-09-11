@@ -149,17 +149,39 @@ impl Agent {
             //
             // *** Mid-session schema-only refresh ***
             //
-            // The system prompt stays frozen, but the function-calling
-            // schema (the `tools` field in the provider request) is sent
-            // fresh on every API call — it's not part of the KV-cache
-            // prefix. So we *can* react to Composio connect/disconnect
+            // The system prompt stays frozen, but the function-calling schema
+            // (the `tools` field in the provider request) is sent fresh on
+            // every API call. So we *can* react to Composio connect/disconnect
             // events mid-session by re-synthesising the `delegate_<toolkit>`
-            // surface on `self.tools` / `self.tool_specs` and letting
-            // the next provider call carry the new schema. KV cache stays
-            // intact; the system prompt's `## Connected Integrations`
-            // block goes mildly stale until the next session, but the
-            // schema is the source of truth the model actually routes
-            // against.
+            // surface on `self.tools` / `self.tool_specs` and letting the next
+            // provider call carry the new schema. The system prompt's
+            // `## Connected Integrations` block goes mildly stale until the
+            // next session, but the schema is the source of truth the model
+            // actually routes against.
+            //
+            // **This is not free, and an earlier version of this comment said
+            // it was** — it claimed the tools field "is not part of the
+            // KV-cache prefix". It is. Every prefix cache in production renders
+            // the tool catalogue *before* the conversation, because a chat
+            // template has to put it somewhere the model reads it ahead of the
+            // first user turn: OpenAI's automatic cache, Anthropic's
+            // `cache_control` (tools → system → messages), DeepSeek's context
+            // cache, any vLLM/SGLang radix cache. A changed tool block
+            // therefore invalidates the *whole* prefix — including the system
+            // prompt this branch goes to such lengths to freeze.
+            //
+            // The refresh is still right, because a tool surface that lies
+            // about what the model can call is worse than a cold prefill. What
+            // follows from the correction is narrower and load-bearing: the
+            // rebuild must fire only on a *real* capability change, and must be
+            // byte-stable when nothing changed. Both properties are already
+            // paid for and must stay that way —
+            // `connected_set_hash` is order-insensitive (sorted), so a backend
+            // that returns the same toolkits in a different order does not
+            // trigger a reconcile, and `refresh_delegation_tools` rebuilds
+            // `tool_specs` in a deterministic order rather than from a set.
+            // `an_unchanged_integration_set_leaves_the_tool_block_byte_stable`
+            // pins it.
             //
             // The signal we react to is the process-wide
             // [`crate::openhuman::integrations::composio::INTEGRATIONS_CACHE`], kept

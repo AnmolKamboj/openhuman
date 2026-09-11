@@ -254,7 +254,11 @@ async fn profile_allowed_tools_restrict_shared_session_builder() {
     let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.id = "alice".to_string();
     profile.built_in = false;
-    profile.allowed_tools = Some(vec!["file_read".to_string()]);
+    // `shell` rather than `file_read`: this test is about a profile's
+    // `allowed_tools` reaching every caller, and `file_read` moved into the
+    // `files` tool pack, so the visible set would come back as the `use_skill`
+    // proxy and the assertion would be about packing instead.
+    profile.allowed_tools = Some(vec!["shell".to_string()]);
 
     let agent = Agent::build_session_agent_inner(
         &config,
@@ -268,12 +272,12 @@ async fn profile_allowed_tools_restrict_shared_session_builder() {
 
     assert_eq!(
         agent.visible_tool_names_for_test(),
-        &["file_read".to_string()].into_iter().collect(),
+        &["shell".to_string()].into_iter().collect(),
         "every profile-aware caller must inherit the same tool restriction"
     );
     assert_eq!(
         agent.subagent_tool_ceiling_names_for_test(),
-        &["file_read".to_string()].into_iter().collect(),
+        &["shell".to_string()].into_iter().collect(),
         "an explicit profile tool restriction must also ceiling delegated agents"
     );
 }
@@ -296,15 +300,25 @@ async fn channel_ceiling_does_not_inherit_orchestrator_role_visibility() {
         Agent::build_session_agent_inner(&config, "orchestrator", Some(&def), None, false, None)
             .expect("build channel-scoped orchestrator session");
 
+    // Withheld from the parent: `shell` covers reading and writing a file, so
+    // the `files` pack takes the dedicated tools off the Master Agent's wire.
     assert!(
-        agent.visible_tool_names_for_test().contains("file_write"),
-        "the Master Agent must advertise file_write for direct coding work"
+        !agent.visible_tool_names_for_test().contains("file_write"),
+        "`file_write` belongs to the `files` pack and must not be advertised \
+         to the Master Agent, which reaches it through `use_skill`"
     );
+    // …and that withholding must NOT travel down. The ceiling is built from
+    // the full spec list against the channel policy, deliberately independent
+    // of pack disclosure, so `code_executor` — which owns the pack — still
+    // inherits the real tool. A ceiling computed from the parent's advertised
+    // set instead would silently strip every packed tool from every child,
+    // which is the regression this half exists to catch.
     assert!(
         agent
             .subagent_tool_ceiling_names_for_test()
             .contains("file_write"),
-        "an execute-capable channel must let code_executor inherit file_write"
+        "an execute-capable channel must let code_executor inherit file_write \
+         even though the parent no longer advertises it"
     );
     assert!(
         !agent
