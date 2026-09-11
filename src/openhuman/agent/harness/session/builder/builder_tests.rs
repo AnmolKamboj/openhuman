@@ -126,9 +126,11 @@ fn load_skill_spec_from_registry() -> ToolSpec {
 /// nobody calls advertises every pack exactly as before.
 #[test]
 fn visible_specs_scope_load_skills_index_to_the_session() {
-    let specs = vec![
-        load_skill_spec_from_registry(),
-        spec(crate::openhuman::tools::toolpacks::USE_SKILL),
+    // `Arc` leaves, because the three spec views share them — the assertions
+    // below are unchanged, only the carrier is.
+    let specs: Vec<std::sync::Arc<ToolSpec>> = vec![
+        std::sync::Arc::new(load_skill_spec_from_registry()),
+        std::sync::Arc::new(spec(crate::openhuman::tools::toolpacks::USE_SKILL)),
     ];
     let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
     // Reachable: one workflows tool. Everything else in every other pack is
@@ -169,9 +171,11 @@ fn visible_specs_scope_load_skills_index_to_the_session() {
 /// A session that can reach no pack at all should not carry the pack tools.
 #[test]
 fn visible_specs_drop_the_pack_tools_when_no_pack_is_reachable() {
-    let specs = vec![
-        load_skill_spec_from_registry(),
-        spec(crate::openhuman::tools::toolpacks::USE_SKILL),
+    // `Arc` leaves, because the three spec views share them — the assertions
+    // below are unchanged, only the carrier is.
+    let specs: Vec<std::sync::Arc<ToolSpec>> = vec![
+        std::sync::Arc::new(load_skill_spec_from_registry()),
+        std::sync::Arc::new(spec(crate::openhuman::tools::toolpacks::USE_SKILL)),
     ];
     let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
     let session = session_allowing(&[
@@ -242,12 +246,14 @@ fn a_realistic_withheld_session_keeps_its_packs_advertised() {
         &visible,
     );
 
-    let specs: Vec<ToolSpec> = tools
+    let specs: Vec<std::sync::Arc<ToolSpec>> = tools
         .iter()
-        .map(|t| ToolSpec {
-            name: t.name().to_string(),
-            description: t.description().to_string(),
-            parameters: t.parameters_schema(),
+        .map(|t| {
+            std::sync::Arc::new(ToolSpec {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
+            })
         })
         .collect();
 
