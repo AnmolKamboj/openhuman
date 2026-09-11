@@ -160,6 +160,79 @@ fn all_tools_includes_spawn_parallel_agents() {
 }
 
 #[test]
+fn every_packed_tool_name_resolves_to_a_registered_tool() {
+    // A pack advertises a menu. `render_pack_filtered` skips a name it cannot
+    // resolve (tools.rs "a pack may name a tool this build compiled out"), so a
+    // stale entry does not error — the listing is just quietly short, and any
+    // prompt that instructs the agent to call it describes a tool that will
+    // never appear in its schema. The `crypto` pack carried five such names
+    // (`wallet_balances`, `wallet_network_defaults`, `wallet_supported_assets`,
+    // `wallet_encode_erc20_transfer`, `wallet_execute_prepared`) whose backing
+    // functions exist only as `wallet.*` RPC methods, never as agent tools.
+    //
+    // Scoped to the default feature set this test binary is built with: a name
+    // compiled out by a disabled feature is a legitimate skip, so the assertion
+    // fires only for names no build registers.
+    let tmp = TempDir::new().unwrap();
+    let security = Arc::new(SecurityPolicy::default());
+    let browser = BrowserConfig {
+        enabled: false,
+        allowed_domains: vec![],
+        session_name: None,
+        ..BrowserConfig::default()
+    };
+    let http = crate::openhuman::config::HttpRequestConfig::default();
+    let cfg = test_config(&tmp);
+
+    let tools = all_tools(
+        Arc::new(Config::default()),
+        &security,
+        AuditLogger::disabled(),
+        &browser,
+        &http,
+        tmp.path(),
+        &HashMap::new(),
+        &cfg,
+    );
+    let registered: std::collections::HashSet<&str> = tools.iter().map(|t| t.name()).collect();
+
+    // Delegation tools are synthesised per-session from each agent's
+    // `delegate_name`, not built by `all_tools`, so they are legitimately
+    // absent here. `owners` holds agent ids (`crypto_agent`); the names that
+    // appear in `tools` are delegate names (`do_crypto`), so resolve them from
+    // the agent registry rather than from `owners`.
+    let delegates: std::collections::HashSet<String> =
+        crate::openhuman::agent::registry::agents::load_builtins()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|d| d.delegate_name)
+            .collect();
+
+    let mut missing: Vec<String> = Vec::new();
+    for pack in crate::openhuman::tools::toolpacks::PACKS {
+        // `composio`'s tools are registered only once the user is signed in to
+        // Composio (`all_composio_agent_tools` returns an empty vec otherwise,
+        // `integrations/composio/tools_part_03.rs:320-323`), which is runtime
+        // auth state a unit test cannot satisfy. Their absence here says
+        // nothing about whether the names are real, so the pack is exempt.
+        if pack.id == "composio" {
+            continue;
+        }
+        for name in pack.tools {
+            if registered.contains(name) || delegates.contains(*name) {
+                continue;
+            }
+            missing.push(format!("{}::{}", pack.id, name));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "every tool named in a pack must resolve to a registered tool (or be a \
+         delegate name); these do not: {missing:?}"
+    );
+}
+
+#[test]
 fn all_tools_always_registers_curl() {
     // Regression guard: `curl` is always registered (gated only by
     // the shared `http_request.allowed_domains` allowlist at call
