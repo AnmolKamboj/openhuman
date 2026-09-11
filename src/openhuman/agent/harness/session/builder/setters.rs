@@ -6,7 +6,6 @@
 use super::{dedup_visible_tool_specs, visible_tool_specs_for_policy};
 use crate::openhuman::agent::context::ContextManager;
 use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
-use crate::openhuman::agent::harness::TriggerMemoryAgent;
 use crate::openhuman::config::ContextConfig;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
