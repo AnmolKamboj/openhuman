@@ -480,11 +480,21 @@ impl AgentBuilder {
             .map(|tool| tool.name().to_string())
             .collect();
         // Durable specs first, synthesised after — every reader's order.
-        let durable_tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
-        let tool_specs: Vec<ToolSpec> = durable_tool_specs
+        //
+        // Each schema is built once and handed out behind an `Arc`. The three
+        // spec views an agent keeps (`durable_tool_specs`, `tool_specs`,
+        // `visible_tool_specs`) overlap heavily — the durable set is a prefix
+        // of the full set, and the visible set is a filtered subset of it — so
+        // materialising them as independent `Vec<ToolSpec>` kept every
+        // JSON-Schema `parameters` value resident up to three times per agent.
+        // Sharing the leaves makes the extra views cost one pointer per entry
+        // (openhuman#6218).
+        let durable_tool_specs: Vec<Arc<ToolSpec>> =
+            tools.iter().map(|tool| Arc::new(tool.spec())).collect();
+        let tool_specs: Vec<Arc<ToolSpec>> = durable_tool_specs
             .iter()
             .cloned()
-            .chain(synthesized_tools.iter().map(|tool| tool.spec()))
+            .chain(synthesized_tools.iter().map(|tool| Arc::new(tool.spec())))
             .collect();
 
         let mut visible_names = self.visible_tool_names.unwrap_or_default();
@@ -582,7 +592,7 @@ impl AgentBuilder {
         // the same name — OpenHuman's own backend and OpenAI silently
         // accept duplicates, which hid this bug until #1710's per-role
         // routing started sending the same tool list to Anthropic.
-        let visible_tool_specs: Vec<ToolSpec> =
+        let visible_tool_specs: Vec<Arc<ToolSpec>> =
             dedup_visible_tool_specs(visible_tool_specs_unfiltered);
 
         let visible_names_list: Vec<&str> =
