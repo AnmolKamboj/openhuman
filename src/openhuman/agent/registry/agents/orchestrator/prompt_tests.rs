@@ -611,3 +611,30 @@ fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
         .filter(|name| prose.contains(&format!("`{name}`")))
         .collect()
 }
+
+/// The web channel renames the session, and the block must survive it.
+///
+/// `PromptContext::agent_id` carries `agent_definition_name`, which the web
+/// channel rewrites to `orchestrator_<short_thread>`. A plain `registry.get`
+/// on that misses, and the whole withheld-specialist block silently vanishes —
+/// which is exactly what the first live capture showed: the routing table was
+/// gone from the prompt and nothing had replaced it.
+#[test]
+fn a_thread_renamed_session_still_resolves_to_its_registry_entry() {
+    let registry = crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
+        .expect("the builtin agent registry is initialised in tests");
+
+    let exact = resolve_definition(registry, "orchestrator").expect("exact id must resolve");
+    assert_eq!(exact.id, "orchestrator");
+
+    let renamed = resolve_definition(registry, "orchestrator_thread-captu")
+        .expect("a thread-renamed session must resolve to its registry entry");
+    assert_eq!(renamed.id, "orchestrator");
+
+    // Not a rename, just a different agent: must not be swallowed by a
+    // shorter id that happens to be a prefix.
+    assert!(
+        resolve_definition(registry, "orchestratorish").is_none(),
+        "a name that merely starts with an id is not that agent"
+    );
+}
