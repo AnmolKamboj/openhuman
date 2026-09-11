@@ -808,7 +808,7 @@ fn dedup_keeps_the_original_allocation_of_the_winning_spec() {
 /// spec views must be empty rather than desynchronised.
 #[test]
 fn spec_views_stay_consistent_for_a_tool_less_agent() {
-    let agent = AgentBuilder::new()
+    let agent = crate::openhuman::agent::AgentBuilder::new()
         .turn_model_source(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(
             std::sync::Arc::new(tinyagents_harness::testkit::ScriptedModel::new(Vec::new())),
         ))
