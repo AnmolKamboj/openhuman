@@ -64,5 +64,18 @@ async fn execute_without_question_uses_fallback() {
     let tool = AskClarificationTool::new();
     let result = tool.execute(json!({})).await.unwrap();
     assert!(!result.is_error);
-    assert!(result.output().contains("CLARIFICATION NEEDED"));
+    assert!(result.output().contains("clarify"));
+}
+
+/// The output is the message the user reads (the early-exit hook captures it
+/// verbatim as the pause question), so it must not carry a machine marker no
+/// reader parses.
+#[tokio::test]
+async fn output_is_the_bare_question_with_no_marker() {
+    let tool = AskClarificationTool::new();
+    let result = tool
+        .execute(json!({ "question": "Which branch should I target?" }))
+        .await
+        .unwrap();
+    assert_eq!(result.output(), "Which branch should I target?");
 }

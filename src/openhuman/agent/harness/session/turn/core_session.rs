@@ -371,6 +371,20 @@ impl Agent {
                     final_answer.clone(),
                 )));
             final_answer
+        } else if outcome.early_exit_tool.is_some() {
+            // Paused on `ask_user_clarification`. The run stopped right after the
+            // tool round, so `outcome.conversation` ends on a tool result and
+            // carries no final assistant turn — `outcome.text` (the question) is
+            // standing in for one. Push it, or the reply the user is looking at
+            // would be missing from the next request's prefix and the model would
+            // have to infer that it asked anything from its own tool result.
+            // The sub-agent path makes the same substitution when it persists a
+            // paused child's transcript (`subagent_runner/ops/graph_part_01.rs`).
+            self.history
+                .push(ConversationMessage::Chat(ChatMessage::assistant(
+                    outcome.text.clone(),
+                )));
+            outcome.text.clone()
         } else {
             outcome.text.clone()
         };
