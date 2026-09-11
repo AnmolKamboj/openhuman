@@ -16,6 +16,7 @@ mod builder_tests;
 use crate::openhuman::agent::harness::definition::{AgentDefinition, ToolScope};
 use crate::openhuman::tools::agent_policy::ToolPolicySession;
 use crate::openhuman::tools::{Tool, ToolSpec};
+use std::sync::Arc;
 
 /// Drop entries with duplicate `name` fields, first occurrence wins.
 ///
