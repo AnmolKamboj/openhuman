@@ -106,8 +106,44 @@ describe('<BillingPanel />', () => {
     render(<BillingPanel />);
 
     expect(await screen.findByText('Summary unavailable')).toBeInTheDocument();
+    expect(screen.getByText('PRO')).toBeInTheDocument();
     expect(screen.getByText('$39.50')).toBeInTheDocument();
     expect(screen.getByText(/Spent \$6\.00 this cycle/i)).toBeInTheDocument();
+  });
+
+  it('renders malformed balances as unavailable and falls back from unusable links', async () => {
+    getSummaryMock.mockResolvedValue({
+      ...summary,
+      credits: {
+        promotionBalanceUsd: Number.NaN,
+        teamTopupUsd: -1,
+        totalUsd: Number.POSITIVE_INFINITY,
+      },
+      links: null,
+    });
+    render(<BillingPanel />);
+
+    await screen.findByText('$39.50');
+    expect(screen.getAllByText('n/a')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Top Up Credits' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open billing dashboard' }));
+    expect(openUrlMock).toHaveBeenNthCalledWith(1, 'https://tinyhumans.ai/dashboard?tab=billing');
+    expect(openUrlMock).toHaveBeenNthCalledWith(2, 'https://tinyhumans.ai/dashboard');
+  });
+
+  it('falls back when the backend returns empty billing links', async () => {
+    getSummaryMock.mockResolvedValue({
+      ...summary,
+      links: { ...summary.links, topUpUrl: '', manageUrl: '' },
+    });
+    render(<BillingPanel />);
+
+    await screen.findByText('$39.50');
+    fireEvent.click(screen.getByRole('button', { name: 'Top Up Credits' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open billing dashboard' }));
+    expect(openUrlMock).toHaveBeenNthCalledWith(1, 'https://tinyhumans.ai/dashboard?tab=billing');
+    expect(openUrlMock).toHaveBeenNthCalledWith(2, 'https://tinyhumans.ai/dashboard');
   });
 
   it('keeps plan and balances visible when cycle usage fails', async () => {

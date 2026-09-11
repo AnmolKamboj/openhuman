@@ -54,7 +54,13 @@ pub async fn get_current_plan(config: &Config) -> Result<RpcOutcome<Value>, Stri
 }
 
 pub async fn get_summary(config: &Config) -> Result<RpcOutcome<Value>, String> {
-    let data = get_authed_value(config, Method::GET, "/payments/summary", None).await?;
+    let token = require_token(config)?;
+    let api_url = effective_backend_api_url(&config.api_url);
+    let client = BackendOAuthClient::new(&api_url).map_err(|e| e.to_string())?;
+    let data = client
+        .fetch_billing_summary(&token)
+        .await
+        .map_err(crate::api::flatten_authed_error)?;
     Ok(RpcOutcome::single_log(data, "billing summary fetched"))
 }
 
