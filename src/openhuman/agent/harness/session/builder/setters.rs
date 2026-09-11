@@ -585,6 +585,26 @@ impl AgentBuilder {
         let visible_tool_specs: Vec<ToolSpec> =
             dedup_visible_tool_specs(visible_tool_specs_unfiltered);
 
+        if std::env::var("OH_PROBE_SPECS").is_ok() {
+            let sz = |v: &Vec<ToolSpec>| -> usize {
+                v.iter()
+                    .map(|s| {
+                        s.name.capacity()
+                            + s.description.capacity()
+                            + serde_json::to_string(&s.parameters).map(|j| j.len()).unwrap_or(0)
+                    })
+                    .sum()
+            };
+            eprintln!(
+                "[PROBE] durable={} ({} B) all={} ({} B) visible={} ({} B)",
+                durable_tool_specs.len(),
+                sz(&durable_tool_specs),
+                tool_specs.len(),
+                sz(&tool_specs),
+                visible_tool_specs.len(),
+                sz(&visible_tool_specs)
+            );
+        }
         let visible_names_list: Vec<&str> =
             visible_tool_specs.iter().map(|s| s.name.as_str()).collect();
         log::info!(
