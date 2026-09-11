@@ -179,6 +179,29 @@ async fn rebinding_the_synthesised_set_repoints_the_handle() {
     assert!(stale.is_error, "a dropped delegate stayed reachable");
 }
 
+/// Closing a goal must stay directly callable.
+///
+/// `goal_complete` is the one goal operation an agent reaches for reactively —
+/// at the end of work it has just finished. Packing it would put a `use_skill`
+/// round trip at exactly that moment, and the failure when the model does not
+/// pay it is silent: the objective stays open and keeps driving autonomous
+/// continuation. Everything else about goals is behind the `goals` pack
+/// precisely so this one tool is cheap to keep visible.
+#[test]
+fn closing_a_goal_is_never_packed() {
+    assert!(
+        !all_packed_tool_names().contains(&"goal_complete"),
+        "`goal_complete` was packed; see the carve-out note on the `goals` pack"
+    );
+    // And the rest of the family is, or the carve-out saved nothing.
+    for held in ["goals", "goal_get", "goal_set"] {
+        assert!(
+            all_packed_tool_names().contains(&held),
+            "`{held}` should be reachable through the `goals` pack, not on the wire"
+        );
+    }
+}
+
 #[test]
 fn every_packed_name_belongs_to_exactly_one_pack() {
     let mut seen = HashSet::new();

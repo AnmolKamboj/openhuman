@@ -580,15 +580,26 @@ fn the_rendered_prompt_never_names_a_withheld_tool() {
 
 /// Withheld tool names that `text` presents as directly callable.
 ///
-/// A pack **id** may legitimately be backticked, because naming the skill is
-/// how the route is written — and one pack id (`composio`) is also a tool name
-/// inside that pack, so a bare substring check cannot tell a route from a call.
-/// Route mentions are always spelled `skill \`<id>\``, in the prose and in the
-/// generated block alike, so removing that exact form first is what makes the
-/// remaining occurrences calls.
+/// Two exemptions, and both are about telling a *route* from a *call*:
+///
+/// * The generated `## Capabilities not in your tool list` block names withheld
+///   tools on purpose — that block is the route, and it is the one sanctioned
+///   place to write one. It is removed wholesale before scanning.
+/// * A pack **id** may be backticked anywhere, since naming the skill is how a
+///   route reads in prose. Two pack ids (`composio`, `goals`) are also tool
+///   names inside their own pack, so a bare substring check cannot tell the
+///   two apart; routes are always spelled ``skill `<id>` ``, so removing that
+///   exact form is what makes the remaining occurrences calls.
 fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
     let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
-    let mut prose = text.to_string();
+    let mut prose = match text.find("## Capabilities not in your tool list") {
+        Some(start) => {
+            let rest = &text[start + 1..];
+            let end = rest.find("\n## ").map(|i| start + 1 + i).unwrap_or(text.len());
+            format!("{}{}", &text[..start], &text[end..])
+        }
+        None => text.to_string(),
+    };
     for name in &packed {
         prose = prose.replace(&format!("skill `{name}`"), "");
     }
