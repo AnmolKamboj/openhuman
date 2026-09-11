@@ -82,8 +82,7 @@ impl DriverMemory {
             "[agent-experience] bound shared memory subtree driver='{}'",
             binding.driver_id()
         );
-        let memory: Arc<dyn Memory> = Arc::new(Self::new(binding.provider().clone()));
-        Ok(memory)
+        Ok(binding.shared_memory_view(|provider| Arc::new(Self::new(Arc::clone(provider)))))
     }
 
     /// The driver bound for one memory subtree of `config`'s workspace.
@@ -105,8 +104,7 @@ impl DriverMemory {
             "[agent-experience] bound memory subtree '{memory_subdir}' driver='{}'",
             binding.driver_id()
         );
-        let memory: Arc<dyn Memory> = Arc::new(Self::new(binding.provider().clone()));
-        Ok(memory)
+        Ok(binding.shared_memory_view(|provider| Arc::new(Self::new(Arc::clone(provider)))))
     }
 }
 
