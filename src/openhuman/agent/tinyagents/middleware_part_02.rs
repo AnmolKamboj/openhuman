@@ -561,6 +561,106 @@ impl ToolPolicyMiddleware {
             .find(|t| t.name() == name)
     }
 
+    /// The delegation tools this session can actually call that reach one of
+    /// `owners`, as tool names.
+    ///
+    /// Derived from the session's own tool set — every synthesised `delegate_*`
+    /// tool publishes its target agent on the erased host-extension slot
+    /// (`traits::delegation_target`). That is deliberately the only source: a
+    /// static owner-to-tool table would duplicate each agent's `delegate_name`
+    /// and could name a tool this session was never built with, sending the
+    /// model from one dead end into another. Asking the tool set cannot.
+    fn callable_delegates_for(&self, owners: &[&str]) -> Vec<String> {
+        let mut found: Vec<String> = Vec::new();
+        for tool in self.tool_sets.iter().flat_map(|set| set.iter()) {
+            let Some(target) =
+                crate::openhuman::tools::traits::delegation_target(tool.as_ref())
+            else {
+                continue;
+            };
+            if !owners.contains(&target) {
+                continue;
+            }
+            let name = tool.name().to_string();
+            // Uses `is_denied()`, and that is deliberate — it is the same
+            // predicate as the gate this hint points at.
+            //
+            // Spelled out, because two predicates live in this file and a
+            // sentence that does not name one has been misread three times:
+            //
+            //   * This hint names a tool for the model to call DIRECTLY.
+            //   * The direct-call gate is `channel_permission_block`'s first
+            //     check, `if decision.is_denied()` (this file, top of the fn).
+            //   * `is_denied()` is `!matches!(action, Allow)`, so it is TRUE for
+            //     `HideFromPrompt` — that check is what refuses a prompt-hidden
+            //     tool called by name.
+            //   * Therefore a prompt-hidden delegate is not a route, and
+            //     `is_denied()` here is exactly what keeps it out.
+            //
+            // `blocks_execution()` would be wrong here: it deliberately admits
+            // `HideFromPrompt` for the `use_skill` path below, where hiding is
+            // the disclosure mechanism rather than a refusal. Same tool, two
+            // call paths, two answers. A hint must use the predicate of the gate
+            // it points at — the hint and the gate disagreeing is how this whole
+            // class of bug started.
+            //
+            // Pinned by `a_prompt_hidden_delegate_is_not_offered_as_a_direct_route`.
+            if self.session.decision_for(&name).is_denied() || found.contains(&name) {
+                continue;
+            }
+            found.push(name);
+        }
+        found
+    }
+
+    /// The route sentence for a pack, resolved against THIS session.
+    fn route_for_pack(&self, pack: &crate::openhuman::tools::toolpacks::ToolPack) -> String {
+        crate::openhuman::tools::toolpacks::route_sentence(
+            &self.callable_delegates_for(pack.owners),
+            pack.owners,
+        )
+    }
+
+    /// Render a `load_skill` listing scoped to what this session may call.
+    ///
+    /// This lives in the middleware because the middleware is the only layer
+    /// that holds the session — `LoadSkillTool` is built once per registry and
+    /// has no idea who is calling it. Returns `None` when there is nothing to
+    /// scope (no `skill` argument, no pack handle), so the call falls through to
+    /// the tool's own `execute` unchanged.
+    fn render_skill_for_session(&self, call: &TaToolCall) -> Option<TaToolResult> {
+        let skill = call
+            .arguments
+            .get("skill")
+            .and_then(serde_json::Value::as_str)?;
+        let tool = self.resolve_tool(&call.name)?;
+        let handle = crate::openhuman::tools::traits::pack_registry_handle(tool.as_ref())?;
+        let is_callable = |name: &str| !self.session.decision_for(name).blocks_execution();
+        let route = crate::openhuman::tools::toolpacks::pack(skill)
+            .map(|pack| self.route_for_pack(pack))
+            .unwrap_or_default();
+        let rendered = crate::openhuman::tools::toolpacks::render_pack_filtered(
+            skill,
+            handle,
+            // The same predicate the gate applies to `use_skill`'s inner tool.
+            // Two sources of truth for "can this session call it" is the bug.
+            &is_callable,
+            &route,
+        );
+        let (content, error) = match rendered {
+            Ok(text) => (text, None),
+            Err(message) => (message.clone(), Some(message)),
+        };
+        Some(TaToolResult {
+            call_id: call.id.clone(),
+            name: call.name.clone(),
+            content,
+            raw: None,
+            error,
+            elapsed_ms: 0,
+        })
+    }
+
     /// The channel-permission gate the engine ran before the builder policy: a
     /// session-level deny, then a per-call permission-level ceiling check. Returns
     /// the blocking message when the call must not execute.
@@ -600,10 +700,25 @@ impl ToolPolicyMiddleware {
                 .get("tool")
                 .and_then(serde_json::Value::as_str)
             {
+                // `blocks_execution`, NOT `is_denied`. Every withheld packed
+                // tool is `HideFromPrompt`, and `use_skill` is the only route it
+                // has — gating that route on `is_denied` refused all of them.
                 let inner_decision = self.session.decision_for(inner_tool);
-                if inner_decision.is_denied() {
+                if inner_decision.blocks_execution() {
+                    // Name the route. A bare denial gives the model nothing to
+                    // do differently, and a model with no next step retries the
+                    // same call: one live turn burned its whole budget on six
+                    // identical `use_skill` denials and died on the
+                    // repeated-failure breaker. Same sentence the listing uses,
+                    // resolved against the same session, so the two cannot
+                    // tell the model different stories.
+                    let hint = crate::openhuman::tools::toolpacks::pack_for_tool(inner_tool)
+                        .map(|pack| self.route_for_pack(pack))
+                        .filter(|h| !h.is_empty())
+                        .map(|h| format!(" {h}"))
+                        .unwrap_or_default();
                     return Some(format!(
-                        "Tool `{inner_tool}` is not allowed in the current session and cannot be used through `use_skill`."
+                        "Tool `{inner_tool}` is not allowed in the current session and cannot be used through `use_skill`.{hint}"
                     ));
                 }
             }
