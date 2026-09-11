@@ -24,46 +24,44 @@ const BillingPanel = () => {
   const { navigateBack } = useSettingsNavigation();
   const [summary, setSummary] = useState<BillingSummaryData | null>(null);
   const [teamUsage, setTeamUsage] = useState<TeamUsage | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [usageLoading, setUsageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
-      log('loading billing summary and cycle usage');
-      const [summaryResult, usageResult] = await Promise.allSettled([
-        billingApi.getSummary(),
-        creditsApi.getTeamUsage(),
-      ]);
-      if (cancelled) return;
-
-      if (summaryResult.status === 'fulfilled') {
-        setSummary(summaryResult.value);
-      } else {
-        log('summary load failed error=%s', String(summaryResult.reason));
-      }
-
-      if (usageResult.status === 'fulfilled') {
-        setTeamUsage(usageResult.value);
-      } else {
-        log('usage load failed error=%s', String(usageResult.reason));
-      }
-
-      const failure =
-        summaryResult.status === 'rejected'
-          ? summaryResult.reason
-          : usageResult.status === 'rejected'
-            ? usageResult.reason
-            : null;
-      if (failure) {
-        setError(failure instanceof Error ? failure.message : String(failure));
-      }
-      setLoading(false);
-      log('billing state applied summary=%s usage=%s', summaryResult.status, usageResult.status);
+    const recordError = (failure: unknown) => {
+      const message = failure instanceof Error ? failure.message : String(failure);
+      setError(current => current ?? message);
     };
 
-    void load();
+    log('loading billing summary and cycle usage');
+    void billingApi
+      .getSummary()
+      .then(value => {
+        if (!cancelled) setSummary(value);
+      })
+      .catch(failure => {
+        log('summary load failed error=%s', String(failure));
+        if (!cancelled) recordError(failure);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    void creditsApi
+      .getTeamUsage()
+      .then(value => {
+        if (!cancelled) setTeamUsage(value);
+      })
+      .catch(failure => {
+        log('usage load failed error=%s', String(failure));
+        if (!cancelled) recordError(failure);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -79,7 +77,11 @@ const BillingPanel = () => {
 
   return (
     <SettingsPanel>
-      <SettingsStatusLine saving={loading} error={error} savingLabel={t('common.loading')} />
+      <SettingsStatusLine
+        saving={summaryLoading || usageLoading}
+        error={error}
+        savingLabel={t('common.loading')}
+      />
 
       <section className="rounded-2xl border border-line bg-surface p-4 space-y-4">
         <div className="space-y-1">
@@ -92,13 +94,17 @@ const BillingPanel = () => {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryTile
             label={t('settings.billing.subscription.currentPlan')}
-            value={summary?.plan?.plan ?? teamUsage?.plan?.plan ?? (loading ? '...' : unavailable)}
+            value={
+              summary?.plan?.plan ??
+              teamUsage?.plan?.plan ??
+              (summaryLoading || usageLoading ? '...' : unavailable)
+            }
           />
           <SummaryTile
             label={t('settings.billing.payAsYouGo.available')}
             value={
               availableUsd === undefined
-                ? loading
+                ? usageLoading
                   ? '...'
                   : unavailable
                 : formatUsd(availableUsd, unavailable)
@@ -109,7 +115,7 @@ const BillingPanel = () => {
             value={
               summary
                 ? formatUsd(summary.credits?.promotionBalanceUsd, unavailable)
-                : loading
+                : summaryLoading
                   ? '...'
                   : unavailable
             }
@@ -119,7 +125,7 @@ const BillingPanel = () => {
             value={
               summary
                 ? formatUsd(summary.credits?.teamTopupUsd, unavailable)
-                : loading
+                : summaryLoading
                   ? '...'
                   : unavailable
             }
@@ -127,7 +133,7 @@ const BillingPanel = () => {
         </div>
       </section>
 
-      <InferenceBudget teamUsage={teamUsage} isLoadingCredits={loading} />
+      <InferenceBudget teamUsage={teamUsage} isLoadingCredits={usageLoading} />
 
       <div className="flex flex-wrap gap-3">
         <Button type="button" variant="primary" size="md" onClick={() => void openUrl(topUpUrl)}>
