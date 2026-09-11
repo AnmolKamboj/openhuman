@@ -511,3 +511,54 @@ fn build_omits_guide_when_no_integrations_connected() {
     let body = build(&ctx_with(&integrations)).unwrap();
     assert!(!body.contains("## Connected Integrations"));
 }
+
+#[test]
+fn prompt_routes_workflow_authoring_to_the_builder_not_use_skill() {
+    // Regression for the `use_skill` routing dead end. The orchestrator loaded
+    // the `workflows` pack, read `propose_workflow` off the listing, called it
+    // through `use_skill`, and was refused — six times, until the
+    // repeated-failure breaker killed the turn.
+    //
+    // The gate is the fix; this pins the prompt so the model is told the route
+    // before it discovers the wall.
+    assert!(
+        ARCHETYPE.contains("Workflow rule of thumb"),
+        "orchestrator prompt must carry the workflow routing rule"
+    );
+    assert!(
+        ARCHETYPE.contains("`build_workflow`"),
+        "the rule must name the delegate to call"
+    );
+    assert!(
+        ARCHETYPE.contains("use_skill"),
+        "the rule must name the path it is steering away from"
+    );
+
+    // The rule is only true because these are the real names. Asserting the
+    // prompt against itself would survive a rename of either side; asserting it
+    // against the pack and the agent definition does not.
+    let pack =
+        crate::openhuman::tools::toolpacks::pack("workflows").expect("the workflows pack exists");
+    assert!(
+        pack.tools.contains(&"propose_workflow"),
+        "the prompt names propose_workflow as pack-owned: {:?}",
+        pack.tools
+    );
+    assert!(
+        pack.owners.contains(&"workflow_builder"),
+        "the prompt routes to workflow_builder as an owner: {:?}",
+        pack.owners
+    );
+
+    let registry =
+        crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::builtins_only();
+    let builder = registry
+        .get("workflow_builder")
+        .expect("workflow_builder is a registered agent");
+    assert_eq!(
+        builder.delegate_name.as_deref(),
+        Some("build_workflow"),
+        "the prompt tells the model to call `build_workflow`; that must still be \
+         workflow_builder's delegate_name, or the rule names a tool nobody has"
+    );
+}
