@@ -75,9 +75,18 @@ omit_memory_md = false
 #
 # Two agents are deliberately ABSENT from this list, and absence is the point:
 # dropping an entry removes its synthesised `delegate_*` schema from every turn
-# without removing the agent. `spawn_async_subagent` builds its `agent_id` enum
-# from the whole registry, so `tools_agent` and `archivist` are still reachable
-# by id — they just no longer cost a named tool each.
+# without deleting the agent's registry entry. `spawn_async_subagent` builds
+# its `agent_id` enum from the whole registry, so `tools_agent` and
+# `archivist` still appear as choices — but note that they are NOT actually
+# dispatchable that way today: `execute_with_context_inner` additionally
+# checks `parent.allowed_subagent_ids`, which `session/turn/tools.rs` derives
+# from this very `subagents.allowlist`, so a model that calls
+# `spawn_async_subagent(agent_id = "tools_agent" | "archivist")` gets a clean
+# "not in parent agent's subagents.allowlist" error, not a dispatch. Making
+# them genuinely id-reachable without paying for a dedicated tool needs a
+# separate "spawn-permitted but unadvertised" list threaded through
+# `AgentDefinition`, `validate_tier_hierarchy` and the RPC-facing registry
+# model — tracked as follow-up, not done here.
 #
 #   * `tools_agent` — the generalist shell/HTTP/web-search worker. The
 #     orchestrator now carries `shell`, `web_search_tool`, `web_fetch` and
