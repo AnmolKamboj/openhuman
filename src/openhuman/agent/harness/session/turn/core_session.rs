@@ -26,9 +26,8 @@ impl Agent {
         // This turn's stamped user message is already the last entry in
         // `self.history` (pushed by `turn()` before the engine branch), so build
         // the provider messages straight from history — do NOT push the user
-        // again. When a cached transcript prefix is present (a resumed session's
-        // KV-cache warm-up), prepend it and clear it so the first request reuses
-        // the cached prefix exactly once.
+        // again. A resumed session's replayed prefix is folded into that same
+        // history first (see below), so there is exactly one sequence to read.
         if let Some(cached) = self.cached_transcript_messages.take() {
             // A resumed session's replayed prefix is **absorbed into
             // `self.history`**, not merely prepended to this one request.
