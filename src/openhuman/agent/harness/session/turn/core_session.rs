@@ -736,7 +736,11 @@ impl Agent {
     ///
     /// A no-op unless `cached_transcript_messages` is set, which happens only on
     /// the first turn after a resume.
-    if let Some(cached) = self.cached_transcript_messages.take() {
+    pub(in super::super) fn absorb_resumed_transcript_prefix(&mut self) {
+        let Some(cached) = self.cached_transcript_messages.take() else {
+            return;
+        };
+        {
         // A resumed session's replayed prefix is **absorbed into
         // `self.history`**, not merely prepended to this one request.
         //
