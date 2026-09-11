@@ -580,7 +580,7 @@ fn the_rendered_prompt_never_names_a_withheld_tool() {
 
 /// Withheld tool names that `text` presents as directly callable.
 ///
-/// Two exemptions, and both are about telling a *route* from a *call*:
+/// Three exemptions, and all are about telling a *route* from a *call*:
 ///
 /// * The generated `## Capabilities not in your tool list` block names withheld
 ///   tools on purpose — that block is the route, and it is the one sanctioned
@@ -590,6 +590,10 @@ fn the_rendered_prompt_never_names_a_withheld_tool() {
 ///   names inside their own pack, so a bare substring check cannot tell the
 ///   two apart; routes are always spelled ``skill `<id>` ``, so removing that
 ///   exact form is what makes the remaining occurrences calls.
+/// * A full route — ``skill `<id>`, tool `<name>` ``, the exact spelling the
+///   generated block emits — may name the tool it routes to, but only in that
+///   form and only under the pack that owns it. A packed name backticked on its
+///   own is still a call.
 fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
     let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
     let mut prose = match text.find("## Capabilities not in your tool list") {
@@ -603,6 +607,11 @@ fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
         }
         None => text.to_string(),
     };
+    for pack in crate::openhuman::tools::toolpacks::PACKS {
+        for name in pack.tools {
+            prose = prose.replace(&format!("skill `{}`, tool `{name}`", pack.id), "");
+        }
+    }
     for name in &packed {
         prose = prose.replace(&format!("skill `{name}`"), "");
     }
@@ -716,5 +725,56 @@ fn the_generated_block_has_no_stray_whitespace_runs() {
     assert!(
         !block.contains("  "),
         "the block carries doubled spaces from the source literal:\n{block}"
+    );
+}
+
+#[test]
+fn prompt_routes_workflow_authoring_to_the_builder_not_use_skill() {
+    // Regression for the `use_skill` routing dead end. The orchestrator loaded
+    // the `workflows` pack, read `propose_workflow` off the listing, called it
+    // through `use_skill`, and was refused — six times, until the
+    // repeated-failure breaker killed the turn.
+    //
+    // The gate is the fix; this pins the prompt so the model is told the route
+    // before it discovers the wall.
+    assert!(
+        ARCHETYPE.contains("Workflow rule of thumb"),
+        "orchestrator prompt must carry the workflow routing rule"
+    );
+    assert!(
+        ARCHETYPE.contains("`build_workflow`"),
+        "the rule must name the delegate to call"
+    );
+    assert!(
+        ARCHETYPE.contains("use_skill"),
+        "the rule must name the path it is steering away from"
+    );
+
+    // The rule is only true because these are the real names. Asserting the
+    // prompt against itself would survive a rename of either side; asserting it
+    // against the pack and the agent definition does not.
+    let pack =
+        crate::openhuman::tools::toolpacks::pack("workflows").expect("the workflows pack exists");
+    assert!(
+        pack.tools.contains(&"propose_workflow"),
+        "the prompt names propose_workflow as pack-owned: {:?}",
+        pack.tools
+    );
+    assert!(
+        pack.owners.contains(&"workflow_builder"),
+        "the prompt routes to workflow_builder as an owner: {:?}",
+        pack.owners
+    );
+
+    let registry =
+        crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::builtins_only();
+    let builder = registry
+        .get("workflow_builder")
+        .expect("workflow_builder is a registered agent");
+    assert_eq!(
+        builder.delegate_name.as_deref(),
+        Some("build_workflow"),
+        "the prompt tells the model to call `build_workflow`; that must still be \
+         workflow_builder's delegate_name, or the rule names a tool nobody has"
     );
 }

@@ -7,6 +7,26 @@ icon: layer-group
 
 # Agent Harness
 
+## Embedding OpenHuman as a library
+
+`openhuman_core::Harness` builds one in-process core for a caller that supplies
+its workspace, provider endpoint and credential, skills, MCP servers, and tool
+policy. Such a harness identifies as `HostKind::Library`: inference does not
+depend on OpenHuman app login, including inference-readiness checks for workflow
+agent nodes. Backend features such as integrations and managed services still
+need whatever identity their endpoint requires.
+
+Build one harness and issue concurrent `run` or `turn(...).send()` calls on it;
+do not build one core per agent. Each call owns a distinct session unless a
+prior session id is supplied. The conversation store coordinates metadata per
+workspace and message writes per thread, so independent agents do not serialize
+on one process-wide store mutex.
+
+`Workspace::Inherit` together with `Provider::inherit()` is deliberately not
+library-routed inference. It borrows the installed OpenHuman configuration and
+therefore keeps the installed application's session checks. Supply an explicit
+provider when embedding without app login.
+
 > **Status (issue #4249, tinyagents migration):** the agent turn no longer runs
 > on the in-tree `run_turn_engine` loop. **All three entry points (`Agent::turn`,
 > the channel/CLI bus path, and `run_subagent`) now drive every turn through the

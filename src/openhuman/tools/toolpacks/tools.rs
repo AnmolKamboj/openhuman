@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::registry;
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
+use crate::openhuman::tools::traits::{
+    PermissionLevel, Tool, ToolCallOptions, ToolResult, ToolSpec,
+};
 use tinytools::ToolRunContext;
 
 pub const USE_SKILL: &str = "use_skill";
@@ -123,11 +125,36 @@ impl PackRegistryHandle {
     }
 }
 
-fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, String> {
+/// Render a pack's listing, showing only the tools `is_callable` admits.
+///
+/// **The filter is the whole point.** `load_skill` used to render every tool in
+/// the pack this build compiled, and `use_skill` then refused any of them the
+/// session's allowlist denies (`tinyagents::middleware::channel_permission_block`).
+/// A non-owner was handed a menu it could not order from: the orchestrator
+/// loaded `workflows`, read `propose_workflow` off the listing, called it, and
+/// was told it "is not allowed in the current session". The denial named no
+/// alternative, so the model retried — one live chat turn died on the
+/// repeated-failure breaker after six identical denials.
+///
+/// `registry.rs` used to claim non-owners "reach them through `use_skill`".
+/// That was never true: the gate (`d5a09ea81`, 2026-08-21) predates the comment
+/// asserting it (`a8f0a002b`, 2026-08-23). The listing is the side that was
+/// wrong, so the listing is the side that changed.
+///
+/// `route` is the sentence to append when the session can call nothing in the
+/// pack — see [`route_sentence`]. Empty means "say nothing extra".
+pub fn render_pack_filtered(
+    skill: &str,
+    handle: &PackRegistryHandle,
+    is_callable: &dyn Fn(&str) -> bool,
+    route: &str,
+) -> Result<String, String> {
     let Some(pack) = registry::pack(skill) else {
+        // Scoped too: offering a hallucinating model a pack it cannot use is the
+        // same wrong turn the advertised index used to take, one error later.
         return Err(format!(
             "Unknown skill `{skill}`. Available:\n{}",
-            registry::pack_index_markdown()
+            registry::pack_index_markdown_filtered(is_callable)
         ));
     };
     if handle.registries().is_empty() {
@@ -153,6 +180,12 @@ fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, Strin
         let Some((tools, idx)) = handle.find(name) else {
             continue;
         };
+        // Listing a tool the gate will refuse is worse than omitting it: a
+        // model cannot tell a policy denial from a transient failure, so it
+        // retries the same call instead of routing around it.
+        if !is_callable(name) {
+            continue;
+        }
         let tool = &tools[idx];
         found += 1;
         out.push_str(&format!(
@@ -172,12 +205,93 @@ fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, Strin
     }
 
     if found == 0 {
-        return Err(format!(
+        let mut message = format!(
             "Skill `{}` has no tools available in this session.",
             pack.id
-        ));
+        );
+        if !route.is_empty() {
+            message.push(' ');
+            message.push_str(route);
+        }
+        return Err(message);
     }
     Ok(out)
+}
+
+/// The "go here instead" sentence shared by the `use_skill` listing and the
+/// `use_skill` denial, so a model never sees two different stories.
+///
+/// `callable_delegates` are delegation tool names the caller has already
+/// confirmed this session can invoke — naming the *tool* rather than the agent
+/// is the difference between guidance and an instruction, and a model left to
+/// guess the call retries. When none can be reached the owning agents are named
+/// instead: strictly worse, but still better than a bare denial.
+pub fn route_sentence(callable_delegates: &[String], owners: &[&str]) -> String {
+    if !callable_delegates.is_empty() {
+        let names = callable_delegates
+            .iter()
+            .map(|t| format!("`{t}`"))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        return format!(
+            "Call {names} instead — that agent owns these tools and runs them directly. \
+             Do not retry this skill."
+        );
+    }
+    if owners.is_empty() {
+        return String::new();
+    }
+    format!(
+        "These tools belong to {}; hand the task to one of them rather than calling directly.",
+        owners
+            .iter()
+            .map(|o| format!("`{o}`"))
+            .collect::<Vec<_>>()
+            .join(" or ")
+    )
+}
+
+fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, String> {
+    render_pack_filtered(skill, handle, &|_| true, "")
+}
+
+/// Rewrite `use_skill`'s advertised spec to match what this session can do.
+///
+/// The description is built once in [`UseSkillTool::new`], before any session
+/// exists, so every agent was told all ten packs were loadable — including ones
+/// it can call nothing in. Post-#(routing fix) that costs one wasted round trip
+/// instead of a dead turn; it should cost zero.
+///
+/// Both halves are rewritten, and the schema is the stronger one: narrowing the
+/// `skill` enum makes an unusable pack *unrepresentable* rather than merely
+/// discouraged in prose, and a shorter enum is fewer tokens, not more.
+///
+/// Returns `false` when this session can call nothing in any pack — the caller
+/// should then drop `use_skill` from the wire entirely, because an empty index
+/// and an empty enum are not a tool.
+pub fn scope_use_skill_spec(spec: &mut ToolSpec, is_callable: &dyn Fn(&str) -> bool) -> bool {
+    let ids = registry::callable_pack_ids(is_callable);
+    if ids.is_empty() {
+        return false;
+    }
+    if let Some(index) = spec.description.find("\n\nSkills:\n") {
+        spec.description.truncate(index);
+        spec.description.push_str("\n\nSkills:\n");
+        spec.description
+            .push_str(&registry::pack_index_markdown_filtered(is_callable));
+    }
+    if let Some(enum_slot) = spec
+        .parameters
+        .pointer_mut("/properties/skill/enum")
+        .filter(|v| v.is_array())
+    {
+        *enum_slot = Value::Array(
+            ids.iter()
+                .map(|id| Value::String((*id).to_string()))
+                .collect(),
+        );
+    }
+    true
 }
 
 fn skill_enum() -> Vec<&'static str> {
@@ -189,8 +303,11 @@ fn skill_enum() -> Vec<&'static str> {
 /// An absent (or empty) `tool` is not a malformed call: it is the disclosure
 /// half of this tool, and the distinction decides both which branch
 /// [`UseSkillTool::execute_with_context`] takes and what permission level the
-/// call is gated at.
-fn named_tool(args: &Value) -> Option<&str> {
+/// call is gated at. Public because the policy middleware has to draw the same
+/// line — it intercepts the disclosure half to scope the listing to the session
+/// and lets the execution half through to its gate — and two spellings of "did
+/// the caller name a tool" would be two chances to disagree.
+pub fn named_tool(args: &Value) -> Option<&str> {
     args.get("tool")
         .and_then(Value::as_str)
         .filter(|name| !name.is_empty())

@@ -556,6 +556,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'In Entwicklungs-Builds immer aktiviert',
   'settings.clearAppData': 'App-Daten löschen',
   'settings.clearAppDataDesc': 'Melde dich ab und lösche alle lokalen App-Daten dauerhaft',
+  'settings.clearAppDataIrreversible': 'Dies kann nicht rückgängig gemacht werden.',
+  'settings.clearAppDataAction': 'Daten löschen',
   'settings.logOut': 'Abmelden',
   'settings.logOutDesc': 'Melde dich von deinem Konto ab',
   'settings.exitLocalSession': 'Lokale Sitzung beenden',
@@ -5086,6 +5088,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Live',
   'settings.developerMenu.eventLog.disconnected': 'Nicht verbunden',
   'settings.developerMenu.eventLog.waiting': 'Warten auf Ereignisse...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Ereignisse erscheinen hier, sobald Agenten, Tools und das System arbeiten. Bisher ist nichts passiert.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Verbinden Sie sich erneut mit dem Core, um den Stream fortzusetzen.',
   'settings.developerMenu.eventLog.notConnected': 'Mit dem Hauptprogramm verbundenName',
   'settings.developerMenu.eventLog.jumpToLatest': 'Zur neuesten Seite springen',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
@@ -6240,6 +6246,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Routing-Hinweise',
   'settings.agents.editor.modelTiers': 'Modellstufen',
   'settings.agents.editor.modelCustom': 'Benutzerdefinierte Modell-ID…',
+  'settings.agents.editor.modelManaged': 'Verwaltete Modelle',
   'settings.agents.editor.modelCustomPlaceholder': 'z. B. anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Tools hinzufügen',
   'settings.agents.editor.toolsAllSelected': 'Alle Tools',

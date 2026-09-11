@@ -547,6 +547,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'Zawsze włączony w buildach deweloperskich',
   'settings.clearAppData': 'Wyczyść dane aplikacji',
   'settings.clearAppDataDesc': 'Wyloguj się i trwale wyczyść wszystkie lokalne dane aplikacji',
+  'settings.clearAppDataIrreversible': 'Tej operacji nie można cofnąć.',
+  'settings.clearAppDataAction': 'Wyczyść dane',
   'settings.logOut': 'Wyloguj się',
   'settings.logOutDesc': 'Wyloguj się ze swojego konta',
   'settings.exitLocalSession': 'Zakończ sesję lokalną',
@@ -5031,6 +5033,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Na żywo',
   'settings.developerMenu.eventLog.disconnected': 'Rozłączono',
   'settings.developerMenu.eventLog.waiting': 'Oczekiwanie na zdarzenia...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Zdarzenia pojawiają się tutaj, gdy agenci, narzędzia i system pracują. Na razie nic się nie wydarzyło.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Połącz się ponownie z rdzeniem, aby wznowić strumień.',
   'settings.developerMenu.eventLog.notConnected': 'Brak połączenia z rdzeniem',
   'settings.developerMenu.eventLog.jumpToLatest': 'Przejdź do najnowszego',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
@@ -6168,6 +6174,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Wskazówki trasowania',
   'settings.agents.editor.modelTiers': 'Poziomy modelu',
   'settings.agents.editor.modelCustom': 'Własny identyfikator modelu…',
+  'settings.agents.editor.modelManaged': 'Modele zarządzane',
   'settings.agents.editor.modelCustomPlaceholder': 'np. anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Dodaj narzędzia',
   'settings.agents.editor.toolsAllSelected': 'Wszystkie narzędzia',

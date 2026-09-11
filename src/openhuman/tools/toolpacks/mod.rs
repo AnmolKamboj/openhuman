@@ -33,8 +33,14 @@ pub use ops::{
     append_pack_tools, bind_pack_registry, bind_synthesized_pack_registry,
     strip_packed_from_visible,
 };
-pub use registry::{all_packed_tool_names, pack, pack_for_tool, PACKS};
-pub use tools::{PackRegistryHandle, USE_SKILL};
+pub use registry::{
+    all_packed_tool_names, callable_pack_ids, pack, pack_for_tool, pack_index_markdown_filtered,
+    PACKS,
+};
+pub use tools::{
+    named_tool, render_pack_filtered, route_sentence, scope_use_skill_spec, PackRegistryHandle,
+    USE_SKILL,
+};
 pub use types::ToolPack;
 
 #[cfg(test)]

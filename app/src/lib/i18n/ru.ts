@@ -543,6 +543,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'Всегда включён в сборках разработки',
   'settings.clearAppData': 'Очистить данные приложения',
   'settings.clearAppDataDesc': 'Выйти из аккаунта и удалить все локальные данные приложения',
+  'settings.clearAppDataIrreversible': 'Это действие нельзя отменить.',
+  'settings.clearAppDataAction': 'Удалить данные',
   'settings.logOut': 'Выйти',
   'settings.logOutDesc': 'Выйти из своего аккаунта',
   'settings.exitLocalSession': 'Выход из локального сеанса',
@@ -5002,6 +5004,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Жить',
   'settings.developerMenu.eventLog.disconnected': 'Отключено',
   'settings.developerMenu.eventLog.waiting': 'Ждем событий...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'События появляются здесь по мере работы агентов, инструментов и системы. Пока ничего не произошло.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Подключитесь к ядру снова, чтобы возобновить поток.',
   'settings.developerMenu.eventLog.notConnected': 'Не подключен к ядру',
   'settings.developerMenu.eventLog.jumpToLatest': 'Перейти к последней версии',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
@@ -6142,6 +6148,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'Подсказки маршрутизации',
   'settings.agents.editor.modelTiers': 'Уровни моделей',
   'settings.agents.editor.modelCustom': 'Идентификатор модели…',
+  'settings.agents.editor.modelManaged': 'Управляемые модели',
   'settings.agents.editor.modelCustomPlaceholder': 'напр. anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'Добавить инструменты',
   'settings.agents.editor.toolsAllSelected': 'Все инструменты',

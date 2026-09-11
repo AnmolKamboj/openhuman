@@ -45,6 +45,25 @@ impl Tool for FakeTool {
     }
 }
 
+/// A registry holding several real packed tools plus the two pack tools, bound.
+fn registry_with_all(names: &[&'static str]) -> Arc<Vec<Box<dyn Tool>>> {
+    let mut tools: Vec<Box<dyn Tool>> = names
+        .iter()
+        .map(|name| {
+            Box::new(FakeTool {
+                name,
+                level: PermissionLevel::ReadOnly,
+                external: false,
+                timeout: ToolTimeout::Inherit,
+            }) as Box<dyn Tool>
+        })
+        .collect();
+    append_pack_tools(&mut tools);
+    let tools = Arc::new(tools);
+    bind_pack_registry(&tools);
+    tools
+}
+
 /// A registry holding one real packed tool plus the two pack tools, bound.
 fn registry_with(name: &'static str, level: PermissionLevel) -> Arc<Vec<Box<dyn Tool>>> {
     let mut tools: Vec<Box<dyn Tool>> = vec![Box::new(FakeTool {
@@ -440,13 +459,8 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             &[
                 "do_crypto",
                 "wallet_status",
-                "wallet_balances",
-                "wallet_network_defaults",
-                "wallet_supported_assets",
                 "wallet_chain_status",
-                "wallet_encode_erc20_transfer",
                 "wallet_prepare_transfer",
-                "wallet_execute_prepared",
                 "wallet_tx_status",
                 "wallet_tx_receipt",
                 "wallet_lookup_tx",
@@ -733,3 +747,96 @@ fn rebinding_a_pack_handle_repoints_it_at_the_new_registry() {
         "the rebound handle must resolve against the new registry, not the old one"
     );
 }
+
+// ── the listing must agree with the gate ────────────────────────────────────
+
+/// The bug, at the layer it lives on: a non-owner was shown `propose_workflow`
+/// and then refused when it called it.
+///
+/// `is_callable` here stands in for the session allowlist the middleware
+/// applies (`channel_permission_block` denies `propose_workflow` for every
+/// agent that is not `workflow_builder` / `flow_discovery`). The listing must
+/// not mention a tool that gate will refuse.
+#[test]
+fn a_non_owner_listing_omits_the_tools_the_gate_will_refuse() {
+    let tools = registry_with_all(&["build_workflow", "propose_workflow"]);
+    let handle = crate::openhuman::tools::traits::pack_registry_handle(find(&tools, USE_SKILL))
+        .expect("use_skill carries the pack handle");
+
+    let rendered = render_pack_filtered(
+        "workflows",
+        handle,
+        &|name: &str| name != "propose_workflow",
+        "",
+    )
+    .expect("the pack still has a callable tool");
+
+    assert!(
+        rendered.contains("build_workflow"),
+        "a tool the session CAN call must still be listed: {rendered}"
+    );
+    assert!(
+        !rendered.contains("propose_workflow"),
+        "a tool the session will refuse must not be advertised: {rendered}"
+    );
+}
+
+/// When the session can reach nothing in the pack, the failure has to carry the
+/// way out. A bare "no tools available" is the dead end the model retried into.
+#[test]
+fn a_listing_with_nothing_callable_names_the_route_out() {
+    let tools = registry_with_all(&["build_workflow", "propose_workflow"]);
+    let handle = crate::openhuman::tools::traits::pack_registry_handle(find(&tools, USE_SKILL))
+        .expect("use_skill carries the pack handle");
+
+    let route = route_sentence(&["build_workflow".to_string()], &["workflow_builder"]);
+    let err = render_pack_filtered("workflows", handle, &|_| false, &route)
+        .expect_err("nothing callable must not render a menu");
+
+    assert!(
+        err.contains("build_workflow"),
+        "the denial must name the delegate to call instead: {err}"
+    );
+}
+
+/// Naming the tool, not just the agent, is the difference between an
+/// instruction and a guess — and a model that guesses wrong retries.
+#[test]
+fn route_sentence_prefers_a_callable_tool_and_falls_back_to_owners() {
+    let named = route_sentence(&["build_workflow".to_string()], &["workflow_builder"]);
+    assert!(named.contains("`build_workflow`"), "{named}");
+    assert!(
+        !named.contains("`workflow_builder`"),
+        "naming the agent as well is noise once the call is named: {named}"
+    );
+
+    let fallback = route_sentence(&[], &["workflow_builder", "flow_discovery"]);
+    assert!(fallback.contains("`workflow_builder`"), "{fallback}");
+    assert!(fallback.contains("`flow_discovery`"), "{fallback}");
+
+    assert!(
+        route_sentence(&[], &[]).is_empty(),
+        "an ownerless pack has no route to offer and must stay silent"
+    );
+}
+
+/// The route only exists because these owners do. If the `workflows` pack is
+/// ever re-owned, the hint silently stops naming `workflow_builder` — this
+/// pins the assumption the two tests above rest on.
+#[test]
+fn the_workflows_pack_is_still_owned_by_the_flow_agents() {
+    let pack = pack("workflows").expect("the workflows pack exists");
+    assert!(
+        pack.owners.contains(&"workflow_builder"),
+        "owners moved: {:?}",
+        pack.owners
+    );
+    assert!(
+        pack.tools.contains(&"propose_workflow"),
+        "propose_workflow left the pack: {:?}",
+        pack.tools
+    );
+}
+
+#[path = "toolpacks_tests_part_02_tests.rs"]
+mod part_02_tests;

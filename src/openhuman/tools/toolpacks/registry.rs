@@ -61,17 +61,17 @@ pub const PACKS: &[ToolPack] = &[
     },
     ToolPack {
         id: "crypto",
-        summary: "Crypto wallet and market actions: balances, transfers, swaps, bridges, contract calls and x402 paid requests.",
+        summary: "Crypto wallet and market actions: transfer quotes, swaps, bridges, contract calls and x402 paid requests.",
+        // `wallet_balances`, `wallet_network_defaults`, `wallet_supported_assets`,
+        // `wallet_encode_erc20_transfer` and `wallet_execute_prepared` are NOT
+        // listed: they exist as `wallet.*` RPC methods but have no agent Tool
+        // wrapper, and `render_pack_filtered` skips an unresolvable name
+        // silently — so listing them only made the rendered menu quietly short.
         tools: &[
             "do_crypto",
             "wallet_status",
-            "wallet_balances",
-            "wallet_network_defaults",
-            "wallet_supported_assets",
             "wallet_chain_status",
-            "wallet_encode_erc20_transfer",
             "wallet_prepare_transfer",
-            "wallet_execute_prepared",
             "wallet_tx_status",
             "wallet_tx_receipt",
             "wallet_lookup_tx",
@@ -384,9 +384,35 @@ pub fn packed_tool_names_for_agent(agent_id: &str) -> Vec<&'static str> {
 /// The always-on index: one line per pack, rendered into `use_skill`'s own
 /// description so the model can pick a pack without a round trip.
 pub fn pack_index_markdown() -> String {
+    pack_index_markdown_filtered(&|_| true)
+}
+
+/// The pack index, limited to packs this session can call at least one tool in.
+///
+/// A pack with nothing callable is not an answer to "which skills can I load",
+/// and advertising it costs a round trip: the model loads it, learns it cannot
+/// use it, and comes back. The capability does not disappear — a pack's owners
+/// reach the model through their own `delegate_*` tools, whose `when_to_use`
+/// descriptions are already on the wire and are what the model should call
+/// anyway. Keeping the pack listed here would duplicate that routing on every
+/// single turn.
+pub fn pack_index_markdown_filtered(is_callable: &dyn Fn(&str) -> bool) -> String {
     let mut out = String::new();
     for p in PACKS {
+        if !p.tools.iter().any(|t| is_callable(t)) {
+            continue;
+        }
         out.push_str(&format!("- `{}` — {}\n", p.id, p.summary));
     }
     out
+}
+
+/// Pack ids with at least one tool this session can call — the `skill` enum
+/// `load_skill` should actually offer.
+pub fn callable_pack_ids(is_callable: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
+    PACKS
+        .iter()
+        .filter(|p| p.tools.iter().any(|t| is_callable(t)))
+        .map(|p| p.id)
+        .collect()
 }

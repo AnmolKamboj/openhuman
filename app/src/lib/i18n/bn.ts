@@ -535,6 +535,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'ডেভেলপমেন্ট বিল্ডে সবসময় চালু',
   'settings.clearAppData': 'অ্যাপ ডেটা মুছুন',
   'settings.clearAppDataDesc': 'সাইন আউট করুন এবং সব লোকাল ডেটা স্থায়ীভাবে মুছুন',
+  'settings.clearAppDataIrreversible': 'এটি আর ফেরানো যাবে না।',
+  'settings.clearAppDataAction': 'ডেটা মুছুন',
   'settings.logOut': 'লগ আউট',
   'settings.logOutDesc': 'আপনার অ্যাকাউন্ট থেকে সাইন আউট করুন',
   'settings.exitLocalSession': 'স্থানীয় সেশন থেকে প্রস্থান করুন',
@@ -4950,6 +4952,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'লাইভ',
   'settings.developerMenu.eventLog.disconnected': 'বিচ্ছিন্ন',
   'settings.developerMenu.eventLog.waiting': 'ইভেন্টের অপেক্ষা করা হচ্ছে...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'এজেন্ট, টুল ও সিস্টেম কাজ করলে ঘটনাগুলি এখানে দেখা যাবে। এখনও কিছু ঘটেনি।',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'স্ট্রিম আবার চালু করতে কোরের সঙ্গে পুনরায় সংযোগ করুন।',
   'settings.developerMenu.eventLog.notConnected': 'সংযুক্ত নয়',
   'settings.developerMenu.eventLog.jumpToLatest': 'সর্বশেষ গুরুত্বপূর্ণ',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
@@ -6078,6 +6084,7 @@ const messages: TranslationMap = {
   'settings.agents.editor.modelHints': 'রুট হিন্টস',
   'settings.agents.editor.modelTiers': 'মডেল স্তর',
   'settings.agents.editor.modelCustom': 'কাস্টম মডেল আইডি…',
+  'settings.agents.editor.modelManaged': 'পরিচালিত মডেল',
   'settings.agents.editor.modelCustomPlaceholder': 'যেমন anthropic/claude-sonnet-4',
   'settings.agents.editor.selectTools': 'টুল যোগ করুন',
   'settings.agents.editor.toolsAllSelected': 'সব টুল',
