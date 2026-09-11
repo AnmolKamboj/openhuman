@@ -492,6 +492,20 @@ impl CoreContext {
         CURRENT_CONTEXT.scope(ctx, fut).await
     }
 
+    /// Capture the current context now and carry it across a subsequently
+    /// spawned task. Calling this before `tokio::spawn` is essential: reading
+    /// `current()` inside the child would already have fallen back to the
+    /// process default.
+    pub fn propagate<F: Future>(fut: F) -> impl Future<Output = F::Output> {
+        let ctx = Self::current();
+        async move {
+            match ctx {
+                Some(ctx) => Self::scope(ctx, fut).await,
+                None => fut.await,
+            }
+        }
+    }
+
     /// Test-only constructor: build a context with an explicit
     /// [`DomainSet`](crate::core::runtime::DomainSet) and optional workspace, so
     /// cross-module tests (e.g. `core::all`'s registry filter) can exercise the
@@ -898,6 +912,20 @@ mod tests {
         })
         .await;
         assert_eq!(seen, Some(PathBuf::from("/tmp/ctx-a")));
+    }
+
+    #[tokio::test]
+    async fn propagate_carries_scoped_context_into_spawned_task() {
+        let a = ctx("/tmp/ctx-propagated");
+        let seen = CoreContext::scope(a, async {
+            tokio::spawn(CoreContext::propagate(async {
+                CoreContext::current().unwrap().workspace_dir().unwrap()
+            }))
+            .await
+            .unwrap()
+        })
+        .await;
+        assert_eq!(seen, PathBuf::from("/tmp/ctx-propagated"));
     }
 
     #[tokio::test]
