@@ -170,9 +170,9 @@ fn every_packed_tool_name_resolves_to_a_registered_tool() {
     // `wallet_encode_erc20_transfer`, `wallet_execute_prepared`) whose backing
     // functions exist only as `wallet.*` RPC methods, never as agent tools.
     //
-    // Scoped to the default feature set this test binary is built with: a name
-    // compiled out by a disabled feature is a legitimate skip, so the assertion
-    // fires only for names no build registers.
+    // Packs whose tools sit behind a non-default Cargo feature are skipped
+    // entirely — see `pack_is_assertable` below. Within an asserted pack every
+    // name must resolve.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
     let browser = BrowserConfig {
@@ -208,14 +208,36 @@ fn every_packed_tool_name_resolves_to_a_registered_tool() {
             .filter_map(|d| d.delegate_name)
             .collect();
 
+    // Whether this build can say anything about a pack at all.
+    //
+    // `PACKS` is unconditional but several packs' tools are behind Cargo
+    // features that are NOT in `default` (`web3`, `documents`, `voice` — see
+    // Cargo.toml `default = [...]`). Under a bare `cargo test` those tools are
+    // never constructed, so iterating them would report every entry as missing
+    // and fail for a reason that has nothing to do with a stale name.
+    //
+    // This map is deliberately explicit rather than inferred from "zero tools
+    // resolved": a pack whose every name is stale would also resolve zero, and
+    // inferring would silently skip exactly the case this test exists to catch.
+    // A new feature-gated pack therefore fails here until it is added below —
+    // loud, which is the correct direction for a guard.
+    fn pack_is_assertable(id: &str) -> bool {
+        match id {
+            // Registered only once the user is signed in to Composio
+            // (`all_composio_agent_tools` returns an empty vec otherwise,
+            // `integrations/composio/tools_part_03.rs:320-323`) — runtime auth
+            // state a unit test cannot satisfy.
+            "composio" => false,
+            "crypto" => cfg!(feature = "web3"),
+            "documents" => cfg!(feature = "documents"),
+            "audio" => cfg!(feature = "voice"),
+            _ => true,
+        }
+    }
+
     let mut missing: Vec<String> = Vec::new();
     for pack in crate::openhuman::tools::toolpacks::PACKS {
-        // `composio`'s tools are registered only once the user is signed in to
-        // Composio (`all_composio_agent_tools` returns an empty vec otherwise,
-        // `integrations/composio/tools_part_03.rs:320-323`), which is runtime
-        // auth state a unit test cannot satisfy. Their absence here says
-        // nothing about whether the names are real, so the pack is exempt.
-        if pack.id == "composio" {
+        if !pack_is_assertable(pack.id) {
             continue;
         }
         for name in pack.tools {
