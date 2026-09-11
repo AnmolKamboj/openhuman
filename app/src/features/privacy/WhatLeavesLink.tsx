@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useT } from '../../lib/i18n/I18nContext';
 import WhatLeavesMyComputerSheet from './WhatLeavesMyComputerSheet';
 
-export interface WhatLeavesLinkProps {
+interface WhatLeavesLinkProps {
   label?: string;
   className?: string;
 }
@@ -19,7 +19,7 @@ const WhatLeavesLink = ({ label, className }: WhatLeavesLinkProps) => {
   const [open, setOpen] = useState(false);
   const base =
     'text-sm text-content-muted underline underline-offset-2 hover:text-content-secondary ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/25 ' +
+    'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-500/25 ' +
     'focus-visible:ring-offset-2 rounded-sm';
   return (
     <>

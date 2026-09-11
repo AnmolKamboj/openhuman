@@ -15,21 +15,27 @@ import { useNavigate } from 'react-router-dom';
 
 import EmptyStateCard from '../components/EmptyStateCard';
 import FlowListRow, { type FlowListRowBusy } from '../components/flows/FlowListRow';
+import { FlowPreauthorizationOverlay } from '../components/flows/FlowPreauthorizationCard';
 import type { FlowRepairRequest } from '../components/flows/FlowRunInspectorDrawer';
 import FlowRunsDrawer from '../components/flows/FlowRunsDrawer';
 import FlowTemplateGallery from '../components/flows/FlowTemplateGallery';
 import NewWorkflowModal from '../components/flows/NewWorkflowModal';
 import { useCreateFlow } from '../components/flows/useCreateFlow';
 import { ToastContainer } from '../components/intelligence/Toast';
-import PageSectionHeader from '../components/layout/PageSectionHeader';
 import PageWelcome from '../components/layout/PageWelcome';
-import PanelPage from '../components/layout/PanelPage';
 import { usePageWelcomeView } from '../components/layout/usePageWelcomeView';
-import BetaBanner from '../components/ui/BetaBanner';
-import Button from '../components/ui/Button';
-import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
-import { ModalShell } from '../components/ui/ModalShell';
+import SettingsTabbedPage from '../components/settings/layout/SettingsTabbedPage';
+import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
+import {
+  BetaBanner,
+  Button,
+  CenteredLoadingState,
+  ErrorBanner,
+  ModalShell,
+} from '../components/ui';
 import { useFlowChanged } from '../hooks/useFlowChanged';
+import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
+import { useFlowRunFinished } from '../hooks/useFlowRunFinished';
 import { FLOW_CANVAS_DRAFT_ROUTE, type FlowCanvasDraftState } from '../lib/flows/canvasDraft';
 import { downloadFlowGraph } from '../lib/flows/exportFlow';
 import { type FlowTemplate, templateNameKey } from '../lib/flows/templates';
@@ -41,7 +47,7 @@ import {
   type Flow,
   importFlow,
   listFlows,
-  runFlow,
+  runFlowDetached,
   setFlowEnabled,
 } from '../services/api/flowsApi';
 import type { ToastNotification } from '../types/intelligence';
@@ -50,8 +56,18 @@ import WorkflowRunsPage from './WorkflowRunsPage';
 
 const log = createDebug('app:flows');
 
-/** Which single row + action currently has a request in flight, if any. */
-type BusyKey = `toggle:${string}` | `run:${string}`;
+/** How often the completion backstop refetches while a run is outstanding. */
+const RUN_BACKSTOP_POLL_MS = 30_000;
+/**
+ * How long the backstop keeps polling for a single run before giving up —
+ * comfortably past the engine's own ~600s run ceiling, so a run that is merely
+ * slow is never abandoned, while one that never reports terminal cannot poll
+ * indefinitely.
+ */
+const RUN_BACKSTOP_TTL_MS = 15 * 60_000;
+
+/** Which action a given row currently has in flight, if any. */
+type RowAction = 'toggle' | 'run';
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -63,7 +79,25 @@ export default function FlowsPage() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<BusyKey | null>(null);
+  // F-M2 fix: keyed PER FLOW ID rather than a single page-global value, so one
+  // row's in-flight Toggle/Run no longer disables every other row's actions —
+  // this matters most now that Run (`runFlowDetached`, F-M1) starts a run that
+  // can take minutes without blocking the RPC, so a page-global lock would
+  // have frozen the whole list for that long.
+  const [busyByFlow, setBusyByFlow] = useState<Record<string, RowAction>>({});
+  /** Run ids started from this page that have not reported terminal yet, mapped to their start time. */
+  const outstandingRunsRef = useRef<Map<string, number>>(new Map());
+  const setRowBusy = useCallback((flowId: string, action: RowAction | null) => {
+    setBusyByFlow(prev => {
+      if (action === null) {
+        if (!(flowId in prev)) return prev;
+        const next = { ...prev };
+        delete next[flowId];
+        return next;
+      }
+      return { ...prev, [flowId]: action };
+    });
+  }, []);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   // Flow whose run history is open in `FlowRunsDrawer` (B3b's run inspector
   // then stacks on top of that when a specific run is picked). `null` keeps
@@ -117,58 +151,149 @@ export default function FlowsPage() {
     }, [])
   );
 
+  // Consolidated save+enable pre-authorization (Approve all / Deny). When a
+  // decision settles either way, silently refresh the list so the enabled
+  // toggle reflects the outcome.
+  const preauth = useFlowPreauthorization({
+    onSettled: useCallback(() => {
+      void listFlows()
+        .then(setFlows)
+        .catch(err => log('post-preauth refetch failed: %o', err));
+    }, []),
+  });
+
   const handleToggle = useCallback(
     async (flow: Flow) => {
-      if (busyKey) return;
-      const key: BusyKey = `toggle:${flow.id}`;
-      setBusyKey(key);
+      if (busyByFlow[flow.id]) return;
+      setRowBusy(flow.id, 'toggle');
       setError(null);
       log('toggle: id=%s next=%s', flow.id, !flow.enabled);
       try {
-        const updated = await setFlowEnabled(flow.id, !flow.enabled);
-        setFlows(prev => prev.map(f => (f.id === updated.id ? updated : f)));
+        if (flow.enabled) {
+          const updated = await setFlowEnabled(flow.id, false);
+          setFlows(prev => prev.map(f => (f.id === updated.id ? updated : f)));
+        } else {
+          // Enabling goes through the pre-authorization check: enables
+          // directly when no grants are missing, otherwise surfaces the
+          // consolidated card and defers the enable to "Approve all".
+          const enabledNow = await preauth.beginEnable(flow.id);
+          log(
+            'toggle: id=%s beginEnable settled enabledNow=%s (false = preauth card shown)',
+            flow.id,
+            enabledNow
+          );
+          if (enabledNow) {
+            const result = await listFlows();
+            setFlows(result);
+          }
+        }
       } catch (err) {
         log('toggle failed: id=%s err=%o', flow.id, err);
         setError(errorMessage(err));
       } finally {
-        setBusyKey(null);
+        setRowBusy(flow.id, null);
       }
     },
-    [busyKey]
+    [busyByFlow, preauth, setRowBusy]
   );
 
+  // F-M1/F-M2 fix: `runFlowDetached` (`openhuman.flows_run_detached`) returns
+  // as soon as the run is registered — genuinely fire-and-forget, unlike the
+  // old `runFlow` (`openhuman.flows_run`) this replaced, which BLOCKED until
+  // the run reached a terminal status (up to ~600s). That meant the old
+  // per-row busy flag (even before it was widened to page-global) was
+  // misleadingly named: "Run started" only toasted once the run had actually
+  // FINISHED, and this row (and, under the page-global lock this replaces,
+  // every other row too) stayed disabled for the run's whole duration.
+  //
+  // The row's own busy flag now only covers the brief registration round-trip
+  // — `useFlowRunFinished` below refetches the list (silently) once the
+  // engine actually settles, which is what now refreshes `last_run_at` /
+  // `last_status`, so that signal isn't lost just because this call no longer
+  // waits for it.
   const handleRun = useCallback(
     async (flow: Flow) => {
-      if (busyKey) return;
-      const key: BusyKey = `run:${flow.id}`;
-      setBusyKey(key);
+      if (busyByFlow[flow.id]) return;
+      setRowBusy(flow.id, 'run');
       setError(null);
       log('run: id=%s', flow.id);
       try {
-        // Fire-and-forget: the caller doesn't wait for the run to finish,
-        // just that it kicked off. The refetch below picks up the refreshed
-        // `last_run_at` / `last_status` once the engine settles (or, for a
-        // still-running flow, on the next manual refresh). Only refetch on
-        // success — `loadFlows()` clears `error`, which would otherwise wipe
-        // the failure banner set in the `catch` below.
-        await runFlow(flow.id);
+        const result = await runFlowDetached(flow.id);
+        log('run: started (detached) id=%s run_id=%s', flow.id, result.run_id);
+        // Arm the completion backstop below — the RPC no longer blocks until
+        // the run settles, so `FlowRunFinished` is the primary signal and this
+        // is the fallback if that broadcast is missed.
+        outstandingRunsRef.current.set(result.run_id, Date.now());
         addToast({ type: 'success', title: t('flows.list.runStarted') });
-        await loadFlows();
       } catch (err) {
         log('run failed: id=%s err=%o', flow.id, err);
         setError(errorMessage(err));
       } finally {
-        setBusyKey(null);
+        setRowBusy(flow.id, null);
       }
     },
-    [busyKey, addToast, loadFlows, t]
+    [busyByFlow, addToast, setRowBusy, t]
   );
 
-  const busyFor = (flow: Flow): FlowListRowBusy => {
-    if (busyKey === `toggle:${flow.id}`) return 'toggle';
-    if (busyKey === `run:${flow.id}`) return 'run';
-    return null;
-  };
+  // Silently refetch the list whenever ANY run finishes, so a row's
+  // `last_run_at` / `last_status` picks up a detached run's outcome without
+  // the user having to manually refresh — the completion signal `handleRun`
+  // used to get "for free" by blocking on `flows_run` until it settled.
+  useFlowRunFinished(
+    useCallback(event => {
+      log(
+        'run finished: flow=%s run=%s status=%s — refetching list',
+        event.flow_id,
+        event.run_id,
+        event.status
+      );
+      outstandingRunsRef.current.delete(event.run_id);
+      void listFlows()
+        .then(setFlows)
+        .catch(err => log('post-run-finish refetch failed: %o', err));
+    }, [])
+  );
+
+  // Completion backstop for a run started from THIS page.
+  //
+  // `flows_run_detached` returns as soon as the run is registered, so a row's
+  // `last_run_at`/`last_status` is refreshed by the `FlowRunFinished` broadcast
+  // above rather than by the RPC returning. That broadcast is a plain
+  // `io.emit` to currently-connected sockets with no server-side replay, so a
+  // socket drop between clicking Run and the run settling (reconnect gap,
+  // laptop sleep, backgrounded tab) loses it — and the row would then show a
+  // stale outcome until the user navigates away and back.
+  //
+  // Every other run-outcome surface (`FlowRunsSidebar`, `FlowRunsDrawer`,
+  // `WorkflowRunsPage`) already pairs `useFlowRunFinished` with
+  // `useFlowRunsLiveRefresh` for exactly this reason; that hook can't be reused
+  // verbatim here because it is typed for `FlowRun[]` and this page holds
+  // `Flow[]`, so the same guarantee is rebuilt against outstanding run ids.
+  //
+  // Bounded on purpose: entries older than `RUN_BACKSTOP_TTL_MS` are dropped,
+  // so a run that never reports terminal (process died mid-run) can't leave
+  // this polling forever.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const outstanding = outstandingRunsRef.current;
+      if (outstanding.size === 0) return;
+      const cutoff = Date.now() - RUN_BACKSTOP_TTL_MS;
+      for (const [runId, startedAt] of outstanding) {
+        if (startedAt < cutoff) {
+          log('run backstop: giving up on run=%s (exceeded backstop TTL)', runId);
+          outstanding.delete(runId);
+        }
+      }
+      if (outstanding.size === 0) return;
+      log('run backstop: %d run(s) outstanding — refetching list', outstanding.size);
+      void listFlows()
+        .then(setFlows)
+        .catch(err => log('run backstop refetch failed: %o', err));
+    }, RUN_BACKSTOP_POLL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const busyFor = (flow: Flow): FlowListRowBusy => busyByFlow[flow.id] ?? null;
 
   const handleViewRuns = useCallback((flow: Flow) => {
     log('view runs: id=%s', flow.id);
@@ -342,6 +467,14 @@ export default function FlowsPage() {
         label: t('nav.workflowDiscoveries'),
         iconPath: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
       },
+      // Scheduled jobs moved here from Settings → Cron jobs. A recurring
+      // schedule is a way to run automation, so it belongs beside the flows it
+      // triggers rather than in a settings menu.
+      {
+        value: 'schedules',
+        label: t('settings.developerMenu.cronJobs.title'),
+        iconPath: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+      },
     ],
   });
 
@@ -407,162 +540,190 @@ export default function FlowsPage() {
     );
   }
 
+  if (view === 'schedules') {
+    return (
+      <>
+        {nav}
+        <CronJobsPanel />
+      </>
+    );
+  }
+
   return (
     <>
       {nav}
-      <PanelPage testId="flows-page" contentClassName="p-4">
-        <input
-          ref={importInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          data-testid="flows-import-input"
-          onChange={e => void handleImportFile(e)}
-        />
-        <div className="mx-auto w-full max-w-3xl space-y-4">
-          <PageSectionHeader
-            title={t('flows.page.title')}
-            description={t('flows.page.description')}
-            action={
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  data-testid="flows-import"
-                  onClick={handleImportClick}>
-                  {t('flows.page.import')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  data-testid="flows-new-workflow"
-                  onClick={handleNewWorkflow}>
-                  {t('flows.page.newWorkflow')}
-                </Button>
-              </div>
-            }
-          />
-          <div data-testid="flows-beta-banner">
-            <BetaBanner />
-          </div>
-
-          {/* Flow Scout discovery moved to its own sidebar page
-              (/flows/discoveries); the list stays focused on saved workflows. */}
-
-          {error && (
-            <div data-testid="flows-error">
-              <ErrorBanner message={error} />
-            </div>
-          )}
-
-          {loading && <CenteredLoadingState label={t('flows.page.loading')} />}
-
-          {!loading && flows.length === 0 && !error && (
-            <div className="space-y-4">
-              <EmptyStateCard
-                icon={
-                  <svg
-                    className="h-7 w-7 text-primary-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}>
-                    <circle cx="5" cy="6" r="2" />
-                    <circle cx="5" cy="18" r="2" />
-                    <circle cx="19" cy="12" r="2" />
-                    <path strokeLinecap="round" d="M7 6h4a4 4 0 014 4M7 18h4a4 4 0 004-4" />
-                  </svg>
-                }
-                title={t('flows.page.emptyTitle')}
-                description={t('flows.page.emptyDescription')}
-                actionLabel={t('flows.page.newWorkflow')}
-                actionTestId="flows-empty-new-workflow"
-                onAction={handleNewWorkflow}
-              />
-
-              <section className="space-y-3" data-testid="flows-empty-templates">
-                <div>
-                  <h3 className="text-sm font-semibold text-content">
-                    {t('flows.templates.title')}
-                  </h3>
-                  <p className="text-xs text-content-muted">{t('flows.templates.subtitle')}</p>
-                </div>
-                {emptyCreate.error && (
-                  <div data-testid="flows-empty-template-error">
-                    <ErrorBanner message={emptyCreate.error} />
-                  </div>
-                )}
-                <FlowTemplateGallery onSelect={handleEmptyTemplate} busyId={emptyCreate.busyKey} />
-              </section>
-            </div>
-          )}
-
-          {!loading && flows.length > 0 && (
-            <div
-              data-testid="flows-list"
-              className="overflow-hidden rounded-2xl border border-line bg-surface">
-              {flows.map(flow => (
-                <FlowListRow
-                  key={flow.id}
-                  flow={flow}
-                  busy={busyFor(flow)}
-                  onToggle={f => void handleToggle(f)}
-                  onRun={f => void handleRun(f)}
-                  onViewRuns={handleViewRuns}
-                  onView={handleView}
-                  onExport={handleExport}
-                  onDuplicate={f => void handleDuplicate(f)}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <FlowRunsDrawer
-          flowId={selectedFlowId}
-          flowName={selectedFlow?.name}
-          onClose={() => setSelectedFlowId(null)}
-          onFixWithAgent={handleFixWithAgent}
-        />
-
-        {chooserOpen && <NewWorkflowModal onClose={() => setChooserOpen(false)} />}
-
-        {deleteTarget && (
-          <ModalShell
-            onClose={() => (deleting ? undefined : setDeleteTarget(null))}
-            title={t('flows.delete.title')}
-            subtitle={t('flows.delete.body').replace('{name}', deleteTarget.name)}
-            titleId="flow-delete-modal-title"
-            maxWidthClassName="max-w-sm">
-            <div className="flex justify-end gap-2" data-testid="flow-delete-confirm">
+      {/* The standard sidebar-page shell: the host supplies the `p-4` gutter
+          that `SettingsTabbedPage`'s full-bleed divider bleeds through, and the
+          page title/description/actions live in that flush header band — the
+          same chrome Brain, Skills, Runs and Discoveries already use. This page
+          used to float a `PageSectionHeader` card inside a `PanelPage` body,
+          which read as a different page depending on how it was reached. */}
+      <div className="h-full p-4" data-testid="flows-page">
+        <SettingsTabbedPage
+          title={t('flows.page.title')}
+          description={t('flows.page.description')}
+          headerAction={
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={deleting}
-                data-testid="flow-delete-cancel"
-                onClick={() => setDeleteTarget(null)}>
-                {t('flows.delete.cancel')}
+                data-testid="flows-import"
+                onClick={handleImportClick}>
+                {t('flows.page.import')}
               </Button>
               <Button
                 type="button"
                 variant="primary"
-                tone="danger"
                 size="sm"
-                disabled={deleting}
-                data-testid="flow-delete-confirm-button"
-                onClick={() => void handleConfirmDelete()}>
-                {deleting ? t('flows.delete.deleting') : t('flows.delete.confirm')}
+                data-testid="flows-new-workflow"
+                onClick={handleNewWorkflow}>
+                {t('flows.page.newWorkflow')}
               </Button>
             </div>
-          </ModalShell>
-        )}
+          }>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            data-testid="flows-import-input"
+            onChange={e => void handleImportFile(e)}
+          />
+          <div className="space-y-5">
+            <div data-testid="flows-beta-banner">
+              <BetaBanner />
+            </div>
 
-        <ToastContainer notifications={toasts} onRemove={removeToast} />
-      </PanelPage>
+            {/* Flow Scout discovery moved to its own sidebar page
+              (/flows/discoveries); the list stays focused on saved workflows. */}
+
+            {error && (
+              <div data-testid="flows-error">
+                <ErrorBanner message={error} />
+              </div>
+            )}
+
+            {loading && <CenteredLoadingState label={t('flows.page.loading')} />}
+
+            {!loading && flows.length === 0 && !error && (
+              <div className="space-y-4">
+                <EmptyStateCard
+                  icon={
+                    <svg
+                      className="h-7 w-7 text-primary-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}>
+                      <circle cx="5" cy="6" r="2" />
+                      <circle cx="5" cy="18" r="2" />
+                      <circle cx="19" cy="12" r="2" />
+                      <path strokeLinecap="round" d="M7 6h4a4 4 0 014 4M7 18h4a4 4 0 004-4" />
+                    </svg>
+                  }
+                  title={t('flows.page.emptyTitle')}
+                  description={t('flows.page.emptyDescription')}
+                  actionLabel={t('flows.page.newWorkflow')}
+                  actionTestId="flows-empty-new-workflow"
+                  onAction={handleNewWorkflow}
+                />
+
+                <section className="space-y-3" data-testid="flows-empty-templates">
+                  <div>
+                    <h3 className="text-sm font-semibold text-content">
+                      {t('flows.templates.title')}
+                    </h3>
+                    <p className="text-xs text-content-muted">{t('flows.templates.subtitle')}</p>
+                  </div>
+                  {emptyCreate.error && (
+                    <div data-testid="flows-empty-template-error">
+                      <ErrorBanner message={emptyCreate.error} />
+                    </div>
+                  )}
+                  <FlowTemplateGallery
+                    onSelect={handleEmptyTemplate}
+                    busyId={emptyCreate.busyKey}
+                  />
+                </section>
+              </div>
+            )}
+
+            {!loading && flows.length > 0 && (
+              <div
+                data-testid="flows-list"
+                className="overflow-hidden rounded-2xl border border-line bg-surface">
+                {flows.map(flow => (
+                  <FlowListRow
+                    key={flow.id}
+                    flow={flow}
+                    busy={busyFor(flow)}
+                    onToggle={f => void handleToggle(f)}
+                    onRun={f => void handleRun(f)}
+                    onViewRuns={handleViewRuns}
+                    onView={handleView}
+                    onExport={handleExport}
+                    onDuplicate={f => void handleDuplicate(f)}
+                    onDelete={setDeleteTarget}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </SettingsTabbedPage>
+      </div>
+
+      <FlowRunsDrawer
+        flowId={selectedFlowId}
+        flowName={selectedFlow?.name}
+        onClose={() => setSelectedFlowId(null)}
+        onFixWithAgent={handleFixWithAgent}
+      />
+
+      {chooserOpen && <NewWorkflowModal onClose={() => setChooserOpen(false)} />}
+
+      {deleteTarget && (
+        <ModalShell
+          onClose={() => (deleting ? undefined : setDeleteTarget(null))}
+          title={t('flows.delete.title')}
+          subtitle={t('flows.delete.body').replace('{name}', deleteTarget.name)}
+          titleId="flow-delete-modal-title"
+          maxWidthClassName="max-w-sm">
+          <div className="flex justify-end gap-2" data-testid="flow-delete-confirm">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={deleting}
+              data-testid="flow-delete-cancel"
+              onClick={() => setDeleteTarget(null)}>
+              {t('flows.delete.cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              tone="danger"
+              size="sm"
+              disabled={deleting}
+              data-testid="flow-delete-confirm-button"
+              onClick={() => void handleConfirmDelete()}>
+              {deleting ? t('flows.delete.deleting') : t('flows.delete.confirm')}
+            </Button>
+          </div>
+        </ModalShell>
+      )}
+
+      {preauth.pending && (
+        <FlowPreauthorizationOverlay
+          entries={preauth.pending.manifest.entries}
+          busy={preauth.busy}
+          errorMsg={preauth.errorKey ? t('flows.enableApproval.error') : null}
+          onApproveAll={() => void preauth.approveAll()}
+          onDeny={() => void preauth.deny()}
+        />
+      )}
+
+      <ToastContainer notifications={toasts} onRemove={removeToast} />
     </>
   );
 }

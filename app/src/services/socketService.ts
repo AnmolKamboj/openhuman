@@ -5,34 +5,32 @@ import { getCoreStateSnapshot } from '../lib/coreState/store';
 import { SocketIOMCPTransportImpl } from '../lib/mcp';
 import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
 import { store } from '../store';
-import {
-  appendBackendMeetTranscriptDelta,
-  setBackendMeetError,
-  setBackendMeetHarness,
-  setBackendMeetJoined,
-  setBackendMeetLeft,
-  setBackendMeetReply,
-  setBackendMeetTranscript,
-} from '../store/backendMeetSlice';
 import { upsertChannelConnection } from '../store/channelConnectionsSlice';
-import { type CompanionStateChangedEvent, setCompanionState } from '../store/companionSlice';
 import { setBackend } from '../store/connectivitySlice';
-import { clearHalt, setHalt } from '../store/safetySlice';
 import { resetForUser, setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
 import type { ChannelAuthMode, ChannelConnectionStatus, ChannelType } from '../types/channels';
-import { IS_DEV } from '../utils/config';
+import type { UserErrorScope } from '../types/userError';
+import { IS_DEV, IS_TEST } from '../utils/config';
 import { createSafeLogData, sanitizeError } from '../utils/sanitize';
 import { getCoreRpcToken, getCoreRpcUrl } from './coreRpcClient';
 import { createCoreSocket } from './coreSocket';
 
 // Socket service logger using debug package
-// Enable logging by setting DEBUG=socket* in environment or localStorage
+// To change these namespaces at runtime, set `localStorage.debug` — NOT the
+// DEBUG env var. Under jsdom (and in the browser) the `debug` package resolves
+// to its `browser` build, which reads `localStorage.debug` and ignores
+// `process.env.DEBUG` entirely, so `DEBUG=socket* pnpm test` silently does
+// nothing. The previous comment here claimed otherwise and cost real time.
 const socketLog = debug('socket');
 const socketWarn = debug('socket:warn');
 const socketError = debug('socket:error');
 
-// Enable socket logging in development by default
-if (IS_DEV) {
+// Enable socket logging in development by default — but never under test.
+// `IS_DEV` is truthy in vitest, so without the `IS_TEST` guard this force-enable
+// floods every test file that imports this service (measured: 412 lines /
+// 46KB of `flow:approval_request` listener churn in a single run), inflating
+// runtime enough to push suites past the runner's foreground timeout.
+if (IS_DEV && !IS_TEST) {
   debug.enable('socket*');
 }
 
@@ -102,35 +100,6 @@ function normalizeChannelConnectionUpdatePayload(
     capabilities: Array.isArray(capabilities)
       ? capabilities.filter((item): item is string => typeof item === 'string')
       : undefined,
-  };
-}
-
-const COMPANION_STATES: ReadonlySet<string> = new Set([
-  'idle',
-  'listening',
-  'thinking',
-  'speaking',
-  'pointing',
-  'error',
-]);
-
-export function parseCompanionStateChangedEvent(value: unknown): CompanionStateChangedEvent | null {
-  if (!value || typeof value !== 'object') return null;
-  const obj = value as Record<string, unknown>;
-  if (typeof obj.session_id !== 'string') return null;
-  if (typeof obj.state !== 'string' || !COMPANION_STATES.has(obj.state)) return null;
-
-  const previous =
-    typeof obj.previous_state === 'string' && COMPANION_STATES.has(obj.previous_state)
-      ? (obj.previous_state as CompanionStateChangedEvent['previous_state'])
-      : 'idle';
-  const message = typeof obj.message === 'string' ? obj.message : undefined;
-
-  return {
-    session_id: obj.session_id,
-    state: obj.state as CompanionStateChangedEvent['state'],
-    previous_state: previous,
-    message,
   };
 }
 
@@ -421,18 +390,6 @@ class SocketService {
       );
     });
 
-    // Companion state change events — dispatch into the companion Redux slice
-    // so settings panel and other UI can react to session lifecycle.
-    this.socket.on('companion:state_changed', (data: unknown) => {
-      const event = parseCompanionStateChangedEvent(data);
-      if (!event) {
-        socketWarn('companion:state_changed dropped — invalid payload shape');
-        return;
-      }
-      socketLog('companion:state_changed → %s', event.state);
-      store.dispatch(setCompanionState(event));
-    });
-
     // Permanent user-config / billing failures surfaced from background jobs
     // (e.g. cron) — core broadcasts these to the "system" room as a
     // metadata-only `user_error` event carrying a stable kind token in
@@ -451,155 +408,18 @@ class SocketService {
       const provider = typeof obj.error_provider === 'string' ? obj.error_provider : undefined;
       const sourceDomain = typeof obj.error_source === 'string' ? obj.error_source : 'cron';
       socketLog('user_error kind=%s source=%s', errorType ?? 'none', sourceDomain);
+      // Scope groups the entry in the panel and is part of its dedupe identity,
+      // so it must follow the producing domain. It was pinned to `cron` while
+      // the scheduler was the only producer; the memory embedder health gate
+      // (#5354) is the second. Unknown domains keep the historical `cron`
+      // default rather than widening the scope union from wire data.
+      const scope: UserErrorScope = sourceDomain === 'memory' ? 'memory' : 'cron';
       // Metadata-only ingest: forward the stable kind token + scope ONLY, never
       // a raw `message` body. The cron producer already omits it, but we drop
       // any `obj.message` here too so a future/buggy broadcast can't leak raw
       // provider text into the UI — classify() keys on `errorType` for this
       // path. Locks the no-leak contract FE-side (CodeRabbit #4169).
-      ingestRuntimeErrorSignal(store.dispatch, {
-        errorType,
-        scope: 'cron',
-        sourceDomain,
-        provider,
-      });
-    });
-
-    // Automation halt/resume broadcasts — core publishes this when emergency_stop
-    // or emergency_resume is called from any client (UI, CLI, cron) so all
-    // connected surfaces reflect the halt state without polling.
-    this.socket.on('automation_halt', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      if (!obj || typeof obj !== 'object') {
-        socketWarn('automation_halt dropped — invalid payload shape');
-        return;
-      }
-      // Halt fields ride under `args` in the `WebChannelEvent` envelope
-      // (same contract as `approval_request`; see `event_bus.rs` builder and
-      // `emit_web_channel_event` in `src/core/socketio.rs`, which does
-      // `serde_json::to_value(event)` on the whole envelope). Fall back to
-      // the top level so a direct-emit test payload keeps working.
-      const payload =
-        obj.args && typeof obj.args === 'object' ? (obj.args as Record<string, unknown>) : obj;
-      // Fail closed: a kill-switch event must carry an explicit boolean
-      // `engaged`. An ambiguous payload (missing/non-boolean flag, e.g. `{}` or
-      // `{reason:'x'}`) is dropped rather than treated as `false`, so a
-      // malformed broadcast can never silently clear an active halt.
-      if (typeof payload.engaged !== 'boolean') {
-        socketWarn('automation_halt dropped — missing/invalid engaged flag');
-        return;
-      }
-      const engaged = payload.engaged;
-      const reason = typeof payload.reason === 'string' ? payload.reason : undefined;
-      const source = typeof payload.source === 'string' ? payload.source : undefined;
-      socketLog(
-        'automation_halt engaged=%s reason=%s source=%s',
-        engaged,
-        reason ?? 'none',
-        source ?? 'none'
-      );
-      if (engaged) {
-        store.dispatch(setHalt({ reason, source }));
-      } else {
-        store.dispatch(clearHalt());
-      }
-    });
-
-    // Backend Meet bot events — forwarded from core's DomainEvent bus
-    this.socket.on('agent_meetings:joined', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      const meetUrl = typeof obj?.meet_url === 'string' ? obj.meet_url : '';
-      const correlationId =
-        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog(
-        'agent_meetings:joined meet_url_len=%d correlation_id=%s',
-        meetUrl.length,
-        correlationId ?? 'none'
-      );
-      store.dispatch(setBackendMeetJoined({ meetUrl, meetingId: correlationId }));
-    });
-    this.socket.on('agent_meetings:left', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      const reason = typeof obj?.reason === 'string' ? obj.reason : 'unknown';
-      const correlationId =
-        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog('agent_meetings:left reason=%s correlation_id=%s', reason, correlationId ?? 'none');
-      store.dispatch(setBackendMeetLeft({ reason, correlationId }));
-    });
-    this.socket.on('agent_meetings:reply', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      if (!obj) return;
-      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog('agent_meetings:reply correlation_id=%s', correlationId ?? 'none');
-      store.dispatch(
-        setBackendMeetReply({
-          transcript: typeof obj.transcript === 'string' ? obj.transcript : '',
-          reply: typeof obj.reply === 'string' ? obj.reply : '',
-          emotion: typeof obj.emotion === 'string' ? obj.emotion : 'neutral',
-          correlationId,
-        })
-      );
-    });
-    this.socket.on('agent_meetings:harness', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      if (!obj) return;
-      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog('agent_meetings:harness correlation_id=%s', correlationId ?? 'none');
-      store.dispatch(
-        setBackendMeetHarness({
-          transcript: typeof obj.transcript === 'string' ? obj.transcript : '',
-          instruction: typeof obj.instruction === 'string' ? obj.instruction : '',
-          emotion: typeof obj.emotion === 'string' ? obj.emotion : 'neutral',
-          correlationId,
-        })
-      );
-    });
-    this.socket.on('agent_meetings:transcript', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      if (!obj) return;
-      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketLog('agent_meetings:transcript correlation_id=%s', correlationId ?? 'none');
-      store.dispatch(
-        setBackendMeetTranscript({
-          turns: Array.isArray(obj.turns) ? obj.turns : [],
-          duration_ms: typeof obj.duration_ms === 'number' ? obj.duration_ms : 0,
-          correlationId,
-        })
-      );
-    });
-    this.socket.on('agent_meetings:transcript_delta', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      if (!obj) return;
-      const turn = obj.turn as Record<string, unknown> | null | undefined;
-      // Drop malformed deltas that carry no turn content.
-      if (!turn || typeof turn.role !== 'string' || typeof turn.content !== 'string') {
-        socketError('agent_meetings:transcript_delta dropped: missing/invalid turn');
-        return;
-      }
-      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
-      const index = typeof obj.index === 'number' ? obj.index : 0;
-      const isPartial = typeof obj.is_partial === 'boolean' ? obj.is_partial : false;
-      socketLog(
-        'agent_meetings:transcript_delta index=%d is_partial=%s correlation_id=%s',
-        index,
-        isPartial,
-        correlationId ?? 'none'
-      );
-      store.dispatch(
-        appendBackendMeetTranscriptDelta({
-          turn: { role: turn.role, content: turn.content },
-          index,
-          is_partial: isPartial,
-          correlationId,
-        })
-      );
-    });
-    this.socket.on('agent_meetings:error', (data: unknown) => {
-      const obj = data as Record<string, unknown> | null;
-      const error = typeof obj?.error === 'string' ? obj.error : 'Unknown error';
-      const correlationId =
-        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
-      socketError('agent_meetings:error %s correlation_id=%s', error, correlationId ?? 'none');
-      store.dispatch(setBackendMeetError({ error, correlationId }));
+      ingestRuntimeErrorSignal(store.dispatch, { errorType, scope, sourceDomain, provider });
     });
 
     this.socket.connect();
@@ -653,6 +473,46 @@ class SocketService {
     } else {
       socketWarn('Cannot emit event - socket not connected', { event });
     }
+  }
+
+  /**
+   * Join one thread's event room.
+   *
+   * The reconnect handler re-subscribes from `activeThreadIds`, which the chat
+   * runtime clears when the socket drops — so a turn left in flight on a thread
+   * the user had navigated away from has no room to be delivered into once a new
+   * `client_id` is issued, and its `chat_done` reaches nobody. `ChatRuntimeProvider`
+   * calls this for the threads it remembers across that gap (#6034).
+   *
+   * Emitting the room join directly rather than through {@link emit} keeps a
+   * disconnected call quiet: re-subscription is what the `connect` handler
+   * already does, so a warning here would only be noise.
+   */
+  subscribeThread(threadId: string, timeoutMs = 3000): Promise<boolean> {
+    if (!threadId || !this.socket?.connected) return Promise.resolve(false);
+    socketLog('Subscribing to thread room', { threadId });
+    const socket = this.socket;
+    return new Promise<boolean>(resolve => {
+      let settled = false;
+      const finish = (joined: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(joined);
+      };
+      // A caller that reads the thread after this resolves cannot race the
+      // join: the server acknowledges only once the socket is in the room.
+      // The timeout keeps a server that never acks (an older core) from
+      // stalling recovery — the read still happens, just without the ordering
+      // guarantee, which is exactly the pre-ack behaviour.
+      const timer = setTimeout(() => {
+        socketWarn('Thread room subscription not acknowledged', { threadId });
+        finish(false);
+      }, timeoutMs);
+      socket.emit('thread:subscribe', { thread_id: threadId }, () => {
+        clearTimeout(timer);
+        finish(true);
+      });
+    });
   }
 
   /**

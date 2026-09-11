@@ -22,33 +22,33 @@ use openhuman_core::openhuman::agent::harness::{
     run_subagent, with_parent_context, AgentDefinition, ParentExecutionContext, PromptSource,
     SandboxMode, SubagentRunOptions, ToolScope,
 };
-use openhuman_core::openhuman::app_state::{
+use openhuman_core::openhuman::desktop::app_state::{
     snapshot, update_local_state, StoredAppStatePatch, StoredOnboardingTasks,
 };
 use openhuman_core::openhuman::config::rpc as config_rpc;
 use openhuman_core::openhuman::config::{
     BrowserConfig, Config, HttpRequestConfig, McpAuthConfig, McpServerConfig,
 };
-use openhuman_core::openhuman::context::prompt::ToolCallFormat;
-use openhuman_core::openhuman::credentials::profiles::{
+use openhuman_core::openhuman::agent::context::prompt::ToolCallFormat;
+use openhuman_core::openhuman::security::credentials::profiles::{
     AuthProfile, AuthProfileKind, AuthProfilesStore, TokenSet,
 };
-use openhuman_core::openhuman::credentials::{
+use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
-};
-use openhuman_core::openhuman::inference::provider::traits::ProviderCapabilities;
-use openhuman_core::openhuman::inference::provider::{
-    ChatMessage, ChatRequest, ChatResponse, Provider, ToolCall, UsageInfo,
 };
 use openhuman_core::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary};
 use openhuman_core::openhuman::security::{AuditLogger, SecurityPolicy};
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{
     all_tools, BrowserTool, ComputerUseConfig, SpawnSubagentTool, Tool, ToolResult,
 };
 use parking_lot::Mutex as ParkingMutex;
 use serde_json::{json, Value};
 use tempfile::{Builder, TempDir};
+use tinyinference::message::{AssistantMessage, ContentBlock, Message};
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 
 static ROUND16_ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
 
@@ -105,50 +105,42 @@ impl Harness {
     }
 }
 
-struct ScriptedProvider {
-    responses: ParkingMutex<Vec<ChatResponse>>,
-    requests: ParkingMutex<Vec<Vec<ChatMessage>>>,
+struct ScriptedModel {
+    responses: ParkingMutex<Vec<ModelResponse>>,
+    requests: ParkingMutex<Vec<Vec<Message>>>,
 }
 
-impl ScriptedProvider {
-    fn new(responses: Vec<ChatResponse>) -> Self {
+impl ScriptedModel {
+    fn new(responses: Vec<ModelResponse>) -> Self {
         Self {
             responses: ParkingMutex::new(responses),
             requests: ParkingMutex::new(Vec::new()),
         }
     }
 
-    fn requests(&self) -> Vec<Vec<ChatMessage>> {
+    fn requests(&self) -> Vec<Vec<Message>> {
         self.requests.lock().clone()
     }
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
-            native_tool_calling: true,
-            vision: false,
-        }
+impl ChatModel<()> for ScriptedModel {
+    fn profile(&self) -> Option<&ModelProfile> {
+        static PROFILE: OnceLock<ModelProfile> = OnceLock::new();
+        Some(PROFILE.get_or_init(|| ModelProfile {
+            provider: Some("round16".to_string()),
+            tool_calling: true,
+            parallel_tool_calls: true,
+            ..ModelProfile::default()
+        }))
     }
 
-    async fn chat_with_system(
+    async fn invoke(
         &self,
-        _system_prompt: Option<&str>,
-        message: &str,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<String> {
-        Ok(format!("extract:{message}"))
-    }
-
-    async fn chat(
-        &self,
-        request: ChatRequest<'_>,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<ChatResponse> {
-        self.requests.lock().push(request.messages.to_vec());
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
+        self.requests.lock().push(request.messages);
         Ok(self.responses.lock().remove(0))
     }
 }
@@ -328,30 +320,35 @@ fn setup(api_url: &str) -> Harness {
     }
 }
 
-fn usage(input_tokens: u64, output_tokens: u64) -> UsageInfo {
-    UsageInfo {
-        input_tokens,
-        output_tokens,
-        context_window: 8_192,
-        cached_input_tokens: input_tokens / 2,
-        cache_creation_tokens: 0,
-        reasoning_tokens: 0,
-        charged_amount_usd: 0.001,
+fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+    let mut usage = Usage::new(input_tokens, output_tokens);
+    usage.cache_read_tokens = input_tokens / 2;
+    usage
+}
+
+fn response(text: Option<&str>, tool_calls: Vec<ToolCall>) -> ModelResponse {
+    let usage = usage(50, 7);
+    ModelResponse {
+        message: AssistantMessage {
+            id: None,
+            content: text
+                .map(|text| vec![ContentBlock::Text(text.to_string())])
+                .unwrap_or_default(),
+            tool_calls,
+            usage: Some(usage),
+        },
+        usage: Some(usage),
+        finish_reason: None,
+        raw: None,
+        resolved_model: None,
+        continue_turn: None,
+            served_from_cache: false,
     }
 }
 
-fn response(text: Option<&str>, tool_calls: Vec<ToolCall>) -> ChatResponse {
-    ChatResponse {
-        text: text.map(str::to_string),
-        tool_calls,
-        usage: Some(usage(50, 7)),
-        reasoning_content: None,
-    }
-}
-
-fn parent_context(workspace: PathBuf, provider: Arc<ScriptedProvider>) -> ParentExecutionContext {
+fn parent_context(workspace: PathBuf, provider: Arc<ScriptedModel>) -> ParentExecutionContext {
     let tools: Vec<Box<dyn Tool>> = vec![Box::new(EchoTool)];
-    let tool_specs = tools.iter().map(|tool| tool.spec()).collect();
+    let tool_specs = tools.iter().map(|tool| Arc::new(tool.spec())).collect();
     ParentExecutionContext {
         agent_definition_id: "orchestrator".into(),
         allowed_subagent_ids: [
@@ -361,10 +358,17 @@ fn parent_context(workspace: PathBuf, provider: Arc<ScriptedProvider>) -> Parent
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::new(provider),
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
+            provider,
+        ),
         all_tools: Arc::new(tools),
         all_tool_specs: Arc::new(tool_specs),
+        // #6145: empty means "same surface as `all_tool_specs`" — the
+        // catalogue falls back to it, so these stubs keep the behaviour
+        // they had before the parent's visible set became its own field.
+        visible_tool_specs: Arc::new(Vec::new()),
         visible_tool_names: std::collections::HashSet::new(),
+        subagent_tool_ceiling_names: std::collections::HashSet::new(),
         model_name: "round16-model".to_string(),
         temperature: 0.0,
         workspace_dir: workspace,
@@ -396,7 +400,6 @@ fn agent_definition(id: &str, max_result_chars: Option<usize>) -> AgentDefinitio
         omit_identity: true,
         omit_memory_context: false,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: Default::default(),
@@ -543,7 +546,7 @@ async fn round16_browser_computer_use_validation_and_sidecar_paths() {
     }
 
     let bad_endpoint = browser_tool("https://public.example.test/".into(), &harness.workspace)
-        .execute(json!({ "action": "screen_capture" }))
+        .execute(json!({ "action": "mouse_move", "x": 1, "y": 1 }))
         .await
         .expect("public endpoint is rejected as a tool result");
     assert!(bad_endpoint.is_error);
@@ -563,7 +566,6 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
     };
     cfg.node.enabled = false;
     cfg.gitbooks.enabled = true;
-    cfg.computer_control.enabled = true;
     cfg.learning.enabled = true;
     cfg.learning.tool_tracking_enabled = true;
     cfg.browser.enabled = true;
@@ -595,7 +597,6 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
             &harness.workspace,
         )),
         AuditLogger::disabled(),
-        Arc::new(StubMemory),
         &BrowserConfig {
             enabled: true,
             session_name: Some("round16-session".into()),
@@ -633,8 +634,6 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
         "mcp_list_servers",
         "mcp_list_tools",
         "mcp_call_tool",
-        "mouse",
-        "keyboard",
         "tool_stats",
         "delegate",
         "mcp_setup_search",
@@ -645,6 +644,8 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
             "expected {expected} in {names:?}"
         );
     }
+    assert!(!names.iter().any(|name| name == "mouse"));
+    assert!(!names.iter().any(|name| name == "keyboard"));
     assert!(!names.iter().any(|name| name == "node_exec"));
     assert!(!names.iter().any(|name| name == "npm_exec"));
     assert!(
@@ -687,7 +688,7 @@ async fn round16_spawn_subagent_tool_and_runner_error_success_paths() {
         "error output should not be empty"
     );
 
-    let provider = Arc::new(ScriptedProvider::new(vec![response(
+    let provider = Arc::new(ScriptedModel::new(vec![response(
         Some("subagent final answer that will be clipped"),
         Vec::new(),
     )]));
@@ -710,9 +711,9 @@ async fn round16_spawn_subagent_tool_and_runner_error_success_paths() {
     assert_eq!(outcome.agent_id, "round16_worker");
     assert_eq!(outcome.output, "subagent final ans\n[...truncated]");
     assert!(provider.requests()[0].iter().any(|message| {
-        message.role == "user"
-            && message.content.contains("parent memory")
-            && message.content.contains("caller context")
+        matches!(message, Message::User(_))
+            && message.text().contains("parent memory")
+            && message.text().contains("caller context")
     }));
 
     let no_parent = run_subagent(&definition, "no parent", SubagentRunOptions::default())
@@ -726,20 +727,19 @@ async fn round16_spawn_subagent_tool_and_runner_error_success_paths() {
 async fn round16_agent_builder_turn_uses_public_harness_paths() {
     let _lock = env_lock();
     let harness = setup("http://127.0.0.1:9");
-    let provider = Arc::new(ScriptedProvider::new(vec![
+    let provider = Arc::new(ScriptedModel::new(vec![
         response(
             Some("need echo"),
-            vec![ToolCall {
-                id: "call-round16".into(),
-                name: "echo".into(),
-                arguments: json!({ "message": "builder" }).to_string(),
-                extra_content: None,
-            }],
+            vec![ToolCall::new(
+                "call-round16",
+                "echo",
+                json!({ "message": "builder" }),
+            )],
         ),
         response(Some("builder final"), Vec::new()),
     ]));
     let mut agent = Agent::builder()
-        .provider_arc(provider)
+        .chat_model(provider)
         .tools(vec![Box::new(EchoTool)])
         .memory(Arc::new(StubMemory))
         .tool_dispatcher(Box::new(NativeToolDispatcher))
@@ -763,7 +763,7 @@ async fn round16_agent_builder_turn_uses_public_harness_paths() {
     assert_eq!(answer, "builder final");
     assert!(agent.history().iter().any(|message| matches!(
         message,
-        openhuman_core::openhuman::inference::provider::ConversationMessage::ToolResults(results)
+        openhuman_core::openhuman::agent::messages::ConversationMessage::ToolResults(results)
             if results.iter().any(|result| result.content.contains("echo:builder"))
     )));
 }
@@ -960,4 +960,180 @@ async fn round16_app_state_config_and_session_snapshot_edges() {
     .value;
     assert!(cleared.encryption_key.is_none());
     assert!(cleared.onboarding_tasks.is_none());
+}
+
+/// #5847 — the one behaviour deliberately kept when TinyPlace was deleted.
+///
+/// The removal took ~49,600 lines but retained a single entry on the
+/// workspace-internal denylist, because an upgraded profile can still hold
+/// `tinyplace/` state written by an older version — encrypted identity and
+/// session material. Nothing in any e2e lane asserted it, which makes the entry
+/// look like a leftover reference to a deleted domain rather than the guard it
+/// is: exactly the line a future cleanup deletes as dead.
+///
+/// Driven through the agent file tools rather than `is_workspace_internal_path`
+/// directly, because the question is not whether the predicate is right — the
+/// unit suite covers that — but whether the tools an agent actually calls sit
+/// behind it, at the most permissive autonomy tier there is.
+///
+/// `redirect_links` and `codegraph` are asserted alongside it: all three are
+/// retained-after-removal entries with the same rationale, so one regression
+/// would take all three and a test naming only `tinyplace` would miss it.
+#[tokio::test]
+async fn file_tools_cannot_reach_retained_legacy_state_in_the_workspace() {
+    use openhuman_core::openhuman::config::AutonomyConfig;
+    use openhuman_core::openhuman::security::AutonomyLevel;
+    use openhuman_core::openhuman::tools::{FileReadTool, FileWriteTool};
+
+    let tmp = tempdir();
+    let workspace = tmp.path().to_path_buf();
+    std::fs::create_dir_all(&workspace).expect("workspace");
+
+    // Full autonomy, and the workspace is also the action dir — the most
+    // permissive shape a real install can take. If the guard holds here it
+    // holds everywhere.
+    let security = Arc::new(SecurityPolicy::from_config(
+        &AutonomyConfig {
+            level: AutonomyLevel::Full,
+            max_actions_per_hour: 10_000,
+            ..Default::default()
+        },
+        &workspace,
+        &workspace,
+    ));
+    let read = FileReadTool::new(security.clone());
+    let write = FileWriteTool::new(security.clone());
+
+    // Paths are workspace-relative on purpose: `workspace_only` is on by
+    // default and rejects every absolute path outright
+    // (`security/policy/path_checks.rs:88`), so an absolute path would be
+    // refused for a reason that has nothing to do with the denylist under test.
+    // Relative is also what an agent actually sends — file tools resolve them
+    // from `action_dir`.
+    //
+    // A control: an ordinary workspace file must stay reachable, so a passing
+    // test cannot be explained by everything being blocked.
+    std::fs::write(workspace.join("notes.md"), "reachable\n").expect("write control file");
+    let control = read
+        .execute(json!({"path": "notes.md"}))
+        .await
+        .expect("control read");
+    assert!(
+        !control.is_error && control.output().contains("reachable"),
+        "an ordinary workspace file must remain readable: {}",
+        control.output()
+    );
+
+    for legacy in ["tinyplace", "redirect_links", "codegraph"] {
+        let dir = workspace.join(legacy);
+        std::fs::create_dir_all(&dir).expect("legacy dir");
+        let secret = dir.join("session.json");
+        let original = format!("{{\"legacy\":\"{legacy}\",\"token\":\"do-not-read\"}}");
+        std::fs::write(&secret, &original).expect("seed legacy state");
+
+        let relative = format!("{legacy}/session.json");
+        let attempted_read = read
+            .execute(json!({"path": relative}))
+            .await
+            .expect("read returns a ToolResult");
+        assert!(
+            attempted_read.is_error,
+            "{legacy}: agent read of retained legacy state succeeded: {}",
+            attempted_read.output()
+        );
+        assert!(
+            !attempted_read.output().contains("do-not-read"),
+            "{legacy}: the secret leaked into the tool output: {}",
+            attempted_read.output()
+        );
+
+        let attempted_write = write
+            .execute(json!({"path": format!("{legacy}/session.json"), "content": "clobbered"}))
+            .await
+            .expect("write returns a ToolResult");
+        assert!(
+            attempted_write.is_error,
+            "{legacy}: agent write into retained legacy state succeeded: {}",
+            attempted_write.output()
+        );
+        // The refusal must not itself disclose what it is protecting. A write
+        // path that echoes the existing file back in its error would satisfy
+        // the flag and the byte-comparison below while still leaking the
+        // secret (CodeRabbit, #5974).
+        assert!(
+            !attempted_write.output().contains("do-not-read"),
+            "{legacy}: the write refusal leaked the file it refused to touch: {}",
+            attempted_write.output()
+        );
+        // The refusal has to be a refusal, not a message printed after the fact.
+        assert_eq!(
+            std::fs::read_to_string(&secret).expect("legacy file still present"),
+            original,
+            "{legacy}: the file was modified despite the tool reporting an error"
+        );
+    }
+}
+
+/// #5807 — a driver deliberately given `class = "null"` is named as such, not
+/// blamed on a build that has no memory module.
+///
+/// `admit` accepts a non-built-in driver id carrying `class = "null"` verbatim
+/// (the `built_in_class` consistency check is skipped for ids that are not
+/// built in), so the binding reports `class = Null` with a `driver_id` that is
+/// not `"null"`. Keying the refusal reason on that id put this config in the
+/// modules-off arm and told a user with a working modules build to go and
+/// investigate their build flags.
+///
+/// Driven through `migration_helpers::rpc::migrate_openclaw` — the function the
+/// `config.openclaw` RPC handler calls — rather than the private wrapper the
+/// unit test uses, and with an explicit `Config` so the assertion does not
+/// depend on process-global config state shared with the rest of this binary.
+///
+/// This runs in every feature configuration on purpose: the misdirection it
+/// guards against is one a *modules-enabled* build hits.
+#[tokio::test]
+async fn openclaw_import_names_a_null_classed_driver_rather_than_the_build() {
+    use openhuman_core::openhuman::config::migration_helpers::rpc as migration_rpc;
+    use openhuman_core::openhuman::config::schema::{MemoryDriverConfig, MemorySubsystemConfig};
+
+    let tmp = tempdir();
+    let mut config = Config::default();
+    config.workspace_dir = tmp.path().join("workspace");
+    config.config_path = tmp.path().join("config.toml");
+    std::fs::create_dir_all(&config.workspace_dir).expect("workspace");
+
+    let mut drivers = std::collections::BTreeMap::new();
+    drivers.insert(
+        "mynull".to_string(),
+        MemoryDriverConfig {
+            class: Some("null".to_string()),
+            ..Default::default()
+        },
+    );
+    config.subsystems.memory = MemorySubsystemConfig {
+        driver: "mynull".to_string(),
+        drivers,
+        ..Default::default()
+    };
+
+    let source = tmp.path().join("openclaw-src");
+    std::fs::create_dir_all(&source).expect("source workspace");
+    std::fs::write(source.join("MEMORY.md"), "# Note\nkeep me").expect("seed source");
+
+    let err = migration_rpc::migrate_openclaw(&config, Some(source), false)
+        .await
+        .expect_err("importing into a null-classed driver must refuse");
+
+    // `contains("null")` alone would be satisfied by the driver id `mynull`,
+    // so this asserts the *quoted* class value the message renders — which a
+    // generic class-validation error could not produce (CodeRabbit, #5974).
+    assert!(
+        err.contains("mynull") && err.contains("class") && err.contains("\"null\""),
+        "the refusal must name the configured driver and its `class = \"null\"`; got: {err}"
+    );
+    assert!(
+        !err.contains("no memory module compiled in"),
+        "a deliberately null-classed driver must not be reported as a modules-off \
+         build — that is the misdirection #5807 fixed; got: {err}"
+    );
 }

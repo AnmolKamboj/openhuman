@@ -12,12 +12,12 @@ use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::definition::PromptSource;
 use crate::openhuman::agent::harness::session::Agent;
 use crate::openhuman::agent::harness::subagent_runner::with_autonomous_iter_cap;
+use crate::openhuman::agent::profiles::PersonalityContext;
 use crate::openhuman::agent::task_board::TaskCardStatus;
 use crate::openhuman::agent::task_session;
 use crate::openhuman::config::Config;
-use crate::openhuman::profiles::PersonalityContext;
-use crate::openhuman::todos::ops::{self, BoardLocation, CardPatch};
-use crate::openhuman::todos::runs::{self, RunOutcome};
+use crate::openhuman::threads::todos::ops::{self, BoardLocation, CardPatch};
+use crate::openhuman::threads::todos::runs::{self, RunOutcome};
 
 use super::types::ResolvedExecutor;
 
@@ -47,7 +47,7 @@ pub(super) fn resolve_executor(workspace_dir: &Path, assigned: Option<&str>) -> 
     }
 
     // 1) Personality (#2895): a user-defined profile with scoped identity.
-    if let Ok(state) = crate::openhuman::profiles::load_profiles(workspace_dir) {
+    if let Ok(state) = crate::openhuman::agent::profiles::load_profiles(workspace_dir) {
         if let Some(profile) = state.profiles.iter().find(|p| p.id == handle) {
             let ctx = PersonalityContext::from_profile(workspace_dir, profile.clone());
             let mut preamble = format!(
@@ -157,7 +157,6 @@ pub(super) async fn run_autonomous(
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
         &executor.agent_id,
-        None,
         executor.prompt_suffix.clone(),
         executor.profile.as_ref(),
     )
@@ -232,7 +231,7 @@ pub(super) async fn run_autonomous(
     );
     let result = match session_thread_id.as_deref() {
         Some(thread_id) => {
-            crate::openhuman::inference::provider::thread_context::with_thread_id(
+            crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
                 thread_id.to_string(),
                 run,
             )
@@ -242,27 +241,37 @@ pub(super) async fn run_autonomous(
     }
     .map_err(|e| format!("{e:#}"));
 
-    // Emit the terminal chat event so a client viewing the session stops
-    // "processing" and finalizes the assistant bubble — the SAME chat_done /
-    // chat_error the web channel emits at the end of a normal turn. The
-    // progress bridge only streams intermediate deltas; without this terminal
-    // signal the live-streamed session spins forever. Broadcast as "system" so
-    // any viewer of the thread receives it (frontend keys by thread_id).
+    // Close the run in its thread. Order matters (#5933): persist the closing
+    // message FIRST, announce the terminal event SECOND. A client viewing the
+    // thread persists whatever `chat_done` carries as well, under the same
+    // `agent:<run_id>` id (`ChatRuntimeProvider` mirrors `append_final`'s id
+    // for `client_id: "system"` turns), and the conversation store is
+    // idempotent by message id — so the second writer collapses onto the row
+    // that already exists instead of leaving the duplicate reply the issue
+    // reported. Persisting first makes the core's row the one that exists.
     if let Some(thread_id) = session_thread_id.as_deref() {
+        // Persist the final response (or failure) as the closing agent message
+        // so a reopened session shows the outcome like a finished manual run —
+        // and so it is already there when any viewer reacts to the event below.
+        task_session::append_final(workspace_dir, thread_id, run_id, &result);
+
+        // Emit the terminal chat event so a client viewing the session stops
+        // "processing" and finalizes the assistant bubble — the SAME chat_done /
+        // chat_error the web channel emits at the end of a normal turn. The
+        // progress bridge only streams intermediate deltas; without this terminal
+        // signal the live-streamed session spins forever. Broadcast as "system" so
+        // any viewer of the thread receives it (frontend keys by thread_id).
         match &result {
             Ok(response) => {
-                crate::openhuman::web_chat::presentation::deliver_response(
-                    "system",
-                    thread_id,
-                    run_id,
-                    response,
-                    prompt,
-                    &[],
-                    // Background/cron turns don't surface in the chat footer; their
-                    // token/cost spend is still captured by the global cost tracker.
-                    None,
-                )
-                .await;
+                // One bubble, never segmented: the reply was persisted as a
+                // single row above, and a segmented delivery would have a
+                // viewing client persist one row per segment beside it.
+                // Background/cron turns don't surface usage in the chat footer;
+                // their token/cost spend is still captured by the global cost
+                // tracker.
+                crate::openhuman::web_chat::presentation::deliver_response_single_bubble(
+                    "system", thread_id, run_id, response, None,
+                );
             }
             Err(err) => {
                 crate::openhuman::web_chat::publish_web_channel_event(
@@ -278,9 +287,6 @@ pub(super) async fn run_autonomous(
                 );
             }
         }
-        // Persist the final response as the closing assistant message so a
-        // reopened session shows the outcome like a finished manual run.
-        task_session::append_final(workspace_dir, thread_id, &result);
     }
     result
 }
@@ -289,7 +295,7 @@ pub(super) async fn run_autonomous(
 /// Success → `done` + evidence; failure → `blocked` + blocker reason. An
 /// external write failure here is logged, never propagated — the run already
 /// happened.
-pub(super) fn write_back(
+pub(super) async fn write_back(
     location: &BoardLocation,
     card_id: &str,
     run_id: &str,
@@ -301,8 +307,8 @@ pub(super) fn write_back(
     // The task then stays paused in that state until the user responds, instead
     // of a "clean turn" being silently recorded as done. Otherwise mark done
     // with evidence; a run error marks blocked with the error as the blocker.
-    let agent_self_blocked =
-        outcome.is_ok() && current_card_status(location, card_id) == Some(TaskCardStatus::Blocked);
+    let agent_self_blocked = outcome.is_ok()
+        && current_card_status(location, card_id).await == Some(TaskCardStatus::Blocked);
 
     let patch = if agent_self_blocked {
         tracing::info!(
@@ -343,7 +349,7 @@ pub(super) fn write_back(
     };
 
     if let Some(patch) = patch {
-        if let Err(e) = ops::edit(location, card_id, patch) {
+        if let Err(e) = ops::edit(location, card_id, patch).await {
             tracing::error!(
                 card_id = %card_id,
                 run_id = %run_id,
@@ -365,7 +371,8 @@ pub(super) fn write_back(
             Vec::new(),
         ),
     };
-    if let Err(e) = runs::complete_run(location, run_id, run_outcome, run_error, run_evidence) {
+    if let Err(e) = runs::complete_run(location, run_id, run_outcome, run_error, run_evidence).await
+    {
         tracing::warn!(
             run_id = %run_id,
             error = %e,
@@ -376,8 +383,9 @@ pub(super) fn write_back(
 
 /// Current persisted status of a card, or `None` if the board can't be read or
 /// the card is gone. Used by `write_back` to detect a run that blocked itself.
-fn current_card_status(location: &BoardLocation, card_id: &str) -> Option<TaskCardStatus> {
+async fn current_card_status(location: &BoardLocation, card_id: &str) -> Option<TaskCardStatus> {
     ops::list(location)
+        .await
         .ok()
         .and_then(|snap| snap.cards.into_iter().find(|c| c.id == card_id))
         .map(|c| c.status)

@@ -29,6 +29,7 @@
 import debug from 'debug';
 
 import type { WorkflowGraph } from '../../lib/flows/types';
+import { coerceWorkflowProposal } from '../../lib/workflows/workflowProposal';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
 import { trackAnalyticsEvent } from '../analytics';
 import { callCoreRpc } from '../coreRpcClient';
@@ -56,7 +57,12 @@ export type FlowRunStatus =
   | 'completed_with_warnings'
   | 'pending_approval'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  // A run whose future was dropped mid-flight (harness tool abort, chat turn
+  // end, timeout, or an app restart), reconciled to a terminal state by the
+  // core's `RunRowFinalizer` drop-guard or its boot-time orphan sweep (bug
+  // B42). Carries a human `error` reason; rendered as a settled, non-active run.
+  | 'interrupted';
 
 /** One reconstructed step of a persisted `FlowRun` (`src/openhuman/flows/types.rs::FlowRunStep`). */
 export interface FlowRunStep {
@@ -87,10 +93,22 @@ export interface FlowRun {
   thread_id: string;
   status: FlowRunStatus;
   started_at: string;
+  /**
+   * RFC3339 timestamp stamped when the run settled — set for every terminal
+   * status, including `'interrupted'` (the drop-guard / boot sweep stamps it
+   * exactly like a normal terminal write). `null`/absent only while the run is
+   * still `'running'`.
+   */
   finished_at?: string | null;
   steps: FlowRunStep[];
   /** Node ids paused awaiting approval when `status === 'pending_approval'`. */
   pending_approvals: string[];
+  /**
+   * Human-readable failure reason. Set for `'failed'` runs and for
+   * `'interrupted'` ones (where it carries the reconciliation reason — tool
+   * abort / turn end / app restart), so the UI can surface *why* a run stopped
+   * rather than showing a bare terminal state.
+   */
   error?: string | null;
 }
 
@@ -100,7 +118,7 @@ export interface FlowRun {
  * {@link getFlowRun} afterwards (thread_id === run id) if the caller needs the
  * up-to-date persisted status.
  */
-export interface FlowResumeResult {
+interface FlowResumeResult {
   output: unknown;
   pending_approvals: string[];
   thread_id: string;
@@ -163,14 +181,14 @@ export interface FlowValidationErrorDetail {
 }
 
 /** Where a {@link FlowDraft} originated (`src/openhuman/flows/types.rs::DraftOrigin`). */
-export type DraftOrigin = 'chat' | 'canvas' | 'import';
+type DraftOrigin = 'chat' | 'canvas' | 'import';
 
 /**
  * A core-managed, durable workflow draft (`src/openhuman/flows/types.rs::FlowDraft`)
  * — the shared working copy the agent tools and the canvas both read/write by
  * id across turns and reloads. Never live; promote runs the normal save gates.
  */
-export interface FlowDraft {
+interface FlowDraft {
   id: string;
   /** The saved flow this draft edits, if any (promote → update vs create). */
   flow_id?: string;
@@ -187,7 +205,7 @@ export interface FlowDraft {
  * JSON; `n8n` is an n8n workflow export (mapped best-effort host-side); `auto`
  * (the default) detects the shape.
  */
-export type FlowImportFormat = 'native' | 'n8n' | 'auto';
+type FlowImportFormat = 'native' | 'n8n' | 'auto';
 
 /**
  * Result of `openhuman.flows_import` (`src/openhuman/flows/types.rs::FlowImport`).
@@ -196,7 +214,7 @@ export type FlowImportFormat = 'native' | 'n8n' | 'auto';
  * notes (unmapped n8n node types, untranslated expressions, a synthesized or
  * demoted trigger). Import NEVER persists — the user Saves via the normal gate.
  */
-export interface FlowImport {
+interface FlowImport {
   graph: unknown;
   warnings: string[];
 }
@@ -217,7 +235,7 @@ export interface FlowConnection {
 }
 
 /** Optional fields for {@link updateFlow}. Omitted fields are left untouched. */
-export interface FlowUpdate {
+interface FlowUpdate {
   name?: string;
   graph?: unknown;
   requireApproval?: boolean;
@@ -232,7 +250,7 @@ export interface FlowUpdate {
 }
 
 /** A revision snapshot (`src/openhuman/flows/types.rs::FlowRevision`). */
-export interface FlowRevision {
+interface FlowRevision {
   id: string;
   flow_id: string;
   graph: unknown;
@@ -246,7 +264,7 @@ export interface FlowRevision {
  * conflict (encoded in the RPC error message as JSON). Detect it by parsing a
  * caught update error — see {@link parseFlowVersionConflict}.
  */
-export interface FlowVersionConflict {
+interface FlowVersionConflict {
   code: 'version_conflict';
   message: string;
   current: Flow;
@@ -256,6 +274,8 @@ export interface FlowVersionConflict {
  * If `err` is a `flows_update` version-conflict error, returns the structured
  * conflict (with the current server flow) so the UI can offer reload/diff;
  * otherwise `null`.
+ *
+ * @knipignore Documented flow history extension contract.
  */
 export function parseFlowVersionConflict(err: unknown): FlowVersionConflict | null {
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
@@ -493,16 +513,26 @@ export async function getFlow(id: string): Promise<Flow> {
  * Run a saved flow to completion (or until it pauses on a human-approval
  * gate) via `openhuman.flows_run`. This is the call that actually drives the
  * tinyflows engine, so it shares `flows_resume`'s ~600s server-side budget
- * (see {@link FLOW_RESUME_TIMEOUT_MS}). The Workflows list page's Run button
- * uses this fire-and-forget: it awaits the call just long enough to know the
- * run kicked off, shows a toast, and refetches `listFlows()` to pick up the
- * refreshed `last_run_at`/`last_status`.
+ * (see {@link FLOW_RESUME_TIMEOUT_MS}). This BLOCKS the caller until the run
+ * settles — prefer {@link runFlowDetached} for any UI entry point (Run
+ * buttons) that must not freeze while a run is in flight; `runFlow` remains
+ * for callers that genuinely want to await the final result.
+ *
+ * `input` is the free-form trigger payload. `inputs` supplies values for the
+ * flow's *declared* workflow inputs by name — read the declarations from the
+ * flow's `graph.inputs`. A missing required value, a wrong type, or a name the
+ * flow does not declare is rejected server-side before the run starts, so this
+ * rejects without leaving a run row behind.
  */
-export async function runFlow(id: string, input?: unknown): Promise<FlowResumeResult> {
-  log('runFlow: request id=%s', id);
+export async function runFlow(
+  id: string,
+  input?: unknown,
+  inputs?: Record<string, unknown>
+): Promise<FlowResumeResult> {
+  log('runFlow: request id=%s inputs=%d', id, Object.keys(inputs ?? {}).length);
   const response = await callCoreRpc<unknown>({
     method: 'openhuman.flows_run',
-    params: { id, input: input ?? null },
+    params: { id, input: input ?? null, inputs: inputs ?? null },
     timeoutMs: FLOW_RESUME_TIMEOUT_MS,
   });
   const result = unwrapCliEnvelope<FlowResumeResult>(response);
@@ -510,6 +540,62 @@ export async function runFlow(id: string, input?: unknown): Promise<FlowResumeRe
     'runFlow: response threadId=%s pendingApprovals=%d',
     result.thread_id,
     result.pending_approvals?.length ?? 0
+  );
+  trackAnalyticsEvent('automation_run_started', { automation_kind: 'flow' });
+  return result;
+}
+
+/**
+ * Immediate response from `openhuman.flows_run_detached` — the run has been
+ * registered and its `running` row inserted, but it has NOT finished (or even
+ * necessarily started executing its first action node) yet. Poll
+ * {@link getFlowRun} / subscribe to `flow:run_progress` for the terminal
+ * state — see {@link runFlowDetached}.
+ */
+export interface FlowRunDetachedResult {
+  run_id: string;
+  flow_id: string;
+  status: 'running';
+  detached: true;
+}
+
+/**
+ * Start a saved flow WITHOUT waiting for it to finish, via
+ * `openhuman.flows_run_detached` (F-M1 / F-M2). Unlike {@link runFlow}, this
+ * returns as soon as the run is registered and its `running` row exists — well
+ * under a second, regardless of how long the flow itself takes — so it uses
+ * the client's *default* RPC timeout rather than {@link FLOW_RESUME_TIMEOUT_MS}.
+ *
+ * This is the fire-and-forget entry point both UI Run controls use (the
+ * Workflow Canvas overlay and the Workflows list row action): calling it
+ * BEFORE subscribing to progress would be pointless (nothing to subscribe
+ * to yet), so callers should set up their `flow:run_progress` subscription /
+ * poller using the returned `run_id` immediately after this resolves, not
+ * after the run itself completes.
+ *
+ * `inputs` carries values for the flow's *declared* workflow inputs by name
+ * (see {@link runFlow}). Because this is the entry point both Run controls use,
+ * a flow with a required input is only runnable from the UI through here — the
+ * caller is expected to collect the values first. They are validated
+ * synchronously, so a bad set rejects here rather than surfacing later as a
+ * failed background run.
+ */
+export async function runFlowDetached(
+  id: string,
+  input?: unknown,
+  inputs?: Record<string, unknown>
+): Promise<FlowRunDetachedResult> {
+  log('runFlowDetached: request id=%s inputs=%d', id, Object.keys(inputs ?? {}).length);
+  const response = await callCoreRpc<unknown>({
+    method: 'openhuman.flows_run_detached',
+    params: { id, input: input ?? null, inputs: inputs ?? null },
+  });
+  const result = unwrapCliEnvelope<FlowRunDetachedResult>(response);
+  log(
+    'runFlowDetached: response runId=%s status=%s detached=%s',
+    result.run_id,
+    result.status,
+    result.detached
   );
   trackAnalyticsEvent('automation_run_started', { automation_kind: 'flow' });
   return result;
@@ -574,7 +660,11 @@ export async function updateFlow(id: string, update: FlowUpdate): Promise<Flow> 
   return flow;
 }
 
-/** List a flow's revision history via `openhuman.flows_get_history` (newest first). */
+/**
+ * List a flow's revision history via `openhuman.flows_get_history` (newest first).
+ *
+ * @knipignore Documented flow history extension contract.
+ */
 export async function getFlowHistory(id: string, limit?: number): Promise<FlowRevision[]> {
   const response = await callCoreRpc<unknown>({
     method: 'openhuman.flows_get_history',
@@ -588,6 +678,8 @@ export async function getFlowHistory(id: string, limit?: number): Promise<FlowRe
  * Roll a flow back to a prior revision via `openhuman.flows_rollback` (restores
  * that revision's graph through the normal update path — itself snapshotted, so
  * a rollback is undoable). Honours optimistic concurrency via `expectedVersion`.
+ *
+ * @knipignore Documented flow history extension contract.
  */
 export async function rollbackFlow(
   id: string,
@@ -667,7 +759,7 @@ export async function importFlow(
 // ── Catalog RPCs for the UI (Phase 5, item 16) ───────────────────────────────
 
 /** One search hit from `openhuman.flows_search_tool_catalog` (secret-free). */
-export interface ToolCatalogEntry {
+interface ToolCatalogEntry {
   slug: string;
   toolkit: string;
   description?: string | null;
@@ -678,7 +770,11 @@ export interface ToolCatalogEntry {
   featured?: boolean;
 }
 
-/** Search the live Composio tool catalog via `openhuman.flows_search_tool_catalog`. */
+/**
+ * Search the live Composio tool catalog via `openhuman.flows_search_tool_catalog`.
+ *
+ * @knipignore Documented tool catalog extension contract.
+ */
 export async function searchToolCatalog(
   query: string,
   opts?: { toolkit?: string; limit?: number }
@@ -694,7 +790,7 @@ export async function searchToolCatalog(
 }
 
 /** A toolkit a graph needs, with its connected state (Phase 5, item 18). */
-export interface RequiredConnection {
+interface RequiredConnection {
   toolkit: string;
   status: 'connected' | 'missing';
 }
@@ -703,6 +799,8 @@ export interface RequiredConnection {
  * Compute which Composio toolkits a candidate graph needs and whether each is
  * connected, via `openhuman.flows_required_connections` — the data behind the
  * "Connect <toolkit>" CTAs. Also surfaced on the workflow_proposal payload.
+ *
+ * @knipignore Documented tool catalog extension contract.
  */
 export async function requiredConnections(graph: unknown): Promise<RequiredConnection[]> {
   const response = await callCoreRpc<unknown>({
@@ -713,7 +811,67 @@ export async function requiredConnections(graph: unknown): Promise<RequiredConne
   return result.required_connections ?? [];
 }
 
-/** Fetch one action's full contract via `openhuman.flows_get_tool_contract`. */
+// ── Save-time approval manifest (consolidated pre-authorization card) ───────
+
+/** One row of the save+enable approval manifest. */
+export interface ApprovalManifestEntry {
+  /**
+   * approvable — will park a run; pre-approving `tool_name` clears it.
+   * blocked — refused outright by the autonomy tier; informational only.
+   * dynamic — tool chosen at run time (`=` slug); cannot be pre-approved.
+   * agent — AI step whose inner tool calls are unknown at save time.
+   */
+  kind: 'approvable' | 'blocked' | 'dynamic' | 'agent';
+  node_id: string;
+  /** The ApprovalGate trust key. Present for approvable/blocked rows. */
+  tool_name?: string;
+  label: string;
+  class?: string;
+}
+
+/** Result of `openhuman.flows_approval_manifest`. */
+export interface ApprovalManifest {
+  entries: ApprovalManifestEntry[];
+  /** Approvable trust keys the flow does not yet hold — what the card asks for. */
+  missing: string[];
+  /**
+   * Approvable trust keys this flow already holds a grant for. Empty whenever
+   * `gate_installed` is false: with no gate no grant was ever made, so nothing
+   * can be reported as authorized.
+   */
+  already_trusted: string[];
+  /** False when the approval gate is disabled — nothing ever prompts. */
+  gate_installed: boolean;
+}
+
+/**
+ * Compute the approval manifest for a saved flow (by id) or candidate graph
+ * via `openhuman.flows_approval_manifest` — every permission a run will
+ * prompt for, joined against the flow's existing per-flow trust grants. The
+ * data behind the consolidated save+enable pre-authorization card.
+ */
+export async function getApprovalManifest(
+  target: { id: string } | { graph: unknown }
+): Promise<ApprovalManifest> {
+  log('getApprovalManifest: %s', 'id' in target ? `id=${target.id}` : 'candidate graph');
+  const response = await callCoreRpc<unknown>({
+    method: 'openhuman.flows_approval_manifest',
+    params: 'id' in target ? { id: target.id } : { graph: target.graph },
+  });
+  const result = unwrapCliEnvelope<ApprovalManifest>(response);
+  return {
+    entries: result.entries ?? [],
+    missing: result.missing ?? [],
+    already_trusted: result.already_trusted ?? [],
+    gate_installed: result.gate_installed ?? true,
+  };
+}
+
+/**
+ * Fetch one action's full contract via `openhuman.flows_get_tool_contract`.
+ *
+ * @knipignore Documented tool catalog extension contract.
+ */
 export async function getToolContract(slug: string): Promise<unknown> {
   const response = await callCoreRpc<unknown>({
     method: 'openhuman.flows_get_tool_contract',
@@ -726,7 +884,11 @@ export async function getToolContract(slug: string): Promise<unknown> {
 
 // ── Core-managed drafts (F5) ─────────────────────────────────────────────────
 
-/** Create a durable draft via `openhuman.flows_draft_create`. */
+/**
+ * Create a durable draft via `openhuman.flows_draft_create`.
+ *
+ * @knipignore Documented durable draft extension contract.
+ */
 export async function createDraft(params: {
   name: string;
   graph: unknown;
@@ -746,7 +908,11 @@ export async function createDraft(params: {
   return unwrapCliEnvelope<FlowDraft>(response);
 }
 
-/** Fetch a draft by id via `openhuman.flows_draft_get`. */
+/**
+ * Fetch a draft by id via `openhuman.flows_draft_get`.
+ *
+ * @knipignore Documented durable draft extension contract.
+ */
 export async function getDraft(id: string): Promise<FlowDraft> {
   const response = await callCoreRpc<unknown>({
     method: 'openhuman.flows_draft_get',
@@ -755,7 +921,11 @@ export async function getDraft(id: string): Promise<FlowDraft> {
   return unwrapCliEnvelope<FlowDraft>(response);
 }
 
-/** Patch a draft's name/graph/flow_id via `openhuman.flows_draft_update`. */
+/**
+ * Patch a draft's name/graph/flow_id via `openhuman.flows_draft_update`.
+ *
+ * @knipignore Documented durable draft extension contract.
+ */
 export async function updateDraft(
   id: string,
   patch: { name?: string; graph?: unknown; flowId?: string }
@@ -767,14 +937,22 @@ export async function updateDraft(
   return unwrapCliEnvelope<FlowDraft>(response);
 }
 
-/** List all drafts (newest-updated first) via `openhuman.flows_draft_list`. */
+/**
+ * List all drafts (newest-updated first) via `openhuman.flows_draft_list`.
+ *
+ * @knipignore Documented durable draft extension contract.
+ */
 export async function listDrafts(): Promise<FlowDraft[]> {
   const response = await callCoreRpc<unknown>({ method: 'openhuman.flows_draft_list', params: {} });
   const result = unwrapCliEnvelope<{ drafts: FlowDraft[] }>(response);
   return result.drafts ?? [];
 }
 
-/** Delete a draft via `openhuman.flows_draft_delete`. */
+/**
+ * Delete a draft via `openhuman.flows_draft_delete`.
+ *
+ * @knipignore Documented durable draft extension contract.
+ */
 export async function deleteDraft(id: string): Promise<boolean> {
   const response = await callCoreRpc<unknown>({
     method: 'openhuman.flows_draft_delete',
@@ -787,6 +965,8 @@ export async function deleteDraft(id: string): Promise<boolean> {
 /**
  * Promote a draft into a saved flow via `openhuman.flows_draft_promote` (runs
  * the normal create/update gates, then removes the draft). Returns the Flow.
+ *
+ * @knipignore Documented durable draft extension contract.
  */
 export async function promoteDraft(id: string, requireApproval?: boolean): Promise<Flow> {
   log('promoteDraft: request id=%s', id);
@@ -904,38 +1084,6 @@ export interface BuilderTurnResult {
 const FLOW_BUILD_TIMEOUT_MS = 610_000;
 
 /**
- * Map a raw `{ type: 'workflow_proposal', … }` payload (from the agent's
- * propose/revise/save tool) to the store {@link WorkflowProposal} shape. Kept in
- * lockstep with `parseWorkflowProposal` in `ChatRuntimeProvider` (the streamed
- * path); returns null if the payload isn't a valid proposal.
- */
-export function mapWorkflowProposal(payload: unknown): WorkflowProposal | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const obj = payload as Record<string, unknown>;
-  if (obj.type !== 'workflow_proposal') return null;
-  if (typeof obj.name !== 'string' || obj.graph == null) return null;
-
-  const summary = (obj.summary ?? {}) as Record<string, unknown>;
-  const rawSteps = Array.isArray(summary.steps) ? summary.steps : [];
-  const steps = rawSteps
-    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
-    .map(s => ({
-      kind: typeof s.kind === 'string' ? s.kind : 'unknown',
-      name: typeof s.name === 'string' ? s.name : '',
-      config_hint: typeof s.config_hint === 'string' ? s.config_hint : undefined,
-    }));
-
-  return {
-    name: obj.name,
-    graph: obj.graph,
-    // The Rust tool defaults `require_approval` to true when omitted, so treat
-    // anything other than an explicit false as true — in lockstep with the server.
-    requireApproval: obj.require_approval !== false,
-    summary: { trigger: typeof summary.trigger === 'string' ? summary.trigger : '', steps },
-  };
-}
-
-/**
  * Run one `workflow_builder` authoring turn via `openhuman.flows_build`. The
  * server renders the agent's brief from `request`, runs the agent to completion,
  * and returns its proposal + final assistant text. This is the backend-agent
@@ -985,11 +1133,37 @@ export async function buildWorkflow(
     result.capped ?? false
   );
   return {
-    proposal: mapWorkflowProposal(result.proposal),
+    proposal: coerceWorkflowProposal(result.proposal),
     assistantText: result.assistant_text ?? '',
     error: result.error ?? null,
     capped: result.capped ?? false,
   };
+}
+
+/**
+ * Cancel the in-flight `flows_build` (Workflow Copilot) turn streaming into
+ * `threadId` via `openhuman.flows_build_cancel` — the real cancellation
+ * behind the composer's Stop button (the RPC actually signals the running
+ * `workflow_builder` agent turn to stop, unlike the shared `chatCancel`
+ * primitive, which only ever tore down a spawned interactive chat turn and
+ * silently no-ops for a `flows_build` turn since it runs inline and was never
+ * registered anywhere `channel_web_cancel` looks).
+ *
+ * `requestId`, when given, scopes the cancel so a stale Stop click for a
+ * superseded/earlier request can't kill a newer turn that has since started
+ * on the same thread (mirrors the server's `cancel_build_turn_scoped`).
+ * Returns the server's `cancelled` field — `false` is not an error, it just
+ * means nothing was in flight to cancel.
+ */
+export async function flowsBuildCancel(threadId: string, requestId?: string): Promise<boolean> {
+  log('flowsBuildCancel: request thread=%s requestId=%s', threadId, requestId ?? '<none>');
+  const response = await callCoreRpc<unknown>({
+    method: 'openhuman.flows_build_cancel',
+    params: { thread_id: threadId, request_id: requestId ?? null },
+  });
+  const result = unwrapCliEnvelope<{ cancelled: boolean }>(response);
+  log('flowsBuildCancel: response cancelled=%s', result.cancelled);
+  return result.cancelled ?? false;
 }
 
 /**
@@ -1023,26 +1197,3 @@ export async function markSuggestionBuilt(id: string): Promise<boolean> {
   log('markSuggestionBuilt: response built=%s', result.built);
   return result.built;
 }
-
-export const flowsApi = {
-  createFlow,
-  importFlow,
-  discoverWorkflows,
-  listSuggestions,
-  dismissSuggestion,
-  markSuggestionBuilt,
-  resumeFlow,
-  listFlowRuns,
-  getFlowRun,
-  getFlow,
-  listFlows,
-  setFlowEnabled,
-  runFlow,
-  updateFlow,
-  deleteFlow,
-  duplicateFlow,
-  validateFlow,
-  listFlowConnections,
-};
-
-export default flowsApi;

@@ -153,19 +153,6 @@ export interface BrowserSettingsUpdate {
   backend?: 'agent_browser' | 'playwright' | 'rust_native' | 'computer_use' | 'auto' | null;
 }
 
-export interface ScreenIntelligenceSettingsUpdate {
-  enabled?: boolean | null;
-  capture_policy?: string | null;
-  policy_mode?: 'all_except_blacklist' | 'whitelist_only' | null;
-  baseline_fps?: number | null;
-  vision_enabled?: boolean | null;
-  autocomplete_enabled?: boolean | null;
-  use_vision_model?: boolean | null;
-  keep_screenshots?: boolean | null;
-  allowlist?: string[] | null;
-  denylist?: string[] | null;
-}
-
 export interface LocalAiSettingsUpdate {
   runtime_enabled?: boolean | null;
   /**
@@ -392,7 +379,7 @@ export async function openhumanClaudeCodeSetFullAccess(
 }
 
 /**
- * Open the user's native terminal and run `claude login` inside it. The
+ * Open the user's native terminal and run `claude auth login` inside it. The
  * CLI's OAuth flow is interactive, so we can't host it in-app — we
  * detach into a terminal window and let the user complete the flow
  * there, then click Recheck back in the settings card.
@@ -454,18 +441,6 @@ export async function openhumanUpdateBrowserSettings(
   });
 }
 
-export async function openhumanUpdateScreenIntelligenceSettings(
-  update: ScreenIntelligenceSettingsUpdate
-): Promise<CommandResponse<ConfigSnapshot>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<ConfigSnapshot>>({
-    method: CORE_RPC_METHODS.configUpdateScreenIntelligenceSettings,
-    params: update,
-  });
-}
-
 // ── Agent access mode (autonomy / filesystem permissions) ───────────────────
 
 export type AutonomyLevel = 'readonly' | 'supervised' | 'full';
@@ -489,6 +464,14 @@ export interface AutonomySettings {
   auto_approve: string[];
   /** Require approval before an agent executes a task-board plan. */
   require_task_plan_approval?: boolean;
+  /**
+   * When true, the approval gate auto-approves ALL tool calls without
+   * prompting — a blanket bypass, not just the `auto_approve` allowlist
+   * above. Subconscious-tainted and unlabelled origins are still denied by
+   * the gate regardless of this flag; hard security blocks are unaffected.
+   * Defaults to `false`.
+   */
+  auto_approve_all?: boolean;
 }
 
 /** Partial update — omitted fields are left unchanged. */
@@ -503,6 +486,8 @@ export interface AutonomySettingsUpdate {
   /** Replaces the "Always allow" allowlist wholesale. */
   auto_approve?: string[];
   require_task_plan_approval?: boolean;
+  /** Blanket "auto-approve everything" bypass. See `AutonomySettings`. */
+  auto_approve_all?: boolean;
 }
 
 export async function openhumanGetAutonomySettings(): Promise<CommandResponse<AutonomySettings>> {
@@ -571,40 +556,6 @@ export async function openhumanUpdateAutonomySettings(
   return await callCoreRpc<CommandResponse<ConfigSnapshot>>({
     method: CORE_RPC_METHODS.configUpdateAutonomySettings,
     params: update,
-  });
-}
-
-// ── "Super context" toggle ───────────────────────────────────────────────────
-
-/**
- * Reads the "super context" flag (`context.super_context_enabled`). When on,
- * the harness runs a read-only context-collection pass on the first turn of a
- * new thread — before the orchestrator LLM runs — and folds the result into the
- * user message. Surfaced as the toggle below the chat composer.
- */
-export async function openhumanGetSuperContextEnabled(): Promise<CommandResponse<boolean>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<boolean>>({
-    method: CORE_RPC_METHODS.configGetSuperContextEnabled,
-  });
-}
-
-/**
- * Enables or disables "super context". Takes effect for threads started after
- * the change (the value is baked into the frozen turn-1 prefix), so toggling it
- * mid-conversation only affects the next new thread.
- */
-export async function openhumanSetSuperContextEnabled(
-  value: boolean
-): Promise<CommandResponse<boolean>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<boolean>>({
-    method: CORE_RPC_METHODS.configSetSuperContextEnabled,
-    params: { value },
   });
 }
 
@@ -779,70 +730,14 @@ export async function openhumanGetAnalyticsSettings(): Promise<
   });
 }
 
-/** Meeting Assistant calendar auto-join policy (issue #3511). */
-export type MeetAutoJoinPolicy = 'ask_each_time' | 'always' | 'never';
-/** Meeting Assistant post-call summary policy. */
-export type MeetAutoSummarizePolicy = 'ask' | 'always' | 'never';
-
-/** Full shape returned by `openhuman.config_get_meet_settings`. */
-export interface MeetSettings {
-  auto_orchestrator_handoff: boolean;
-  auto_join_policy: MeetAutoJoinPolicy;
-  auto_summarize_policy: MeetAutoSummarizePolicy;
-  listen_only_default: boolean;
-  ingest_backend_transcripts: boolean;
-  /** Per-platform auto-join policy overrides. Keys: "gmeet"|"zoom"|"teams"|"webex". */
-  platform_auto_join_policies?: Record<string, MeetAutoJoinPolicy>;
-  /**
-   * Master switch for calendar-driven meeting actions (auto-join / ask-to-join).
-   * Decoupled from the heartbeat reminder-notification toggle.
-   */
-  watch_calendar: boolean;
-  /** Calendar detection source for Google Meet: composio (default) | recall. */
-  calendar_provider?: 'composio' | 'recall';
-  /** The user's meeting display name, reused as the bot's reply anchor on join. */
-  reply_display_name?: string;
-}
-
-/** Partial update accepted by `openhuman.config_update_meet_settings`. */
-export interface MeetSettingsUpdate {
-  auto_orchestrator_handoff?: boolean;
-  auto_join_policy?: MeetAutoJoinPolicy;
-  auto_summarize_policy?: MeetAutoSummarizePolicy;
-  listen_only_default?: boolean;
-  ingest_backend_transcripts?: boolean;
-  /** Per-platform auto-join policy overrides. Keys: "gmeet"|"zoom"|"teams"|"webex". */
-  platform_auto_join_policies?: Record<string, MeetAutoJoinPolicy>;
-  /** Master switch for calendar-driven auto-join / ask-to-join. */
-  watch_calendar?: boolean;
-  /** Calendar detection source for Google Meet: composio (default) | recall. */
-  calendar_provider?: 'composio' | 'recall';
-  /** The user's meeting display name, reused as the bot's reply anchor on join. */
-  reply_display_name?: string;
-}
-
-export async function openhumanUpdateMeetSettings(
-  update: MeetSettingsUpdate
-): Promise<CommandResponse<ConfigSnapshot>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<ConfigSnapshot>>({
-    method: 'openhuman.config_update_meet_settings',
-    params: update,
-  });
-}
-
-export async function openhumanGetMeetSettings(): Promise<CommandResponse<MeetSettings>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<MeetSettings>>({
-    method: 'openhuman.config_get_meet_settings',
-  });
-}
-
-export type SearchEngineId = 'disabled' | 'managed' | 'parallel' | 'brave' | 'querit';
+export type SearchEngineId =
+  | 'disabled'
+  | 'managed'
+  | 'parallel'
+  | 'brave'
+  | 'querit'
+  | 'exa'
+  | 'tavily';
 
 export interface SearchSettingsUpdate {
   engine?: SearchEngineId;
@@ -854,6 +749,16 @@ export interface SearchSettingsUpdate {
   brave_api_key?: string;
   /** Empty string clears the stored key. */
   querit_api_key?: string;
+  /**
+   * Exa API key (BYOK). Empty string clears the stored key. When set and
+   * `engine: 'exa'` is selected, search calls go straight to api.exa.ai.
+   */
+  exa_api_key?: string;
+  /**
+   * Tavily API key (BYOK). Empty string clears the stored key. When set and
+   * `engine: 'tavily'` is selected, search calls go straight to api.tavily.com.
+   */
+  tavily_api_key?: string;
   /**
    * Websites the assistant may open/read (web_fetch / curl). Exact hosts
    * match their subdomains; `"*"` allows all public sites; an empty list
@@ -877,6 +782,8 @@ export interface SearchSettings {
   parallel_configured: boolean;
   brave_configured: boolean;
   querit_configured: boolean;
+  exa_configured: boolean;
+  tavily_configured: boolean;
   /** Current allowed-websites host list (may contain `"*"`). */
   allowed_domains: string[];
   /** True when the allowlist contains the `"*"` wildcard. */

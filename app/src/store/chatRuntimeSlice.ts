@@ -1,7 +1,9 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import debug from 'debug';
 
+import { mapDisplayItems } from '../features/conversations/derived/mapDisplayItems';
 import { threadApi } from '../services/api/threadApi';
+import type { DerivedTranscriptPage } from '../types/derivedTranscript';
 import type { ThreadMessage } from '../types/thread';
 import type {
   AgentRun,
@@ -13,6 +15,7 @@ import type {
   PersistedTurnState,
   TaskBoard,
 } from '../types/turnState';
+import { DERIVED_TRANSCRIPT_ENABLED } from '../utils/config';
 import {
   formatTimelineEntry,
   isKnownClientTool,
@@ -36,6 +39,25 @@ export type ToolTimelineEntryStatus =
   | 'awaiting_user'
   | 'cancelled';
 
+/**
+ * The single answer to "is this row still in flight?".
+ *
+ * `awaiting_user` is in flight. `subagentAwaitingUser` below sets it on the
+ * row's TOP-LEVEL `status` (not only on `subagent.status`) when a delegated
+ * child parks on `ask_user_clarification`, and a turn parked on the user has
+ * not finished — it is blocked, which is the one moment the UI most needs to
+ * keep the row's identity.
+ *
+ * It lives beside the reducer that produces the status because the alternative
+ * was measured: three call sites spelled this out by hand, and the one that
+ * omitted `awaiting_user` lost the delegation exactly during the pause. A
+ * predicate a caller can retype is a predicate that drifts.
+ */
+export function isActiveTimelineStatus(status: string | undefined): boolean {
+  return status === 'running' || status === 'awaiting_user';
+}
+
+/** Live progress of the running turn, as the socket handlers maintain it. */
 export interface InferenceStatus {
   phase: 'thinking' | 'tool_use' | 'subagent';
   iteration: number;
@@ -61,6 +83,29 @@ export interface SubagentActivity {
   agentId: string;
   /** High-level status: `"running"`, `"awaiting_user"`, `"completed"`, `"failed"`. */
   status?: string;
+  /**
+   * The question the sub-agent asked via `ask_user_clarification`, carried on
+   * the `subagent_awaiting_user` event's `message`. Present only while
+   * `status === 'awaiting_user'`; cleared when the delegation resumes.
+   *
+   * Without it the pause is unreadable: the UI can say the child is blocked
+   * but not what on, and the user has nothing to answer.
+   */
+  awaitingQuestion?: string;
+  /**
+   * Identity (`<request_id>:<seq>`) of the `subagent_spawned` event that last
+   * started or resumed this delegation.
+   *
+   * `continue_subagent` announces a resume by republishing `subagent_spawned`
+   * for the same task/agent, so "an existing row got spawned again" is the
+   * only resume signal the frontend gets — and a Socket.IO redelivery of the
+   * ORIGINAL spawn is indistinguishable from it by shape alone. Comparing
+   * identities separates them: a redelivery repeats the pair the core stamped
+   * (`publish_seq_stamped`), a genuine resume never does. Without this a
+   * replay clears a live pause and the child's question disappears while it is
+   * still blocked on the user.
+   */
+  spawnEventId?: string;
   /** Human-readable display name from the agent registry (e.g. "Researcher"). */
   displayName?: string;
   /**
@@ -406,7 +451,7 @@ export function emptySessionTokenUsage(): SessionTokenUsage {
 }
 
 /** Payload accepted by `recordChatTurnUsage` (and applied per turn). */
-export interface ChatTurnUsagePayload {
+interface ChatTurnUsagePayload {
   inputTokens: number;
   outputTokens: number;
   cachedTokens?: number;
@@ -536,6 +581,25 @@ export interface WorkflowProposal {
     /** Ordered non-trigger steps. */
     steps: WorkflowProposalStep[];
   };
+  /**
+   * Id of the persisted thread message this proposal was rehydrated from
+   * (`extraMetadata.scope === 'workflow_proposal'`), when it came from the
+   * durable backstop rather than a live socket event. Save/Dismiss mark that
+   * message `consumed: true` so the card does not resurrect on reload.
+   */
+  sourceMessageId?: string;
+  /**
+   * Id of the flow once `WorkflowProposalCard`'s "Save & enable" has fully
+   * persisted AND enabled it (issue B36). Mirrored into Redux (rather than
+   * living only in the card's component state) because the card
+   * deliberately stays mounted showing a "saved" confirmation after success
+   * instead of dispatching `clearWorkflowProposalForThread` right away — so
+   * a thread/route change can remount the card before the user clicks
+   * "View workflow". Without this, the remount would reset local state to
+   * `null`, fall back to the pre-save editable view, and a second "Save &
+   * enable" click would call `createFlow` again and duplicate the flow.
+   */
+  completedFlowId?: string;
 }
 
 /**
@@ -572,14 +636,6 @@ export interface ArtifactSnapshot {
   /** When the snapshot was last updated, milliseconds since epoch. */
   updatedAt: number;
 }
-
-/**
- * Queue behavior when a turn is already in flight for a thread.
- * `parallel` runs an independent concurrent (forked) turn on the same thread
- * instead of interrupting/queueing — its stream is tracked separately (see
- * `parallelStreamsByThread`) so it renders as its own interleaved branch.
- */
-export type QueueMode = 'interrupt' | 'steer' | 'followup' | 'collect' | 'parallel';
 
 /**
  * Per-thread UI state for an in-flight agent turn (socket events while the user
@@ -640,6 +696,31 @@ interface ChatRuntimeState {
    * rows live in `toolTimelineByThread` and are driven by the socket stream).
    */
   turnTimelinesByThread: Record<string, Record<string, ToolTimelineEntry[]>>;
+  /**
+   * Per-turn processing transcripts (narration / thinking / tool pointers) for
+   * *past* (settled) turns of a thread, keyed `threadId -> requestId -> items`.
+   * Sibling of {@link turnTimelinesByThread}: that map holds the past turn's
+   * tool rows, this one its interleaved reasoning/narration trail so a reopened
+   * thread replays each past answer's thoughts — not just its tool cards
+   * (restore-fidelity fix 1). Hydrated from `turn_state_history`; the live turn
+   * is excluded (its transcript lives in {@link processingByThread}). Absent for
+   * legacy snapshots written before the transcript field existed.
+   */
+  turnTranscriptsByThread: Record<string, Record<string, ProcessingTranscriptItem[]>>;
+  /**
+   * The partial assistant answer left behind by an INTERRUPTED turn (the core
+   * process that was streaming it is gone), keyed by thread. Surfaced on restore
+   * so a turn that crashed mid-answer keeps its visible partial reply + hidden
+   * reasoning instead of dropping them (restore-fidelity fix 2). Unlike
+   * {@link streamingAssistantByThread} this is a SETTLED, non-live buffer: it is
+   * rendered statically (no pulsing cursor) and marked interrupted. Populated
+   * only when an interrupted snapshot carries `streamingText`/`thinking`;
+   * cleared on any live turn, a completed snapshot, or a thread reset.
+   */
+  interruptedAssistantByThread: Record<
+    string,
+    { requestId: string; content: string; thinking: string }
+  >;
   /**
    * Ordered narration/thinking/tool transcript per thread for the
    * "View processing" panel — the interleaved Hermes-style record. Hydrated
@@ -726,6 +807,8 @@ const initialState: ChatRuntimeState = {
   toolTimelineByThread: {},
   toolTimelineSeqByThread: {},
   turnTimelinesByThread: {},
+  turnTranscriptsByThread: {},
+  interruptedAssistantByThread: {},
   processingByThread: {},
   taskBoardByThread: {},
   inferenceTurnLifecycleByThread: {},
@@ -769,6 +852,10 @@ function subagentToolCallFromPersisted(call: PersistedSubagentToolCall): Subagen
     outputChars: call.outputChars,
     displayName: call.displayName,
     detail: call.detail,
+    // Carry the persisted arguments so a rehydrated child row keeps its input
+    // block, and a degraded generic `tool` name can still derive its search
+    // label from `query` (#5987).
+    args: call.args,
     // Carry the persisted failure explanation across the round-trip (#4459).
     failure: parseToolFailure(call.failure),
     // Carry the persisted (capped) result text so a rehydrated child row can
@@ -829,6 +916,29 @@ function subagentTranscriptItemFromPersisted(
 }
 
 function subagentActivityFromPersisted(activity: PersistedSubagentActivity): SubagentActivity {
+  const toolCalls = activity.toolCalls.map(subagentToolCallFromPersisted);
+  const transcript =
+    activity.transcript && activity.transcript.length > 0
+      ? activity.transcript.map(item => {
+          const mapped = subagentTranscriptItemFromPersisted(item);
+          if (mapped.kind !== 'tool') return mapped;
+          const call = toolCalls.find(candidate => candidate.callId === mapped.callId);
+          return call
+            ? { ...mapped, args: call.args, result: call.result, failure: call.failure }
+            : mapped;
+        })
+      : toolCalls.map(call => ({
+          kind: 'tool' as const,
+          iteration: call.iteration,
+          callId: call.callId,
+          toolName: call.toolName,
+          status: call.status,
+          elapsedMs: call.elapsedMs,
+          outputChars: call.outputChars,
+          args: call.args,
+          result: call.result,
+          failure: call.failure,
+        }));
   return {
     taskId: activity.taskId,
     agentId: activity.agentId,
@@ -841,24 +951,33 @@ function subagentActivityFromPersisted(activity: PersistedSubagentActivity): Sub
     iterations: activity.iterations,
     elapsedMs: activity.elapsedMs,
     outputChars: activity.outputChars,
-    toolCalls: activity.toolCalls.map(subagentToolCallFromPersisted),
+    toolCalls,
     // Prefer the persisted prose transcript (reasoning/narration interleaved
     // with tools) so a settled / reloaded run replays its thoughts. Fall back
     // to a tool-only rebuild for snapshots written before sub-agent prose was
     // persisted (the `transcript` field is absent there).
-    transcript:
-      activity.transcript && activity.transcript.length > 0
-        ? activity.transcript.map(subagentTranscriptItemFromPersisted)
-        : activity.toolCalls.map(call => ({
-            kind: 'tool' as const,
-            iteration: call.iteration,
-            callId: call.callId,
-            toolName: call.toolName,
-            status: call.status,
-            elapsedMs: call.elapsedMs,
-            outputChars: call.outputChars,
-          })),
+    transcript,
   };
+}
+
+/**
+ * Order a persisted processing transcript by its per-item `seq` when every item
+ * carries one, falling back to the array (arrival) order otherwise
+ * (restore-fidelity fix 5: prefer `seq` for replay ordering when present). The
+ * core already writes items in `seq` order, so this is a defensive stable sort
+ * that also tolerates a snapshot whose items were reordered in transit. A stable
+ * sort preserves arrival order for any items that happen to share a `seq`.
+ */
+function orderTranscriptBySeq(items: ProcessingTranscriptItem[]): ProcessingTranscriptItem[] {
+  if (items.length < 2) return items;
+  const allHaveSeq = items.every(item => typeof item.seq === 'number');
+  if (!allHaveSeq) return items;
+  // `.sort` is stable in modern engines; map to (item, index) to make the
+  // tie-break on equal `seq` explicit rather than engine-dependent.
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => a.item.seq - b.item.seq || a.index - b.index)
+    .map(({ item }) => item);
 }
 
 /**
@@ -1078,9 +1197,22 @@ const chatRuntimeSlice = createSlice({
      */
     setTurnTimelinesForThread: (
       state,
-      action: PayloadAction<{ threadId: string; timelines: Record<string, ToolTimelineEntry[]> }>
+      action: PayloadAction<{
+        threadId: string;
+        timelines: Record<string, ToolTimelineEntry[]>;
+        transcripts?: Record<string, ProcessingTranscriptItem[]>;
+      }>
     ) => {
-      state.turnTimelinesByThread[action.payload.threadId] = action.payload.timelines;
+      const { threadId, timelines, transcripts } = action.payload;
+      state.turnTimelinesByThread[threadId] = timelines;
+      if (transcripts) {
+        state.turnTranscriptsByThread[threadId] = transcripts;
+        turnStateLog(
+          'past-turn transcripts set thread=%s turns=%d',
+          threadId,
+          Object.keys(transcripts).length
+        );
+      }
     },
     /** Reset the live processing transcript at the start of a fresh turn so a
      *  new turn's narration/steps don't append onto the previous turn's. */
@@ -1112,16 +1244,6 @@ const chatRuntimeSlice = createSlice({
       }
       list.push({ kind, round, seq: list.length, text: delta });
     },
-    /** Record a tool call in the live processing transcript at its position. */
-    recordProcessingTool: (
-      state,
-      action: PayloadAction<{ threadId: string; round: number; callId: string }>
-    ) => {
-      const { threadId, round, callId } = action.payload;
-      const list = (state.processingByThread[threadId] ??= []);
-      if (list.some(i => i.kind === 'toolCall' && i.callId === callId)) return;
-      list.push({ kind: 'toolCall', round, seq: list.length, callId });
-    },
     /**
      * Reducer-side merge for a `tool_call` socket event (Phase 3 — replaces the
      * provider's `getState()` + find-row + full-array-rebuild). Upserts the row
@@ -1139,7 +1261,18 @@ const chatRuntimeSlice = createSlice({
         displayDetail?: string;
       }>
     ) => {
-      const { threadId, round, toolName, toolCallId, displayLabel, displayDetail } = action.payload;
+      const { threadId, round, toolName, displayLabel, displayDetail } = action.payload;
+      // Normalise an absent id to `undefined` *before* anything reads it. A
+      // provider that sends `tool_call_id: ""` is saying "no id", but `??` only
+      // falls back on null/undefined — so the empty string used to survive as
+      // the row id, and every such call in a turn got the same one. Downstream
+      // that is fatal, not cosmetic: assistant-ui keys message parts as
+      // `toolCallId-${id}`, so two id-less calls collide on the literal key
+      // `toolCallId-` and `useResources` throws "Duplicate key toolCallId-",
+      // taking the whole thread render down. The two guards below already
+      // treated `""` as absent (both are truthiness checks); only the id
+      // fallback disagreed.
+      const toolCallId = action.payload.toolCallId || undefined;
       const entries = (state.toolTimelineByThread[threadId] ??= []);
       const existingIdx = toolCallId ? entries.findIndex(e => e.id === toolCallId) : -1;
       // Stable row id, shared with the processing-transcript tool pointer so the
@@ -1194,7 +1327,11 @@ const chatRuntimeSlice = createSlice({
         failure?: unknown;
       }>
     ) => {
-      const { threadId, round, toolName, toolCallId, success, output, failure } = action.payload;
+      const { threadId, round, toolName, success, output, failure } = action.payload;
+      // Same normalisation as `toolCallReceived` — an empty id must not match a
+      // row whose id is the generated fallback, and must fall through to the
+      // name+round scan below.
+      const toolCallId = action.payload.toolCallId || undefined;
       const entries = state.toolTimelineByThread[threadId];
       if (!entries || entries.length === 0) return;
       const status: ToolTimelineEntryStatus = success ? 'success' : 'error';
@@ -1299,7 +1436,10 @@ const chatRuntimeSlice = createSlice({
         toolCallId?: string;
       }>
     ) => {
-      const { threadId, round, delta, toolName, toolCallId } = action.payload;
+      const { threadId, round, delta, toolName } = action.payload;
+      // `""` means "no id" — see `toolCallReceived` for why the empty string
+      // must never reach a row id.
+      const toolCallId = action.payload.toolCallId || undefined;
       const entries = (state.toolTimelineByThread[threadId] ??= []);
       let matchIdx = -1;
       if (toolCallId) matchIdx = entries.findIndex(e => e.id === toolCallId);
@@ -1320,7 +1460,11 @@ const chatRuntimeSlice = createSlice({
         state.toolTimelineSeqByThread[threadId] = seq + 1;
         entries.push(
           decorateEntry({
-            id: toolCallId ?? '',
+            // Same stable fallback `toolCallReceived` generates. This branch
+            // used to write `''`, so an args-delta that arrived before its
+            // `tool_call` event with no id produced an id-less row — and a
+            // second one collided with it.
+            id: toolCallId ?? `${threadId}:${round}:${entries.length}:${toolName ?? ''}`,
             name: toolName ?? '',
             round,
             seq,
@@ -1348,6 +1492,8 @@ const chatRuntimeSlice = createSlice({
         workerThreadId?: string;
         mode?: string;
         dedicatedThread?: boolean;
+        /** `<request_id>:<seq>` of the emitting event; see {@link SubagentActivity.spawnEventId}. */
+        spawnEventId?: string;
       }>
     ) => {
       const {
@@ -1360,12 +1506,48 @@ const chatRuntimeSlice = createSlice({
         workerThreadId,
         mode,
         dedicatedThread,
+        spawnEventId,
       } = action.payload;
       const entries = (state.toolTimelineByThread[threadId] ??= []);
       // Idempotent: a socket redelivery must not append a second row with the
       // same id (later updates find only the first). Not gated by the provider's
       // event-seen map, so guard here.
-      if (entries.some(e => e.id === rowId)) return;
+      const existing = entries.find(e => e.id === rowId);
+      if (existing) {
+        // ...with one exception. `continue_subagent` republishes
+        // `subagent_spawned` for the SAME task/agent when it resumes a paused
+        // child (continue_subagent.rs:330), and that is the only signal the
+        // frontend gets that the pause is over. Swallowing it left the row
+        // stuck on `awaiting_user` for the rest of the run: the card kept
+        // asking a question the user had already answered.
+        //
+        // But "the row already exists and got spawned again" is ALSO what a
+        // redelivered original spawn looks like, and this socket redelivers
+        // often. So the unpark is gated on event identity: only a spawn the
+        // row has not already been started by can be a resume. A replay
+        // repeats the identity the core stamped and is ignored, which is the
+        // safe direction to fail — a stale question is visible and recoverable
+        // (`subagent_done` still settles the row), a silently cleared one
+        // leaves the user staring at a spinner with nothing to answer.
+        //
+        // Unidentifiable events (an older core with no `seq`, replaying inside
+        // one request) collapse to the same string and are therefore treated
+        // as replays, deliberately: the cross-turn resume that matters carries
+        // a different `request_id` regardless.
+        const isResume =
+          existing.status === 'awaiting_user' &&
+          spawnEventId !== undefined &&
+          spawnEventId !== existing.subagent?.spawnEventId;
+        if (isResume) {
+          existing.status = 'running';
+          if (existing.subagent) {
+            existing.subagent.status = 'running';
+            existing.subagent.awaitingQuestion = undefined;
+            existing.subagent.spawnEventId = spawnEventId;
+          }
+        }
+        return;
+      }
       const pending = findPendingDelegationContext(entries, round);
       // Collapse the parent spawn/delegate row into the subagent row so the
       // timeline shows one entry per delegation.
@@ -1389,6 +1571,7 @@ const chatRuntimeSlice = createSlice({
             agentId,
             displayName,
             workerThreadId,
+            spawnEventId,
             mode,
             dedicatedThread,
             prompt: pending.prompt,
@@ -1398,13 +1581,22 @@ const chatRuntimeSlice = createSlice({
         })
       );
     },
-    subagentAwaitingUser: (state, action: PayloadAction<{ threadId: string; rowId: string }>) => {
+    subagentAwaitingUser: (
+      state,
+      action: PayloadAction<{ threadId: string; rowId: string; question?: string }>
+    ) => {
       const entry = state.toolTimelineByThread[action.payload.threadId]?.find(
         e => e.id === action.payload.rowId && e.status === 'running'
       );
       if (!entry) return;
       entry.status = 'awaiting_user';
-      if (entry.subagent) entry.subagent.status = 'awaiting_user';
+      if (entry.subagent) {
+        entry.subagent.status = 'awaiting_user';
+        // The question is the whole point of the pause. Keep the previous one
+        // if this event carried none rather than blanking a readable prompt.
+        const question = action.payload.question?.trim();
+        if (question) entry.subagent.awaitingQuestion = question;
+      }
     },
     subagentDone: (
       state,
@@ -1679,6 +1871,23 @@ const chatRuntimeSlice = createSlice({
       delete state.pendingWorkflowProposalsByThread[action.payload.threadId];
     },
     /**
+     * Record that a pending workflow proposal's flow finished saving AND
+     * enabling (issue B36), so `WorkflowProposalCard`'s terminal "saved"
+     * state survives a remount (thread switch, route change) while the
+     * proposal is still sitting in `pendingWorkflowProposalsByThread` — see
+     * `WorkflowProposal.completedFlowId`. No-op if the proposal was already
+     * cleared (e.g. a race with `clearWorkflowProposalForThread`).
+     */
+    markWorkflowProposalCompleted: (
+      state,
+      action: PayloadAction<{ threadId: string; flowId: string }>
+    ) => {
+      const proposal = state.pendingWorkflowProposalsByThread[action.payload.threadId];
+      if (proposal) {
+        proposal.completedFlowId = action.payload.flowId;
+      }
+    },
+    /**
      * Mark a producer-tool call as in-flight so the `ArtifactCard` can
      * render a spinner before any ready/failed event arrives. Caller
      * usually fires this off the corresponding `ChatToolCallEvent`
@@ -1857,6 +2066,7 @@ const chatRuntimeSlice = createSlice({
     clearRuntimeForThread: (state, action: PayloadAction<{ threadId: string }>) => {
       delete state.inferenceStatusByThread[action.payload.threadId];
       delete state.streamingAssistantByThread[action.payload.threadId];
+      delete state.interruptedAssistantByThread[action.payload.threadId];
       delete state.inferenceHeartbeatByThread[action.payload.threadId];
       // Drop any parallel (forked) streams for this thread and their
       // request→thread mappings — a hard per-thread reset covers every branch.
@@ -1893,6 +2103,8 @@ const chatRuntimeSlice = createSlice({
       state.toolTimelineByThread = {};
       state.toolTimelineSeqByThread = {};
       state.turnTimelinesByThread = {};
+      state.turnTranscriptsByThread = {};
+      state.interruptedAssistantByThread = {};
       state.processingByThread = {};
       state.taskBoardByThread = {};
       state.inferenceTurnLifecycleByThread = {};
@@ -2002,6 +2214,9 @@ const chatRuntimeSlice = createSlice({
         if (snapshot.taskBoard) {
           state.taskBoardByThread[threadId] = snapshot.taskBoard;
         }
+        // A live turn is driving the thread — any interrupted partial from a
+        // prior crashed turn is superseded and must not linger under it.
+        delete state.interruptedAssistantByThread[threadId];
         return;
       }
 
@@ -2070,7 +2285,32 @@ const chatRuntimeSlice = createSlice({
           // up rather than restarting at 0 and colliding with existing seqs.
           state.toolTimelineSeqByThread[threadId] = snapshot.toolTimeline.length;
         }
-        state.processingByThread[threadId] = snapshot.transcript ?? [];
+        // An interrupted turn was killed mid-answer (its core process is gone,
+        // so no `chat_done` will ever complete it). The partial reply +
+        // reasoning it had already streamed are persisted — surface them as a
+        // SETTLED buffer (rendered static + marked interrupted, not as a live
+        // pulsing stream) instead of dropping them (restore-fidelity fix 2). A
+        // `completed` turn's answer is the durable message, so it has no partial
+        // to keep — clear any stale interrupted buffer for the thread instead.
+        if (
+          snapshot.lifecycle === 'interrupted' &&
+          (snapshot.streamingText.length > 0 || snapshot.thinking.length > 0)
+        ) {
+          state.interruptedAssistantByThread[threadId] = {
+            requestId: snapshot.requestId,
+            content: snapshot.streamingText,
+            thinking: snapshot.thinking,
+          };
+          turnStateLog(
+            'interrupted partial kept thread=%s chars=%d thinkingChars=%d',
+            threadId,
+            snapshot.streamingText.length,
+            snapshot.thinking.length
+          );
+        } else {
+          delete state.interruptedAssistantByThread[threadId];
+        }
+        state.processingByThread[threadId] = orderTranscriptBySeq(snapshot.transcript ?? []);
         return;
       }
 
@@ -2095,6 +2335,9 @@ const chatRuntimeSlice = createSlice({
       } else {
         delete state.streamingAssistantByThread[threadId];
       }
+      // This snapshot is in-flight (a live driver may be resuming it), not a
+      // settled interruption — drop any stale interrupted partial for the thread.
+      delete state.interruptedAssistantByThread[threadId];
 
       state.toolTimelineByThread[threadId] = preserveLiveSubagentProse(
         state.toolTimelineByThread[threadId],
@@ -2103,7 +2346,7 @@ const chatRuntimeSlice = createSlice({
       // Persisted order is issue order — seed the live counter with the row
       // count so events arriving after this hydration keep counting up.
       state.toolTimelineSeqByThread[threadId] = snapshot.toolTimeline.length;
-      state.processingByThread[threadId] = snapshot.transcript ?? [];
+      state.processingByThread[threadId] = orderTranscriptBySeq(snapshot.transcript ?? []);
     },
     /**
      * Rebuild durable historical subagent rows from the run ledger. This is
@@ -2169,7 +2412,6 @@ export const {
   toolResultReceived,
   clearProcessingForThread,
   appendProcessingProse,
-  recordProcessingTool,
   markSubagentCancelled,
   appendSubagentStreamDelta,
   recordSubagentTranscriptTool,
@@ -2182,6 +2424,7 @@ export const {
   clearPendingPlanReviewForThread,
   setWorkflowProposalForThread,
   clearWorkflowProposalForThread,
+  markWorkflowProposalCompleted,
   upsertArtifactInProgressForThread,
   upsertArtifactReadyForThread,
   upsertArtifactFailedForThread,
@@ -2246,6 +2489,34 @@ export const fetchAndHydrateTurnState = createAsyncThunk(
 );
 
 /**
+ * Wait briefly for the progress bridge to flush its terminal snapshot, then
+ * hydrate it. `chat_done` is delivered by the response presenter while the
+ * bridge may still be consuming the final `TurnCompleted` event; reading once
+ * at that boundary can otherwise install an intermediate, last-round-only
+ * transcript over the just-settled UI.
+ */
+export const fetchAndHydrateCompletedTurnState = createAsyncThunk(
+  'chatRuntime/fetchAndHydrateCompletedTurnState',
+  async (threadId: string, { dispatch }) => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const snapshot = await threadApi.getTurnState(threadId);
+        if (snapshot?.lifecycle === 'completed') {
+          dispatch(hydrateRuntimeFromSnapshot({ snapshot }));
+          return snapshot;
+        }
+      } catch (error) {
+        turnStateLog('completed snapshot fetch failed thread=%s err=%O', threadId, error);
+        return null;
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+    }
+    turnStateLog('completed snapshot did not arrive thread=%s', threadId);
+    return null;
+  }
+);
+
+/**
  * Fetch the per-turn history for a thread and populate
  * {@link ChatRuntimeState.turnTimelinesByThread} so each *past* answer renders
  * its own process trail (Phase 5). Only settled turns (completed / interrupted)
@@ -2259,28 +2530,142 @@ export const fetchAndHydrateTurnHistory = createAsyncThunk(
     try {
       const history = await threadApi.getTurnStateHistory(threadId);
       const timelines: Record<string, ToolTimelineEntry[]> = {};
+      const transcripts: Record<string, ProcessingTranscriptItem[]> = {};
       // History is newest-first; the newest turn is the one `getTurnState`
       // hydrates into `toolTimelineByThread` (rendered as the live/anchored
       // "agent insights"), so skip it here to avoid rendering it twice — this
       // field holds only the *older* settled turns.
       for (const turn of history.slice(1)) {
         if (turn.lifecycle !== 'completed' && turn.lifecycle !== 'interrupted') continue;
-        if (!turn.requestId || turn.toolTimeline.length === 0) continue;
-        timelines[turn.requestId] = turn.toolTimeline.map((e, seq) =>
-          toolTimelineFromPersisted(e, seq)
-        );
+        if (!turn.requestId) continue;
+        // A past turn can have a reasoning/narration trail with NO tool calls
+        // (the agent only thought/narrated). Keep the turn whenever it has
+        // either a tool timeline OR a transcript so a tool-less answer still
+        // replays its thoughts (restore-fidelity fix 1) — the old
+        // `toolTimeline.length === 0` skip dropped those turns entirely.
+        const hasTools = turn.toolTimeline.length > 0;
+        const persistedTranscript = turn.transcript ?? [];
+        const hasTranscript = persistedTranscript.length > 0;
+        if (!hasTools && !hasTranscript) continue;
+        if (hasTools) {
+          timelines[turn.requestId] = turn.toolTimeline.map((e, seq) =>
+            toolTimelineFromPersisted(e, seq)
+          );
+        }
+        if (hasTranscript) {
+          // Prefer persisted `seq` for replay order, falling back to array
+          // order (restore-fidelity fix 5).
+          transcripts[turn.requestId] = orderTranscriptBySeq(persistedTranscript);
+        }
       }
       turnStateLog(
-        'hydrated turn history thread=%s turns=%d',
+        'hydrated turn history thread=%s timelines=%d transcripts=%d',
         threadId,
-        Object.keys(timelines).length
+        Object.keys(timelines).length,
+        Object.keys(transcripts).length
       );
-      dispatch(setTurnTimelinesForThread({ threadId, timelines }));
+      dispatch(setTurnTimelinesForThread({ threadId, timelines, transcripts }));
       return timelines;
     } catch (error) {
       turnStateLog('history fetch failed thread=%s err=%O', threadId, error);
       return null;
     }
+  }
+);
+
+/**
+ * Initial derived-transcript page size. Sized generously (the core clamps to
+ * 500) so a reopened thread's visible turns all carry their process trail
+ * without a second round-trip.
+ */
+const DERIVED_TRANSCRIPT_INITIAL_LIMIT = 500;
+
+const derivedLog = debug('chatRuntime.derivedTranscript');
+
+/**
+ * Read the {@link ChatRuntimeState} out of an arbitrary redux root, tolerating
+ * both the app store (`state.chatRuntime`) and a bare test store whose root IS
+ * the slice state. Used only to read live-turn request ids for the skip set.
+ */
+function readChatRuntimeState(state: unknown): ChatRuntimeState | undefined {
+  if (!state || typeof state !== 'object') return undefined;
+  const root = state as Record<string, unknown>;
+  if ('chatRuntime' in root && root.chatRuntime && typeof root.chatRuntime === 'object') {
+    return root.chatRuntime as ChatRuntimeState;
+  }
+  if ('streamingAssistantByThread' in root) {
+    return root as unknown as ChatRuntimeState;
+  }
+  return undefined;
+}
+
+/**
+ * The request ids whose derived trail must NOT be hydrated: only turns that
+ * are provably active in this renderer. Do not infer "live" from whichever
+ * request happens to be newest in one transcript file: detached/background
+ * delivery runs in a separate session, so the root file's newest request can
+ * already be historical and must remain visible.
+ */
+function liveRequestIdsToSkip(state: unknown, threadId: string): Set<string> {
+  const skip = new Set<string>();
+  const runtime = readChatRuntimeState(state);
+  const streamingRid = runtime?.streamingAssistantByThread[threadId]?.requestId;
+  if (streamingRid) skip.add(streamingRid);
+  for (const [rid, mappedThread] of Object.entries(runtime?.parallelRequestThreads ?? {})) {
+    if (mappedThread === threadId) skip.add(rid);
+  }
+  return skip;
+}
+
+/**
+ * Phase C settled-turn restore: hydrate past-turn process trails from the
+ * transcript-derived projection (`openhuman.threads_transcript_get`) instead of
+ * the legacy `turn_state_history` snapshot ring. Populates the SAME
+ * {@link ChatRuntimeState.turnTimelinesByThread} /
+ * {@link ChatRuntimeState.turnTranscriptsByThread} the legacy path did, so the
+ * renderers are reused unchanged. The live/most-recent turn is skipped so
+ * derived data never fights socket-fed live state.
+ *
+ * Automatic fallback to {@link fetchAndHydrateTurnHistory} when the flag is
+ * off, the RPC errors, or the thread has no persisted transcript (legacy
+ * thread). Failures never block navigation.
+ */
+export const fetchAndHydrateDerivedTranscript = createAsyncThunk(
+  'chatRuntime/fetchAndHydrateDerivedTranscript',
+  async (threadId: string, { dispatch, getState }) => {
+    if (!DERIVED_TRANSCRIPT_ENABLED) {
+      derivedLog('disabled thread=%s -> turn_state history', threadId);
+      await dispatch(fetchAndHydrateTurnHistory(threadId));
+      return null;
+    }
+    let page: DerivedTranscriptPage;
+    try {
+      page = await threadApi.getDerivedTranscript(threadId, {
+        limit: DERIVED_TRANSCRIPT_INITIAL_LIMIT,
+      });
+    } catch (error) {
+      derivedLog('rpc failed thread=%s err=%O -> turn_state history fallback', threadId, error);
+      await dispatch(fetchAndHydrateTurnHistory(threadId));
+      return null;
+    }
+    if (!page.hasTranscript) {
+      derivedLog('no transcript thread=%s -> turn_state history fallback (legacy)', threadId);
+      await dispatch(fetchAndHydrateTurnHistory(threadId));
+      return null;
+    }
+    const skipRequestIds = liveRequestIdsToSkip(getState(), threadId);
+    const { timelines, transcripts } = mapDisplayItems(page.items, { skipRequestIds });
+    derivedLog(
+      'hydrated thread=%s items=%d timelines=%d transcripts=%d skip=%d hasMore=%s',
+      threadId,
+      page.items.length,
+      Object.keys(timelines).length,
+      Object.keys(transcripts).length,
+      skipRequestIds.size,
+      page.hasMore
+    );
+    dispatch(setTurnTimelinesForThread({ threadId, timelines, transcripts }));
+    return { timelines, transcripts, nextCursor: page.nextCursor ?? null, hasMore: page.hasMore };
   }
 );
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::openhuman::agent::profiles::AgentProfileStore;
 use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::profiles::AgentProfileStore;
 use crate::openhuman::threads::turn_state::TurnStateStore;
 
 use super::ops::{key_for, BudgetCorrelation, THREAD_SESSIONS};
@@ -163,38 +163,61 @@ pub(crate) async fn run_chat_task(
         ),
     };
 
-    // Cold-boot resume from the conversation JSONL.
+    // Cold-boot resume. Prefer the full-fidelity `session_raw/{stem}.jsonl`
+    // transcript (tool calls, tool-role results, reasoning) routed by thread
+    // id — the model must not "forget" its tool interactions across an app
+    // restart. Only fall back to the lossy conversation-log prose pairs when
+    // no root transcript exists for the thread or it fails to load; the two
+    // sources overlap (user prompts + final assistant text), so we take one
+    // or the other, never both, to avoid duplicated context.
     if was_built_fresh {
-        match crate::openhuman::memory_conversations::get_messages(
-            config.workspace_dir.clone(),
-            thread_id,
-        ) {
-            Ok(prior_messages) if !prior_messages.is_empty() => {
-                let pairs: Vec<(String, String)> = prior_messages
-                    .into_iter()
-                    .map(|m| (m.sender, m.content))
-                    .collect();
-                if let Err(err) = agent.seed_resume_from_messages(pairs, message) {
+        if agent.seed_resume_from_thread_transcript(thread_id) {
+            log::info!(
+                "[web-channel] cold-boot resumed thread={} from full-fidelity session transcript",
+                thread_id
+            );
+        } else {
+            log::debug!(
+                "[web-channel] no usable session transcript for thread={} — seeding resume \
+                 from conversation-log prose",
+                thread_id
+            );
+            // Blocking pool: the store takes a process-global mutex and reads
+            // the thread's whole JSONL under it, so doing this inline parked an
+            // async worker on the chat hot path (#5156).
+            match crate::openhuman::memory::conversations::blocking::get_messages(
+                config.workspace_dir.clone(),
+                thread_id.to_string(),
+            )
+            .await
+            {
+                Ok(prior_messages) if !prior_messages.is_empty() => {
+                    let pairs: Vec<(String, String)> = prior_messages
+                        .into_iter()
+                        .map(|m| (m.sender, m.content))
+                        .collect();
+                    if let Err(err) = agent.seed_resume_from_messages(pairs, message) {
+                        log::warn!(
+                            "[web-channel] failed to seed agent resume from conversation log \
+                             thread={} err={}",
+                            thread_id,
+                            err
+                        );
+                    }
+                }
+                Ok(_) => {
+                    log::debug!(
+                        "[web-channel] no prior messages to seed for thread={} — first turn",
+                        thread_id
+                    );
+                }
+                Err(err) => {
                     log::warn!(
-                        "[web-channel] failed to seed agent resume from conversation log \
-                         thread={} err={}",
+                        "[web-channel] failed to read conversation log for resume thread={} err={}",
                         thread_id,
                         err
                     );
                 }
-            }
-            Ok(_) => {
-                log::debug!(
-                    "[web-channel] no prior messages to seed for thread={} — first turn",
-                    thread_id
-                );
-            }
-            Err(err) => {
-                log::warn!(
-                    "[web-channel] failed to read conversation log for resume thread={} err={}",
-                    thread_id,
-                    err
-                );
             }
         }
     }
@@ -233,7 +256,7 @@ pub(crate) async fn run_chat_task(
     // this already-large `run_chat_task` frame (which otherwise overflows the
     // default test-thread stack — see the channels web-turn coverage tests).
     let turn = Box::pin(agent.run_single(message));
-    let result = match crate::openhuman::inference::provider::thread_context::with_thread_id(
+    let result = match crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
         thread_id.to_string(),
         crate::openhuman::memory::source_scope::with_source_scope(
             profile.memory_sources.clone(),
@@ -247,12 +270,13 @@ pub(crate) async fn run_chat_task(
             // any stale budget-exhausted signal before it could mislabel a
             // later genuine empty response. See #3386.
             super::ops::clear_budget_signal(thread_id).await;
-            let citations = agent.take_last_turn_citations();
+            let citations = agent.take_last_turn_citations().await;
             let usage = agent.take_last_turn_usage_totals();
             Ok(WebChatTaskResult {
                 full_response: response,
                 citations,
                 usage,
+                workspace_dir: config.workspace_dir.clone(),
             })
         }
         Err(err) => {
@@ -283,6 +307,7 @@ pub(crate) async fn run_chat_task(
                         full_response: inference_budget_exceeded_user_message().to_string(),
                         citations: Vec::new(),
                         usage: None,
+                        workspace_dir: config.workspace_dir.clone(),
                     })
                 }
                 BudgetCorrelation::UpgradeEmptyToBudget => {
@@ -301,6 +326,7 @@ pub(crate) async fn run_chat_task(
                         full_response: inference_budget_exceeded_user_message().to_string(),
                         citations: Vec::new(),
                         usage: None,
+                        workspace_dir: config.workspace_dir.clone(),
                     })
                 }
                 BudgetCorrelation::PassThrough => Err(err_message),
@@ -416,88 +442,5 @@ fn turn_result_poisoned_session(result: &Result<WebChatTaskResult, String>) -> b
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn ok() -> Result<WebChatTaskResult, String> {
-        Ok(WebChatTaskResult {
-            full_response: "hello".to_string(),
-            citations: Vec::new(),
-            usage: None,
-        })
-    }
-
-    #[test]
-    fn poisoned_on_managed_sse_bad_request_frame() {
-        // Managed backend 400: flushed HTTP 200, then an in-stream SSE error
-        // frame stamped errorCode:"BAD_REQUEST" — the exact shape the de-poison
-        // guard must catch (no HTTP 400 status anywhere in the string). Payload
-        // mirrors the real backend frame verified against tinyhumansai/backend
-        // upstream/develop `routes/inference.ts::writeInferenceSSE`
-        // ({error:{message,type:"stream_error",errorCode}}), wrapped by the
-        // client's `sse_error_frame_bail_message` as
-        // "OpenHuman streaming API error: <payload>". `validateToolMessageOrdering`
-        // throws BadRequestError (errorCode=BAD_REQUEST) for an orphaned tool_call_id.
-        let err: Result<WebChatTaskResult, String> = Err(
-            "OpenHuman streaming API error: {\"error\":{\"message\":\"Message has tool role, \
-             but there was no previous assistant message with a tool call!\",\
-             \"type\":\"stream_error\",\"errorCode\":\"BAD_REQUEST\"}}"
-                .to_string(),
-        );
-        assert!(turn_result_poisoned_session(&err));
-    }
-
-    #[test]
-    fn poisoned_on_byo_provider_tool_ordering_400() {
-        // BYO/direct provider tool-ordering rejection — classifies as a
-        // *retryable* provider_request_rejected (poisoned history), so it evicts.
-        let err: Result<WebChatTaskResult, String> = Err(
-            "OpenAI API error (400 Bad Request): {\"error\":{\"message\":\"Invalid parameter: \
-             messages with role 'tool' must be a response to a preceding message with \
-             'tool_calls'.\"}}"
-                .to_string(),
-        );
-        assert!(turn_result_poisoned_session(&err));
-    }
-
-    #[test]
-    fn genuine_param_400_keeps_warm_session() {
-        // A non-poisoning model/parameter 400 is a *non-retryable*
-        // provider_request_rejected — narrowing on `&& retryable` must keep its
-        // warm session (resending the same params won't help; no reseed needed).
-        let err: Result<WebChatTaskResult, String> = Err(
-            "custom_openai API error (400 Bad Request): {\"error\":{\"message\":\
-             \"Unsupported value: 'temperature' must be 1 for this model\"}}"
-                .to_string(),
-        );
-        assert!(
-            !turn_result_poisoned_session(&err),
-            "non-retryable param 400 is not poisoned history — keep warm session"
-        );
-    }
-
-    #[test]
-    fn transient_failures_keep_warm_session() {
-        for raw in [
-            // rate limit / 429 — history is fine, user should retry warm
-            "OpenAI API error (429 Too Many Requests): slow down",
-            // timeout
-            "request timed out while reading response",
-            // upstream 5xx
-            "OpenAI API error (503 Service Unavailable): no healthy upstream",
-            // session expiry — not a payload problem
-            "SESSION_EXPIRED: backend session not active — sign in to resume LLM work",
-        ] {
-            let err: Result<WebChatTaskResult, String> = Err(raw.to_string());
-            assert!(
-                !turn_result_poisoned_session(&err),
-                "transient/non-payload error must keep warm session: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn success_keeps_warm_session() {
-        assert!(!turn_result_poisoned_session(&ok()));
-    }
-}
+#[path = "run_task_tests.rs"]
+mod tests;

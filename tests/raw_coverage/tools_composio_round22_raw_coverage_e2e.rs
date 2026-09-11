@@ -452,7 +452,6 @@ async fn round22_tool_registry_covers_config_gated_registration() {
         "example.com".to_string(),
         "docs.example.com".to_string(),
     ];
-    harness.config.computer_control.enabled = true;
     harness.config.learning.enabled = true;
     harness.config.learning.tool_tracking_enabled = true;
     harness.config.gitbooks.enabled = true;
@@ -463,7 +462,6 @@ async fn round22_tool_registry_covers_config_gated_registration() {
         &harness.workspace,
         &harness.workspace,
     ));
-    let memory: Arc<dyn Memory> = Arc::new(StubMemory);
     let audit = AuditLogger::disabled();
     let agents: HashMap<String, DelegateAgentConfig> = HashMap::new();
 
@@ -471,7 +469,6 @@ async fn round22_tool_registry_covers_config_gated_registration() {
         Arc::new(harness.config.clone()),
         &security,
         audit,
-        memory,
         &harness.config.browser,
         &harness.config.http_request,
         &harness.workspace,
@@ -487,9 +484,9 @@ async fn round22_tool_registry_covers_config_gated_registration() {
     assert!(names.contains(&"curl"));
     assert!(names.contains(&"gitbooks_search"));
     assert!(names.contains(&"gitbooks_get_page"));
-    assert!(names.contains(&"mouse"));
-    assert!(names.contains(&"keyboard"));
     assert!(names.contains(&"tool_stats"));
+    assert!(!names.contains(&"mouse"));
+    assert!(!names.contains(&"keyboard"));
     assert!(!names.contains(&"node_exec"));
     assert!(!names.contains(&"npm_exec"));
 }

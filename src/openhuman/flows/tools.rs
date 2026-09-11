@@ -23,9 +23,7 @@ use serde_json::{json, Value};
 use tinyflows::model::{Node, NodeKind, WorkflowGraph};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::flows::ops::{
-    validate_and_migrate_graph, validate_binding_resolvability, validate_tool_contracts,
-};
+use crate::openhuman::flows::ops::{build_builder_proposal, validate_and_migrate_graph};
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 /// Max characters kept for a `config_hint` before truncation, so a long
@@ -59,19 +57,70 @@ impl Tool for ProposeWorkflowTool {
          (to_port just stays \"main\"); routing is keyed exclusively on from_port, so a label \
          on to_port instead silently turns the branch into an unconditional fan-out and is a \
          hard reject. Exactly ONE \
-         trigger node is required. The 12 node kinds: trigger (config.trigger_kind: manual | \
+         trigger node is required. The 22 node kinds: trigger (config.trigger_kind: manual | \
          schedule | webhook | app_event | form | chat_message | evaluation | system | \
          execute_by_workflow; schedule needs config.schedule = {kind:\"cron\",expr,tz?} | \
          {kind:\"at\",at} | {kind:\"every\",every_ms}; app_event needs config.toolkit + \
          config.trigger_slug), agent (config.prompt), tool_call (config.slug REQUIRED + \
          config.args), http_request (config.method/url, optional headers/body), code \
-         (config.language: \"javascript\"|\"python\" + config.source), condition (config.field; \
+         (config.language: \"javascript\"|\"python\" + config.source), shell (exactly one of \
+         config.source or config.script_path; optional config.interpreter: \"sh\"|\"bash\", \
+         config.cwd, config.env; this host rejects execution until it has a policy-aware shell \
+         capability), condition (config.field; \
          routes on from_port \"true\"/\"false\", e.g. {from_node:\"gate\",from_port:\"true\",\
          to_node:\"x\",to_port:\"main\"}), switch (config.expression or config.field; routes to \
          the matching case port, or \"default\"), transform (config.set: {key: \"=expr\"} \
          merged onto each item), split_out (config.path to an array field; fans out one item per \
          element), merge (fan-in passthrough, no config), output_parser (passthrough today; no \
-         config required), sub_workflow (config.workflow: an embedded child WorkflowGraph). If \
+         config required), sub_workflow (config.workflow: an embedded child WorkflowGraph), \
+         memory (config.operation REQUIRED: recall | search | flavour | people | remember | \
+         forget; config.scope for recall/remember/forget: \"user\" is READ-ONLY, \"flow\" is \
+         this flow's own memory and the ONLY scope remember/forget may target, \"flows\" is \
+         cross-flow READ-ONLY; config.query for recall/search; config.flavour for the flavour \
+         slug; config.key/config.value for remember/forget. Place remember AFTER the real \
+         action it records, never before, so a failed action never marks an item as done), \
+         dedup (config.key REQUIRED: an \"=expr\" per-item key, e.g. \"=item.id\"; drops an item \
+         whose key was already committed by a PRIOR successful run, else passes it through. Use \
+         this — not a memory recall/condition graph — for exact \"process each item once\": \
+         place it right after the item source and before the action, e.g. split_out → dedup → \
+         …action…), \
+         loop (optional config.max_iterations, positive, default 25; optional config.on_exceeded: \
+         \"error\" (default, fails the run) | \"continue\" (stop looping, leave via `done`); \
+         optional config.condition \"=expr\" for an early exit. Emits on the `body` port while \
+         it keeps looping and on `done` when it stops; CLOSE THE LOOP by wiring the body's last \
+         node back to the loop node. The pass number is readable as \
+         \"=nodes.<loop id>.iteration\". The `body` must ROUTE BACK to the loop node, not merely \
+         leave it. A fan-in `merge` must not sit on the cycle, and the loop node must not itself \
+         be a fan-in — join before it instead), \
+         spawn (config.target REQUIRED: workflow | tool | http — starts work WITHOUT waiting \
+         and emits an opaque ticket, so the branch carries on; target=tool needs config.slug + \
+         config.args, target=workflow needs config.workflow, target=http needs config.request. \
+         Pass the ticket to a `gate`; never interpret it. A spawn no gate collects simply runs \
+         — wire it into a `void` to say that on purpose), \
+         gate (the collecting half of spawn: config.from = ids of the spawn nodes to wait on, \
+         or config.tickets \"=expr\"; optional config.release: \"all\" (default) | \"any\" | \
+         \"first_n\" | \"quorum\" | \"timeout_partial\", with config.n REQUIRED and > 0 for \
+         first_n/quorum; optional config.wait_mode: \"poll\" (default) | \"suspend\". EVERY \
+         poll costs a super-step, so a long wait wants \"suspend\", not a big max_polls), \
+         scatter (fans the whole DOWNSTREAM PATH into parallel lanes, not just the immediate \
+         successors: scatter → enrich → score → gather runs that pipeline once per lane. \
+         Optional config.path to an array to fan out over, else the node's own input items are \
+         the lanes; optional config.lanes to chunk into at most N lanes, clamped to 256. MUST \
+         reach a `gather`, and lane nodes are read as \"=nodes.<id>.lanes.<lane>\", NOT \
+         \"=nodes.<id>.item\". A nested scatter, a loop head, or requires_approval inside a \
+         lane are each rejected), \
+         gather (collects the lanes: config.from REQUIRED = ids of the lane-terminal nodes; same \
+         config.release/config.n policies as gate; optional config.on_lane_error: \"collect\" \
+         (default) | \"skip\" | \"fail_fast\". Output is ordered by lane index, not by finish \
+         order), \
+         approval (a HUMAN review step, distinct from requires_approval: optional config.subject \
+         or \"=expr\", config.subject_kind, config.title, config.prompt, config.assignees, and \
+         config.metadata; routes the verdict as data on \"approved\" / \"rejected\". With no \
+         host review provider it parks the run and is settled through flows_resume), \
+         void (terminal sink, no config: accepts items, discards them, runs nothing downstream. \
+         Says \"this branch is a side effect and nothing waits on it\" where an unwired port \
+         would read like a forgotten one. An outgoing edge is a hard reject, and so is having \
+         no incoming edge; it adds NO concurrency — use spawn for that). If \
          validation fails, fix the graph and call this tool again."
     }
 
@@ -97,8 +146,10 @@ impl Tool for ProposeWorkflowTool {
                                         "type": "string",
                                         "enum": [
                                             "trigger", "agent", "tool_call", "http_request",
-                                            "code", "condition", "switch", "merge", "split_out",
-                                            "transform", "output_parser", "sub_workflow"
+                                            "code", "shell", "condition", "switch", "merge", "split_out",
+                                            "transform", "output_parser", "sub_workflow", "memory",
+                                            "dedup", "loop", "spawn", "gate", "scatter", "gather",
+                                            "approval", "void"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
@@ -183,94 +234,34 @@ impl Tool for ProposeWorkflowTool {
             }
         };
 
-        // Enforcing binding-resolvability gate (see
-        // `ops::validate_binding_resolvability`): reject outright — rather
-        // than merely warn — a `tool_call` binding that is guaranteed to
-        // resolve null (or the wrong value) at runtime, so the builder must
-        // fix the graph before it can even be proposed to the user.
-        let binding_errors = validate_binding_resolvability(&graph);
-        if !binding_errors.is_empty() {
-            tracing::debug!(
-                target: "flows",
-                %name,
-                error_count = binding_errors.len(),
-                "[flows] propose_workflow: binding-resolvability check rejected the graph"
-            );
-            return Ok(ToolResult::error(format!(
-                "{}\n\nFix these bindings and call propose_workflow again.",
-                binding_errors.join("\n\n")
-            )));
-        }
-
-        // Tool-contract enforcement gate (systemic tool-contract fix, Part 2):
-        // reject a `tool_call` node whose slug isn't a REAL action in the
-        // live Composio catalog, or whose real required args aren't all
-        // wired — before the user ever reviews the proposal.
-        let contract_errors = validate_tool_contracts(&self.config, &graph).await;
-        if !contract_errors.is_empty() {
-            tracing::debug!(
-                target: "flows",
-                %name,
-                error_count = contract_errors.len(),
-                "[flows] propose_workflow: tool-contract check rejected the graph"
-            );
-            return Ok(ToolResult::error(format!(
-                "{}\n\nFix these tool_call nodes and call propose_workflow again.",
-                contract_errors.join("\n\n")
-            )));
-        }
-
-        // Required-arg resolvability gate (issue B18): reject outright —
-        // rather than merely warn — a REQUIRED outbound arg (e.g.
-        // `GMAIL_SEND_EMAIL.subject`/`.body`) that LOOKS wired but resolves
-        // to `null` in a sandboxed test run, before the user ever reviews
-        // the proposal. See `ops::validate_required_arg_resolvability`.
-        let null_arg_errors =
-            crate::openhuman::flows::ops::validate_required_arg_resolvability(&graph).await;
-        if !null_arg_errors.is_empty() {
-            tracing::debug!(
-                target: "flows",
-                %name,
-                error_count = null_arg_errors.len(),
-                "[flows] propose_workflow: required-arg resolvability check rejected the graph"
-            );
-            return Ok(ToolResult::error(format!(
-                "{}\n\nFix these bindings and call propose_workflow again.",
-                null_arg_errors.join("\n\n")
-            )));
-        }
-
-        let summary = build_summary(&graph);
-        // Author-time warnings: unfired trigger kinds + unwired REQUIRED
-        // Composio args (see `ops::graph_wiring_warnings`) — surfaced on the
-        // proposal so the builder fixes wiring before the user saves.
-        let mut warnings = crate::openhuman::flows::ops::graph_trigger_warnings(&graph);
-        warnings.extend(
-            crate::openhuman::flows::ops::graph_wiring_warnings(&self.config, &graph).await,
-        );
-        let graph_value = serde_json::to_value(&graph)?;
-
-        tracing::info!(
-            target: "flows",
-            %name,
-            node_count = graph.nodes.len(),
+        // Route every first proposal through the same canonical hard-gate and
+        // payload builder as revise/edit/save. In particular, this includes
+        // compatibility checks for literal workflow_id children, which cannot
+        // be detected by graph-only validation because they require the store.
+        match build_builder_proposal(
+            &self.config,
+            "propose_workflow",
+            &name,
+            &graph,
             require_approval,
-            warning_count = warnings.len(),
-            "[flows] propose_workflow: proposal ready for user review"
-        );
-
-        Ok(ToolResult::success(serde_json::to_string_pretty(&json!({
-            "type": "workflow_proposal",
-            // A proposal is never a persisted flow — stamp it so the payload
-            // can't be misread as a save confirmation (WS2 audit). Matches
-            // `ops::build_builder_proposal`'s unconditional persisted:false.
-            "persisted": false,
-            "name": name,
-            "graph": graph_value,
-            "require_approval": require_approval,
-            "summary": summary,
-            "warnings": warnings,
-        }))?))
+            false,
+            None,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(payload) => Ok(ToolResult::success(serde_json::to_string_pretty(&payload)?)),
+            Err(error) => {
+                tracing::debug!(
+                    target: "flows",
+                    %name,
+                    %error,
+                    "[flows] propose_workflow: builder gate rejected the graph"
+                );
+                Ok(ToolResult::error(error))
+            }
+        }
     }
 }
 
@@ -311,8 +302,11 @@ impl Tool for RunFlowTool {
          instead). It only works on a flow the user has already saved; pass its `flow_id`. \
          You MUST ask the user to confirm and wait for an explicit 'yes' before calling this \
          — never run a workflow unprompted. The flow's own approval gate still pauses \
-         outbound-action nodes. Params: { flow_id (required), input? }. Returns the run's \
-         status + any nodes paused for approval."
+         outbound-action nodes. If the flow declares workflow inputs (read `graph.inputs` \
+         via get_flow), pass their values in `inputs` — ask the user for any required one \
+         rather than inventing it; a missing or wrongly-typed value is rejected and nothing \
+         runs. Params: { flow_id (required), input?, inputs? }. Returns the run's status + \
+         any nodes paused for approval."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -325,6 +319,14 @@ impl Tool for RunFlowTool {
                 },
                 "input": {
                     "description": "Optional trigger input passed to the run (defaults to {})."
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Values for the flow's DECLARED workflow inputs, keyed by \
+                                    name. Read the declarations from the flow's graph.inputs \
+                                    first; ask the user for any required value instead of \
+                                    guessing. Distinct from 'input', the free-form trigger \
+                                    payload."
                 }
             },
             "required": ["flow_id"]
@@ -352,30 +354,69 @@ impl Tool for RunFlowTool {
             }
         };
         let input = args.get("input").cloned().unwrap_or_else(|| json!({}));
+        // A non-object `inputs` is the model mis-shaping the call; say so
+        // plainly rather than silently running with none, which would produce a
+        // confusing "required input missing" for a value it thinks it sent.
+        let inputs = match args.get("inputs") {
+            None | Some(Value::Null) => serde_json::Map::new(),
+            Some(Value::Object(map)) => map.clone(),
+            Some(_) => {
+                return Ok(ToolResult::error(
+                    "'inputs' must be an object keyed by the flow's declared input names, \
+                     e.g. {\"repo\": \"acme/api\"}. Read the declarations from the flow's \
+                     graph.inputs."
+                        .to_string(),
+                ))
+            }
+        };
 
         tracing::info!(
             target: "flows",
             %flow_id,
-            "[flows] run_flow: agent-initiated test run starting"
+            "[flows] run_flow: agent-initiated test run starting (detached)"
         );
 
-        match crate::openhuman::flows::ops::flows_run(
+        // Detach (bug B41): a flow whose first real node is a live-research
+        // agent node inherently runs longer than the tinyagents harness's 120s
+        // per-tool-call cap, so a blocking `run_flow` could never succeed —
+        // it died at 120s, orphaning the run row (bug B42). `flows_run_detached`
+        // validates + compile-checks synchronously (so a broken flow still
+        // returns an immediate, actionable error), fires the run on a background
+        // task, and returns `{ run_id, status: "running" }` in well under 120s.
+        // The copilot then polls `get_flow_run(run_id)` to observe completion.
+        match crate::openhuman::flows::ops::flows_run_detached(
             &self.config,
             &flow_id,
             input,
+            inputs,
             crate::openhuman::flows::types::FlowRunTrigger::Rpc,
         )
         .await
         {
-            Ok(outcome) => Ok(ToolResult::success(serde_json::to_string_pretty(&json!({
-                "type": "workflow_run_result",
-                "flow_id": flow_id,
-                "result": outcome.value,
-            }))?)),
+            Ok(outcome) => {
+                let run_id = outcome
+                    .value
+                    .get("run_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                Ok(ToolResult::success(serde_json::to_string_pretty(&json!({
+                    "type": "workflow_run_started",
+                    "flow_id": flow_id,
+                    "run_id": run_id,
+                    "status": "running",
+                    "detached": true,
+                    "note": "The run started in the background and is now 'running'. Poll \
+                             get_flow_run with this run_id to see it settle to a terminal \
+                             status (completed / failed / interrupted / pending_approval); \
+                             do not assume success from this response alone.",
+                    "result": outcome.value,
+                }))?))
+            }
             Err(e) => {
-                tracing::debug!(target: "flows", %flow_id, error = %e, "[flows] run_flow: failed");
+                tracing::debug!(target: "flows", %flow_id, error = %e, "[flows] run_flow: failed to start");
                 Ok(ToolResult::error(format!(
-                    "Could not run flow '{flow_id}': {e}"
+                    "Could not start flow '{flow_id}': {e}"
                 )))
             }
         }
@@ -488,6 +529,11 @@ fn config_hint(node: &Node) -> Option<String> {
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| Some("javascript".to_string())),
+        NodeKind::Shell => cfg
+            .get("script_path")
+            .and_then(Value::as_str)
+            .map(|path| truncate_hint(&format!("script: {path}")))
+            .or_else(|| cfg.get("source").and_then(Value::as_str).map(truncate_hint)),
         NodeKind::Condition => cfg
             .get("field")
             .and_then(Value::as_str)
@@ -506,6 +552,79 @@ fn config_hint(node: &Node) -> Option<String> {
             .and_then(Value::as_str)
             .map(|p| format!("path: {p}")),
         NodeKind::SubWorkflow => Some("embedded sub-workflow".to_string()),
+        NodeKind::Memory => {
+            let operation = cfg.get("operation").and_then(Value::as_str).unwrap_or("?");
+            let hint = match cfg.get("scope").and_then(Value::as_str) {
+                Some(scope) => format!("{operation} · {scope}"),
+                None => operation.to_string(),
+            };
+            Some(truncate_hint(&hint))
+        }
+        NodeKind::Dedup => cfg
+            .get("key")
+            .and_then(Value::as_str)
+            .map(|k| truncate_hint(&format!("key: {k}"))),
+        // The cap is the one thing worth surfacing at a glance; the engine
+        // applies its own default when the key is absent, so say so rather than
+        // showing nothing.
+        NodeKind::Loop => {
+            let max = cfg
+                .get("max_iterations")
+                .and_then(Value::as_u64)
+                .map_or_else(|| "default".to_string(), |n| n.to_string());
+            Some(match cfg.get("condition").and_then(Value::as_str) {
+                Some(condition) => truncate_hint(&format!("max {max} · while {condition}")),
+                None => format!("max {max}"),
+            })
+        }
+        // What was started is the one thing worth seeing at a glance; which
+        // gate collects it is an edge, and the timeline already shows edges.
+        NodeKind::Spawn => {
+            let target = cfg.get("target").and_then(Value::as_str).unwrap_or("?");
+            let what = cfg
+                .get("slug")
+                .and_then(Value::as_str)
+                .or_else(|| cfg.get("name").and_then(Value::as_str));
+            Some(truncate_hint(&match what {
+                Some(what) => format!("{target}: {what}"),
+                None => target.to_string(),
+            }))
+        }
+        // A gate and a gather both wait, and the release policy is the whole
+        // question — `any` versus `all` is the difference between a run that
+        // proceeds on one result and one that blocks on the slowest.
+        NodeKind::Gate | NodeKind::Gather => {
+            let release = cfg
+                .get("release")
+                .and_then(Value::as_str)
+                .unwrap_or("all")
+                .to_string();
+            Some(match cfg.get("n").and_then(Value::as_u64) {
+                Some(n) => format!("{release} ({n})"),
+                None => release,
+            })
+        }
+        NodeKind::Scatter => {
+            let over = cfg
+                .get("path")
+                .and_then(Value::as_str)
+                .map_or_else(|| "input items".to_string(), |p| format!("path: {p}"));
+            Some(truncate_hint(
+                &match cfg.get("lanes").and_then(Value::as_u64) {
+                    Some(lanes) => format!("{over} · {lanes} lanes"),
+                    None => over,
+                },
+            ))
+        }
+        NodeKind::Approval => cfg
+            .get("title")
+            .and_then(Value::as_str)
+            .or_else(|| cfg.get("prompt").and_then(Value::as_str))
+            .map(truncate_hint)
+            .or_else(|| Some("human review".to_string())),
+        // A void takes no config, and "discards its input" is what the kind
+        // already says on the timeline.
+        NodeKind::Void => None,
         NodeKind::Merge | NodeKind::OutputParser | NodeKind::Trigger => None,
     }
 }

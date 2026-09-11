@@ -2,33 +2,82 @@
 
 use anyhow::Context;
 use async_trait::async_trait;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tinyagents_harness::tool::{coalesce_prompt_tool_results, with_prompt_tool_instructions};
+use tinyinference::message::Message;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
-use crate::openhuman::config::schema::claude_agent_sdk::ClaudeAgentSdkConfig;
-use crate::openhuman::inference::provider::traits::Provider;
-
 use super::protocol::SdkMessage;
+use crate::openhuman::config::schema::claude_agent_sdk::ClaudeAgentSdkConfig;
 
 pub struct ClaudeAgentSdkProvider {
     pub(super) config: ClaudeAgentSdkConfig,
+    profile: ModelProfile,
+}
+
+struct ClaudeInvocation {
+    args: Vec<String>,
+    stdin: String,
+}
+
+fn build_invocation(
+    system_prompt: Option<&str>,
+    message: &str,
+    model: &str,
+    max_budget_usd: Option<f64>,
+) -> ClaudeInvocation {
+    let stdin = match system_prompt {
+        Some(system) if !system.trim().is_empty() => {
+            format!("[SYSTEM]\n{system}\n[/SYSTEM]\n\n{message}")
+        }
+        _ => message.to_string(),
+    };
+    let mut args = vec![
+        "-p".to_string(),
+        "--model".to_string(),
+        model.to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--no-color".to_string(),
+    ];
+    if let Some(budget) = max_budget_usd {
+        args.push("--max-turns".to_string());
+        args.push("10".to_string());
+        args.push("--budget".to_string());
+        args.push(format!("{budget:.4}"));
+    }
+    ClaudeInvocation { args, stdin }
+}
+
+fn spawn_error(binary: &str, source: std::io::Error) -> anyhow::Error {
+    let message = format!("failed to spawn claude binary '{binary}': {source}");
+    anyhow::Error::new(source).context(message)
 }
 
 impl ClaudeAgentSdkProvider {
     pub fn new(config: ClaudeAgentSdkConfig) -> Self {
-        Self { config }
+        let model = config.default_model.clone();
+        Self::for_model(config, model)
     }
-}
 
-#[async_trait]
-impl Provider for ClaudeAgentSdkProvider {
-    async fn chat_with_system(
+    pub fn for_model(config: ClaudeAgentSdkConfig, model: impl Into<String>) -> Self {
+        Self {
+            config,
+            profile: ModelProfile {
+                provider: Some("claude-agent-sdk".to_string()),
+                model: Some(model.into()),
+                ..Default::default()
+            },
+        }
+    }
+
+    async fn invoke_cli(
         &self,
         system_prompt: Option<&str>,
         message: &str,
         model: &str,
-        _temperature: f64,
     ) -> anyhow::Result<String> {
         let model = if model.is_empty() {
             &self.config.default_model
@@ -36,42 +85,47 @@ impl Provider for ClaudeAgentSdkProvider {
             model
         };
 
-        // Prepend system prompt inline — claude -p has no separate system flag.
-        let full_message = match system_prompt {
-            Some(s) if !s.trim().is_empty() => {
-                format!("[SYSTEM]\n{s}\n[/SYSTEM]\n\n{message}")
-            }
-            _ => message.to_string(),
-        };
+        // `claude -p` reads stdin in non-interactive mode. Keep the full
+        // request out of argv so large harness prompts can spawn on Windows.
+        let invocation =
+            build_invocation(system_prompt, message, model, self.config.max_budget_usd);
 
         let mut cmd = Command::new(&self.config.binary);
-        cmd.arg("-p")
-            .arg(&full_message)
-            .arg("--model")
-            .arg(model)
-            .arg("--output-format")
-            .arg("stream-json")
-            .arg("--no-color")
+        cmd.args(&invocation.args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .stdin(std::process::Stdio::null());
-
-        if let Some(budget) = self.config.max_budget_usd {
-            cmd.arg("--max-turns").arg("10");
-            // Note: --budget flag controls the spend cap in the Claude CLI
-            cmd.arg("--budget").arg(format!("{budget:.4}"));
-        }
+            .stdin(std::process::Stdio::piped())
+            .kill_on_drop(true);
 
         tracing::debug!(
             "[claude_agent_sdk] spawning claude binary={} model={} message_len={}",
             self.config.binary,
             model,
-            full_message.len()
+            invocation.stdin.len()
         );
 
-        let mut child = cmd
-            .spawn()
-            .with_context(|| format!("failed to spawn claude binary '{}'", self.config.binary))?;
+        let mut child = cmd.spawn().map_err(|source| {
+            tracing::warn!(
+                error = %source,
+                binary = %self.config.binary,
+                "[claude_agent_sdk] failed to spawn claude binary"
+            );
+            spawn_error(&self.config.binary, source)
+        })?;
+
+        let mut stdin = child
+            .stdin
+            .take()
+            .context("claude subprocess has no stdin")?;
+        stdin
+            .write_all(invocation.stdin.as_bytes())
+            .await
+            .context("failed to write claude request to stdin")?;
+        stdin
+            .shutdown()
+            .await
+            .context("failed to close claude subprocess stdin")?;
+        drop(stdin);
 
         let stdout = child
             .stdout
@@ -194,23 +248,64 @@ impl Provider for ClaudeAgentSdkProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::openhuman::config::schema::claude_agent_sdk::ClaudeAgentSdkConfig;
-
-    #[test]
-    fn provider_constructs_with_default_config() {
-        let config = ClaudeAgentSdkConfig::default();
-        let provider = ClaudeAgentSdkProvider::new(config);
-        assert_eq!(provider.config.binary, "claude");
-        assert_eq!(provider.config.default_model, "claude-sonnet-4-6");
+#[async_trait]
+impl ChatModel<()> for ClaudeAgentSdkProvider {
+    fn profile(&self) -> Option<&ModelProfile> {
+        Some(&self.profile)
     }
 
-    #[test]
-    fn config_default_disabled() {
-        let config = ClaudeAgentSdkConfig::default();
-        assert!(!config.enabled);
-        assert!(config.max_budget_usd.is_none());
+    async fn invoke(
+        &self,
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
+        let messages = coalesce_prompt_tool_results(&request.messages);
+        let messages = with_prompt_tool_instructions(&messages, &request.tools);
+        let system = coalesce_system_prompt(&messages);
+        let last_user = messages
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                Message::User(_) => Some(message.text()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let model = request
+            .model
+            .as_deref()
+            .or(self.profile.model.as_deref())
+            .unwrap_or(&self.config.default_model);
+        let output = self
+            .invoke_cli(system.as_deref(), &last_user, model)
+            .await
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))?;
+
+        Ok(
+            crate::openhuman::agent::tinyagents::model::prompt_guided_text_response(
+                output, &request,
+            ),
+        )
     }
 }
+
+/// Join every system message into the one system prompt the CLI accepts.
+///
+/// The CLI takes a single `--system-prompt`, and this used to `find_map` the
+/// first system message and drop the rest (codex on #6068). What gets dropped is
+/// not incidental: the artifact contents list and the turn-cap wrap-up are both
+/// appended as system messages *precisely because* a system message is the one
+/// thing compression and the trim will not remove. Taking only the first put
+/// them back to being removable — on this provider alone, and silently.
+fn coalesce_system_prompt(messages: &[Message]) -> Option<String> {
+    let parts: Vec<String> = messages
+        .iter()
+        .filter(|message| matches!(message, Message::System(_)))
+        .map(|message| message.text())
+        .filter(|text| !text.trim().is_empty())
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+#[cfg(test)]
+#[path = "subprocess_tests.rs"]
+mod tests;

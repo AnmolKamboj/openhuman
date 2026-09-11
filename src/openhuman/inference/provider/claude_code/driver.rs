@@ -16,13 +16,68 @@ use tokio::sync::mpsc;
 
 /// Hard timeout per turn (PLAN §8). If the CLI hangs (network stall,
 /// infinite loop, MCP deadlock) we kill the child and surface a timeout.
-const TURN_TIMEOUT: Duration = Duration::from_secs(300);
+const DEFAULT_TURN_TIMEOUT_SECS: u64 = 900;
+
+/// Hard timeout per turn, overridable with
+/// `OPENHUMAN_CLAUDE_CODE_TURN_TIMEOUT_SECS`.
+///
+/// The default matches the harness's own 900s wall-clock backstop. It used to
+/// be 300s, which is shorter than a turn the CLI is *expected* to take once
+/// full access lets it run its own tools: the child was killed mid-work and the
+/// turn surfaced as a provider timeout rather than a slow answer.
+fn turn_timeout() -> Duration {
+    let secs = std::env::var("OPENHUMAN_CLAUDE_CODE_TURN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(DEFAULT_TURN_TIMEOUT_SECS);
+    Duration::from_secs(secs)
+}
+
+/// Classify the shape of an unparsable stream line without quoting it.
+///
+/// This says whether Claude spoke JSON at all - the one thing that tells a
+/// crashed CLI apart from a protocol change - and nothing about what the line
+/// said.
+fn parse_error_line_shape(line: &str) -> &'static str {
+    match line.trim_start().chars().next() {
+        Some('{') => "json object",
+        Some('[') => "json array",
+        Some('"') => "json string",
+        Some(_) => "non-json",
+        None => "blank",
+    }
+}
+
+/// Render the log line for a `ParseError` event, or `None` for anything else.
+///
+/// The parser keeps `ParseError` precisely so an unparsable line is reported
+/// instead of vanishing, but the event mapper turns it into no deltas - so the
+/// driver loop is the only place left that can say anything about it.
+///
+/// The line itself is never quoted. It is whatever Claude Code wrote to
+/// stdout (a malformed event, or a well-formed one of an unknown type), so it
+/// can carry the user's prompt, the model's reply, or a credential, and the
+/// desktop build routes `log` into rotating support logs and Sentry
+/// breadcrumbs. Shape, size, and the parser's own reason are enough to act on;
+/// content is not.
+fn parse_error_log_line(ev: &ClaudeCodeEvent) -> Option<String> {
+    let ClaudeCodeEvent::ParseError { line, reason } = ev else {
+        return None;
+    };
+    Some(format!(
+        "[claude-code][driver] dropping unparsable stream line ({reason}): {} of {} bytes",
+        parse_error_line_shape(line),
+        line.len()
+    ))
+}
 
 use super::event_mapper::EventMapper;
 use super::input_builder::build_stdin;
 use super::session_store::{generate_uuid_v4, is_uuid_v4, SessionStore};
-use super::stream_parser::StreamJsonParser;
-use crate::openhuman::inference::provider::traits::{ChatMessage, ChatResponse, ProviderDelta};
+use super::stream_parser::{ClaudeCodeEvent, StreamJsonParser};
+use crate::openhuman::agent::messages::ChatMessage;
+use crate::openhuman::inference::provider::types::{ChatResponse, ProviderDelta};
 
 /// Tools withheld in the DEFAULT (`acceptEdits`) posture: Claude Code can
 /// read/edit files in the project, but not run shell, hit the network, or
@@ -186,6 +241,42 @@ fn write_mcp_http_config(
     Ok(path)
 }
 
+/// Keep the potentially large harness prompt out of argv. Windows flattens
+/// argv into a command line capped at 32,767 UTF-16 code units, while Claude's
+/// file flag has no such limit. The per-turn scratch directory owns cleanup.
+fn append_system_prompt_args(
+    dir: &std::path::Path,
+    prompt: Option<&str>,
+) -> std::io::Result<Vec<String>> {
+    let Some(prompt) = prompt.filter(|value| !value.trim().is_empty()) else {
+        return Ok(Vec::new());
+    };
+
+    let path = dir.join("append-system-prompt.txt");
+    log::debug!(
+        "[claude-code][driver] append-system-prompt file write start path={} bytes={}",
+        path.display(),
+        prompt.len()
+    );
+    if let Err(error) = std::fs::write(&path, prompt) {
+        log::warn!(
+            "[claude-code][driver] append-system-prompt file write failed path={} error={}",
+            path.display(),
+            error
+        );
+        return Err(error);
+    }
+    log::debug!(
+        "[claude-code][driver] append-system-prompt file write complete path={} bytes={}",
+        path.display(),
+        prompt.len()
+    );
+    Ok(vec![
+        "--append-system-prompt-file".to_string(),
+        path.display().to_string(),
+    ])
+}
+
 /// Run one turn against the `claude` CLI. Awaits process exit. Forwards
 /// `ProviderDelta`s through `ctx.stream` as they arrive and returns the
 /// aggregated `ChatResponse` when done.
@@ -215,7 +306,7 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
     // Point CC at OpenHuman's in-process HTTP MCP server (unjailed core), so
     // the memory bridge survives CC's `.openhuman` jail deny.
     let mut mcp_config_path: Option<PathBuf> = None;
-    match crate::openhuman::mcp_server::ensure_local_http().await {
+    match crate::openhuman::mcp::server::ensure_local_http().await {
         Ok(endpoint) => match write_mcp_http_config(scratch.path(), endpoint.addr, &endpoint.token) {
             Ok(p) => {
                 log::debug!(
@@ -281,14 +372,10 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
         "--model".into(),
         ctx.model.clone(),
     ];
-    if let Some(sp) = ctx
-        .append_system_prompt
-        .as_ref()
-        .filter(|s| !s.trim().is_empty())
-    {
-        args.push("--append-system-prompt".into());
-        args.push(sp.clone());
-    }
+    args.extend(
+        append_system_prompt_args(scratch.path(), ctx.append_system_prompt.as_deref())
+            .map_err(|e| anyhow::anyhow!("write Claude Code system prompt file: {e}"))?,
+    );
     if let Some(p) = mcp_config_path.as_ref() {
         args.push("--mcp-config".into());
         args.push(p.display().to_string());
@@ -398,7 +485,7 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
 
     // Wrap the streaming + wait in a timeout so a stuck CLI doesn't
     // block this task forever (PLAN §8).
-    let timed = tokio::time::timeout(TURN_TIMEOUT, async {
+    let timed = tokio::time::timeout(turn_timeout(), async {
         loop {
             let n = stdout
                 .read(&mut buf)
@@ -408,6 +495,9 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
                 break;
             }
             for ev in parser.feed_bytes(&buf[..n]) {
+                if let Some(msg) = parse_error_log_line(&ev) {
+                    log::warn!("{msg}");
+                }
                 for delta in mapper.handle(ev) {
                     if let Some(tx) = ctx.stream {
                         let _ = tx.send(delta).await;
@@ -416,6 +506,9 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
             }
         }
         for ev in parser.end() {
+            if let Some(msg) = parse_error_log_line(&ev) {
+                log::warn!("{msg}");
+            }
             for delta in mapper.handle(ev) {
                 if let Some(tx) = ctx.stream {
                     let _ = tx.send(delta).await;
@@ -435,14 +528,15 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
         Ok(inner) => inner?,
         Err(_elapsed) => {
             log::error!(
-                "[claude-code][driver] turn timeout ({TURN_TIMEOUT:?}) exceeded; killing child"
+                "[claude-code][driver] turn timeout ({:?}) exceeded; killing child",
+                turn_timeout()
             );
             // kill_on_drop handles cleanup, but explicit kill gives us
             // a chance to collect stderr.
             let _ = child.kill().await;
             anyhow::bail!(
                 "[claude-code][driver] turn timed out after {:?}",
-                TURN_TIMEOUT
+                turn_timeout()
             );
         }
     };
@@ -464,147 +558,5 @@ pub async fn run_turn(ctx: TurnContext<'_>) -> anyhow::Result<ChatResponse> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn write_mcp_http_config_emits_http_url_with_bearer_header() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let addr: std::net::SocketAddr = "127.0.0.1:54321".parse().unwrap();
-        let path = write_mcp_http_config(dir.path(), addr, "tok-abc123").expect("write config");
-        let raw = std::fs::read_to_string(&path).expect("read config");
-        let v: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
-        let server = &v["mcpServers"]["openhuman"];
-        assert_eq!(
-            server["type"], "http",
-            "MCP transport must be http (out-of-jail)"
-        );
-        assert_eq!(server["url"], "http://127.0.0.1:54321/");
-        // The loopback server is authenticated — the config must carry the bearer.
-        assert_eq!(server["headers"]["Authorization"], "Bearer tok-abc123");
-        // It must NOT spawn a stdio child (the old jailed path).
-        assert!(server.get("command").is_none());
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn seatbelt_profile_denies_whole_openhuman_root_not_just_subdir() {
-        // Driver passes the per-user subdir; the jail must deny the WHOLE
-        // `.openhuman-staging` tree (so root-level core.token/credentials are
-        // protected), not just the subdir.
-        let ws = std::path::Path::new("/Users/test/.openhuman-staging/users/abc/workspace");
-        let p = seatbelt_profile(ws);
-        assert!(
-            p.contains("(allow default)"),
-            "CC does everything by default"
-        );
-        assert!(p.contains("(deny file-write*"), "must deny writes");
-        assert!(
-            p.contains("(deny file-read*"),
-            "must deny reads (no token exfil)"
-        );
-        // Denied path is the ROOT, not the per-user subdir.
-        assert!(
-            p.contains("/Users/test/.openhuman-staging\""),
-            "deny subpath must be the .openhuman root: {p}"
-        );
-        assert!(
-            !p.contains("users/abc"),
-            "deny must NOT be scoped to the narrow subdir: {p}"
-        );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn openhuman_internal_root_walks_up_to_dotopenhuman() {
-        let r = openhuman_internal_root(std::path::Path::new(
-            "/Users/x/.openhuman/users/id/workspace/memory",
-        ));
-        assert_eq!(r, std::path::Path::new("/Users/x/.openhuman"));
-        // Fallback: no `.openhuman*` ancestor → returns the input.
-        let r2 = openhuman_internal_root(std::path::Path::new("/tmp/custom/ws"));
-        assert_eq!(r2, std::path::Path::new("/tmp/custom/ws"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn seatbelt_available_honors_opt_out() {
-        let _env = super::super::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var("OPENHUMAN_CLAUDE_CODE_SANDBOX").ok();
-        std::env::set_var("OPENHUMAN_CLAUDE_CODE_SANDBOX", "0");
-        assert!(
-            !seatbelt_available(),
-            "explicit opt-out must disable the jail"
-        );
-        match prev {
-            Some(v) => std::env::set_var("OPENHUMAN_CLAUDE_CODE_SANDBOX", v),
-            None => std::env::remove_var("OPENHUMAN_CLAUDE_CODE_SANDBOX"),
-        }
-    }
-
-    #[test]
-    fn full_access_defaults_off_and_opts_in_via_env() {
-        let _env = super::super::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // Empty workspace (no persisted toggle) → file layer resolves to OFF.
-        let ws = std::env::temp_dir().join("oh_cc_fullaccess_env_test");
-        let _ = std::fs::remove_dir_all(&ws);
-        let key = "OPENHUMAN_CLAUDE_CODE_PERMISSION_MODE";
-        let prev = std::env::var(key).ok();
-        std::env::remove_var(key);
-        assert!(
-            !claude_code_full_access(&ws),
-            "default posture must be acceptEdits (full access OFF)"
-        );
-        std::env::set_var(key, "bypass");
-        assert!(
-            claude_code_full_access(&ws),
-            "explicit opt-in (`bypass`) enables full access"
-        );
-        std::env::set_var(key, "acceptEdits");
-        assert!(
-            !claude_code_full_access(&ws),
-            "acceptEdits env override keeps the default (limited) posture"
-        );
-        match prev {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-    }
-
-    #[test]
-    fn full_access_reads_persisted_toggle_when_env_unset() {
-        use super::super::settings::{self, ClaudeCodeSettings};
-        let _env = super::super::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let ws = std::env::temp_dir().join("oh_cc_fullaccess_file_test");
-        let _ = std::fs::remove_dir_all(&ws);
-        std::fs::create_dir_all(&ws).unwrap();
-        let key = "OPENHUMAN_CLAUDE_CODE_PERMISSION_MODE";
-        let prev = std::env::var(key).ok();
-        std::env::remove_var(key);
-
-        settings::save(&ws, &ClaudeCodeSettings { full_access: true }).unwrap();
-        assert!(
-            claude_code_full_access(&ws),
-            "persisted toggle ON must enable full access when env is unset"
-        );
-
-        // Env override beats the persisted toggle.
-        std::env::set_var(key, "acceptEdits");
-        assert!(
-            !claude_code_full_access(&ws),
-            "env override OFF must beat a persisted ON toggle"
-        );
-
-        match prev {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-        let _ = std::fs::remove_dir_all(&ws);
-    }
-}
+#[path = "driver_tests.rs"]
+mod tests;

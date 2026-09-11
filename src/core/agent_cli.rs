@@ -123,6 +123,7 @@ fn run_dump_all(args: &[String]) -> Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(crate::core::runtime::AGENT_WORKER_STACK_BYTES)
+        .max_blocking_threads(crate::core::runtime::MAX_BLOCKING_THREADS)
         .build()?;
     log::debug!("[agent-cli] run_dump_all: calling dump_all_agent_prompts");
     let dumps = rt.block_on(async {
@@ -255,6 +256,7 @@ fn run_dump_prompt(args: &[String]) -> Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(crate::core::runtime::AGENT_WORKER_STACK_BYTES)
+        .max_blocking_threads(crate::core::runtime::MAX_BLOCKING_THREADS)
         .build()?;
     log::debug!("[agent-cli] run_dump_prompt: calling dump_agent_prompt");
     let dumped = rt.block_on(async { dump_agent_prompt(options).await })?;
@@ -352,6 +354,13 @@ fn print_json(dumped: &DumpedPrompt, with_tools: bool) -> Result<()> {
                     .collect(),
             ),
         );
+        // The schemas, not just the names: they ride alongside the prompt on
+        // every request and for a few-hundred-tool agent they are the larger
+        // half of the fixed cost. Emitting only `tools` measures the smaller.
+        obj.insert(
+            "tool_specs".into(),
+            serde_json::Value::Array(dumped.tool_specs.clone()),
+        );
     }
     println!(
         "{}",
@@ -432,10 +441,6 @@ fn run_list(args: &[String]) -> Result<()> {
             obj.insert(
                 "omit_identity".into(),
                 serde_json::Value::Bool(def.omit_identity),
-            );
-            obj.insert(
-                "omit_skills_catalog".into(),
-                serde_json::Value::Bool(def.omit_skills_catalog),
             );
             arr.push(serde_json::Value::Object(obj));
         }

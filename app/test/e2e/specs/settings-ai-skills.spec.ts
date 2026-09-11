@@ -19,7 +19,9 @@ import { startMockServer, stopMockServer } from '../mock-server';
 
 const USER_ID = 'e2e-settings-ai-skills';
 
-describe('Settings - AI & Skills', () => {
+describe('Settings - AI & Skills', function () {
+  this.timeout(90_000);
+
   before(async function beforeSuite() {
     this.timeout(90_000);
     await startMockServer();
@@ -35,12 +37,9 @@ describe('Settings - AI & Skills', () => {
     this.timeout(90_000);
     await navigateViaHash('/settings/llm');
 
-    await waitForText('AI', 15_000);
-    const hasAiSurface =
-      (await textExists('Cloud providers')) ||
-      (await textExists('Primary cloud')) ||
-      (await textExists('Reasoning'));
-    expect(hasAiSurface).toBe(true);
+    const providersTab = await browser.$('[data-testid="ai-tab-providers"]');
+    await providersTab.waitForExist({ timeout: 15_000 });
+    expect(await providersTab.isDisplayed()).toBe(true);
   });
 
   it('mounts Tools panel and shows skill toggles (13.3.2)', async () => {

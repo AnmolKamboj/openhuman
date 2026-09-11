@@ -62,8 +62,7 @@ test.describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
 
   test('reached the logged-in shell after onboarding', async ({ page }) => {
     await waitForAppReady(page);
-    const text = await page.locator('#root').innerText();
-    expect(['New Conversation', 'Threads'].some(marker => text.includes(marker))).toBe(true);
+    await expect(page.getByTestId('chat-message-input')).toBeVisible();
   });
 
   test('creates a tunnel, lists it, deletes it, and matches mock-backend traffic', async () => {
@@ -105,13 +104,10 @@ test.describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
     // webhooks-triggers was merged into the Integrations page (#webhooks tab).
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toContain('/settings/integrations');
+      .toContain('/connections');
 
-    const text = await page.locator('#root').innerText();
-    expect(
-      ['ComposeIO Triggers', 'ComposeIO', 'Archive', 'Refresh'].some(marker =>
-        text.includes(marker)
-      )
-    ).toBe(true);
+    // The Webhooks UI is retired. The redirect's live contract is the
+    // Connections surface, not the former trigger-history controls.
+    await expect(page.getByTestId('two-pane-nav-composio')).toBeVisible();
   });
 });

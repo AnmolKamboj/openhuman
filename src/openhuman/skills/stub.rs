@@ -12,7 +12,7 @@
 //!
 //! The signatures here MUST match the real ones exactly (return types
 //! included). The disabled build
-//! (`cargo check --no-default-features --features tokenjuice-treesitter`) is
+//! (`cargo check --no-default-features`) is
 //! the only thing that catches drift — if a real signature changes, update the
 //! mirror below until that build is green again.
 
@@ -41,6 +41,18 @@ pub use super::ops_types::{
 /// behaviour.
 pub fn load_workflow_metadata(_workspace_dir: &Path) -> Vec<Workflow> {
     log::debug!("[skills-stub] load_workflow_metadata -> [] (skills disabled)");
+    Vec::new()
+}
+
+/// Always empty: with skills compiled out there is nothing to discover, whether
+/// or not a profile-local root is supplied. Mirrors
+/// [`super::ops_discover::load_workflow_metadata_for_profile`] so the harness's
+/// per-profile catalog call site needs no `#[cfg]`.
+pub fn load_workflow_metadata_for_profile(
+    _workspace_dir: &Path,
+    _profile_skills_root: Option<&Path>,
+) -> Vec<Workflow> {
+    log::debug!("[skills-stub] load_workflow_metadata_for_profile -> [] (skills disabled)");
     Vec::new()
 }
 
@@ -82,7 +94,7 @@ pub mod registry {
 }
 
 // ---------------------------------------------------------------------------
-// bus::{ensure_triggered_workflow_subscriber, register_workflow_cleanup_subscriber}
+// bus::ensure_triggered_workflow_subscriber
 // ---------------------------------------------------------------------------
 
 pub mod bus {
@@ -90,9 +102,6 @@ pub mod bus {
     pub fn ensure_triggered_workflow_subscriber(_workspace: &std::path::Path) {
         log::debug!("[skills-stub] ensure_triggered_workflow_subscriber skipped (skills disabled)");
     }
-
-    /// No-op: no skill run directories exist to clean up.
-    pub fn register_workflow_cleanup_subscriber() {}
 }
 
 // NOTE: no `tools` module here. The `pub use skills::tools::*` glob in

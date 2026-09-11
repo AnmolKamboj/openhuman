@@ -127,6 +127,21 @@ async function resetOnboardingFlagAndReload(): Promise<void> {
   await triggerAuthDeepLinkBypass('e2e-onboarding-modes');
   await waitForAuthBootstrap(15_000);
   await dismissBootCheckGateIfVisible(8_000);
+  // Auth bootstrap restores the server-side onboarding snapshot, which can
+  // overwrite the pre-auth test flag. Apply the requested state once auth is
+  // settled, then reload so the onboarding gate consumes the new snapshot.
+  const postAuthRes = await callOpenhumanRpc<{ completed: boolean }>(
+    'openhuman.config_set_onboarding_completed',
+    { value: false }
+  );
+  if (!postAuthRes.ok) {
+    throw new Error(
+      `post-auth config.set_onboarding_completed failed: ${JSON.stringify(postAuthRes)}`
+    );
+  }
+  await browser.execute(() => window.location.reload());
+  await waitForAppReady(15_000);
+  await dismissBootCheckGateIfVisible(8_000);
   // Wait for the welcome step to mount before returning.
   const onWelcome = await waitForHash('#/onboarding', 15_000);
   if (!onWelcome) {
@@ -228,7 +243,9 @@ async function waitForHome(timeout = 20_000): Promise<boolean> {
   return false;
 }
 
-describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
+describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', function () {
+  this.timeout(90_000);
+
   before(async function beforeSuite() {
     // Reset + auth + onboarding bootstrap can exceed the default 30s hook budget.
     this.timeout(90_000);
@@ -237,15 +254,28 @@ describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
     setMockBehavior('composioConnections', '[]');
     // Reset state but skip the built-in onboarding walker — we walk it
     // ourselves to assert the per-step UI.
-    await resetApp('e2e-onboarding-modes', { skipAuth: true });
-    // resetApp restores onboarding_completed=true for normal specs; this spec
-    // intentionally exercises the onboarding flow, so flip it back to false
-    // before triggering auth so App.tsx routes to /onboarding.
-    stepLog('Setting onboarding_completed=false for onboarding flow test');
-    await callOpenhumanRpc('openhuman.config_set_onboarding_completed', { value: false });
+    // This spec needs a non-local authenticated session to exercise the
+    // Cloud choice. test_reset alone leaves a prior app-session profile in
+    // place; that profile can be local and intentionally redirects straight
+    // to the Custom wizard, bypassing the runtime-choice page altogether.
+    await resetApp('e2e-onboarding-modes', { skipAuth: true, clearAuthSession: true });
+    // resetApp restores onboarding_completed=true for normal specs. Auth
+    // bootstrap refreshes the renderer snapshot, so change the flag *after*
+    // login; doing it before auth lets the stale "complete" snapshot bounce
+    // the runtime-choice route to chat.
     await triggerAuthDeepLinkBypass('e2e-onboarding-modes');
     await waitForAuthBootstrap(15_000);
     await dismissBootCheckGateIfVisible(8_000);
+    stepLog('Setting onboarding_completed=false after auth bootstrap');
+    await callOpenhumanRpc('openhuman.config_set_onboarding_completed', { value: false });
+    await browser.execute(() => {
+      window.location.replace('#/onboarding/welcome');
+      window.location.reload();
+    });
+    await waitForWindowVisible(25_000);
+    await waitForWebView(15_000);
+    await waitForAppReady(15_000);
+    await waitForAuthBootstrap(15_000);
     await waitForHash('#/onboarding', 15_000);
   });
 
@@ -266,7 +296,9 @@ describe('Onboarding modes — Simple (Cloud) vs Advanced (Custom)', () => {
 
     // Step 1 — Runtime choice. The card is preselected to Cloud, so simply
     // clicking the next button continues the cloud path.
-    const choiceVisible = await testIdExists('onboarding-runtime-choice-step', 10_000);
+    // The Windows CEF runner can take more than 10 seconds to commit the
+    // route transition after a cold auth/onboarding bootstrap.
+    const choiceVisible = await testIdExists('onboarding-runtime-choice-step', 20_000);
     expect(choiceVisible).toBe(true);
     const cloudCardVisible = await testIdExists('onboarding-runtime-choice-cloud', 5_000);
     expect(cloudCardVisible).toBe(true);

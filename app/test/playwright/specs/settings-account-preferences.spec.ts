@@ -60,26 +60,19 @@ test.describe('Settings - Account Preferences', () => {
     // Panel titles were dropped in the PanelPage migration; assert the panel's
     // stable test id instead of the old heading.
     await expect(page.getByTestId('account-panel')).toBeVisible();
-    // The Account family surfaces its leaves via the sub-nav pill row above the
-    // panel (the two-pane sidebar replaced the old section-hub list).
-    await expect(page.getByTestId('settings-subnav-team')).toBeVisible();
-    await expect(page.getByTestId('settings-subnav-privacy')).toBeVisible();
-    await expect(page.getByTestId('settings-subnav-migration')).toBeVisible();
-    // Recovery phrase + wallet balances live under the Wallet family, not Account.
-    await expect(page.getByTestId('settings-subnav-recovery-phrase')).toHaveCount(0);
+    await expect(page.getByText(/Account|Profile/).first()).toBeVisible();
   });
 
   test('renders the crypto settings section route with recovery phrase + balances', async ({
     page,
   }) => {
-    // /settings/crypto is retired and redirects to the Wallet Balances panel,
-    // whose sub-nav family surfaces recovery-phrase + wallet-balances.
+    // /settings/crypto is retired and redirects to Connections → Wallet.
     await gotoSettingsRoute(page, '/settings/crypto');
 
-    // Panel titles were dropped in the PanelPage migration; the Wallet family is
-    // confirmed by its sub-nav leaves below.
-    await expect(page.getByTestId('settings-subnav-recovery-phrase')).toBeVisible();
-    await expect(page.getByTestId('settings-subnav-wallet-balances')).toBeVisible();
+    await expect
+      .poll(async () => page.evaluate(() => window.location.hash))
+      .toContain('/connections?tab=wallet');
+    await expect(page.getByTestId('wallet-panel')).toBeVisible();
   });
 
   test('saves a generated recovery phrase and exposes configured wallet state', async ({
@@ -114,17 +107,12 @@ test.describe('Settings - Account Preferences', () => {
     expect((wallet.result?.accounts ?? []).length).toBeGreaterThan(0);
   });
 
-  test('persists privacy analytics and meet handoff toggles to core config', async ({ page }) => {
+  test('persists the privacy analytics toggle to core config', async ({ page }) => {
     const beforeAnalytics = await callCoreRpc<{ result?: { enabled?: boolean } }>(
       'openhuman.config_get_analytics_settings',
       {}
     );
-    const beforeMeet = await callCoreRpc<{ result?: { auto_orchestrator_handoff?: boolean } }>(
-      'openhuman.config_get_meet_settings',
-      {}
-    );
     const initialAnalytics = Boolean(beforeAnalytics.result?.enabled);
-    const initialMeet = Boolean(beforeMeet.result?.auto_orchestrator_handoff);
 
     await gotoSettingsRoute(page, '/settings/privacy');
 
@@ -151,31 +139,17 @@ test.describe('Settings - Account Preferences', () => {
       })
       .toBe(!initialAnalytics);
 
-    await expect(page.getByTestId('privacy-meet-handoff-toggle')).toBeChecked({
-      checked: initialMeet,
-    });
-    await page.getByTestId('privacy-meet-handoff-toggle').click();
-    await expect
-      .poll(async () => {
-        const meet = await callCoreRpc<{ result?: { auto_orchestrator_handoff?: boolean } }>(
-          'openhuman.config_get_meet_settings',
-          {}
-        );
-        return Boolean(meet.result?.auto_orchestrator_handoff);
-      })
-      .toBe(!initialMeet);
-
-    const snapshot = await callCoreRpc<{
-      result?: { analyticsEnabled?: boolean; meetAutoOrchestratorHandoff?: boolean };
-    }>('openhuman.app_state_snapshot', {});
+    const snapshot = await callCoreRpc<{ result?: { analyticsEnabled?: boolean } }>(
+      'openhuman.app_state_snapshot',
+      {}
+    );
     expect(Boolean(snapshot.result?.analyticsEnabled)).toBe(!initialAnalytics);
-    expect(Boolean(snapshot.result?.meetAutoOrchestratorHandoff)).toBe(!initialMeet);
   });
 
   test('opens the billing route and settles the redirect status copy', async ({ page }) => {
     await gotoSettingsRoute(page, '/settings/billing');
 
-    await expect(page.getByRole('heading', { name: 'Open billing dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
     // Billing no longer auto-opens the browser; the panel explains billing
     // moved to the web and offers an explicit open button.
     await expect(

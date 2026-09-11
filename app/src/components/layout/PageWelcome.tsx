@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 
-import Button from '../ui/Button';
+import { cn } from '../../lib/cn';
+import { Button } from '../ui';
+import { type ContentWidth, contentWidthVariants } from './contentWidth';
 
 /**
  * PageWelcome — the welcome landing shown as the first destination of a sidebar
@@ -13,7 +15,7 @@ import Button from '../ui/Button';
  */
 
 /** Accent families available for the icon tile. Keys map to design tokens. */
-export type PageWelcomeAccent = 'ocean' | 'sage' | 'amber' | 'coral';
+type PageWelcomeAccent = 'ocean' | 'sage' | 'amber' | 'coral';
 
 /** Static per-accent tile tint (Tailwind only scans literal class names). */
 const ACCENT_TILE: Record<PageWelcomeAccent, string> = {
@@ -23,7 +25,7 @@ const ACCENT_TILE: Record<PageWelcomeAccent, string> = {
   coral: 'bg-coral-500/15 text-coral-600',
 };
 
-export interface WelcomeFeature {
+interface WelcomeFeature {
   /** Leading glyph — emoji string or icon node. */
   icon: ReactNode;
   /** Short feature title. */
@@ -32,7 +34,7 @@ export interface WelcomeFeature {
   description: ReactNode;
 }
 
-export interface WelcomeCta {
+interface WelcomeCta {
   label: ReactNode;
   onClick: () => void;
   /** First CTA renders as primary; the rest as secondary (override here). */
@@ -41,7 +43,7 @@ export interface WelcomeCta {
   testId?: string;
 }
 
-export interface PageWelcomeProps {
+interface PageWelcomeProps {
   /** Big glyph in the accent tile — emoji string or icon node. */
   icon: ReactNode;
   /** Optional short lead-in above the title (e.g. the page name). */
@@ -57,6 +59,8 @@ export interface PageWelcomeProps {
   /** Benefit cards. */
   features?: WelcomeFeature[];
   accent?: PageWelcomeAccent;
+  /** Pitch column width. Defaults to `'md'` — today's hardcoded `max-w-2xl`. */
+  width?: ContentWidth;
   testId?: string;
 }
 
@@ -69,6 +73,7 @@ export default function PageWelcome({
   featuresHeading,
   features,
   accent = 'ocean',
+  width = 'md',
   testId,
 }: PageWelcomeProps) {
   const tile = ACCENT_TILE[accent];
@@ -79,7 +84,12 @@ export default function PageWelcome({
     // scroll takes over and the top stays reachable (min-h-full, not h-full).
     <div className="h-full overflow-y-auto">
       <div className="flex min-h-full items-center">
-        <div data-testid={testId} className="mx-auto w-full max-w-2xl animate-fade-up px-6 py-10">
+        <div
+          data-testid={testId}
+          className={cn(
+            'mx-auto w-full animate-fade-up px-6 py-10',
+            contentWidthVariants({ width })
+          )}>
           <div
             aria-hidden
             className={`mb-5 flex items-center justify-center rounded-2xl text-3xl ${tile}`}

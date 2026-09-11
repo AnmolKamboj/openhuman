@@ -16,7 +16,7 @@
  *   - A node can also report engine-level success while the underlying tool
  *     call itself failed — the common Composio tool-call envelope shape is
  *     `{ data, successful, error, costUsd, markdownFormatted }`
- *     (`src/openhuman/tinyflows/caps.rs`) — `successful: false` (with or
+ *     (`src/openhuman/flows/tinyflows/caps.rs`) — `successful: false` (with or
  *     without a `status`) is treated as a failure too.
  *   - Known "the tool already told us in plain English" fields (`summary`,
  *     `message`, `text`) are surfaced verbatim when present — this is how a
@@ -34,9 +34,9 @@ import { type FlowRunItem, isPlainObject } from './runItems';
 
 const log = createDebug('app:flows:step-summary');
 
-export type StepOutcome = 'success' | 'error' | 'neutral';
+type StepOutcome = 'success' | 'error' | 'neutral';
 
-export interface StepSummary {
+interface StepSummary {
   outcome: StepOutcome;
   /** Plain-language, already-localized one-line summary (translation-ready inputs applied). */
   text: string;

@@ -257,8 +257,20 @@ impl<'a> PromptTool<'a> {
 
     /// Adapt a `Box<dyn Tool>` slice into a `Vec<PromptTool<'_>>`.
     pub fn from_tools(tools: &'a [Box<dyn Tool>]) -> Vec<PromptTool<'a>> {
+        Self::from_tool_refs(tools.iter().map(|t| t.as_ref()))
+    }
+
+    /// Adapt any iterator of borrowed tools into a `Vec<PromptTool<'_>>`.
+    ///
+    /// An agent's callable surface is not one contiguous slice: the durable
+    /// registry and the freshly-synthesised delegation set live in separate
+    /// `Arc`s (see `Agent::synthesized_tools`), and the prompt catalogue must
+    /// render both. Taking an iterator lets the caller chain them without
+    /// materialising a combined `Vec<Box<dyn Tool>>` — which is impossible
+    /// anyway, since `Box<dyn Tool>` is not cloneable.
+    pub fn from_tool_refs(tools: impl IntoIterator<Item = &'a dyn Tool>) -> Vec<PromptTool<'a>> {
         tools
-            .iter()
+            .into_iter()
             .map(|t| PromptTool {
                 name: t.name(),
                 description: t.description(),
@@ -381,6 +393,17 @@ pub struct PromptContext<'a> {
     /// Non-self personality roster entries for the master agent's prompt.
     /// Empty for non-master agents.
     pub personality_roster: Vec<PersonalityRosterEntry>,
+    /// Pre-loaded global `AGENTS.md` content (`<workspace_dir>/AGENTS.md`),
+    /// injected by [`crate::openhuman::agent::prompts::sections::AgentsInstructionsSection`].
+    /// `None` when the file is absent/empty or the `agents_md_enabled` config
+    /// gate is off. Loaded once at system-prompt build time (never re-read per
+    /// turn) so the frozen system-prompt prefix / KV-cache contract holds.
+    pub agents_md_global: Option<String>,
+    /// Pre-loaded project-layer `AGENTS.md` content — `<action_dir>/AGENTS.md`,
+    /// or a sub-agent's `worktree_action_dir` override. `None` when the file is
+    /// absent/empty, deduplicated against the global layer (same dir), or the
+    /// gate is off. Rendered after the global layer.
+    pub agents_md_local: Option<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -404,7 +427,6 @@ pub trait PromptSection: Send + Sync {
 pub struct SubagentRenderOptions {
     pub include_safety_preamble: bool,
     pub include_identity: bool,
-    pub include_skills_catalog: bool,
     pub include_profile: bool,
     pub include_memory_md: bool,
 }
@@ -420,14 +442,12 @@ impl SubagentRenderOptions {
     pub fn from_definition_flags(
         omit_identity: bool,
         omit_safety_preamble: bool,
-        omit_skills_catalog: bool,
         omit_profile: bool,
         omit_memory_md: bool,
     ) -> Self {
         Self {
             include_identity: !omit_identity,
             include_safety_preamble: !omit_safety_preamble,
-            include_skills_catalog: !omit_skills_catalog,
             include_profile: !omit_profile,
             include_memory_md: !omit_memory_md,
         }

@@ -1,11 +1,10 @@
-import { createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { REHYDRATE } from 'redux-persist';
 
 import {
   familyForThemeId,
   findFamily,
   findPreset,
-  PRESET_THEMES,
   resolveFamilyVariant,
   THEME_FAMILIES,
 } from '../lib/theme/presets';
@@ -17,9 +16,9 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type ThemeVariant = 'light' | 'dark' | 'system';
 
 /** Sentinel active-theme id meaning "follow OS light/dark preference". */
-export const SYSTEM_THEME_ID = 'system';
+const SYSTEM_THEME_ID = 'system';
 /** Default theme family selected on first run. */
-export const DEFAULT_FAMILY_ID = 'classic';
+const DEFAULT_FAMILY_ID = 'classic';
 export type TabBarLabels = 'hover' | 'always';
 export type AgentMessageViewMode = 'bubbles' | 'text';
 /**
@@ -51,7 +50,7 @@ export const FONT_SIZE_PX: Record<FontSize, string> = {
 export const MIN_FONT_SIZE_PX = 12;
 export const MAX_FONT_SIZE_PX = 28;
 /** Root size used when no preset/custom value resolves (matches `medium`). */
-export const DEFAULT_FONT_SIZE_PX = 16;
+const DEFAULT_FONT_SIZE_PX = 16;
 
 /** Clamp an arbitrary px value into the supported range, rounded to whole px. */
 export function clampFontSizePx(px: number): number {
@@ -169,17 +168,13 @@ const themeSlice = createSlice({
       const theme = ensureEditableCustom(state);
       theme.fonts[action.payload.role] = action.payload.stack;
     },
-    /** Patch the backdrop (mesh/solid/image, dots); auto-forks a preset. */
+    /** Patch the backdrop (mesh/solid/image); auto-forks a preset. */
     setThemeBackdrop(
       state,
-      action: PayloadAction<{
-        kind?: 'mesh' | 'solid' | 'image';
-        imageUrl?: string;
-        dots?: boolean;
-      }>
+      action: PayloadAction<{ kind?: 'mesh' | 'solid' | 'image'; imageUrl?: string }>
     ) {
       const theme = ensureEditableCustom(state);
-      const prev = theme.backdrop ?? { kind: 'mesh' as const };
+      const prev = theme.backdrop ?? { kind: 'solid' as const };
       theme.backdrop = { ...prev, ...action.payload, kind: action.payload.kind ?? prev.kind };
     },
     /**
@@ -264,15 +259,6 @@ export default themeSlice.reducer;
 
 /** Built-in theme families (static). */
 export const selectThemeFamilies = (): ThemeFamily[] => THEME_FAMILIES;
-
-/**
- * All selectable concrete themes: built-in variants followed by user themes.
- * Memoized so the reference is stable while `customThemes` is unchanged.
- */
-export const selectAllThemes = createSelector(
-  (state: { theme: ThemeState }) => state.theme.customThemes,
-  (customThemes): Theme[] => [...PRESET_THEMES, ...(customThemes ?? [])]
-);
 
 export const selectActiveThemeId = (state: { theme?: ThemeState }): string =>
   state.theme?.activeThemeId ?? DEFAULT_FAMILY_ID;

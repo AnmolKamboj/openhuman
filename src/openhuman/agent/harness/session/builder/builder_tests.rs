@@ -2,6 +2,7 @@
 
 use super::{
     dedup_visible_tool_specs, ensure_recovery_tool_visible, should_synthesize_delegation_tools,
+    visible_tool_specs_for_policy,
 };
 use crate::openhuman::tools::ToolSpec;
 use serde_json::json;
@@ -12,118 +13,6 @@ fn spec(name: &str) -> ToolSpec {
         description: format!("description for {name}"),
         parameters: json!({}),
     }
-}
-
-#[test]
-fn recovery_tool_joins_a_named_allowlist() {
-    use crate::openhuman::tokenjuice::RETRIEVE_TOOL_NAME as RECOVERY_TOOL_NAME;
-    use std::collections::HashSet;
-
-    // A curated Named-scope allowlist gains retrieve_tool_output as a *real*
-    // member, so the policy session, advertised specs, and the run-time
-    // visible-name gate (all driven by this set) make a compaction footer
-    // actionable.
-    let mut visible: HashSet<String> = ["file_read".to_string(), "grep".to_string()]
-        .into_iter()
-        .collect();
-    ensure_recovery_tool_visible(&mut visible);
-    assert!(
-        visible.contains(RECOVERY_TOOL_NAME),
-        "recovery tool must join: {visible:?}"
-    );
-    assert!(visible.contains("file_read"));
-}
-
-#[test]
-fn empty_allowlist_stays_empty() {
-    use std::collections::HashSet;
-    // Empty == "no filter" (all tools visible) AND the deliberately tool-less
-    // Named([]) case — both must stay empty so the invariant holds.
-    let mut visible: HashSet<String> = HashSet::new();
-    ensure_recovery_tool_visible(&mut visible);
-    assert!(visible.is_empty(), "empty allowlist must not gain a tool");
-}
-
-#[test]
-fn drops_duplicates_first_wins() {
-    // Real-world collision: researcher's `delegate_name = "research"`
-    // synthesises a delegate tool that shadows a same-named skill.
-    // Anthropic 400s on duplicate tool names; the dedup helper must
-    // keep the *first* occurrence so registration order semantics
-    // are preserved (the underlying tool dispatch lookup-by-name
-    // still resolves the right tool).
-    let specs = vec![
-        spec("research"), // skill
-        spec("plan"),
-        spec("research"), // delegate, dropped
-        spec("run_code"),
-        spec("plan"), // dropped
-    ];
-
-    let deduped = dedup_visible_tool_specs(specs);
-
-    let names: Vec<&str> = deduped.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, vec!["research", "plan", "run_code"]);
-}
-
-#[test]
-fn passes_through_when_no_duplicates() {
-    let specs = vec![spec("a"), spec("b"), spec("c")];
-    let deduped = dedup_visible_tool_specs(specs);
-    assert_eq!(deduped.len(), 3);
-    assert_eq!(deduped[0].name, "a");
-    assert_eq!(deduped[1].name, "b");
-    assert_eq!(deduped[2].name, "c");
-}
-
-#[test]
-fn handles_empty_input() {
-    let deduped = dedup_visible_tool_specs(Vec::<ToolSpec>::new());
-    assert!(deduped.is_empty());
-}
-
-#[test]
-fn preserves_full_spec_content_for_kept_entries() {
-    // Description + parameters must survive the dedup pass intact —
-    // the LLM uses both for tool-call decisions, and corrupting them
-    // would silently degrade function-calling quality.
-    let mut spec_a = spec("alpha");
-    spec_a.description = "first alpha — should win".to_string();
-    spec_a.parameters = json!({"type": "object", "required": ["x"]});
-
-    let mut spec_a_dup = spec("alpha");
-    spec_a_dup.description = "second alpha — should be dropped".to_string();
-
-    let deduped = dedup_visible_tool_specs(vec![spec_a.clone(), spec_a_dup]);
-
-    assert_eq!(deduped.len(), 1);
-    assert_eq!(deduped[0].description, "first alpha — should win");
-    assert_eq!(
-        deduped[0].parameters,
-        json!({"type": "object", "required": ["x"]})
-    );
-}
-
-#[test]
-fn automatic_memory_policy_does_not_synthesize_delegate_tools() {
-    let defs = crate::openhuman::agent_registry::agents::load_builtins().unwrap();
-    let help = defs
-        .iter()
-        .find(|def| def.id == "help")
-        .expect("help agent is built in");
-    let orchestrator = defs
-        .iter()
-        .find(|def| def.id == "orchestrator")
-        .expect("orchestrator is built in");
-
-    assert!(
-        !should_synthesize_delegation_tools(help),
-        "automatic memory policy should not add delegate tools"
-    );
-    assert!(
-        should_synthesize_delegation_tools(orchestrator),
-        "orchestrator still needs synthesized delegate tools"
-    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,92 +40,275 @@ fn test_config(tmp: &tempfile::TempDir) -> crate::openhuman::config::Config {
 /// singleton (so tests can't be poisoned by another test's
 /// `AgentDefinitionRegistry::init_global*` call, and can't poison later ones).
 fn builtin_def(id: &str) -> crate::openhuman::agent::harness::definition::AgentDefinition {
-    crate::openhuman::agent_registry::agents::load_builtins()
+    crate::openhuman::agent::registry::agents::load_builtins()
         .unwrap()
         .into_iter()
         .find(|def| def.id == id)
         .unwrap_or_else(|| panic!("builtin agent definition not found: {id}"))
 }
 
-#[tokio::test]
-async fn build_session_agent_applies_extended_policy_definition_cap() {
-    use crate::openhuman::agent::harness::session::types::Agent;
+// ── Finding #1 (Codex): dedicated memory subtree on the ordinary session path ─
 
-    let tmp = tempfile::TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    assert_eq!(
-        config.agent.max_tool_iterations, 10,
-        "precondition: global default must be 10 for this test to distinguish the two"
+/// Build a non-default profile with the given id + dedicated-memory flag.
+fn custom_profile(
+    id: &str,
+    dedicated_memory: bool,
+) -> crate::openhuman::agent::profiles::AgentProfile {
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
+    profile.id = id.to_string();
+    profile.name = id.to_string();
+    profile.built_in = false;
+    profile.is_master = false;
+    profile.memory_dir_suffix = None;
+    profile.dedicated_memory = dedicated_memory;
+    profile
+}
+
+#[path = "builder_tests_part_01_tests.rs"]
+mod part_01_tests;
+#[path = "builder_tests_part_02_tests.rs"]
+mod part_02_tests;
+#[path = "builder_tests_part_03_tests.rs"]
+mod part_03_tests;
+#[path = "builder_tests_part_04_tests.rs"]
+mod part_04_tests;
+
+// ── use_skill's advertised spec is scoped to the session ────────────────────
+
+use crate::openhuman::tools::agent_policy::{
+    TaskProfile, TaskRiskLevel, ToolPolicyAction, ToolPolicyDecision, ToolPolicySession,
+};
+use crate::openhuman::tools::traits::PermissionLevel;
+
+fn session_allowing(names: &[&str]) -> ToolPolicySession {
+    ToolPolicySession {
+        profile: TaskProfile {
+            agent_id: "orchestrator".to_string(),
+            channel: "web_chat".to_string(),
+            entrypoint: "chat".to_string(),
+            risk_level: TaskRiskLevel::Low,
+            allowed_permission: PermissionLevel::Dangerous,
+        },
+        capabilities: vec![],
+        allowed_tool_names: names.iter().map(|n| n.to_string()).collect(),
+        blocked_tool_names: Default::default(),
+        hidden_tool_names: Default::default(),
+        decisions: names
+            .iter()
+            .map(|n| {
+                (
+                    n.to_string(),
+                    ToolPolicyDecision {
+                        tool_name: n.to_string(),
+                        action: ToolPolicyAction::Allow,
+                        required_permission: None,
+                        allowed_permission: PermissionLevel::Dangerous,
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
+fn use_skill_spec_from_registry() -> ToolSpec {
+    let mut tools: Vec<Box<dyn crate::openhuman::tools::traits::Tool>> = Vec::new();
+    crate::openhuman::tools::toolpacks::append_pack_tools(&mut tools);
+    let tool = tools
+        .iter()
+        .find(|t| t.name() == crate::openhuman::tools::toolpacks::USE_SKILL)
+        .expect("append_pack_tools registers use_skill");
+    ToolSpec {
+        name: tool.name().to_string(),
+        description: tool.description().to_string(),
+        parameters: tool.parameters_schema(),
+    }
+}
+
+/// Proves the scoping is actually WIRED, not merely available. A correct helper
+/// nobody calls advertises every pack exactly as before.
+#[test]
+fn visible_specs_scope_use_skills_index_to_the_session() {
+    // `Arc` leaves, because the three spec views share them — the assertions
+    // below are unchanged, only the carrier is.
+    let specs: Vec<std::sync::Arc<ToolSpec>> =
+        vec![std::sync::Arc::new(use_skill_spec_from_registry())];
+    let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
+    // Reachable: one workflows tool. Everything else in every other pack is
+    // denied, exactly like the orchestrator against `system` / `audio`.
+    let session = session_allowing(&[
+        "run_workflow",
+        crate::openhuman::tools::toolpacks::USE_SKILL,
+    ]);
+
+    let out = visible_tool_specs_for_policy(&specs, &visible, &session);
+    let load = out
+        .iter()
+        .find(|s| s.name == crate::openhuman::tools::toolpacks::USE_SKILL)
+        .expect("use_skill is still offered — workflows is reachable");
+
+    assert!(
+        load.description.contains("`workflows`"),
+        "the reachable pack must survive: {}",
+        load.description
     );
+    assert!(
+        !load.description.contains("`system`"),
+        "a pack with nothing callable must not reach the wire: {}",
+        load.description
+    );
+    let ids = load
+        .parameters
+        .pointer("/properties/skill/enum")
+        .and_then(|v| v.as_array())
+        .expect("skill enum")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["workflows"], "the enum is scoped too");
+}
 
-    // `code_executor` declares `iteration_policy = "extended"` with
-    // `max_iterations = 10` in its agent.toml, so its effective cap is
-    // `EXTENDED_MAX_TOOL_ITERATIONS` (50) — not the raw `max_iterations`.
-    let def = builtin_def("code_executor");
-    assert_eq!(def.effective_max_iterations(), 50);
+/// A session that can reach no pack at all should not carry the pack tool.
+#[test]
+fn visible_specs_drop_the_pack_tool_when_no_pack_is_reachable() {
+    // `Arc` leaves, because the three spec views share them — the assertions
+    // below are unchanged, only the carrier is.
+    let specs: Vec<std::sync::Arc<ToolSpec>> =
+        vec![std::sync::Arc::new(use_skill_spec_from_registry())];
+    let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
+    let session = session_allowing(&[crate::openhuman::tools::toolpacks::USE_SKILL]);
 
-    let agent = Agent::build_session_agent_inner(
-        &config,
-        "code_executor",
-        Some(&def),
-        None,
-        None,
-        false,
-        None,
-    )
-    .expect("build_session_agent_inner should succeed for a valid extended-policy definition");
-
-    assert_eq!(
-        agent.agent_config().max_tool_iterations,
-        50,
-        "extended-policy agent must carry its definition's effective cap (50), not the global \
-         default (10)"
+    let out = visible_tool_specs_for_policy(&specs, &visible, &session);
+    assert!(
+        out.is_empty(),
+        "with no reachable pack, the pack tool does not earn its schema: {:?}",
+        out.iter().map(|s| &s.name).collect::<Vec<_>>()
     );
 }
 
-#[tokio::test]
-async fn build_session_agent_applies_strict_cap_below_global_default() {
-    use crate::openhuman::agent::harness::session::types::Agent;
+/// **The regression Codex caught on #6215, pinned with a realistic session.**
+///
+/// My first tests hand-built a `ToolPolicySession` whose `decisions` were
+/// explicit `Allow`s — a fixture that cannot express the state every packed
+/// tool is actually in. The real harness strips packed names from `visible`,
+/// which classifies them `HideFromPrompt`, and `is_denied()` answers true for
+/// that. A predicate built on `is_denied` therefore reported *no* pack as
+/// reachable and dropped `use_skill` from the wire — deleting
+/// the only route to every withheld tool.
+#[test]
+fn a_realistic_withheld_session_keeps_its_packs_advertised() {
+    use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
+    use crate::openhuman::tools::toolpacks::{append_pack_tools, strip_packed_from_visible};
 
-    let tmp = tempfile::TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    assert_eq!(config.agent.max_tool_iterations, 10);
+    struct Fake(&'static str);
+    #[async_trait::async_trait]
+    impl crate::openhuman::tools::traits::Tool for Fake {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn description(&self) -> &str {
+            "fake"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object" })
+        }
+        async fn execute(
+            &self,
+            _a: serde_json::Value,
+        ) -> anyhow::Result<crate::openhuman::tools::traits::ToolResult> {
+            Ok(crate::openhuman::tools::traits::ToolResult::success("ok"))
+        }
+    }
 
-    // `archivist` is strict-policy with a declared `max_iterations = 3` —
-    // well below the global default of 10. The definition cap must still
-    // win (lowering the runtime cap), not just raise it.
-    let def = builtin_def("archivist");
-    assert_eq!(def.effective_max_iterations(), 3);
+    let mut tools: Vec<Box<dyn crate::openhuman::tools::traits::Tool>> =
+        vec![Box::new(Fake("goal_set")), Box::new(Fake("goal_get"))];
+    append_pack_tools(&mut tools);
 
-    let agent =
-        Agent::build_session_agent_inner(&config, "archivist", Some(&def), None, None, false, None)
-            .expect("build_session_agent_inner should succeed for a valid strict-low definition");
+    let mut visible: std::collections::HashSet<String> =
+        tools.iter().map(|t| t.name().to_string()).collect();
+    strip_packed_from_visible(&mut visible, "orchestrator");
+    assert!(
+        !visible.contains("goal_set"),
+        "precondition: the pack is withheld from the prompt"
+    );
 
-    assert_eq!(
-        agent.agent_config().max_tool_iterations,
-        3,
-        "strict-policy agent below the global default must still get its own (lower) cap"
+    let session = ToolPolicyEngine::build_session(
+        "orchestrator",
+        "web_chat",
+        "chat",
+        &Default::default(),
+        &tools,
+        &visible,
+    );
+
+    let specs: Vec<std::sync::Arc<ToolSpec>> = tools
+        .iter()
+        .map(|t| {
+            std::sync::Arc::new(ToolSpec {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
+            })
+        })
+        .collect();
+
+    let out = visible_tool_specs_for_policy(&specs, &visible, &session);
+    let names: Vec<&str> = out.iter().map(|s| s.name.as_str()).collect();
+
+    assert!(
+        names.contains(&crate::openhuman::tools::toolpacks::USE_SKILL),
+        "use_skill must survive — the pack it opens is reachable: {names:?}"
+    );
+    let load = out
+        .iter()
+        .find(|s| s.name == crate::openhuman::tools::toolpacks::USE_SKILL)
+        .expect("use_skill spec");
+    assert!(
+        load.description.contains("`goals`"),
+        "the withheld-but-callable pack must still be advertised: {}",
+        load.description
     );
 }
 
-#[tokio::test]
-async fn build_session_agent_falls_back_to_global_default_when_no_definition() {
-    use crate::openhuman::agent::harness::session::types::Agent;
+/// **Listing visibility must not ride on the named-call permission ceiling.**
+///
+/// `UseSkillTool::permission_level()` reports the MAX over every packed
+/// tool — correct for a *named* call, where the worst case genuinely is the
+/// most dangerous packed tool. But `tool_policy.is_allowed(&spec.name)` is
+/// built from that same argument-less ceiling, so a session excluding
+/// `use_skill` from `allowed_tool_names` (exactly what the real engine does
+/// when one packed tool exceeds the channel's permission ceiling) must not
+/// erase the whole proxy — `use_skill`'s own listing action
+/// (`skill` alone, no `tool`) is always `ReadOnly` per
+/// `permission_level_with_args`, and every OTHER pack's tools stay reachable
+/// through it regardless of what one dangerous tool in some other pack needs.
+#[test]
+fn use_skill_survives_a_ceiling_that_excludes_it_when_a_pack_is_still_reachable() {
+    // `allowed_tool_names` deliberately omits `USE_SKILL` itself — simulating
+    // the real engine having excluded it because *some* packed tool (not
+    // `run_workflow`) exceeded the channel's permission ceiling.
+    let session = session_allowing(&["run_workflow"]);
+    assert!(
+        !session
+            .allowed_tool_names
+            .contains(crate::openhuman::tools::toolpacks::USE_SKILL),
+        "precondition: use_skill itself is not in the allowlist"
+    );
 
-    let tmp = tempfile::TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    assert_eq!(config.agent.max_tool_iterations, 10);
+    let specs: Vec<std::sync::Arc<ToolSpec>> =
+        vec![std::sync::Arc::new(use_skill_spec_from_registry())];
+    let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
 
-    // No `target_def` at all (e.g. registry not yet initialised, or a
-    // legacy caller that never resolved one) — must fall back to the
-    // unmodified global `config.agent.max_tool_iterations`.
-    let agent =
-        Agent::build_session_agent_inner(&config, "orchestrator", None, None, None, false, None)
-            .expect("build_session_agent_inner should succeed with no definition");
-
-    assert_eq!(
-        agent.agent_config().max_tool_iterations,
-        10,
-        "with no definition, the global config default must be used unchanged"
+    let out = visible_tool_specs_for_policy(&specs, &visible, &session);
+    let load = out
+        .iter()
+        .find(|s| s.name == crate::openhuman::tools::toolpacks::USE_SKILL)
+        .expect(
+            "use_skill must survive even though it is not itself in allowed_tool_names — \
+             its listing action is always ReadOnly and the workflows pack is reachable",
+        );
+    assert!(
+        load.description.contains("`workflows`"),
+        "the reachable pack must still be advertised: {}",
+        load.description
     );
 }

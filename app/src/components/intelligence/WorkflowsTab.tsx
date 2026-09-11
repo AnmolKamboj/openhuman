@@ -26,7 +26,6 @@ import type { ToastNotification } from '../../types/intelligence';
 import SettingsPanel from '../settings/layout/SettingsPanel';
 import CreateSkillModal from '../skills/CreateSkillModal';
 import UnifiedSkillCard from '../skills/SkillCard';
-import { BUILT_IN_SKILL_ICONS } from '../skills/skillIcons';
 import UninstallSkillConfirmDialog from '../skills/UninstallSkillConfirmDialog';
 import Button from '../ui/Button';
 import { ToastContainer } from './Toast';
@@ -115,7 +114,7 @@ export default function WorkflowsTab({ asSettingsPanel = false }: WorkflowsTabPr
           <h2 className="text-sm font-semibold text-coral-800 dark:text-coral-200">
             {t('common.error')}
           </h2>
-          <p className="mt-1 break-words font-mono text-[11px] text-coral-700/90 dark:text-coral-300/90">
+          <p className="mt-1 wrap-break-word font-mono text-[11px] text-coral-700/90 dark:text-coral-300/90">
             {loadError}
           </p>
           <Button
@@ -181,7 +180,7 @@ export default function WorkflowsTab({ asSettingsPanel = false }: WorkflowsTabPr
               return (
                 <UnifiedSkillCard
                   key={wf.id}
-                  icon={BUILT_IN_SKILL_ICONS.screenIntelligence}
+                  icon={null}
                   title={wf.name}
                   description={wf.description}
                   statusLabel={scopeLabel}
@@ -284,7 +283,7 @@ export default function WorkflowsTab({ asSettingsPanel = false }: WorkflowsTabPr
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 text-xs text-content-muted">{t('workflows.subtitle')}</p>
-        <div className="flex flex-shrink-0 items-center gap-2">{newWorkflowButton}</div>
+        <div className="flex shrink-0 items-center gap-2">{newWorkflowButton}</div>
       </div>
       {body}
     </div>

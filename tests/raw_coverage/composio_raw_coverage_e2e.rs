@@ -15,30 +15,30 @@ use serde_json::{json, Value};
 use tempfile::tempdir;
 
 use openhuman_core::core::all::RegisteredController;
-use openhuman_core::openhuman::composio::client::{
+use openhuman_core::openhuman::integrations::composio::client::{
     create_composio_client, direct_execute, ComposioClientKind,
 };
-use openhuman_core::openhuman::composio::error_mapping::{
+use openhuman_core::openhuman::integrations::composio::error_mapping::{
     classify_composio_error, format_provider_error, remap_transport_error, ComposioErrorClass,
 };
-use openhuman_core::openhuman::composio::execute_dispatch::{
+use openhuman_core::openhuman::integrations::composio::execute_dispatch::{
     execute_composio_action, execute_composio_action_kind,
 };
-use openhuman_core::openhuman::composio::execute_prepare::prepare_execute_arguments;
-use openhuman_core::openhuman::composio::oauth_handoff::{
+use openhuman_core::openhuman::integrations::composio::execute_prepare::prepare_execute_arguments;
+use openhuman_core::openhuman::integrations::composio::oauth_handoff::{
     clear_non_active_connections, is_authorize_rate_limited, is_clearable_oauth_status,
     is_inflight_oauth_status, is_meta_oauth_toolkit, meta_oauth_rate_limit_message,
     wrap_authorize_rate_limit_error,
 };
-use openhuman_core::openhuman::composio::providers::{
+use openhuman_core::openhuman::integrations::composio::providers::{
     classify_unknown, find_curated, toolkit_from_slug, CuratedTool, ToolScope, UserScopePref,
 };
-use openhuman_core::openhuman::composio::tools::{
+use openhuman_core::openhuman::integrations::composio::tools::{
     ComposioAction, ComposioAuthorizeTool, ComposioConnectedAccount, ComposioExecuteTool,
     ComposioListConnectionsTool, ComposioListToolkitsTool, ComposioListToolsTool,
 };
-use openhuman_core::openhuman::composio::trigger_history::ComposioTriggerHistoryStore;
-use openhuman_core::openhuman::composio::types::{
+use openhuman_core::openhuman::integrations::composio::trigger_history::ComposioTriggerHistoryStore;
+use openhuman_core::openhuman::integrations::composio::types::{
     ComposioActiveTrigger, ComposioActiveTriggersResponse, ComposioAgentReadyToolkitsResponse,
     ComposioAuthorizeResponse, ComposioAvailableTrigger, ComposioAvailableTriggerRepo,
     ComposioAvailableTriggersResponse, ComposioCapabilitiesResponse, ComposioCapability,
@@ -48,16 +48,16 @@ use openhuman_core::openhuman::composio::types::{
     ComposioToolSchema, ComposioToolkitsResponse, ComposioToolsResponse, ComposioTriggerEvent,
     ComposioTriggerHistoryEntry, ComposioTriggerHistoryResult, ComposioTriggerMetadata,
 };
-use openhuman_core::openhuman::composio::{
+use openhuman_core::openhuman::integrations::composio::{
     all_composio_agent_tools, all_composio_controller_schemas, all_composio_registered_controllers,
     cached_active_integrations, connected_set_hash, connection_identity,
     fetch_connected_integrations, fetch_connected_integrations_status,
-    init_composio_trigger_history, invalidate_connected_integrations_cache, ComposioActionTool,
+    invalidate_connected_integrations_cache, ComposioActionTool,
     ComposioClient, FetchConnectedIntegrationsStatus,
 };
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::context::prompt::ConnectedIntegration;
-use openhuman_core::openhuman::credentials::{
+use openhuman_core::openhuman::agent::context::prompt::ConnectedIntegration;
+use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use openhuman_core::openhuman::integrations::IntegrationClient;
@@ -363,7 +363,7 @@ async fn composio_connected_integrations_public_helpers_handle_empty_auth_and_id
 }
 
 #[tokio::test]
-async fn composio_ops_mode_and_trigger_history_are_local_and_deterministic() {
+async fn composio_ops_mode_is_local_and_trigger_history_reflects_module_archive_availability() {
     let dir = tempdir().expect("tempdir");
     let mut config = Config {
         workspace_dir: dir.path().to_path_buf(),
@@ -372,7 +372,7 @@ async fn composio_ops_mode_and_trigger_history_are_local_and_deterministic() {
     };
     config.composio.mode = "direct".into();
 
-    let mode = openhuman_core::openhuman::composio::ops::composio_get_mode(&config)
+    let mode = openhuman_core::openhuman::integrations::composio::ops::composio_get_mode(&config)
         .await
         .expect("get mode should not call backend")
         .into_cli_compatible_json()
@@ -380,35 +380,32 @@ async fn composio_ops_mode_and_trigger_history_are_local_and_deterministic() {
     assert_eq!(mode.pointer("/result/mode"), Some(&json!("direct")));
     assert!(mode.pointer("/result/api_key_set").is_some());
 
-    init_composio_trigger_history(dir.path().to_path_buf())
-        .expect("global trigger history initializes for temp workspace");
-    let store = openhuman_core::openhuman::composio::global_composio_trigger_history()
-        .expect("global history store");
-    store
-        .record_trigger(
-            "gmail",
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            "metadata-local",
-            "uuid-local",
-            &json!({ "subject": "ops coverage" }),
-        )
-        .expect("record global trigger");
-
-    let history =
-        openhuman_core::openhuman::composio::ops::composio_list_trigger_history(&config, Some(0))
-            .await
-            .expect("history listing is local")
-            .into_cli_compatible_json()
-            .expect("history outcome serializes");
-    assert_eq!(
-        history.pointer("/result/entries/0/metadata_id"),
-        Some(&json!("metadata-local"))
-    );
-    assert!(history
-        .pointer("/result/archive_dir")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .contains("state/triggers"));
+    match openhuman_core::openhuman::integrations::composio::ops::composio_list_trigger_history(
+        &config,
+        Some(0),
+    )
+    .await
+    {
+        // The module is process-global. If an earlier Composio operation
+        // loaded it with a state directory, history remains available through
+        // that module-owned archive even when this call's route is absent.
+        Ok(history) => {
+            let history = history
+                .into_cli_compatible_json()
+                .expect("history outcome serializes");
+            assert!(history
+                .pointer("/result/archive_dir")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("triggers"));
+        }
+        // A deliberately route-less module has no load-time archive. It must
+        // say that explicitly rather than report an empty history.
+        Err(error) => {
+            assert!(error.contains("trigger history is unavailable"), "{error}");
+            assert!(error.contains("state_dir"), "{error}");
+        }
+    }
 }
 
 #[test]
@@ -451,9 +448,12 @@ fn composio_action_tool_metadata_is_stable_without_network_execution() {
 }
 
 #[tokio::test]
-async fn composio_action_tool_execute_reports_factory_failures_without_network() {
+async fn composio_action_tool_execute_reports_missing_route_without_network() {
+    let tmp = tempfile::tempdir().expect("temp config directory");
+    let mut config = Config::default();
+    config.config_path = tmp.path().join("config.toml");
     let tool = ComposioActionTool::new(
-        Arc::new(Config::default()),
+        Arc::new(config),
         "GMAIL_SEND_EMAIL".into(),
         "Send an email".into(),
         None,
@@ -465,7 +465,8 @@ async fn composio_action_tool_execute_reports_factory_failures_without_network()
         .expect("local validation returns a tool result");
     assert!(result.is_error);
     let rendered = serde_json::to_string(&result).unwrap();
-    assert!(rendered.contains("no backend session token"));
+    assert!(rendered.contains("without a connector route"), "{rendered}");
+    assert!(rendered.contains("proxy"), "{rendered}");
 }
 
 #[tokio::test]
@@ -843,7 +844,7 @@ async fn composio_controller_registry_and_scope_handlers_cover_validation_edges(
             .starts_with("openhuman.composio_")
     }));
 
-    let unknown = openhuman_core::openhuman::composio::schemas::schemas("not_real");
+    let unknown = openhuman_core::openhuman::integrations::composio::schemas::schemas("not_real");
     assert_eq!(unknown.function, "unknown");
     assert_eq!(unknown.inputs[0].name, "function");
 
@@ -868,13 +869,43 @@ async fn composio_controller_registry_and_scope_handlers_cover_validation_edges(
     .await
     .expect_err("write must be bool");
     assert!(invalid_write.contains("invalid 'write'"));
+    // The storage half must refuse rather than report a write it did not do.
+    //
+    // This used to assert "memory client not initialised", the refusal the
+    // in-process engine handle produced. `1bf2037a0` ("Stop booting the second
+    // in-process memory engine", openhuman#5725) removed that handle and moved
+    // the storage half onto the bound driver, so the string stopped existing
+    // anywhere in `src/` — and this assertion went on asserting it, failing every
+    // lane that runs raw_coverage. It survived review because the coverage lane
+    // is changed-modules-scoped and did not run this target.
+    //
+    // Re-anchored on the arm this path actually reaches. `save` refuses on three
+    // grounds and they are deliberately distinguishable: "memory driver
+    // unavailable" (nothing bound), "does not serve Graph" (bound, wrong family),
+    // and "kv_put failed" (bound, right family, the write itself failed). Here
+    // the module provider binds and does serve Graph, so it is the third — the
+    // module cdylib is never loaded in a test binary that runs no boot sequence.
+    //
+    // The tag and the arm are pinned; the reason after the colon is NOT. That
+    // text belongs to the module loader, not to this handler, and pinning
+    // another component's wording here is how the previous assertion became
+    // orphaned in the first place.
     let memory_missing = composio_call(
         set_scopes,
         json!({ "toolkit": "gmail", "read": true, "write": true, "admin": false }),
     )
     .await
-    .expect_err("memory client not initialised");
-    assert!(memory_missing.contains("memory client not initialised"));
+    .expect_err("the backing write must fail with no module host policy published");
+    assert!(
+        memory_missing.starts_with("[composio][scopes] "),
+        "the refusal must be tagged as the scopes storage half's, so a failure here \
+         points at this handler rather than at whatever it called; got: {memory_missing}"
+    );
+    assert!(
+        memory_missing.contains("kv_put failed"),
+        "set_user_scopes must fail CLOSED on the backing write rather than reporting \
+         a save it did not perform; got: {memory_missing}"
+    );
 }
 
 #[test]
@@ -909,7 +940,7 @@ fn composio_controller_schema_catalog_covers_all_declared_functions() {
     ];
 
     for (function, required_inputs, first_output) in expected {
-        let schema = openhuman_core::openhuman::composio::schemas::schemas(function);
+        let schema = openhuman_core::openhuman::integrations::composio::schemas::schemas(function);
         assert_eq!(schema.namespace, "composio");
         assert_eq!(schema.function, function);
         let input_names: Vec<&str> = schema.inputs.iter().map(|f| f.name).collect();
@@ -1133,7 +1164,10 @@ async fn composio_agent_tools_cover_metadata_missing_params_and_scope_helpers() 
             "composio_execute",
         ]
     );
-    let no_tools = all_composio_agent_tools(&Config::default());
+    let anonymous_config_dir = tempfile::tempdir().expect("anonymous config directory");
+    let mut anonymous_config = Config::default();
+    anonymous_config.config_path = anonymous_config_dir.path().join("config.toml");
+    let no_tools = all_composio_agent_tools(&anonymous_config);
     assert!(no_tools.is_empty());
 
     assert_eq!(

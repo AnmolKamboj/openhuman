@@ -17,7 +17,9 @@
 //! **Available tools.** Reuses the bus handler's `Arc`-shared tool sets
 //! (`tools_registry: Arc<Vec<Box<dyn Tool>>>` + per-turn `extra_tools`),
 //! advertised via `SharedToolAdapter`
-//! and filtered by `visible_tool_names`. No early-exit tools on this path.
+//! and filtered by `visible_tool_names`. `ask_user_clarification` is the
+//! early-exit tool: it pauses the turn and returns its question as the turn's
+//! text, which the channel relays as the reply.
 //!
 //! **Summarization.** [`run_channel_turn_via_graph`] resolves the model's
 //! effective context window before dispatch so the shared seam runs the
@@ -30,11 +32,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::mpsc::Sender;
 
+use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
+use crate::openhuman::agent::tinyagents::run_turn_via_tinyagents_shared;
+use crate::openhuman::agent::tinyagents::TurnModelSource;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig};
-use crate::openhuman::inference::provider::ChatMessage;
-use crate::openhuman::tinyagents::run_turn_via_tinyagents_shared;
-use crate::openhuman::tinyagents::TurnModelSource;
 use crate::openhuman::tools::Tool;
 
 /// Drive a channel/CLI turn on the graph engine. Returns the final assistant
@@ -130,8 +132,11 @@ pub(crate) async fn run_channel_turn_via_graph(
         context_window,
         // No mid-flight steering on the channel path.
         None,
-        // No early-exit pause on the channel path.
-        &[],
+        // Same pause as the chat path: a channel turn's continuation is the
+        // user's next message, so ending the turn on the question is the whole
+        // mechanism. Without this the model answers its own question (see
+        // `session/turn/graph.rs`).
+        &["ask_user_clarification"],
         // Channels surface the cap as an error (legacy `ErrorCheckpoint`), so no
         // graceful cap pause/summary here.
         false,
@@ -140,7 +145,7 @@ pub(crate) async fn run_channel_turn_via_graph(
         Some(crate::openhuman::inference::provider::AGENT_TURN_MAX_OUTPUT_TOKENS),
         // Context middlewares: cache-align + default tool-result byte cap (the
         // channel path has no session `ContextManager` to source config from).
-        crate::openhuman::tinyagents::TurnContextMiddleware::defaults(),
+        crate::openhuman::agent::tinyagents::TurnContextMiddleware::defaults(),
         // Channel/CLI path carries its own gating; no session `.tool_policy()`.
         None,
         // Channel turns do not yet carry SDK workspace descriptors.
@@ -173,99 +178,16 @@ pub(crate) async fn run_channel_turn_via_graph(
             .to_provider_messages(&outcome.conversation)
     };
     history.extend(suffix);
+    if outcome.early_exit_tool.is_some() {
+        // Paused on `ask_user_clarification`: the suffix ends on the tool result
+        // and there is no final assistant turn, so `outcome.text` (the question)
+        // stands in for one. Without this the next turn's history would not show
+        // that the agent had asked anything.
+        history.push(ChatMessage::assistant(outcome.text.clone()));
+    }
     Ok(outcome.text)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::openhuman::inference::provider::{ChatResponse, Provider, ToolCall};
-    use crate::openhuman::tools::ToolResult;
-    use async_trait::async_trait;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct PingTool;
-    #[async_trait]
-    impl Tool for PingTool {
-        fn name(&self) -> &str {
-            "ping"
-        }
-        fn description(&self) -> &str {
-            "ping"
-        }
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object"})
-        }
-        async fn execute(&self, _a: serde_json::Value) -> anyhow::Result<ToolResult> {
-            Ok(ToolResult::success("pong"))
-        }
-    }
-
-    struct PingThenDone {
-        calls: AtomicUsize,
-    }
-    #[async_trait]
-    impl Provider for PingThenDone {
-        async fn chat_with_system(
-            &self,
-            _s: Option<&str>,
-            _m: &str,
-            _model: &str,
-            _t: f64,
-        ) -> anyhow::Result<String> {
-            Ok(String::new())
-        }
-        async fn chat(
-            &self,
-            _r: crate::openhuman::inference::provider::ChatRequest<'_>,
-            _model: &str,
-            _t: f64,
-        ) -> anyhow::Result<ChatResponse> {
-            let n = self.calls.fetch_add(1, Ordering::SeqCst);
-            if n == 0 {
-                Ok(ChatResponse {
-                    tool_calls: vec![ToolCall {
-                        id: "p".to_string(),
-                        name: "ping".to_string(),
-                        arguments: "{}".to_string(),
-                        extra_content: None,
-                    }],
-                    ..Default::default()
-                })
-            } else {
-                Ok(ChatResponse {
-                    text: Some("channel done".to_string()),
-                    ..Default::default()
-                })
-            }
-        }
-        fn supports_native_tools(&self) -> bool {
-            true
-        }
-    }
-
-    #[tokio::test]
-    async fn channel_turn_runs_through_the_graph() {
-        let registry: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(PingTool)]);
-        let mut history = vec![ChatMessage::user("ping please")];
-        let text = run_channel_turn_via_graph(
-            TurnModelSource::new(Arc::new(PingThenDone {
-                calls: AtomicUsize::new(0),
-            })),
-            &mut history,
-            registry,
-            vec![],
-            None,
-            "mock-model",
-            0.0,
-            10,
-            MultimodalConfig::default(),
-            MultimodalFileConfig::default(),
-            None,
-        )
-        .await
-        .expect("channel graph turn runs");
-        assert_eq!(text, "channel done");
-        assert!(history.iter().any(|m| m.content.contains("pong")));
-    }
-}
+#[path = "graph_tests.rs"]
+mod tests;

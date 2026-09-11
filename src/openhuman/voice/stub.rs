@@ -49,6 +49,11 @@ pub trait SttProvider: Send + Sync {
         file_name: Option<&str>,
         language: Option<&str>,
     ) -> Result<RpcOutcome<SttResult>, String>;
+
+    #[cfg(test)]
+    fn configured_model(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Resolve the effective STT provider string. With voice disabled the value is
@@ -187,6 +192,11 @@ pub mod always_on {
 // streaming::handle_dictation_ws (re-exported from inference::voice in real)
 // ---------------------------------------------------------------------------
 
+// axum-only, and its sole caller (`core::jsonrpc::dictation_ws_handler`) is
+// gated the same way, so the stub's dictation-WS surface is exclusive to the
+// `http-server` feature too (#5048): voice-OFF + http-server-OFF needs no
+// `voice::streaming` at all.
+#[cfg(feature = "http-server")]
 pub mod streaming {
     use std::sync::Arc;
 

@@ -78,6 +78,20 @@ describe('DeveloperOptionsPanel — CoreModeBadge', () => {
     expect(screen.getByText(/Embedded core sidecar/i)).toBeInTheDocument();
   });
 
+  test('shows the gateway id, and no URL or token, when coreMode is a gateway', async () => {
+    // A provisioned gateway's URL and bearer are the shell's — minted per
+    // activation and never persisted here — so the id is all this panel has,
+    // and all a developer needs in order to find it in Settings.
+    const Panel = (await import('../DeveloperOptionsPanel')).default;
+
+    renderWithProviders(<Panel />, {
+      preloadedState: { coreMode: { mode: { kind: 'gateway', gatewayId: 'builder' } } },
+    });
+
+    expect(await screen.findByText('builder')).toBeInTheDocument();
+    expect(screen.queryByText(/^http/)).not.toBeInTheDocument();
+  });
+
   test('shows "Cloud" pill plus URL and masked token tail when coreMode is cloud', async () => {
     vi.resetModules();
     const Panel = await importPanel();
@@ -127,9 +141,7 @@ describe('DeveloperOptionsPanel — CoreModeBadge', () => {
     // Knowledge & Memory group was retired. Assert a destination that IS
     // present: 事件日志 (Event Log).
     expect(screen.getByText('事件日志')).toBeInTheDocument();
-    // Two screen-awareness rows now exist (the moved settings row + the debug
-    // panel), which collapse to the same zh-CN label — assert at least one.
-    expect(screen.getAllByText('屏幕感知').length).toBeGreaterThan(0);
+    expect(screen.queryByText('屏幕感知')).not.toBeInTheDocument();
     // Composio triggers moved to the Connections Composio page — assert a
     // destination that IS still present: MCP 服务器 (MCP Server).
     expect(screen.getByText('MCP 服务器')).toBeInTheDocument();

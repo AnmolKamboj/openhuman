@@ -6,13 +6,13 @@
 //! own thread) can advance the task it's working: move it to
 //! `in_progress`/`blocked`/`done`, or update its objective/notes/evidence/blocker.
 //!
-//! It is a thin wrapper over [`crate::openhuman::todos::ops::edit`], which
+//! It is a thin wrapper over [`crate::openhuman::threads::todos::ops::edit`], which
 //! applies the status move + field updates atomically, enforces the
 //! single-`in_progress` invariant, and emits the board-progress event that the
 //! Tasks board UI listens on.
 
-use crate::openhuman::task_sources::TASK_SOURCES_THREAD_ID;
-use crate::openhuman::todos::ops::{self, BoardLocation, CardPatch};
+use crate::openhuman::integrations::task_sources::TASK_SOURCES_THREAD_ID;
+use crate::openhuman::threads::todos::ops::{self, BoardLocation, CardPatch};
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
@@ -39,15 +39,7 @@ impl Tool for UpdateTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Move or update a specific task card on a task board, addressed by `id`. \
-         Use this to advance the task you're working on: set `status` \
-         (`todo`/`in_progress`/`blocked`/`done`) to move it between columns, and/or \
-         update `objective`, `notes`, `evidence`, `blocker`, `plan`, \
-         `acceptanceCriteria`. When you finish, set `status: done` with `evidence`; \
-         if you cannot proceed, set `status: blocked` with a `blocker` reason. \
-         Targets the proactive `task-sources` board by default — pass `threadId` to \
-         target another thread's board. Returns the updated card list + a markdown \
-         rendering. At most one card may be `in_progress` at a time."
+        "Update one task card by `id`: move it between columns via `status`, and/or revise its other fields. Finish with `status: done` plus `evidence`; if you cannot proceed, `status: blocked` plus a `blocker`. At most one card may be `in_progress`. Defaults to the proactive `task-sources` board."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -113,21 +105,21 @@ impl Tool for UpdateTaskTool {
             Err(err) => return Ok(ToolResult::error(err)),
         };
 
-        Ok(apply(&location, &id, patch))
+        Ok(apply(&location, &id, patch).await)
     }
 }
 
 /// Apply the move/update to the card and render the result. Split out from
 /// `execute` so the edit + response shaping is testable without a fork/thread
 /// context (which `resolve_location` needs).
-fn apply(location: &BoardLocation, id: &str, patch: CardPatch) -> ToolResult {
+async fn apply(location: &BoardLocation, id: &str, patch: CardPatch) -> ToolResult {
     tracing::info!(
         card_id = %id,
         thread_id = ?location.thread_id(),
         status = ?patch.status,
         "[tool][update_task] move/update task card"
     );
-    match ops::edit(location, id, patch) {
+    match ops::edit(location, id, patch).await {
         Ok(snap) => {
             let payload = json!({
                 "threadId": snap.thread_id,

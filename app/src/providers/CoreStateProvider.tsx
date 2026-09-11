@@ -9,12 +9,14 @@ import {
   useState,
 } from 'react';
 
+import { maybeSurfaceConfigRecovery } from '../lib/configRecoveryNotice';
 import {
   type CoreAppSnapshot,
   type CoreState,
   getCoreStateSnapshot,
   setCoreStateSnapshot,
 } from '../lib/coreState/store';
+import { useT } from '../lib/i18n/I18nContext';
 import { syncAnalyticsConsent } from '../services/analytics';
 import type { AuthExpiredReason } from '../services/coreRpcClient';
 import {
@@ -24,8 +26,10 @@ import {
   listTeams,
   updateCoreLocalState,
 } from '../services/coreStateApi';
+import { daemonHealthService } from '../services/daemonHealthService';
 import { socketService } from '../services/socketService';
 import { store } from '../store';
+import { loadAgentProfiles } from '../store/agentProfileSlice';
 import { resetUserScopedState } from '../store/resetActions';
 import { loadThreads, resetThreadCachesPreservingSelection } from '../store/threadSlice';
 import { getActiveUserId, setActiveUserId } from '../store/userScopedStorage';
@@ -33,7 +37,6 @@ import { isLocalSessionToken } from '../utils/localSession';
 import {
   getSessionToken,
   openhumanUpdateAnalyticsSettings,
-  openhumanUpdateMeetSettings,
   restartApp,
   setOnboardingCompleted,
   storeSession,
@@ -48,6 +51,14 @@ const POLL_MS = 2000;
 const MAX_BOOTSTRAP_RETRIES = 5;
 const SUPPRESS_POLL_WARNING_AT = MAX_BOOTSTRAP_RETRIES + 1;
 const BACKOFF_POLL_MS = 10_000;
+// Once the app has finished bootstrapping and is authenticated, the snapshot
+// (auth, onboarding, service/local-AI state) changes rarely and mostly through
+// event-driven refreshes (deep-link, settings toggles) that fire immediately
+// regardless of this cadence. `app_state_snapshot` is expensive server-side
+// (rebuilds the runtime snapshot, reloads config + local state), so steady-state
+// polling backs off from POLL_MS to this slower cadence rather than hammering
+// every 2s for the life of the session.
+const STABLE_POLL_MS = 5000;
 
 /** Extract only non-sensitive fields from an RPC/fetch error. */
 function sanitizeError(error: unknown): { message?: string; code?: string; status?: number } {
@@ -219,7 +230,6 @@ function normalizeSnapshot(
     onboardingCompleted: result.onboardingCompleted,
     chatOnboardingCompleted: result.chatOnboardingCompleted,
     analyticsEnabled: result.analyticsEnabled,
-    meetAutoOrchestratorHandoff: result.meetAutoOrchestratorHandoff ?? false,
     localState: {
       encryptionKey: result.localState.encryptionKey ?? null,
       onboardingTasks: result.localState.onboardingTasks ?? null,
@@ -231,12 +241,9 @@ function normalizeSnapshot(
       activeMode: 'os_keyring',
       backendName: 'os',
     },
-    runtime: {
-      screenIntelligence: result.runtime?.screenIntelligence ?? null,
-      localAi: result.runtime?.localAi ?? null,
-      autocomplete: result.runtime?.autocomplete ?? null,
-      service: result.runtime?.service ?? null,
-    },
+    runtime: { localAi: result.runtime?.localAi ?? null, service: result.runtime?.service ?? null },
+    currentUserStale: result.currentUserStale ?? false,
+    currentUserStaleSeconds: result.currentUserStaleSeconds ?? null,
   };
 }
 
@@ -248,6 +255,10 @@ function toSignedOutSnapshot(snapshot: CoreAppSnapshot): CoreAppSnapshot {
     currentUser: null,
     onboardingCompleted: false,
     chatOnboardingCompleted: false,
+    // Signed out there is no backend-backed user for the stored snapshot to be
+    // stale relative to.
+    currentUserStale: false,
+    currentUserStaleSeconds: null,
   };
 }
 
@@ -260,6 +271,10 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const bootstrapFailCountRef = useRef(0);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const isMountedRef = useRef(true);
+  // Translator for user-visible strings dispatched outside JSX (e.g. the
+  // config-recovery notice below). Read here so `refreshCore` can localize the
+  // notice via the active locale rather than hardcoding English (#5167).
+  const { t } = useT();
   const commitState = useCallback((updater: (previous: CoreState) => CoreState) => {
     if (!isMountedRef.current) {
       return;
@@ -283,10 +298,16 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
 
   const refreshCore = useCallback(async () => {
     const requestId = ++snapshotRequestIdRef.current;
-    const snapshot = normalizeSnapshot(await fetchCoreAppSnapshot());
+    const rawSnapshot = await fetchCoreAppSnapshot();
+    const snapshot = normalizeSnapshot(rawSnapshot);
     if (!isMountedRef.current) {
       return;
     }
+    // Raise a one-shot notice if the core recovered a corrupted config.toml
+    // this session (#5167). Placed after the mount guard so a superseded or
+    // unmounted refresh doesn't dispatch; the core latches configRecovered, so
+    // the next live poll still surfaces it. Guarded internally against re-fire.
+    maybeSurfaceConfigRecovery(rawSnapshot.configRecovered, t);
     if (!snapshot.sessionToken) {
       logoutGuardUntilRef.current = 0;
     }
@@ -341,6 +362,31 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       };
     });
 
+    // Feed the folded health payload to the daemon-health store (replaces the
+    // former standalone health_snapshot poll). Done AFTER the commit and only
+    // when this refresh is still current. The resolved `sessionToken` for THIS
+    // refresh is passed explicitly: `commitState` writes the non-React snapshot
+    // store inside a (deferred) React `setState` updater, so reading identity
+    // from that store here would still see the pre-commit token and, during a
+    // login/identity flip, write health under the prior or `__pending__` user.
+    if (requestId === snapshotRequestIdRef.current) {
+      // Privacy-safe: log presence/shape only, never the payload/tokens.
+      log(
+        'health ingest: requestId=%d current=%d hasHealth=%s components=%d',
+        requestId,
+        snapshotRequestIdRef.current,
+        rawSnapshot.health != null,
+        rawSnapshot.health ? Object.keys(rawSnapshot.health.components ?? {}).length : 0
+      );
+      daemonHealthService.ingestHealthSnapshot(rawSnapshot.health, nextSnapshot.sessionToken);
+    } else {
+      log(
+        'health ingest skipped: superseded refresh requestId=%d current=%d',
+        requestId,
+        snapshotRequestIdRef.current
+      );
+    }
+
     // When the authenticated identity changes without a full restart-driven
     // flip (e.g. same-process session attach or web where `restartApp` is a
     // no-op), the thread slice can still hold rows from the pre-login
@@ -371,6 +417,37 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
             return;
           }
           log('post-identity thread reload failed: %O', sanitizeError(err));
+        });
+    }
+
+    // Seed the active agent profile at the earliest safe moment, so the window
+    // in which a chat request could carry the stale 'default' id is as short as
+    // the snapshot allows (#5872). It is a narrowing, NOT a guarantee: this
+    // dispatch is deliberately not awaited, so a send issued before it resolves
+    // still reads 'default' from the slice. Closing that window for good means
+    // omitting `profileId` while the slice is still loading — the core keeps
+    // its own authoritative `active_profile_id` and resolves an absent id
+    // against it — which belongs in the send path, not here. Intentionally not
+    // gated on !isFlip: on Tauri a flip triggers restartApp() so the provider
+    // remounts with undefined previousIdentity and profiles load on the boot
+    // poll; on web restartApp() is a no-op and by the next poll
+    // previousIdentity === nextIdentity, making shouldClearScopedCaches false
+    // — so we must dispatch here while it is still true.
+    if (
+      requestId === snapshotRequestIdRef.current &&
+      shouldClearScopedCaches &&
+      nextIdentity &&
+      !isLogout
+    ) {
+      const profileReloadRequestId = requestId;
+      void store
+        .dispatch(loadAgentProfiles())
+        .unwrap()
+        .catch(err => {
+          if (profileReloadRequestId !== snapshotRequestIdRef.current) {
+            return;
+          }
+          log('post-identity agent profiles load failed: %O', sanitizeError(err));
         });
     }
 
@@ -423,7 +500,7 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         console.warn('[core-state] memory client sync failed during refresh:', error);
       }
     }
-  }, [commitState]);
+  }, [commitState, t]);
 
   /** Serialized refresh — all callers share the same in-flight promise. */
   const refresh = useCallback(async () => {
@@ -521,11 +598,31 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       }
     };
 
+    // Arm a baseline disconnect watchdog before the first snapshot lands, so a
+    // core whose snapshots never succeed still falls back to `disconnected`
+    // instead of sticking at a probe-set `running`. Each successful ingest
+    // re-arms it.
+    daemonHealthService.ensureWatchdogArmed();
+
     void load();
     let timeoutId: number | null = null;
+    const computePollDelay = (): { delay: number; reason: string } => {
+      // Repeated bootstrap failures → slowest cadence to avoid log/CPU churn.
+      if (bootstrapFailCountRef.current >= MAX_BOOTSTRAP_RETRIES) {
+        return { delay: BACKOFF_POLL_MS, reason: 'failure-backoff' };
+      }
+      // Booted and authenticated → steady state; back off the expensive snapshot
+      // poll. Still-bootstrapping or unauthenticated stays fast so login / boot
+      // transitions surface promptly.
+      const state = getCoreStateSnapshot();
+      if (!state.isBootstrapping && state.snapshot.auth.isAuthenticated) {
+        return { delay: STABLE_POLL_MS, reason: 'authenticated' };
+      }
+      return { delay: POLL_MS, reason: 'bootstrap' };
+    };
     const scheduleNext = () => {
-      const delay =
-        bootstrapFailCountRef.current >= MAX_BOOTSTRAP_RETRIES ? BACKOFF_POLL_MS : POLL_MS;
+      const { delay, reason } = computePollDelay();
+      log('poll scheduled: delay=%dms reason=%s', delay, reason);
       timeoutId = window.setTimeout(async () => {
         await doRefresh();
         if (!cancelled) {
@@ -588,22 +685,6 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     [commitState, refresh]
   );
 
-  const setMeetAutoOrchestratorHandoff = useCallback(
-    async (enabled: boolean) => {
-      await openhumanUpdateMeetSettings({ auto_orchestrator_handoff: enabled });
-      // Optimistic commit so the toggle flips instantly; full snapshot
-      // refresh follows so the cached value matches what core just wrote.
-      commitState(previous => ({
-        ...previous,
-        snapshot: { ...previous.snapshot, meetAutoOrchestratorHandoff: enabled },
-      }));
-      await refresh().catch(err => {
-        log('refresh failed after setMeetAutoOrchestratorHandoff: %O', sanitizeError(err));
-      });
-    },
-    [commitState, refresh]
-  );
-
   const setOnboardingCompletedFlag = useCallback(
     async (value: boolean) => {
       await setOnboardingCompleted(value);
@@ -624,8 +705,8 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     async (params: Parameters<typeof updateCoreLocalState>[0]) => {
       await updateCoreLocalState(params);
       // The follow-up refresh is best-effort cache reconciliation, not part
-      // of the write contract — sibling helpers (setAnalyticsEnabled,
-      // setMeetAutoOrchestratorHandoff, …) already swallow here. An
+      // of the write contract — sibling helpers (setAnalyticsEnabled, …)
+      // already swallow here. An
       // un-caught `app_state_snapshot` timeout used to bubble out of
       // `setEncryptionKey` / `setOnboardingTasks` callers as an unhandled
       // rejection → OPENHUMAN-REACT-Z/Y. The next poll tick will reconcile.
@@ -636,33 +717,55 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     [refresh]
   );
 
+  // The core switches credentials before the refreshed app snapshot reaches
+  // React. Keep the token being installed visible to the expiry handler during
+  // that gap; otherwise a late 401 from the previous/cloud surface can clear a
+  // newly stored local session even though the core correctly ignores it.
+  const sessionTokenBeingStoredRef = useRef<string | null>(null);
+
   const storeSessionToken = useCallback(
     async (token: string, user?: object) => {
       logoutGuardUntilRef.current = 0;
-      await storeSession(token, user ?? {});
+      sessionTokenBeingStoredRef.current = token;
       try {
-        await syncMemoryClientToken(token);
-        memoryTokenRef.current = token;
-      } catch (error) {
-        console.warn('[core-state] memory client sync failed after session store:', error);
-      }
-      // refresh() drives refreshCore, which now owns identity-flip detection
-      // and dispatches handleIdentityFlip when both prev and next are
-      // authenticated and identities differ. The previous standalone
-      // restartApp call here was redundant and skipped the persist purge,
-      // letting redux-persist rehydrate the prior user's slices on launch
-      // (#900). Restart now happens inside handleIdentityFlip after purge.
-      // Swallow refresh failures here so a cold-boot `app_state_snapshot`
-      // timeout post-login doesn't surface as an unhandled rejection
-      // (OPENHUMAN-REACT-Z/Y) — the polling loop reconciles within
-      // `POLL_MS`.
-      await refresh().catch(err => {
-        log('refresh failed after session store: %O', sanitizeError(err));
-      });
-      if (!isLocalSessionToken(token)) {
-        await refreshTeams().catch(err => {
-          log('refreshTeams failed after session store: %O', sanitizeError(err));
+        await storeSession(token, user ?? {});
+        try {
+          await syncMemoryClientToken(token);
+          memoryTokenRef.current = token;
+        } catch (error) {
+          console.warn('[core-state] memory client sync failed after session store:', error);
+        }
+        // refresh() drives refreshCore, which now owns identity-flip detection
+        // and dispatches handleIdentityFlip when both prev and next are
+        // authenticated and identities differ. The previous standalone
+        // restartApp call here was redundant and skipped the persist purge,
+        // letting redux-persist rehydrate the prior user's slices on launch
+        // (#900). Restart now happens inside handleIdentityFlip after purge.
+        // Swallow refresh failures here so a cold-boot `app_state_snapshot`
+        // timeout post-login doesn't surface as an unhandled rejection
+        // (OPENHUMAN-REACT-Z/Y) — the polling loop reconciles within
+        // `POLL_MS`.
+        // `refresh()` dedupes onto any poll already in flight. A poll that
+        // began before `storeSession` resolved answers with the pre-store
+        // snapshot; awaiting that one here would commit stale cloud identity,
+        // then the `finally` below would drop the local-token marker on it and
+        // a late confirmed 401 could clear the session just stored. Wait the
+        // stale poll out, then require a refresh that began after the store.
+        if (refreshInFlightRef.current) {
+          await refreshInFlightRef.current.catch(() => undefined);
+        }
+        await refresh().catch(err => {
+          log('refresh failed after session store: %O', sanitizeError(err));
         });
+        if (!isLocalSessionToken(token)) {
+          await refreshTeams().catch(err => {
+            log('refreshTeams failed after session store: %O', sanitizeError(err));
+          });
+        }
+      } finally {
+        if (sessionTokenBeingStoredRef.current === token) {
+          sessionTokenBeingStoredRef.current = null;
+        }
       }
     },
     [refresh, refreshTeams]
@@ -676,6 +779,9 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   const lastReauthReasonRef = useRef<AuthExpiredReason | null>(null);
   const reauthAttemptIdRef = useRef(0);
   const suppressReauthUntilRef = useRef(0);
+  // Set to true when a `confirmed` session-expiry event fires while isBootstrapping
+  // is still true. The bootstrap-completion effect below replays it.
+  const pendingConfirmedReauthRef = useRef(false);
 
   // Listen for deep-link auth suppression signals so that an in-flight
   // `auth_store_session` call (OAuth deep link) does not race with the
@@ -711,11 +817,44 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     // here either — the signed-out UI doesn't render user-scoped slices,
     // and a same-user re-login should not pay a "rehydrate from disk"
     // cost (slices are still in memory). See [#900].
-    await tauriLogout();
+    // Wrap tauriLogout separately so a failure (e.g. the Rust-side
+    // SessionExpiredSubscriber already cleared the session first) does not
+    // prevent the subsequent refresh() — which is what actually flips the
+    // router to the login screen.
+    await tauriLogout().catch(err => {
+      log('tauriLogout failed in clearSession — proceeding with refresh: %O', sanitizeError(err));
+    });
     await refresh().catch(err => {
       log('refresh failed after clearSession: %O', sanitizeError(err));
     });
   }, [commitState, refresh]);
+
+  // When a confirmed session-expiry event arrives while the core is still
+  // bootstrapping, runReauth() sets pendingConfirmedReauthRef instead of
+  // dropping it. Once isBootstrapping flips to false (first successful
+  // snapshot) this effect replays it so the router reaches the login screen.
+  //
+  // We re-dispatch through openhuman:session-expired (rather than calling
+  // clearSession() directly) so the guarded runReauth() path applies: the
+  // isLocalSession check and suppressReauthUntilRef window are both
+  // re-evaluated against the now-current session state. Without this a
+  // session installed by an OAuth callback *during* bootstrap would be
+  // destructively logged out by the stale queued event.
+  useEffect(() => {
+    if (!state.isBootstrapping && pendingConfirmedReauthRef.current) {
+      pendingConfirmedReauthRef.current = false;
+      log('auth-expired: replaying confirmed reauth suppressed during bootstrap');
+      window.dispatchEvent(
+        // Explicit rather than relying on the default: what is being replayed
+        // was already established as a confirmed expiry before it was queued,
+        // and saying so here keeps the replay correct if the default above is
+        // ever made stricter.
+        new CustomEvent('openhuman:session-expired', {
+          detail: { source: 'bootstrap-replay', reason: 'confirmed' },
+        })
+      );
+    }
+  }, [state.isBootstrapping]);
 
   // Listen for two flavours of session expiry, both routed through the
   // same debounced `clearSession`:
@@ -739,12 +878,26 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   // so re-registers are rare.
   useEffect(() => {
     const runReauth = async (method: string, source: string, reason: AuthExpiredReason) => {
-      if (isLocalSessionToken(getCoreStateSnapshot().snapshot.sessionToken)) {
+      const effectiveToken =
+        sessionTokenBeingStoredRef.current ?? getCoreStateSnapshot().snapshot.sessionToken;
+      if (isLocalSessionToken(effectiveToken)) {
         log('auth-expired ignored for local session (method=%s source=%s)', method, source);
         return;
       }
       if (getCoreStateSnapshot().isBootstrapping) {
-        log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        if (reason === 'confirmed') {
+          // Queue so the bootstrap-completion effect can replay it once the first
+          // snapshot lands. Without this the event is lost: signed_out=true prevents
+          // re-publication, leaving the user stuck in the chat shell forever.
+          pendingConfirmedReauthRef.current = true;
+          log(
+            'auth-expired queued for post-bootstrap replay (method=%s source=%s)',
+            method,
+            source
+          );
+        } else {
+          log('auth-expired suppressed during bootstrap (method=%s source=%s)', method, source);
+        }
         return;
       }
       const now = Date.now();
@@ -835,8 +988,22 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
         typeof (event.detail as { source?: unknown }).source === 'string'
           ? (event.detail as { source: string }).source
           : 'unknown';
-      // The socket `auth:session_expired` push is an explicit backend expiry → confirmed.
-      void runReauth('socket.session_expired', source, 'confirmed');
+      // The socket `auth:session_expired` push is an explicit backend expiry, and
+      // `socketService` sends no `reason` — so the default stays `confirmed`
+      // and that path is unchanged. A dispatcher that KNOWS its signal is
+      // merely suggestive says so, and is corroborated instead of trusted:
+      // `ChatRuntimeProvider`'s chat-error dispatch sends `unconfirmed`,
+      // because the core classifies local token-absent guards under the same
+      // `session_expired` error type as a real expiry.
+      const reason: AuthExpiredReason =
+        event instanceof CustomEvent &&
+        event.detail &&
+        typeof event.detail === 'object' &&
+        'reason' in event.detail &&
+        (event.detail as { reason?: unknown }).reason === 'unconfirmed'
+          ? 'unconfirmed'
+          : 'confirmed';
+      void runReauth('socket.session_expired', source, reason);
     };
 
     window.addEventListener('core-rpc-auth-expired', onRpcExpired as EventListener);
@@ -863,7 +1030,6 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       refreshTeamInvites,
       patchSnapshot,
       setAnalyticsEnabled,
-      setMeetAutoOrchestratorHandoff,
       setOnboardingCompletedFlag,
       setEncryptionKey: value => updateLocalState({ encryptionKey: value }),
       setOnboardingTasks: value => updateLocalState({ onboardingTasks: value }),
@@ -878,7 +1044,6 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
       refreshTeams,
       patchSnapshot,
       setAnalyticsEnabled,
-      setMeetAutoOrchestratorHandoff,
       setOnboardingCompletedFlag,
       state,
       storeSessionToken,

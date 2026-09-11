@@ -12,7 +12,7 @@ use tokio::sync::OnceCell;
 /// current tier (read-only blocking a write, a forbidden/credential path, a
 /// disallowed high-risk or hidden-execution command, an off-allowlist command).
 /// The agent harness's repeated-failure middleware
-/// ([`crate::openhuman::tinyagents::middleware::RepeatedToolFailureMiddleware`])
+/// ([`crate::openhuman::agent::tinyagents::middleware::RepeatedToolFailureMiddleware`])
 /// detects this and halts on the **first verbatim repeat** rather than
 /// reiterating a provably-futile call. Kept short and bracketed so it survives the
 /// `Error: …` wrapping the tool layer adds and is easy to grep in logs.
@@ -51,7 +51,9 @@ pub enum TrustedAccess {
 
 /// A directory outside the workspace the agent is explicitly granted access to.
 /// Takes precedence over `workspace_only` and `forbidden_paths` for its subtree,
-/// except for credential stores (see `SecurityPolicy::is_always_forbidden`).
+/// except for credential stores and workspace-internal application state (see
+/// `SecurityPolicy::is_always_forbidden` and
+/// `SecurityPolicy::is_workspace_internal_path`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TrustedRoot {
     /// Absolute path (a leading `~` is expanded to the user's home).
@@ -177,17 +179,33 @@ pub(super) const WORKSPACE_INTERNAL_DIRS: &[&str] = &[
     "approval",
     "sessions",
     "session_raw",
+    // Per-profile homes contain prompt-controlling SOUL.md files and private
+    // skills. They are core-managed state, never part of the agent action
+    // surface, even when a trusted root otherwise reaches workspace_dir.
+    "personalities",
     "cron",
     "devices",
     "mcp_clients",
     "subconscious",
     "vault",
     "task_sources",
+    // The whatsapp_data store was removed along with the scanner that wrote it,
+    // but an upgraded profile can still hold `whatsapp_data/whatsapp_data.db`
+    // (chat and message history) from an older version. Keep the directory on
+    // the internal denylist so agents with workspace access cannot read it.
     "whatsapp_data",
+    // The redirect_links domain was removed (#5051), but an upgraded profile can
+    // still hold a legacy `redirect_links/links.db` (stored URL history) written
+    // by an older version. Keep the directory on the internal denylist so agents
+    // with workspace access cannot read or overwrite that leftover state.
     "redirect_links",
+    // The codegraph domain was removed, but upgraded workspaces can retain its
+    // internal index. Keep legacy state inaccessible to agent file tools.
     "codegraph",
     ".openhuman",
-    "tinyplace", // Signal session store + future tinyplace state; agent-write forbidden
+    // A removed relay domain may leave encrypted identity/session state in an
+    // upgraded workspace. Keep that legacy directory private.
+    "tinyplace",
 ];
 
 /// Files directly under `workspace_dir` that hold secrets or persona config
@@ -201,6 +219,24 @@ pub(super) const WORKSPACE_INTERNAL_FILES: &[&str] = &[
     "HEARTBEAT.md",
     "PROFILE.md",
 ];
+
+/// The active agent-profile context that arms the cross-profile write guard
+/// (1b). Present **only** when a turn runs under a dedicated-workspace profile;
+/// `None` (the common case) leaves every path check byte-identical to today.
+///
+/// Carries the broad `action_dir` deliberately: `security_for_tool_context`
+/// clones the policy and overrides its `action_dir` to the profile's own dir
+/// for relative-path resolution, so the guard cannot derive the profiles root
+/// from `SecurityPolicy::action_dir` at check time — it reads the immutable
+/// `action_dir` captured here instead.
+#[derive(Debug, Clone)]
+pub struct ActiveProfileGuard {
+    /// Id of the profile the turn runs under (`P`).
+    pub profile_id: String,
+    /// The agent's broad action root; sibling profile workspaces live under
+    /// `<action_dir>/profiles/<id>/`.
+    pub action_dir: PathBuf,
+}
 
 /// Security policy enforced on all tool executions
 #[derive(Debug, Clone)]
@@ -240,6 +276,18 @@ pub struct SecurityPolicy {
     /// `autonomy.auto_approve`; populated/cleared via `config.update_autonomy_settings`
     /// (or an "Always allow" decision) and observed live via `live_policy`.
     pub auto_approve: Vec<String>,
+    /// When true, the approval gate auto-approves ALL tool calls without
+    /// prompting — a blanket bypass, not just the `auto_approve` allowlist
+    /// above. `TrustedAutomationSource::SubconsciousTainted` and
+    /// `AgentTurnOrigin::Unknown` origins are still denied by the gate
+    /// regardless of this flag. A remote-origin triage dispatch is *not* in
+    /// that protected set: with this flag on it is allowed without parking and
+    /// without a `pending_approvals` audit row (openhuman#5634, accepted).
+    /// Sourced from `autonomy.auto_approve_all`;
+    /// observed live via `live_policy`. Does not affect
+    /// `is_always_forbidden`, `is_workspace_internal_path`, or
+    /// `ToolPolicyMiddleware`, which are independent code paths.
+    pub auto_approve_all: bool,
     pub tracker: ActionTracker,
     /// Lazily-cached canonical form of [`workspace_dir`].
     ///
@@ -268,6 +316,12 @@ pub struct SecurityPolicy {
     /// default. `pub(crate)` was an over-tight first cut that broke
     /// `examples/mouse_smoke.rs` with E0451.
     pub canonical_workspace: Arc<OnceCell<PathBuf>>,
+    /// Arms the cross-profile write guard (1b) when a dedicated-workspace
+    /// profile is active. `None` (default) = no active profile → the guard is
+    /// never consulted and path validation is byte-identical to today. Set once
+    /// at session build; carried through the per-tool-call clone made by
+    /// `security_for_tool_context` so file tools see it too.
+    pub active_profile: Option<ActiveProfileGuard>,
 }
 
 impl Default for SecurityPolicy {
@@ -365,8 +419,10 @@ impl Default for SecurityPolicy {
             trusted_roots: Vec::new(),
             allow_tool_install: false,
             auto_approve: Vec::new(),
+            auto_approve_all: false,
             tracker: ActionTracker::new(),
             canonical_workspace: Arc::new(OnceCell::new()),
+            active_profile: None,
         }
     }
 }

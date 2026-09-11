@@ -88,6 +88,13 @@ thread_local! {
     /// on the same thread while sibling tests on their own threads are unaffected.
     static TEST_PRIVACY_MODE: std::cell::Cell<Option<PrivacyMode>> =
         const { std::cell::Cell::new(None) };
+
+    /// Test-only, thread-scoped live-policy override. Approval-gate tests run
+    /// in parallel on separate `#[tokio::test]` current-thread runtimes, so a
+    /// process-global override can otherwise make an unrelated test observe a
+    /// transient `auto_approve_all` value and skip the park it is waiting for.
+    static TEST_POLICY_OVERRIDE: std::cell::RefCell<Option<Arc<SecurityPolicy>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// RAII guard that restores the previous thread-local privacy override on drop.
@@ -110,6 +117,38 @@ pub(crate) fn test_privacy_scope(mode: PrivacyMode) -> TestPrivacyGuard {
     TestPrivacyGuard(prev)
 }
 
+/// RAII guard returned by [`install_scoped`]. Restores the calling test
+/// thread's prior policy override on drop, including on panic/unwind.
+#[cfg(test)]
+pub(crate) struct TestPolicyGuard {
+    prev_policy: Option<Arc<SecurityPolicy>>,
+}
+
+#[cfg(test)]
+impl Drop for TestPolicyGuard {
+    fn drop(&mut self) {
+        TEST_POLICY_OVERRIDE.with(|current| {
+            current.replace(self.prev_policy.take());
+        });
+    }
+}
+
+/// Override [`current`] for the calling test thread for the duration of the
+/// returned guard. This deliberately does not mutate process-global state:
+/// sibling tests that call [`current`] must never observe the scoped policy.
+/// The path arguments mirror [`install`] so tests can use the same call shape;
+/// paths are already carried by `policy` and do not need separate storage for
+/// this read-only override.
+#[cfg(test)]
+pub(crate) fn install_scoped(
+    policy: Arc<SecurityPolicy>,
+    _workspace_dir: PathBuf,
+    _action_dir: PathBuf,
+) -> TestPolicyGuard {
+    let prev_policy = TEST_POLICY_OVERRIDE.with(|current| current.replace(Some(policy)));
+    TestPolicyGuard { prev_policy }
+}
+
 /// The current live Privacy Mode, if a policy has been [`install`]ed. Falls back
 /// to [`PrivacyMode::Standard`] when no policy is installed (e.g. a CLI
 /// invocation that never started a session runtime) — i.e. no egress
@@ -126,6 +165,11 @@ pub fn current_privacy_mode() -> PrivacyMode {
 
 /// The current live policy, if one has been [`install`]ed this process.
 pub fn current() -> Option<Arc<SecurityPolicy>> {
+    #[cfg(test)]
+    if let Some(policy) = TEST_POLICY_OVERRIDE.with(|current| current.borrow().clone()) {
+        return Some(policy);
+    }
+
     STATE
         .get()
         .and_then(|s| s.policy.read().ok().map(|g| Arc::clone(&g)))
@@ -324,154 +368,5 @@ pub fn set_action_dir(new: PathBuf) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::openhuman::config::AutonomyConfig;
-    use crate::openhuman::security::AutonomyLevel;
-
-    #[test]
-    fn install_then_reload_swaps_policy_and_bumps_generation() {
-        // Serialize against other tests that install/reload this process-global
-        // (the approval-gate auto_approve test and the autonomy `ops` tests),
-        // which all take this same lock — otherwise a parallel install races.
-        let _env = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let workspace = std::env::temp_dir().join("openhuman_live_policy_test");
-        let initial = Arc::new(SecurityPolicy {
-            autonomy: AutonomyLevel::Supervised,
-            workspace_dir: workspace.clone(),
-            ..SecurityPolicy::default()
-        });
-        install(initial, workspace.clone(), workspace.clone());
-
-        let before = generation();
-        assert_eq!(
-            current().expect("policy installed").autonomy,
-            AutonomyLevel::Supervised
-        );
-
-        // Reload with a Full-access config and assert the swap is observed.
-        let cfg = AutonomyConfig {
-            level: AutonomyLevel::Full,
-            workspace_only: false,
-            ..AutonomyConfig::default()
-        };
-        reload_from(&cfg);
-
-        assert!(generation() > before, "generation must increase on reload");
-        assert_eq!(
-            current().expect("policy still installed").autonomy,
-            AutonomyLevel::Full
-        );
-    }
-
-    #[test]
-    fn reload_privacy_swaps_mode_and_survives_autonomy_reload() {
-        // Same process-global lock as the other live-policy tests.
-        let _env = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let workspace = std::env::temp_dir().join("openhuman_privacy_live_test");
-        let initial = Arc::new(SecurityPolicy {
-            autonomy: AutonomyLevel::Supervised,
-            privacy_mode: PrivacyMode::Standard,
-            workspace_dir: workspace.clone(),
-            ..SecurityPolicy::default()
-        });
-        install(initial, workspace.clone(), workspace.clone());
-
-        assert_eq!(current_privacy_mode(), PrivacyMode::Standard);
-
-        // Swap to LocalOnly — the live policy reflects it immediately.
-        let before = generation();
-        reload_privacy(PrivacyMode::LocalOnly).expect("policy installed");
-        assert!(generation() > before, "generation must increase");
-        assert_eq!(current_privacy_mode(), PrivacyMode::LocalOnly);
-        assert_eq!(
-            current().expect("installed").privacy_mode,
-            PrivacyMode::LocalOnly
-        );
-
-        // An autonomy-only reload must PRESERVE the privacy mode (autonomy
-        // config carries no privacy field).
-        let cfg = AutonomyConfig {
-            level: AutonomyLevel::Full,
-            ..AutonomyConfig::default()
-        };
-        reload_from(&cfg);
-        assert_eq!(
-            current().expect("installed").autonomy,
-            AutonomyLevel::Full,
-            "autonomy must update"
-        );
-        assert_eq!(
-            current_privacy_mode(),
-            PrivacyMode::LocalOnly,
-            "privacy mode must survive an autonomy-only reload"
-        );
-
-        // Restore Standard before releasing the lock. The live policy is
-        // process-global; since S7 (#4441) the egress-enforcement gate reads
-        // `current_privacy_mode()` on every integration/network/composio/
-        // embedding call, so leaving LocalOnly installed here would block sibling
-        // mock-backend tests (which do not take TEST_ENV_LOCK) with a policy error.
-        reload_privacy(PrivacyMode::Standard).expect("restore Standard");
-    }
-
-    #[test]
-    fn set_action_dir_swaps_root_and_bumps_generation() {
-        // Same process-global lock as the reload test — these install/swap the
-        // shared live policy and would race each other otherwise.
-        let _env = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let workspace = std::env::temp_dir().join("openhuman_set_action_dir_test_ws");
-        let action = std::env::temp_dir().join("openhuman_set_action_dir_test_action_a");
-        let initial = Arc::new(SecurityPolicy {
-            autonomy: AutonomyLevel::Full,
-            workspace_dir: workspace.clone(),
-            action_dir: action.clone(),
-            ..SecurityPolicy::default()
-        });
-        install(initial, workspace.clone(), action.clone());
-
-        assert_eq!(
-            current().expect("policy installed").action_dir,
-            action,
-            "precondition: action_dir starts at the installed value"
-        );
-
-        let before = generation();
-        let new_action = std::env::temp_dir().join("openhuman_set_action_dir_test_action_b");
-        set_action_dir(new_action.clone());
-
-        assert!(
-            generation() > before,
-            "generation must increase on action_dir swap"
-        );
-        // A subsequent policy query reflects the new root...
-        assert_eq!(
-            current().expect("policy still installed").action_dir,
-            new_action,
-            "live policy must reflect the new action_dir"
-        );
-        // ...and unrelated access settings are preserved (not reset to default).
-        assert_eq!(
-            current().expect("policy still installed").autonomy,
-            AutonomyLevel::Full,
-            "autonomy level must survive an action_dir swap"
-        );
-        // The stored action_dir is updated so a later reload keeps the new root.
-        let cfg = AutonomyConfig {
-            level: AutonomyLevel::Full,
-            ..AutonomyConfig::default()
-        };
-        reload_from(&cfg);
-        assert_eq!(
-            current().expect("policy still installed").action_dir,
-            new_action,
-            "reload after set_action_dir must keep the swapped root"
-        );
-    }
-}
+#[path = "live_policy_tests.rs"]
+mod tests;

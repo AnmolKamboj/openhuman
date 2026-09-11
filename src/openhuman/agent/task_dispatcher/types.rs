@@ -1,21 +1,20 @@
 //! Shared types for the task dispatcher.
 
-use crate::openhuman::todos::ops::BoardLocation;
+use crate::openhuman::threads::todos::ops::BoardLocation;
 
 /// Handle to an in-flight autonomous run, keyed by its session `thread_id`.
 ///
 /// Autonomous runs are detached `tokio` tasks, not web-channel turns, so they
 /// are invisible to the web channel's own in-flight registry — which is why the
 /// chat **Cancel** button (which calls `channel_web_cancel`) couldn't stop them.
-/// Registering the run's [`AbortHandle`](tokio::task::AbortHandle) here lets
-/// [`cancel_session`] abort it from that same cancel path.
-pub(super) struct ActiveRun {
-    pub(super) abort: tokio::task::AbortHandle,
-    pub(super) hb_cancel: tokio::sync::watch::Sender<bool>,
-    pub(super) location: BoardLocation,
-    pub(super) card_id: String,
-    pub(super) run_id: String,
-}
+/// Registering the run's [`AbortHandle`](tokio::task::AbortHandle) in the
+/// crate's [`ActiveRunRegistry`](tinyagents_graph::todos::dispatch::ActiveRunRegistry)
+/// lets [`cancel_session`](super::registry::cancel_session) abort it from that
+/// same cancel path.
+///
+/// The `context` the crate carries for us is the run's [`BoardLocation`], which
+/// the canceller needs to write the card back to a terminal state.
+pub(super) type ActiveRun = tinyagents_graph::todos::dispatch::ActiveRun<BoardLocation>;
 
 /// A resolved executor: which built-in agent definition to build, an optional
 /// system-prompt suffix carrying a personality identity or skill guidelines,
@@ -29,7 +28,7 @@ pub(super) struct ResolvedExecutor {
     /// built-in / default executors → unrestricted (legacy behaviour). When
     /// present, the autonomous run applies the profile's tool/skill/MCP/
     /// connector and memory-source gates, not just its SOUL/MEMORY text.
-    pub(super) profile: Option<crate::openhuman::profiles::AgentProfile>,
+    pub(super) profile: Option<crate::openhuman::agent::profiles::AgentProfile>,
     pub(super) label: String,
 }
 

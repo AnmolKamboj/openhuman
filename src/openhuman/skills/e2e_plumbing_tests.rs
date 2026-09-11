@@ -15,8 +15,8 @@
 //!      footer (the `run_workflow` await), and auto-detaches (returns `None`)
 //!      when the run outlives the wait budget.
 //!
-//! NOTE on scope: the autonomous run `run_workflow` spawns builds its provider
-//! from config (`create_chat_provider`), which has no test-injection seam, so
+//! NOTE on scope: the autonomous run `run_workflow` spawns builds its model
+//! from config, so
 //! these tests deliberately do not drive an inner run to DONE via a mock LLM —
 //! that generic autonomous-run path is covered by the subagent_runner suite.
 //! Here we confirm everything up to and around that boundary.
@@ -28,78 +28,60 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 
 use crate::openhuman::agent::harness::run_channel_turn_via_graph;
+use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::tools::RunWorkflowTool;
 use crate::openhuman::config::{Config, MultimodalConfig, MultimodalFileConfig};
-use crate::openhuman::inference::provider::traits::{ChatMessage, ProviderCapabilities};
-use crate::openhuman::inference::provider::{ChatRequest, ChatResponse, Provider, ToolCall};
-use crate::openhuman::skill_runtime::await_run_outcome;
 use crate::openhuman::skills::ops_create::{
     create_workflow_inner, CreateWorkflowParams, WorkflowCreateInputDef,
 };
 use crate::openhuman::skills::ops_types::WorkflowScope;
 use crate::openhuman::skills::registry::get_workflow;
 use crate::openhuman::skills::run_log;
+use crate::openhuman::skills::runtime::await_run_outcome;
 use crate::openhuman::tools::traits::Tool;
+use tinyinference::message::AssistantMessage;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::tool::ToolCall;
 
 // ── Mock LLM ─────────────────────────────────────────────────────────────
-// Minimal scripted provider: pops queued ChatResponses in order. Mirrors the
-// scripted providers in other harness test files (e.g.
+// Minimal scripted model: pops queued ModelResponses in order. Mirrors the
+// scripted models in other harness test files (e.g.
 // `agent/harness/subagent_runner/ops_tests.rs`; kept local so this file is
 // self-contained).
-struct ScriptedProvider {
-    responses: Mutex<Vec<anyhow::Result<ChatResponse>>>,
+struct ScriptedModel {
+    responses: Mutex<Vec<tinyinference::Result<ModelResponse>>>,
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
-    async fn chat_with_system(
+impl ChatModel<()> for ScriptedModel {
+    async fn invoke(
         &self,
-        _system_prompt: Option<&str>,
-        _message: &str,
-        _model: &str,
-        _temperature: f64,
-    ) -> anyhow::Result<String> {
-        Ok("fallback".into())
-    }
-
-    async fn chat(
-        &self,
-        _request: ChatRequest<'_>,
-        _model: &str,
-        _temperature: f64,
-    ) -> anyhow::Result<ChatResponse> {
+        _state: &(),
+        _request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.responses.lock().remove(0)
     }
+}
 
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
-            native_tool_calling: true,
-            ..ProviderCapabilities::default()
-        }
+fn tool_call(id: &str, name: &str, args: serde_json::Value) -> ModelResponse {
+    ModelResponse {
+        message: AssistantMessage {
+            id: None,
+            content: Vec::new(),
+            tool_calls: vec![ToolCall::new(id, name, args)],
+            usage: None,
+        },
+        usage: None,
+        finish_reason: Some("tool_calls".to_string()),
+        raw: None,
+        resolved_model: None,
+        continue_turn: None,
+        served_from_cache: false,
     }
 }
 
-fn tool_call(id: &str, name: &str, args: serde_json::Value) -> ChatResponse {
-    ChatResponse {
-        text: Some(String::new()),
-        tool_calls: vec![ToolCall {
-            id: id.into(),
-            name: name.into(),
-            arguments: args.to_string(),
-            extra_content: None,
-        }],
-        usage: None,
-        reasoning_content: None,
-    }
-}
-
-fn final_text(text: &str) -> ChatResponse {
-    ChatResponse {
-        text: Some(text.into()),
-        tool_calls: vec![],
-        usage: None,
-        reasoning_content: None,
-    }
+fn final_text(text: &str) -> ModelResponse {
+    ModelResponse::assistant(text)
 }
 
 /// Seed a trusted project-scope workflow directly on disk (the discovery tools
@@ -165,6 +147,15 @@ fn create_then_registry_roundtrip_preserves_when_to_use_and_inputs() {
 async fn mock_llm_orchestrator_lists_and_runs_workflows_through_the_loop() {
     let ws = tempfile::tempdir().unwrap();
     seed_project_workflow(ws.path(), "triage-inbox", "Summarise the inbox.");
+    // An EMPTY home, not the developer's. `WorkflowListTool` scans the user
+    // scope as well as the workspace, so without this the listing also carries
+    // every bundle installed under the real `~/.openhuman/skills` and
+    // `~/.agents/skills` — and since the harness caps one tool result at 16 KiB
+    // (`ContextConfig::tool_result_budget_bytes`), a developer with a dozen
+    // skills pushes the seeded workflow out of the window entirely. Discovery
+    // was right; the fixture was not. Same hazard `ops_tests::load_skills_ws`
+    // documents for `load_workflow_metadata`.
+    let home = tempfile::tempdir().unwrap();
 
     let mut config = Config::default();
     config.workspace_dir = ws.path().to_path_buf();
@@ -172,14 +163,15 @@ async fn mock_llm_orchestrator_lists_and_runs_workflows_through_the_loop() {
 
     // The two tools the orchestrator now carries for workflows.
     let tools: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![
-        Box::new(crate::openhuman::skills::tools::WorkflowListTool::new(
-            config.clone(),
-        )),
+        Box::new(
+            crate::openhuman::skills::tools::WorkflowListTool::new(config.clone())
+                .with_home_dir(Some(home.path().to_path_buf())),
+        ),
         Box::new(RunWorkflowTool::new()),
     ]);
 
     // Scripted: discover → attempt to run an unknown workflow → wrap up.
-    let provider: Arc<dyn Provider> = Arc::new(ScriptedProvider {
+    let model: Arc<dyn ChatModel<()>> = Arc::new(ScriptedModel {
         responses: Mutex::new(vec![
             Ok(tool_call("c1", "list_workflows", serde_json::json!({}))),
             Ok(tool_call(
@@ -195,7 +187,14 @@ async fn mock_llm_orchestrator_lists_and_runs_workflows_through_the_loop() {
 
     let mut history = vec![ChatMessage::user("Triage my inbox using a workflow.")];
     let result = run_channel_turn_via_graph(
-        crate::openhuman::tinyagents::TurnModelSource::new(provider),
+        crate::openhuman::agent::tinyagents::TurnModelSource::from_model_with_profile(
+            model,
+            ModelProfile {
+                tool_calling: true,
+                parallel_tool_calls: true,
+                ..ModelProfile::default()
+            },
+        ),
         &mut history,
         tools,
         vec![],

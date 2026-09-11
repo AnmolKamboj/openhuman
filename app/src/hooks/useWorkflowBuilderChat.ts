@@ -31,6 +31,7 @@ import {
   type BuilderTurnRequest,
   type BuilderTurnResult,
   buildWorkflow,
+  flowsBuildCancel,
 } from '../services/api/flowsApi';
 import {
   beginInferenceTurn,
@@ -38,6 +39,7 @@ import {
   endInferenceTurn,
   fetchAndHydrateTurnHistory,
   fetchAndHydrateTurnState,
+  type PendingApproval,
   setWorkflowProposalForThread,
   type ToolTimelineEntry,
   type WorkflowProposal,
@@ -55,7 +57,7 @@ import type { ThreadMessage } from '../types/thread';
 const log = createDebug('app:flows:builder-chat');
 
 /** A single builder turn: what the user sees vs. the structured turn request. */
-export interface WorkflowBuilderSendParams {
+interface WorkflowBuilderSendParams {
   /** Human-readable text shown as the user's message in the thread transcript. */
   displayText: string;
   /**
@@ -95,7 +97,7 @@ export interface WorkflowBuilderSendResult {
   proposed: boolean;
 }
 
-export interface UseWorkflowBuilderChat {
+interface UseWorkflowBuilderChat {
   /** The dedicated thread id, or `null` before the first send creates it. */
   threadId: string | null;
   /** True while a builder turn is in flight on this thread. */
@@ -111,6 +113,18 @@ export interface UseWorkflowBuilderChat {
   turnActive: boolean;
   /** The latest proposal the agent returned on this thread, or `null`. */
   proposal: WorkflowProposal | null;
+  /**
+   * A parked `ApprovalGate` request for this thread (PR3:
+   * flows-copilot-live-run-approval), or `null`. The copilot's `flows_build`
+   * turn now runs `run_flow` / `resume_flow_run` under the same
+   * `AgentTurnOrigin::WebChat` + `APPROVAL_CHAT_CONTEXT` scope a real
+   * interactive chat turn uses, so a live test-run parks here instead of
+   * either auto-allowing or being hidden outright. Sourced from the SAME
+   * `pendingApprovalByThread` slice / `approval_request` socket event the
+   * main chat's `ApprovalRequestCard` reads — no new plumbing, just scoped to
+   * this hook's dedicated thread.
+   */
+  pendingApproval: PendingApproval | null;
   /**
    * `true` when the most recently settled turn paused because it hit the
    * agent's tool-call budget with no proposal yet (B34) — the caller should
@@ -165,6 +179,13 @@ export interface UseWorkflowBuilderChat {
    * knows whether the instruction is still unresolved.
    */
   send: (params: WorkflowBuilderSendParams) => Promise<WorkflowBuilderSendResult>;
+  /**
+   * Cancel the in-flight builder turn for the current thread. The copilot's
+   * Send button morphs into a Stop button while `sending` is true (mirrors the
+   * main chat's `handleStopGeneration`); clicking it calls this. No-op when
+   * there is no bound thread or nothing is in flight.
+   */
+  stop: () => void;
   /** Clear the current proposal (e.g. after Accept/Reject) without persisting. */
   clearProposal: () => void;
 }
@@ -203,6 +224,17 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
   // against the unnecessary refetch itself, not a correctness requirement.
   const createdThreadIdRef = useRef<string | null>(null);
 
+  // Attempt guard (P2/Major re-send race): bumped at the start of every
+  // `send()` call. A `send`'s `finally` only clears `localSending` when its
+  // captured attempt is still the latest one recorded here — so an EARLIER
+  // turn that was Stop-cancelled (and whose in-flight `buildWorkflow` promise
+  // is now just settling in the background) can never clear the `sending`
+  // flag out from under a NEWER turn the user started right after clicking
+  // Stop. Without this guard, turn A's `finally` racing turn B's still-active
+  // RPC would flip `sending` back to `false` while B is genuinely in flight,
+  // dropping the Stop-button UI for a turn that's still running.
+  const sendAttemptRef = useRef(0);
+
   const proposalsByThread = useAppSelector(
     state => state.chatRuntime.pendingWorkflowProposalsByThread
   );
@@ -213,6 +245,9 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
   );
   const inferenceTurnLifecycleByThread = useAppSelector(
     state => state.chatRuntime.inferenceTurnLifecycleByThread
+  );
+  const pendingApprovalByThread = useAppSelector(
+    state => state.chatRuntime.pendingApprovalByThread
   );
 
   // A turn is in flight on this thread iff its lifecycle entry is `'started'`
@@ -234,6 +269,15 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
   const proposal = useMemo(
     () => (threadId ? (proposalsByThread[threadId] ?? null) : null),
     [threadId, proposalsByThread]
+  );
+
+  // PR3 (flows-copilot-live-run-approval): mirrors `proposal` above — read the
+  // shared `pendingApprovalByThread` slice scoped to this hook's dedicated
+  // thread, so a parked `run_flow`/`resume_flow_run` call surfaces here the
+  // same way `Conversations.tsx` surfaces one for the main chat.
+  const pendingApproval = useMemo(
+    () => (threadId ? (pendingApprovalByThread[threadId] ?? null) : null),
+    [threadId, pendingApprovalByThread]
   );
 
   const messages = useMemo(
@@ -334,6 +378,11 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
         setError('offline');
         return { outcome: 'skipped', proposed: false };
       }
+      // Attempt guard (P2/Major re-send race): claim this call as the latest
+      // attempt BEFORE anything async happens, so this send's own `finally`
+      // below can tell whether it's still the most recent one by the time it
+      // settles.
+      const attempt = ++sendAttemptRef.current;
       setLocalSending(true);
       setError(null);
       // A fresh turn supersedes any prior cap-hit signal, same as the
@@ -458,11 +507,63 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
         // the turn) — `failed` is distinct from the retryable `skipped`.
         return { outcome: 'failed', proposed };
       } finally {
-        setLocalSending(false);
+        // Only clear `sending` if THIS attempt is still the latest one — a
+        // Stop-cancelled earlier turn settling here after a newer send()
+        // started must not clear the newer turn's in-flight indicator (the
+        // re-send race the attempt guard exists to close).
+        if (sendAttemptRef.current === attempt) {
+          setLocalSending(false);
+        } else {
+          log(
+            'send: finally skipped clearing sending — a newer attempt (%d) has superseded this one (%d)',
+            sendAttemptRef.current,
+            attempt
+          );
+        }
       }
     },
     [dispatch, localSending, socketStatus, threadId]
   );
+
+  const stop = useCallback(() => {
+    if (!threadId) {
+      log('stop: no bound thread — noop');
+      return;
+    }
+    if (!localSending) {
+      log('stop: nothing in flight — noop');
+      return;
+    }
+    log('stop: cancelling builder turn thread=%s', threadId);
+    // `flows_build_cancel` (not the shared `chatCancel`/`channel_web_cancel`
+    // primitive) actually signals the in-flight `workflow_builder` agent turn
+    // to stop server-side — `flows_build` runs inline and is never registered
+    // anywhere `channel_web_cancel` looks, so `chatCancel` used to resolve
+    // `true` without touching the running turn at all (the FE-only Stop
+    // button the review bots flagged as cosmetic).
+    //
+    // This hook doesn't mint/track a per-turn `request_id` client-side (the
+    // server generates one when `flows_build` streams without one), so the
+    // cancel is unscoped here — it cancels whatever build turn is currently
+    // registered on this thread, same scope `chatCancel(threadId)` had.
+    //
+    // Deliberately NOT eagerly clearing `sending` here: with cancellation now
+    // real, the in-flight `buildWorkflow` call this triggered a cancel for
+    // returns promptly once the server-side turn settles, and ITS `finally`
+    // (gated by the attempt guard above) is the single place `sending` is
+    // cleared — clearing it here too would race that settle and could clear
+    // a NEWER turn's `sending` if the user re-sent immediately after Stop.
+    void flowsBuildCancel(threadId)
+      .then(cancelled => {
+        log('stop: flowsBuildCancel thread=%s cancelled=%s', threadId, cancelled);
+      })
+      .catch(err => {
+        // Fire-and-forget: a rejected cancel (network/RPC failure) must not
+        // become an unhandled rejection. The in-flight turn's own settle still
+        // clears `sending`; we just log the failed cancel attempt.
+        log('stop: flowsBuildCancel failed thread=%s err=%o', threadId, err);
+      });
+  }, [threadId, localSending]);
 
   const clearProposal = useCallback(() => {
     if (threadId) dispatch(clearWorkflowProposalForThread({ threadId }));
@@ -473,6 +574,7 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
     sending,
     turnActive,
     proposal,
+    pendingApproval,
     capped,
     messages,
     displayMessages,
@@ -480,6 +582,7 @@ export function useWorkflowBuilderChat(seedThreadId?: string | null): UseWorkflo
     liveResponse,
     error,
     send,
+    stop,
     clearProposal,
   };
 }

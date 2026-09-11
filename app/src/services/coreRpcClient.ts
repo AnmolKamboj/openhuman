@@ -82,6 +82,12 @@ let resolvingCoreRpcUrl: Promise<string> | null = null;
 let resolvedCoreRpcToken: string | null = null;
 let didResolveCoreRpcToken = false;
 let resolvingCoreRpcToken: Promise<string | null> | null = null;
+// The one snapshot the shell answered with, resolved atomically so the URL
+// and bearer can never describe different cores (see `resolveShellEndpoint`).
+let shellEndpoint: { url: string; token: string } | null = null;
+// In-flight `core_rpc_endpoint` call, so concurrent URL+token resolution is
+// served by a single invoke (see `resolveShellEndpoint`).
+let resolvingShellEndpoint: Promise<{ url: string; token: string } | null> | null = null;
 
 // ---------------------------------------------------------------------------
 // Active transport override (used by iOS / remote profiles)
@@ -93,6 +99,7 @@ let _activeTransport: CoreTransport | null = null;
 /**
  * Override the active transport used by `callCoreRpc`.
  * Set to null to revert to the default local HTTP path.
+ *
  */
 export function setActiveCoreTransport(transport: CoreTransport | null): void {
   _activeTransport = transport;
@@ -106,15 +113,23 @@ export function setActiveCoreTransport(transport: CoreTransport | null): void {
  * in again.`) can drive both a silent swallow in usage/credits chains AND
  * a global reauth signal without every caller re-implementing the regex.
  */
-export type CoreRpcErrorKind =
+type CoreRpcErrorKind =
   | 'auth_expired'
   | 'provider_auth' // downstream provider 401 — NOT user session expiry
+  | 'core_auth' // the LOCAL core rejected our RPC bearer — NOT user session expiry
   | 'transport'
   | 'timeout'
   | 'rate_limited'
   | 'budget_exceeded'
   | 'thread_not_found'
+  | 'method_not_found' // the running core does not expose this method — permanent
   | 'unknown';
+
+/**
+ * Prefix the core prepends to an unrecognised-method error. Mirrors
+ * `UNKNOWN_METHOD_PREFIX` in `src/core/dispatch.rs` — keep the two in sync.
+ */
+const UNKNOWN_METHOD_PREFIX = 'unknown method: ';
 
 export class CoreRpcError extends Error {
   readonly kind: CoreRpcErrorKind;
@@ -143,8 +158,12 @@ export function classifyRpcError(
   data?: unknown
 ): CoreRpcErrorKind {
   if (isThreadNotFoundRpcData(data)) return 'thread_not_found';
-  if (httpStatus === 401) return 'auth_expired';
   if (httpStatus === 429) return 'rate_limited';
+  // The running core has no such method — a transport-boundary version skew
+  // (older core than the UI bundle, a domain-gated `DomainSet`, or a slim
+  // feature build), never a transient fault. Classified before the generic
+  // arms so polling callers can stop instead of retrying forever (#5157).
+  if (message.startsWith(UNKNOWN_METHOD_PREFIX)) return 'method_not_found';
   // Confirmed OpenHuman session expiry — explicit markers from the backend/core.
   if (/Session expired|SESSION_EXPIRED/i.test(message)) return 'auth_expired';
   // Core-side "no backend session token" → the auth profile is gone but the
@@ -169,6 +188,28 @@ export function classifyRpcError(
     /unauthorized/i.test(message)
   )
     return 'auth_expired';
+  // Everything above matched an explicit backend marker in the message. What
+  // is left, if the transport gave us a 401, is the LOCAL core's bearer gate
+  // (`src/core/auth.rs` — "Missing or invalid Authorization header"), never the
+  // TinyHumans backend: the core proxies backend calls and surfaces their
+  // rejections as a JSON-RPC error inside a 200, with no `httpStatus` at all.
+  // Custom transports (cloud / LAN / tunnel) return before the branch that
+  // populates it.
+  //
+  // Ordered here, not before the marker arms, so a 401 whose body DOES carry an
+  // explicit expiry marker is still honoured — the status is the fallback, not
+  // the override.
+  //
+  // This used to return `auth_expired` from the top of the function, and
+  // `classifyAuthExpiredReason` paired it with `confirmed`, which skips
+  // corroboration in `CoreStateProvider` and calls `clearSession()` — wiping
+  // the auth profile from disk. So a stale RPC bearer (the core restarting and
+  // minting a new per-launch token while the renderer holds the old one, or a
+  // browser session against a stale `core.token`) signed the user out of their
+  // TinyHumans account when the TinyHumans server had said nothing at all.
+  // Recovery is to re-read the bearer or restart the core, never to destroy the
+  // session.
+  if (httpStatus === 401) return 'core_auth';
   // Downstream provider/integration 401 — NOT user session expiry.
   // e.g. "Discord API error: Discord list guilds failed (401): Unauthorized"
   // e.g. "OpenAI API error (401 Unauthorized): invalid api key"
@@ -208,8 +249,15 @@ export function classifyRpcError(
  */
 export type AuthExpiredReason = 'confirmed' | 'unconfirmed';
 
-export function classifyAuthExpiredReason(message: string, httpStatus?: number): AuthExpiredReason {
-  if (httpStatus === 401) return 'confirmed';
+export function classifyAuthExpiredReason(
+  message: string,
+  _httpStatus?: number
+): AuthExpiredReason {
+  // No `httpStatus === 401` arm — see `classifyRpcError`: a 401 on the RPC
+  // endpoint is the local core's bearer gate and no longer classifies as
+  // `auth_expired` at all, so it cannot reach here. Were one ever passed again,
+  // falling through to `unconfirmed` makes `CoreStateProvider` corroborate
+  // before signing out, which is the safe direction.
   if (/Session expired|SESSION_EXPIRED/i.test(message)) return 'confirmed';
   if (
     /^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(message) &&
@@ -234,6 +282,18 @@ function threadIdFromRpcData(data: unknown): string | null {
   if (typeof record.thread_id === 'string') return record.thread_id;
   if (typeof record.threadId === 'string') return record.threadId;
   return null;
+}
+
+/**
+ * Whether `error` is the core reporting that it does not expose the method.
+ *
+ * This is a **permanent** condition for the life of the connection: the method
+ * is absent from the running core's registry, so retrying can never succeed.
+ * Pollers must treat it as terminal and stop — an unbounded retry loop against
+ * an absent method produced ~9k Sentry events/day from a single client (#5157).
+ */
+export function isMethodNotFoundCoreRpcError(error: unknown): error is CoreRpcError {
+  return error instanceof CoreRpcError && error.kind === 'method_not_found';
 }
 
 export function isThreadNotFoundCoreRpcError(
@@ -266,6 +326,8 @@ function dispatchAuthExpired(method: string, reason: AuthExpiredReason): void {
 export function clearCoreRpcUrlCache(): void {
   resolvedCoreRpcUrl = null;
   resolvingCoreRpcUrl = null;
+  shellEndpoint = null;
+  resolvingShellEndpoint = null;
 }
 
 /**
@@ -285,6 +347,8 @@ const CORE_RPC_TOKEN_INVALIDATED_EVENT = 'invalidated';
  * Subscribe to core RPC bearer invalidations. Returns an unsubscribe handle.
  * The listener fires AFTER the cache has been cleared, so a subsequent
  * `getCoreRpcToken()` will re-resolve.
+ *
+ * @knipignore Public token-invalidation subscription seam for long-lived RPC consumers.
  */
 export function subscribeCoreRpcTokenInvalidated(listener: () => void): () => void {
   const wrapped = () => listener();
@@ -307,6 +371,8 @@ export function clearCoreRpcTokenCache(): void {
   resolvedCoreRpcToken = null;
   didResolveCoreRpcToken = false;
   resolvingCoreRpcToken = null;
+  shellEndpoint = null;
+  resolvingShellEndpoint = null;
   coreRpcTokenInvalidationBus.dispatchEvent(new Event(CORE_RPC_TOKEN_INVALIDATED_EVENT));
 }
 const coreRpcLog = debug('core-rpc');
@@ -330,6 +396,35 @@ function coreRpcErrorMessage(err: unknown): string {
     }
   }
   return 'Unknown core RPC error';
+}
+
+/**
+ * Resolve the shell's active `{ url, token }` endpoint, cached as one unit.
+ *
+ * The shell exposes `core_rpc_url` and `core_rpc_token` as separate commands,
+ * but resolving them independently is racy: if a gateway activation lands
+ * between the two invokes, the renderer caches A's URL next to B's bearer. This
+ * instead asks for both halves once, via the atomic `core_rpc_endpoint`
+ * command, and shares the snapshot. A failure resolves to null so callers keep
+ * their existing fallback behaviour.
+ */
+async function resolveShellEndpoint(): Promise<{ url: string; token: string } | null> {
+  if (shellEndpoint) return shellEndpoint;
+  if (!isTauri()) return null;
+  if (resolvingShellEndpoint) return resolvingShellEndpoint;
+  resolvingShellEndpoint = (async () => {
+    try {
+      const endpoint = await invoke<{ url: string; token: string }>('core_rpc_endpoint');
+      shellEndpoint = { url: endpoint?.url ?? '', token: endpoint?.token ?? '' };
+      return shellEndpoint;
+    } catch (err) {
+      coreRpcError('failed to resolve core RPC endpoint', sanitizeError(err));
+      return null;
+    } finally {
+      resolvingShellEndpoint = null;
+    }
+  })();
+  return resolvingShellEndpoint;
 }
 
 export async function getCoreRpcUrl(): Promise<string> {
@@ -365,8 +460,8 @@ export async function getCoreRpcUrl(): Promise<string> {
         return resolvedCoreRpcUrl;
       }
 
-      const url = await invoke<string>('core_rpc_url');
-      const trimmed = String(url || '').trim();
+      const endpoint = await resolveShellEndpoint();
+      const trimmed = String(endpoint?.url || '').trim();
       if (!trimmed) {
         coreRpcError('core_rpc_url returned empty; using build-time default', {
           fallback: CORE_RPC_URL,
@@ -437,8 +532,8 @@ export async function getCoreRpcToken(): Promise<string | null> {
 
   resolvingCoreRpcToken = (async () => {
     try {
-      const token = await invoke<string>('core_rpc_token');
-      resolvedCoreRpcToken = token?.trim() || null;
+      const endpoint = await resolveShellEndpoint();
+      resolvedCoreRpcToken = endpoint?.token?.trim() || null;
       didResolveCoreRpcToken = true;
       coreRpcLog('core RPC token loaded');
       return resolvedCoreRpcToken;
@@ -601,6 +696,8 @@ export async function getCoreHttpBaseUrl(): Promise<string> {
  * logs this URL. The proper fix is a short-lived single-use handshake token
  * minted just before opening the stream; that requires a new core endpoint and
  * is tracked as the follow-up to this seam. Do not log the returned URL.
+ *
+ * @knipignore Documented webhook SSE authentication URL seam.
  */
 export function buildWebhookEventsUrl(baseUrl: string, coreRpcToken: string | null): string | null {
   if (!coreRpcToken) return null;
@@ -613,7 +710,11 @@ export async function callCoreRpc<T>({
   serviceManaged = false, // kept for compatibility; direct frontend RPC does not use relay-level routing.
   timeoutMs,
   suppressAuthExpiredEvent = false,
-}: CoreRpcRelayRequest): Promise<T> {
+  // Internal. Set only by the `core_auth` recovery below so the retry cannot
+  // itself retry — one refresh attempt per call, never a loop against a core
+  // that is genuinely rejecting us.
+  _retriedAfterTokenRefresh = false,
+}: CoreRpcRelayRequest & { _retriedAfterTokenRefresh?: boolean }): Promise<T> {
   void serviceManaged;
 
   if (method.startsWith('ai.')) {
@@ -625,7 +726,12 @@ export async function callCoreRpc<T>({
   // Dispatch through active transport when one is set (e.g. tunnel / cloud).
   if (_activeTransport) {
     coreRpcLog('[transport] dispatching via %s method=%s', _activeTransport.kind, normalizedMethod);
-    return _activeTransport.call<T>(normalizedMethod, params ?? {});
+    // A caller's per-call budget travels with the call; without one the
+    // transport keeps its own default rather than inheriting the local
+    // client's, since each transport sizes that for its own medium.
+    const transportOpts =
+      timeoutMs === undefined ? undefined : { timeoutMs: resolvePerCallTimeoutMs(timeoutMs) };
+    return _activeTransport.call<T>(normalizedMethod, params ?? {}, transportOpts);
   }
 
   const effectiveTimeoutMs = resolvePerCallTimeoutMs(timeoutMs);
@@ -707,6 +813,29 @@ export async function callCoreRpc<T>({
       const text = await response.text();
       const httpMessage = `Core RPC HTTP ${response.status}: ${text || response.statusText}`;
       const kind = classifyRpcError(text || response.statusText, response.status);
+      // The local core rejected our bearer. `getCoreRpcToken` caches the
+      // resolved value "for the lifetime of the frontend process", so an
+      // in-process core restart — which mints a fresh per-launch bearer —
+      // leaves this renderer holding the old one and EVERY subsequent RPC
+      // 401s, with no way back short of a page reload. Observed in the wild as
+      // a window that looks signed out while a sibling window, loaded after the
+      // restart, works fine.
+      //
+      // Drop the cache and try once more with a freshly-read bearer. Bounded to
+      // a single attempt: if the core is rejecting us for any other reason the
+      // retry fails and the error surfaces normally.
+      if (kind === 'core_auth' && !_retriedAfterTokenRefresh) {
+        coreRpcLog('core rejected the RPC bearer for %s — refreshing it and retrying once', method);
+        clearCoreRpcTokenCache();
+        return callCoreRpc<T>({
+          method,
+          params,
+          serviceManaged,
+          timeoutMs,
+          suppressAuthExpiredEvent,
+          _retriedAfterTokenRefresh: true,
+        });
+      }
       if (kind === 'auth_expired' && !suppressAuthExpiredEvent)
         dispatchAuthExpired(
           payload.method,

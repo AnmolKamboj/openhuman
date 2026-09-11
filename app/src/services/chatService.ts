@@ -17,6 +17,8 @@ const chatLog = debug('realtime:chat');
 export interface ChatToolCallEvent {
   thread_id: string;
   request_id?: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   tool_name: string;
   skill_id: string;
   args: Record<string, unknown>;
@@ -42,6 +44,8 @@ export interface ChatToolCallEvent {
 export interface ChatToolResultEvent {
   thread_id: string;
   request_id?: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   tool_name: string;
   skill_id: string;
   output: string;
@@ -85,6 +89,16 @@ export interface TurnUsageWire {
 export interface ChatDoneEvent {
   thread_id: string;
   request_id?: string;
+  /**
+   * Socket.IO client that owns the turn. `"system"` marks a turn the core ran
+   * on its own behalf (autonomous task sessions, background sub-agent result
+   * delivery, cron/flow agents); such turns are broadcast to every client.
+   * Always on the wire (`WebChannelEvent.client_id`); declared here for the
+   * consumers that key off it.
+   */
+  client_id?: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   full_response: string;
   rounds_used: number;
   /**
@@ -126,6 +140,8 @@ export interface ChatSegmentEvent {
    */
   full_response: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   segment_index: number;
   segment_total: number;
   reaction_emoji?: string | null;
@@ -147,6 +163,8 @@ export function segmentText(event: ChatSegmentEvent): string {
 export interface ChatInterimEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   /** Wire name is `full_response`; carries only this round's narration text. */
   full_response: string;
   round: number;
@@ -155,6 +173,14 @@ export interface ChatInterimEvent {
 export interface ChatErrorEvent {
   thread_id: string;
   request_id?: string;
+  /**
+   * Socket.IO client that owns the turn. `"system"` marks a turn the core ran
+   * on its own behalf (autonomous task sessions, background sub-agent result
+   * delivery, cron/flow agents); such turns are broadcast to every client.
+   * Always on the wire (`WebChannelEvent.client_id`); declared here for the
+   * consumers that key off it.
+   */
+  client_id?: string;
   message: string;
   error_type:
     | 'network'
@@ -170,6 +196,7 @@ export interface ChatErrorEvent {
     | 'model_unavailable'
     | 'payload_too_large'
     | 'provider_request_rejected'
+    | 'chat_template_rejected'
     | 'budget_exhausted';
   round: number | null;
 }
@@ -223,7 +250,7 @@ export interface ChatPlanReviewRequestEvent {
 /**
  * Lowercase variant of the Rust `ArtifactKind` enum surfaced on
  * artifact lifecycle socket events. Mirrors the slugs produced by
- * `ArtifactKind::as_str()` in `src/openhuman/artifacts/types.rs`.
+ * `ArtifactKind::as_str()` in `src/openhuman/agent/artifacts/types.rs`.
  */
 export type ArtifactKind = 'presentation' | 'document' | 'image' | 'other';
 
@@ -328,6 +355,13 @@ export interface ChatSubagentSpawnedEvent {
   skill_id: string;
   message: string;
   round: number;
+  /**
+   * Per-request monotonic ordering key stamped by the core's progress bridge
+   * (`publish_seq_stamped`). `(request_id, seq)` is the event's identity: a
+   * Socket.IO redelivery carries the same pair, a genuinely new emission never
+   * does. Absent on cores that predate the stamping bridge.
+   */
+  seq?: number;
 }
 
 /** Emitted when a sub-agent completes or fails. */
@@ -339,6 +373,8 @@ export interface ChatSubagentDoneEvent {
   message: string;
   success: boolean;
   round: number;
+  /** Event identity with `request_id`; see {@link ChatSubagentSpawnedEvent.seq}. */
+  seq?: number;
   /** Per-event subagent detail. Mirrors `SubagentProgressDetail` in core. */
   subagent?: SubagentProgressDetail;
 }
@@ -463,6 +499,8 @@ export interface ChatSubagentToolResultEvent {
 export interface ChatSubagentTextDeltaEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   /** Parent iteration index (inherited from the parent context). */
   round: number;
   /** Text fragment from the sub-agent. */
@@ -478,6 +516,8 @@ export interface ChatSubagentTextDeltaEvent {
 export interface ChatSubagentThinkingDeltaEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   round: number;
   delta: string;
   subagent?: SubagentProgressDetail;
@@ -491,6 +531,8 @@ export interface ChatSubagentThinkingDeltaEvent {
 export interface ChatTextDeltaEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   /** 1-based iteration index the chunk belongs to. */
   round: number;
   /** Text fragment; may be a single token or a few characters. */
@@ -506,6 +548,8 @@ export interface ChatTextDeltaEvent {
 export interface ChatThinkingDeltaEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   round: number;
   delta: string;
 }
@@ -519,6 +563,8 @@ export interface ChatThinkingDeltaEvent {
 export interface ChatToolArgsDeltaEvent {
   thread_id: string;
   request_id: string;
+  /** Per-request monotonic ordering key stamped by the core progress bridge. */
+  seq?: number;
   round: number;
   tool_call_id: string;
   tool_name: string;
@@ -1191,9 +1237,9 @@ export function subscribeChatEvents(listeners: ChatEventListeners): () => void {
   };
 }
 
-export type QueueMode = 'interrupt' | 'steer' | 'followup' | 'collect' | 'parallel';
+type QueueMode = 'interrupt' | 'steer' | 'followup' | 'collect' | 'parallel';
 
-export interface ChatSendParams {
+interface ChatSendParams {
   threadId: string;
   message: string;
   model?: string;

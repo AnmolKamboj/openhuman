@@ -18,15 +18,6 @@ describe('rpcMethods catalog', () => {
       expect(normalizeRpcMethod('openhuman.auth.a.b.c')).toBe('openhuman.auth_a_b_c');
     });
 
-    test('transforms accessibility prefix to screen_intelligence prefix', () => {
-      expect(normalizeRpcMethod('openhuman.accessibility_status')).toBe(
-        'openhuman.screen_intelligence_status'
-      );
-      expect(normalizeRpcMethod('openhuman.accessibility_enable')).toBe(
-        'openhuman.screen_intelligence_enable'
-      );
-    });
-
     test('returns unmapped or unrecognized methods unchanged', () => {
       expect(normalizeRpcMethod('openhuman.threads_list')).toBe('openhuman.threads_list');
       expect(normalizeRpcMethod('openhuman.unknown_method')).toBe('openhuman.unknown_method');
@@ -37,8 +28,8 @@ describe('rpcMethods catalog', () => {
     test('trims whitespace and converts to lower case', () => {
       expect(normalizeRpcMethod('  OpenHuman.Auth.Login  ')).toBe('openhuman.auth_login');
       expect(normalizeRpcMethod('  OPENHUMAN.GET_CONFIG ')).toBe(CORE_RPC_METHODS.configGet);
-      expect(normalizeRpcMethod('OpenHuman.Accessibility_Status  ')).toBe(
-        'openhuman.screen_intelligence_status'
+      expect(normalizeRpcMethod('OpenHuman.Unrecognized_Status  ')).toBe(
+        'openhuman.unrecognized_status'
       );
       expect(normalizeRpcMethod('   some_RANDOM_method  ')).toBe('some_random_method');
     });
@@ -132,54 +123,52 @@ describe('rpcMethods catalog', () => {
   });
 
   test('catalog canonical methods exist in core schema registry (drift guard)', () => {
+    // Read a schema file PLUS every `*_part_*.rs` sibling in its directory.
+    //
+    // The repo's 750-line layout limit keeps splitting schema files into
+    // `include!`-stitched parts (schema_defs.rs → schemas_schema_part_01.rs,
+    // inference/schemas.rs → schemas_part_01.rs, …), and each split silently
+    // moved the `function: "…"` literals this guard greps out of the file it
+    // was reading. Sweeping the siblings makes the corpus follow the splits.
+    // Over-inclusion is harmless — the guard only searches for substrings —
+    // and `readFileSync` still throws if a listed base file moves entirely,
+    // which is the loud failure we want.
+    const readWithParts = (relFile: string): string => {
+      const abs = path.resolve(__dirname, relFile);
+      const dir = path.dirname(abs);
+      const parts = fs
+        .readdirSync(dir)
+        .filter(name => name.endsWith('.rs') && name.includes('_part_'))
+        .sort()
+        .map(name => fs.readFileSync(path.join(dir, name), 'utf8'));
+      return [fs.readFileSync(abs, 'utf8'), ...parts].join('\n');
+    };
+
     const schemaSources = [
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/config/schemas/schema_defs.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/screen_intelligence/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/provider/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/local/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/embeddings/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/mcp_registry/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/tool_registry/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/health/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/channels/controllers/schemas.rs'),
-        'utf8'
-      ),
+      readWithParts('../../../../src/openhuman/config/schemas/schema_defs.rs'),
+      readWithParts('../../../../src/openhuman/inference/provider/schemas.rs'),
+      readWithParts('../../../../src/openhuman/inference/schemas.rs'),
+      readWithParts('../../../../src/openhuman/inference/local/schemas.rs'),
+      readWithParts('../../../../src/openhuman/inference/embeddings/schemas.rs'),
+      readWithParts('../../../../src/openhuman/mcp/registry/schemas.rs'),
+      readWithParts('../../../../src/openhuman/tools/registry/schemas.rs'),
+      readWithParts('../../../../src/openhuman/platform/health/schemas.rs'),
+      readWithParts('../../../../src/openhuman/channels/controllers/schemas.rs'),
       // The channels_* namespace/function literals now live in the vendored
-      // tinychannels crate (`ChannelControllerSchema`), not in the thin
+      // tinychannels workspace (`ChannelControllerSchema`), not in the thin
       // `src/openhuman/channels/controllers/schemas.rs` adapter above, which
       // only converts from it (#4557 "Use tinychannels provider
       // implementations") — read both so this drift guard still sees them.
+      //
+      // Controller metadata is contract, so it lives in the `tinychannels-bus`
+      // crate rather than the implementation crate. `readFileSync` throws on a
+      // missing path, which is what we want: if this file moves again the guard
+      // fails loudly instead of silently checking a shorter corpus and passing.
       fs.readFileSync(
-        path.resolve(__dirname, '../../../../vendor/tinychannels/src/controllers/schemas.rs'),
+        path.resolve(
+          __dirname,
+          '../../../../vendor/tinychannels/crates/tinychannels-bus/src/controllers/schemas.rs'
+        ),
         'utf8'
       ),
     ].join('\n');
@@ -188,23 +177,21 @@ describe('rpcMethods catalog', () => {
       // core.* methods (e.g. core.ping) are special dispatch methods, not in the schema catalog.
       if (!method.startsWith('openhuman.')) continue;
       const methodRoot = method.slice('openhuman.'.length);
-      const namespace = methodRoot.startsWith('screen_intelligence_')
-        ? 'screen_intelligence'
-        : methodRoot.startsWith('inference_')
-          ? 'inference'
-          : methodRoot.startsWith('embeddings_')
-            ? 'embeddings'
-            : methodRoot.startsWith('providers_')
-              ? 'providers'
-              : methodRoot.startsWith('mcp_clients_')
-                ? 'mcp_clients'
-                : methodRoot.startsWith('health_')
-                  ? 'health'
-                  : methodRoot.startsWith('channels_')
-                    ? 'channels'
-                    : methodRoot.startsWith('tool_registry_')
-                      ? 'tool_registry'
-                      : 'config';
+      const namespace = methodRoot.startsWith('inference_')
+        ? 'inference'
+        : methodRoot.startsWith('embeddings_')
+          ? 'embeddings'
+          : methodRoot.startsWith('providers_')
+            ? 'providers'
+            : methodRoot.startsWith('mcp_clients_')
+              ? 'mcp_clients'
+              : methodRoot.startsWith('health_')
+                ? 'health'
+                : methodRoot.startsWith('channels_')
+                  ? 'channels'
+                  : methodRoot.startsWith('tool_registry_')
+                    ? 'tool_registry'
+                    : 'config';
       const fnName = methodRoot.slice(`${namespace}_`.length);
       expect(schemaSources).toContain(`namespace: "${namespace}"`);
       expect(schemaSources).toContain(`function: "${fnName}"`);

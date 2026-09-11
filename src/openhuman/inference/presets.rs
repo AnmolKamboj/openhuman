@@ -157,28 +157,57 @@ pub fn all_presets() -> Vec<ModelPreset> {
             label: "8-16 GB",
             description: "Balanced Gemma multimodal preset with bundled vision support.",
             chat_model_id: "gemma3:4b-it-qat",
+            // Gemma 3 is multimodal from 4B upward, so one model covers chat
+            // and vision here. (The 270M and 1B builds are text-only.)
             vision_model_id: "gemma3:4b-it-qat",
-            embedding_model_id: "nomic-embed-text:latest",
+            // bge-m3 (1024 dims). nomic-embed-text is 768 dims and fails the
+            // memory tree's post-call dimension validator; the embedding
+            // allowlist already rewrote it to bge-m3 at resolution time, so
+            // naming bge-m3 here only makes the preset honest about what is
+            // actually pulled.
+            embedding_model_id: "bge-m3",
             quantization: "qat",
             vision_mode: VisionMode::Bundled,
             supports_screen_summary: true,
             target_ram_gb: 8,
             min_ram_gb: 8,
-            approx_download_gb: 4.3,
+            // gemma3:4b-it-qat (4.0 GB) + bge-m3 (1.2 GB)
+            approx_download_gb: 5.2,
         },
         ModelPreset {
             tier: ModelTier::Ram16PlusGb,
             label: "16 GB+",
             description: "Best local quality with Gemma 4 on higher-end devices.",
-            chat_model_id: "gemma4:e4b",
-            vision_model_id: "gemma4:e4b",
-            embedding_model_id: "nomic-embed-text:latest",
-            quantization: "qat",
+            // GH #5055 moved this tier off `gemma4:e4b` because no `gemma4`
+            // namespace existed on the Ollama library at the time, and landed
+            // on `gemma3n:e4b-it-q8_0`. Two things have changed (#5146 §1.3):
+            //
+            //  1. Gemma 4 has since been published, and `gemma4:e4b-it-q8_0`
+            //     resolves (11.6 GB, 128K context).
+            //  2. Gemma 3n is **text-only** on Ollama, so using it as the
+            //     `vision_model_id` of a `Bundled` vision tier pointed every
+            //     vision request at a model with no vision encoder. Ollama
+            //     accepts the `images` array against such a model, discards
+            //     it, and answers from the prompt text — a hallucinated
+            //     description rather than an error.
+            //
+            // Gemma 4 is multimodal at every published size, so this tier is
+            // back to one model serving both chat and vision, matching how the
+            // 8-16 GB tier uses `gemma3:4b-it-qat`.
+            chat_model_id: "gemma4:e4b-it-q8_0",
+            vision_model_id: "gemma4:e4b-it-q8_0",
+            // bge-m3 (1024 dims) — see the 8-16 GB tier note above.
+            embedding_model_id: "bge-m3",
+            // The other tiers ship QAT builds; this one is q8_0. The field is a
+            // display label (`effective_quantization`) and does not take part in
+            // resolving the model tag, but it should still match what is pulled.
+            quantization: "q8_0",
             vision_mode: VisionMode::Bundled,
             supports_screen_summary: true,
             target_ram_gb: 16,
             min_ram_gb: 16,
-            approx_download_gb: 9.9,
+            // gemma4:e4b-it-q8_0 (11.6 GB) + bge-m3 (1.2 GB)
+            approx_download_gb: 12.8,
         },
     ]
 }
@@ -312,115 +341,5 @@ pub fn current_tier_from_config(config: &LocalAiConfig) -> ModelTier {
 mod presets_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_device(total_ram_gb: u64) -> DeviceProfile {
-        DeviceProfile {
-            total_ram_bytes: total_ram_gb * 1024 * 1024 * 1024,
-            cpu_count: 4,
-            cpu_brand: String::new(),
-            os_name: String::new(),
-            os_version: String::new(),
-            has_gpu: false,
-            gpu_description: None,
-        }
-    }
-
-    #[test]
-    fn recommend_tier_scales_with_ram() {
-        assert_eq!(recommend_tier(&test_device(1)), ModelTier::Ram2To4Gb);
-        assert_eq!(recommend_tier(&test_device(3)), ModelTier::Ram2To4Gb);
-        assert_eq!(recommend_tier(&test_device(4)), ModelTier::Ram2To4Gb);
-        assert_eq!(recommend_tier(&test_device(8)), ModelTier::Ram2To4Gb);
-        assert_eq!(recommend_tier(&test_device(32)), ModelTier::Ram2To4Gb);
-    }
-
-    #[test]
-    fn mvp_allowed_tiers() {
-        assert!(!ModelTier::Ram1Gb.is_mvp_allowed());
-        assert!(ModelTier::Ram2To4Gb.is_mvp_allowed());
-        assert!(!ModelTier::Ram4To8Gb.is_mvp_allowed());
-        assert!(!ModelTier::Ram8To16Gb.is_mvp_allowed());
-        assert!(!ModelTier::Ram16PlusGb.is_mvp_allowed());
-        assert!(!ModelTier::Custom.is_mvp_allowed());
-    }
-
-    #[test]
-    fn mvp_presets_only_returns_allowed_tiers() {
-        let presets = mvp_presets();
-        assert_eq!(presets.len(), 1);
-        assert_eq!(presets[0].tier, ModelTier::Ram2To4Gb);
-    }
-
-    #[test]
-    fn preset_application_and_round_trip() {
-        let mut config = LocalAiConfig::default();
-        apply_preset_to_config(&mut config, ModelTier::Ram2To4Gb);
-        assert_eq!(config.chat_model_id, "gemma3:1b-it-qat");
-        assert_eq!(config.selected_tier, Some("ram_2_4gb".to_string()));
-        assert_eq!(current_tier_from_config(&config), ModelTier::Ram2To4Gb);
-        assert!(!config.preload_vision_model);
-        assert_eq!(vision_mode_for_config(&config), VisionMode::Disabled);
-    }
-
-    #[test]
-    fn custom_detection_when_models_dont_match() {
-        let mut config = LocalAiConfig::default();
-        config.chat_model_id = "some-other-model:latest".to_string();
-        config.selected_tier = None;
-        assert_eq!(current_tier_from_config(&config), ModelTier::Custom);
-    }
-
-    #[test]
-    fn all_presets_returns_five_tiers() {
-        let presets = all_presets();
-        assert_eq!(presets.len(), 5);
-        assert_eq!(presets[0].tier, ModelTier::Ram1Gb);
-        assert_eq!(presets[1].tier, ModelTier::Ram2To4Gb);
-        assert_eq!(presets[2].tier, ModelTier::Ram4To8Gb);
-        assert_eq!(presets[3].tier, ModelTier::Ram8To16Gb);
-        assert_eq!(presets[4].tier, ModelTier::Ram16PlusGb);
-    }
-
-    #[test]
-    fn default_config_maps_to_balanced_tier() {
-        let config = LocalAiConfig::default();
-        assert_eq!(current_tier_from_config(&config), ModelTier::Ram2To4Gb);
-        assert_eq!(vision_mode_for_config(&config), VisionMode::Disabled);
-    }
-
-    #[test]
-    fn device_supports_local_ai_honors_min_ram_floor() {
-        assert!(!device_supports_local_ai(&test_device(1)));
-        assert!(!device_supports_local_ai(&test_device(4)));
-        assert!(!device_supports_local_ai(&test_device(7)));
-        assert!(device_supports_local_ai(&test_device(8)));
-        assert!(device_supports_local_ai(&test_device(16)));
-        assert!(device_supports_local_ai(&test_device(64)));
-    }
-
-    #[test]
-    fn should_default_to_cloud_fallback_below_floor() {
-        assert!(should_default_to_cloud_fallback(&test_device(1)));
-        assert!(should_default_to_cloud_fallback(&test_device(4)));
-        assert!(should_default_to_cloud_fallback(&test_device(7)));
-        assert!(!should_default_to_cloud_fallback(&test_device(8)));
-        assert!(!should_default_to_cloud_fallback(&test_device(16)));
-    }
-
-    #[test]
-    fn built_in_vision_modes_match_expectations() {
-        let mut config = LocalAiConfig::default();
-        apply_preset_to_config(&mut config, ModelTier::Ram2To4Gb);
-        assert_eq!(vision_mode_for_config(&config), VisionMode::Disabled);
-        assert!(!supports_screen_summary(&config));
-
-        apply_preset_to_config(&mut config, ModelTier::Ram4To8Gb);
-        assert_eq!(vision_mode_for_config(&config), VisionMode::Ondemand);
-        assert!(supports_screen_summary(&config));
-
-        apply_preset_to_config(&mut config, ModelTier::Ram16PlusGb);
-        assert_eq!(vision_mode_for_config(&config), VisionMode::Bundled);
-    }
-}
+#[path = "presets_tests_2_tests.rs"]
+mod tests;

@@ -3,15 +3,11 @@ use async_trait::async_trait;
 use openhuman_core::openhuman::agent::dispatcher::XmlToolDispatcher;
 use openhuman_core::openhuman::agent::hooks::{PostTurnHook, TurnContext};
 use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::agent_memory::memory_loader::MemoryLoader;
 use openhuman_core::openhuman::config::{AgentConfig, ContextConfig};
-use openhuman_core::openhuman::context::prompt::{
+use openhuman_core::openhuman::agent::context::prompt::{
     ConnectedIntegration, LearnedContextData, PersonalityRosterEntry, PersonalityRosterSection,
     PromptContext, PromptSection, PromptTool, SubagentRenderOptions, SystemPromptBuilder,
     ToolCallFormat, UserIdentity, UserIdentitySection,
-};
-use openhuman_core::openhuman::inference::provider::{
-    ChatMessage, ChatRequest, ChatResponse, Provider, ProviderDelta, UsageInfo,
 };
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
@@ -26,6 +22,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use tempfile::TempDir;
+use tinyinference::message::{AssistantMessage, Message, MessageDelta};
+use tinyinference::model::{
+    ChatModel, ModelProfile, ModelRequest, ModelResponse, ModelStream, ModelStreamItem,
+};
+use tinyinference::tool::ToolCall;
+use tinyinference::usage::Usage;
 use tokio::time::{sleep, Duration, Instant};
 
 static NO_FILTER: LazyLock<HashSet<String>> = LazyLock::new(HashSet::new);
@@ -61,19 +63,19 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[derive(Clone, Debug)]
 struct CapturedRequest {
-    messages: Vec<ChatMessage>,
+    messages: Vec<Message>,
     tools_sent: bool,
     stream_was_requested: bool,
 }
 
-struct ScriptedProvider {
-    responses: Mutex<VecDeque<anyhow::Result<ChatResponse>>>,
+struct ScriptedModel {
+    responses: Mutex<VecDeque<anyhow::Result<ModelResponse>>>,
     requests: Mutex<Vec<CapturedRequest>>,
-    stream_events: Vec<ProviderDelta>,
+    stream_events: Vec<ModelStreamItem>,
 }
 
-impl ScriptedProvider {
-    fn new(responses: Vec<ChatResponse>) -> Arc<Self> {
+impl ScriptedModel {
+    fn new(responses: Vec<ModelResponse>) -> Arc<Self> {
         Arc::new(Self {
             responses: Mutex::new(responses.into_iter().map(Ok).collect()),
             requests: Mutex::new(Vec::new()),
@@ -81,7 +83,10 @@ impl ScriptedProvider {
         })
     }
 
-    fn with_stream(responses: Vec<ChatResponse>, stream_events: Vec<ProviderDelta>) -> Arc<Self> {
+    fn with_stream(
+        responses: Vec<ModelResponse>,
+        stream_events: Vec<ModelStreamItem>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             responses: Mutex::new(responses.into_iter().map(Ok).collect()),
             requests: Mutex::new(Vec::new()),
@@ -95,46 +100,46 @@ impl ScriptedProvider {
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(
-        &self,
-    ) -> openhuman_core::openhuman::inference::provider::traits::ProviderCapabilities {
-        openhuman_core::openhuman::inference::provider::traits::ProviderCapabilities {
-            native_tool_calling: false,
-            vision: false,
-        }
+impl ChatModel<()> for ScriptedModel {
+    fn profile(&self) -> Option<&ModelProfile> {
+        static PROFILE: std::sync::OnceLock<ModelProfile> = std::sync::OnceLock::new();
+        Some(PROFILE.get_or_init(ModelProfile::default))
     }
 
-    async fn chat_with_system(
+    async fn invoke(
         &self,
-        _system_prompt: Option<&str>,
-        message: &str,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<String> {
-        Ok(format!("summary: {message}"))
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
+        self.capture(&request, false);
+        self.pop_response()
     }
 
-    async fn chat(
-        &self,
-        request: ChatRequest<'_>,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<ChatResponse> {
+    async fn stream(&self, _state: &(), request: ModelRequest) -> tinyinference::Result<ModelStream> {
+        self.capture(&request, true);
+        let response = self.pop_response()?;
+        let mut items = vec![ModelStreamItem::Started];
+        items.extend(self.stream_events.iter().cloned());
+        items.push(ModelStreamItem::Completed(response));
+        Ok(Box::pin(futures::stream::iter(items)))
+    }
+}
+
+impl ScriptedModel {
+    fn capture(&self, request: &ModelRequest, streamed: bool) {
         self.requests.lock().push(CapturedRequest {
-            messages: request.messages.to_vec(),
-            tools_sent: request.tools.is_some(),
-            stream_was_requested: request.stream.is_some(),
+            messages: request.messages.clone(),
+            tools_sent: !request.tools.is_empty(),
+            stream_was_requested: streamed,
         });
-        if let Some(stream) = request.stream {
-            for event in &self.stream_events {
-                stream.send(event.clone()).await.ok();
-            }
-        }
+    }
+
+    fn pop_response(&self) -> tinyinference::Result<ModelResponse> {
         self.responses
             .lock()
             .pop_front()
             .unwrap_or_else(|| Ok(text_response("fallback final", None)))
+            .map_err(|error| tinyinference::Error::Model(error.to_string()))
     }
 }
 
@@ -244,14 +249,6 @@ impl Memory for RecordingMemory {
     }
 }
 
-struct EmptyMemoryLoader;
-
-#[async_trait]
-impl MemoryLoader for EmptyMemoryLoader {
-    async fn load_context(&self, _memory: &dyn Memory, _user_message: &str) -> Result<String> {
-        Ok(String::new())
-    }
-}
 
 struct Round24Tool {
     calls: Arc<AtomicUsize>,
@@ -319,31 +316,34 @@ impl PostTurnHook for RecordingHook {
     }
 }
 
-fn text_response(text: &str, usage: Option<UsageInfo>) -> ChatResponse {
-    ChatResponse {
-        text: Some(text.to_string()),
-        tool_calls: Vec::new(),
-        usage,
-        reasoning_content: None,
+fn text_response(text: &str, usage: Option<Usage>) -> ModelResponse {
+    let response = ModelResponse::assistant(text);
+    match usage {
+        Some(usage) => response.with_usage(usage),
+        None => response,
     }
 }
 
-fn xml_tool_response(value: &str) -> ChatResponse {
-    ChatResponse {
-        text: Some(format!(
-            "before <tool_call>{{\"name\":\"round24_echo\",\"arguments\":{{\"value\":\"{value}\"}}}}</tool_call>"
-        )),
-        tool_calls: Vec::new(),
-        usage: Some(UsageInfo {
-            input_tokens: 80,
-            output_tokens: 12,
-            context_window: 16_000,
-            cached_input_tokens: 8,
-            cache_creation_tokens: 0,
-            reasoning_tokens: 0,
-            charged_amount_usd: 0.0002,
-        }),
-        reasoning_content: None,
+fn tool_response(value: &str) -> ModelResponse {
+    let mut usage = Usage::new(80, 12);
+    usage.cache_read_tokens = 8;
+    ModelResponse {
+        message: AssistantMessage {
+            id: None,
+            content: Vec::new(),
+            tool_calls: vec![ToolCall::new(
+                format!("round24-{value}"),
+                "round24_echo",
+                json!({"value": value}),
+            )],
+            usage: Some(usage),
+        },
+        usage: Some(usage),
+        finish_reason: Some("tool_calls".to_string()),
+        raw: None,
+        resolved_model: None,
+        continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -400,6 +400,8 @@ fn prompt_ctx<'a>(
         personality_soul_md: None,
         personality_memory_md: None,
         personality_roster: vec![],
+        agents_md_global: None,
+        agents_md_local: None,
     }
 }
 
@@ -415,26 +417,19 @@ async fn max_iteration_checkpoint_uses_deterministic_fallback_and_hooks() {
     // prompt-formatted tool call plus a streamed delta. Validation must reject
     // both before progress consumers see them, then use the deterministic
     // checkpoint fallback.
-    let provider = ScriptedProvider::with_stream(
-        vec![
-            xml_tool_response("alpha"),
-            text_response(
-                "<tool_call>{\"name\":\"round24_echo\",\"arguments\":{\"value\":\"again\"}}</tool_call>",
-                None,
-            ),
-        ],
-        vec![ProviderDelta::TextDelta {
-            delta: "checkpoint delta".to_string(),
-        }],
+    let provider = ScriptedModel::with_stream(
+        vec![tool_response("alpha"), tool_response("again")],
+        vec![ModelStreamItem::MessageDelta(MessageDelta::text(
+            "checkpoint delta",
+        ))],
     );
 
     let mut agent = Agent::builder()
-        .provider_arc(provider.clone())
+        .chat_model(provider.clone())
         .tools(vec![Box::new(Round24Tool {
             calls: calls.clone(),
         })])
         .memory(RecordingMemory::new())
-        .memory_loader(Box::new(EmptyMemoryLoader))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path.clone())
         .event_context("round24-session", "round24-channel")
@@ -469,7 +464,10 @@ async fn max_iteration_checkpoint_uses_deterministic_fallback_and_hooks() {
 
     let requests = provider.requests();
     assert_eq!(requests.len(), 2);
-    assert!(!requests[0].tools_sent);
+    assert!(
+        requests[0].tools_sent,
+        "native model requests retain tool declarations while the prompt selects P-Format"
+    );
     assert!(
         !requests[1].tools_sent,
         "checkpoint call must disable tools"
@@ -478,7 +476,7 @@ async fn max_iteration_checkpoint_uses_deterministic_fallback_and_hooks() {
     assert!(requests[1]
         .messages
         .last()
-        .is_some_and(|message| message.content.contains("maximum number of tool calls")));
+        .is_some_and(|message| message.text().contains("maximum number of tool calls")));
 
     let mut streamed = Vec::new();
     while let Ok(event) = progress_rx.try_recv() {
@@ -512,12 +510,11 @@ async fn builder_validation_and_system_prompt_cover_defaults_and_learning() {
 
     let calls = Arc::new(AtomicUsize::new(0));
     let memory = RecordingMemory::new();
-    let provider = ScriptedProvider::new(vec![text_response("learned final", None)]);
+    let provider = ScriptedModel::new(vec![text_response("learned final", None)]);
     let mut agent = Agent::builder()
-        .provider_arc(provider.clone())
+        .chat_model(provider.clone())
         .tools(vec![Box::new(Round24Tool { calls })])
         .memory(memory)
-        .memory_loader(Box::new(EmptyMemoryLoader))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path)
         .event_context("round24-prompt-session", "round24-prompt-channel")
@@ -535,12 +532,12 @@ async fn builder_validation_and_system_prompt_cover_defaults_and_learning() {
     let system_prompt = requests[0]
         .messages
         .iter()
-        .find(|message| message.role == "system")
+        .find(|message| matches!(message, Message::System(_)))
         .expect("first turn should send a system prompt");
-    assert!(system_prompt.content.contains("Round24 profile"));
-    assert!(system_prompt.content.contains("Round24 memory"));
-    assert!(system_prompt.content.contains("round24_echo"));
-    assert!(system_prompt.content.contains("## Tool Use Protocol"));
+    assert!(system_prompt.text().contains("Round24 profile"));
+    assert!(system_prompt.text().contains("Round24 memory"));
+    assert!(system_prompt.text().contains("round24_echo"));
+    assert!(system_prompt.text().contains("## Tool Use Protocol"));
 }
 
 #[test]
@@ -614,7 +611,7 @@ fn prompt_sections_cover_dynamic_roster_identity_and_subagent_edges() {
     let parent_tools: Vec<Box<dyn Tool>> = vec![Box::new(Round24Tool {
         calls: Arc::new(AtomicUsize::new(0)),
     })];
-    let subagent_json = openhuman_core::openhuman::context::prompt::render_subagent_system_prompt(
+    let subagent_json = openhuman_core::openhuman::agent::context::prompt::render_subagent_system_prompt(
         &workspace_path,
         "round24-model",
         &[999, 0],
@@ -624,7 +621,6 @@ fn prompt_sections_cover_dynamic_roster_identity_and_subagent_edges() {
         SubagentRenderOptions {
             include_identity: true,
             include_safety_preamble: true,
-            include_skills_catalog: false,
             include_profile: false,
             include_memory_md: true,
         },

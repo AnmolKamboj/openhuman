@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import { agentMessageText } from '../helpers/chat-locators';
 import {
   bootAuthenticatedPage,
   dismissWalkthroughIfPresent,
@@ -56,7 +57,7 @@ async function openChat(page: Page): Promise<void> {
   await page.goto('/#/chat');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  await expect(page.getByTestId('send-message-button')).toBeVisible();
+  await expect(page.getByTestId('chat-message-input')).toBeVisible();
 }
 
 async function selectedThreadId(page: Page): Promise<string | null> {
@@ -124,7 +125,7 @@ async function waitForSocketConnected(page: Page): Promise<void> {
 async function sendMessage(page: Page, prompt: string): Promise<void> {
   await waitForSocketConnected(page);
   await dismissWalkthroughIfPresent(page);
-  await page.getByPlaceholder('How can I help you today?').fill(prompt);
+  await page.getByTestId('chat-message-input').fill(prompt);
   await dismissWalkthroughIfPresent(page);
   await expect(page.getByTestId('send-message-button')).toBeEnabled();
   await page.getByTestId('send-message-button').click();
@@ -170,8 +171,8 @@ test.describe('Harness - Composio tool-call prompt flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'check my email');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/Q3 Budget Review/i).first()).toBeVisible();
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, /Q3 Budget Review/i)).toBeVisible();
 
     const log = await requests();
     const llmHits = log.filter(
@@ -210,8 +211,8 @@ test.describe('Harness - Composio tool-call prompt flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'list my GitHub repos');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/openhuman/i).first()).toBeVisible();
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, /openhuman/i)).toBeVisible();
 
     const log = await requests();
     const llmHits = log.filter(
@@ -244,8 +245,8 @@ test.describe('Harness - Composio tool-call prompt flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'check my email inbox please');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/unable to fetch your emails/i)).toBeVisible();
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, /unable to fetch your emails/i)).toBeVisible();
   });
 
   test('linear create issue flow confirms creation in the final reply', async ({ page }) => {
@@ -286,9 +287,9 @@ test.describe('Harness - Composio tool-call prompt flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'create a linear issue titled Fix authentication timeout');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
     // `.first()` — the confirmation text also appears in the tool-result echo
     // pane, so an unscoped match trips Playwright strict mode (2 elements).
-    await expect(page.getByText(/I have created the Linear issue/i).first()).toBeVisible();
+    await expect(agentMessageText(page, /I have created the Linear issue/i)).toBeVisible();
   });
 });

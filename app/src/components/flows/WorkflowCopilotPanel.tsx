@@ -8,13 +8,16 @@
  * transcript, surfaces each proposal's node-level diff, and hands Accept/Reject
  * up to the host, which applies it to the local draft overlay.
  *
- * Chat UI parity: the copilot reuses the SHARED chat surface end-to-end — the
- * same {@link ChatComposer} the main chat windows use (mic/attachments off
- * here), turns render as bubbles via the shared {@link BubbleMarkdown}, and the
- * builder turn's live tool activity + streaming reply render through the shared
- * {@link ToolTimelineBlock} (fed from the runtime's `toolTimelineByThread` /
- * `streamingAssistantByThread`, streamed here by Phase B). So the copilot reads
- * like a real chat rather than a one-shot form.
+ * Chat UI parity: the copilot renders its transcript through the SAME
+ * {@link ChatThreadView} the home composer chat uses — message bubbles,
+ * past-turn insights, the shared tool timeline + sub-agent drawer, and the
+ * streaming / interrupted / parallel previews — driven by this copilot's
+ * DEDICATED thread. `flows_build` streams the `workflow_builder` turn onto
+ * that thread via the global `ChatRuntimeProvider` (Phase B), exactly as a
+ * normal chat turn streams, so the copilot reads like the real chat rather
+ * than a bespoke transcript. This panel keeps only the authoring concerns:
+ * the {@link ChatComposer} footer (mic/attachments off), the seed auto-sends,
+ * and the proposal-preview + capped cards pinned above the composer.
  *
  * Invariant: the copilot only PROPOSES — the agent turn itself never
  * persists. Accept applies the proposal to the local draft AND immediately
@@ -27,18 +30,18 @@
 import createDebug from 'debug';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { BubbleMarkdown } from '../../features/conversations/components/AgentMessageBubble';
-import { ToolTimelineBlock } from '../../features/conversations/components/ToolTimelineBlock';
-import { useStickToBottom } from '../../hooks/useStickToBottom';
+import { ChatThreadView } from '../../features/conversations/components/ChatThreadView';
+import { useChatSurfaceRegistration } from '../../features/conversations/hooks/useChatSurfaceRegistration';
 import { useWorkflowBuilderChat } from '../../hooks/useWorkflowBuilderChat';
-import { unwrapToolCallEnvelope } from '../../lib/flows/copilotMessageSanitizer';
 import { diffGraphs } from '../../lib/flows/graphDiff';
 import type { WorkflowGraph } from '../../lib/flows/types';
 import { useT } from '../../lib/i18n/I18nContext';
+import { AssistantUiRuntimeProvider } from '../../providers/AssistantUiRuntimeProvider';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
+import ApprovalRequestCard from '../chat/ApprovalRequestCard';
 import ChatComposer from '../chat/ChatComposer';
-import Button from '../ui/Button';
-import ToolActivityChip from './ToolActivityChip';
+import IntegrationConnectCard from '../chat/IntegrationConnectCard';
+import { Button } from '../ui';
 
 const log = createDebug('app:flows:copilot-panel');
 
@@ -76,12 +79,17 @@ interface Props {
    * persists it — "accept" is now review + save in one step). May return a
    * promise the panel awaits to show a saving state; a rejected promise
    * leaves the proposal visible so the user can retry.
+   *
+   * `opts.enable` (PR1 — "Save & enable") requests an immediate follow-up
+   * arm after the save succeeds, mirroring the main-chat
+   * `WorkflowProposalCard`'s one-click create+arm. Optional and backward
+   * compatible — a plain "Accept & save" click omits `opts` entirely, so it
+   * neither enables nor force-disables an already-enabled existing flow.
    */
-  onAccept: (proposal: WorkflowProposal) => void | Promise<void>;
+  onAccept: (proposal: WorkflowProposal, opts?: { enable?: boolean }) => void | Promise<void>;
   /** Reject the pending proposal (host reverts the overlay). */
   onReject: () => void;
   /** Close the panel. */
-  onClose: () => void;
   /**
    * Optional repair seed (from a failed run's "Fix with agent") — auto-sends a
    * repair turn once on mount so the copilot opens already diagnosing.
@@ -143,7 +151,6 @@ export default function WorkflowCopilotPanel({
   onProposal,
   onAccept,
   onReject,
-  onClose,
   repairSeed = null,
   buildSeed = null,
   onBuildSeedConsumed,
@@ -154,19 +161,8 @@ export default function WorkflowCopilotPanel({
   fullWidth = false,
 }: Props) {
   const { t } = useT();
-  const {
-    threadId,
-    sending,
-    turnActive,
-    proposal,
-    capped,
-    displayMessages,
-    toolTimeline,
-    liveResponse,
-    error,
-    send,
-    clearProposal,
-  } = useWorkflowBuilderChat(seedThreadId);
+  const { threadId, sending, proposal, pendingApproval, capped, error, send, stop, clearProposal } =
+    useWorkflowBuilderChat(seedThreadId);
   const [text, setText] = useState('');
 
   // Report the (lazily-created) thread id up so the host persists it per flow —
@@ -180,11 +176,25 @@ export default function WorkflowCopilotPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isComposingTextRef = useRef(false);
 
+  // Set only when a "Save & enable" attempt's `onAccept` rejects — surfaced
+  // as a dedicated inline message (`flows.copilot.enableError`) distinct from
+  // a plain "Accept & save" failure, which stays silent-but-retryable as
+  // before (the button re-enabling is signal enough there). Declared early
+  // (ahead of the proposal-surfacing effect below, which also clears it) so
+  // both that effect and the accept/reject handlers further down can
+  // reference it without a temporal-dead-zone ordering issue.
+  const [enableError, setEnableError] = useState(false);
+
   // Surface each NEW proposal to the host exactly once (enter preview overlay).
   const lastSurfacedRef = useRef<WorkflowProposal | null>(null);
   useEffect(() => {
     if (proposal && proposal !== lastSurfacedRef.current) {
       lastSurfacedRef.current = proposal;
+      // A genuinely new proposal object replacing a prior one (e.g. a further
+      // revise turn) supersedes any stale "Save & enable" failure from the
+      // earlier proposal — clear it so the new card doesn't inherit an
+      // unrelated error message.
+      setEnableError(false);
       onProposal(proposal);
     }
   }, [proposal, onProposal]);
@@ -313,36 +323,11 @@ export default function WorkflowCopilotPanel({
     onPrefillSeedConsumed?.();
   }, [prefillSeed, onPrefillSeedConsumed]);
 
-  // Keep the transcript pinned to the newest message / streamed activity —
-  // but ONLY while the user is already at (or near) the bottom. The previous
-  // implementation here was an unconditional `scrollTo(bottom)` effect keyed
-  // on every streaming dependency (messages, tool timeline, live text, …):
-  // it fired on every streamed token and force-scrolled regardless of where
-  // the user was reading, which is what made the transcript feel "stuck" —
-  // any attempt to scroll up got yanked back down by the very next token.
-  // `useStickToBottom` is the same pinning hook the main chat surfaces use:
-  // it only auto-scrolls while `stickingRef` is true (user at/near bottom),
-  // and permanently disengages the moment the user scrolls away, so reading
-  // history is never fought. `resetKey` is a stable constant here — this
-  // panel is fully unmounted/remounted on close/reopen (see the seed refs
-  // above), so there's no in-place "navigation" case to reset for.
-  const { containerRef: scrollRef } = useStickToBottom(
-    displayMessages,
-    threadId,
-    'workflow-copilot'
-  );
-  useEffect(() => {
-    log(
-      'scroll: stick-to-bottom deps changed messages=%d thread=%s sending=%s hasProposal=%s timeline=%d liveTextLen=%d',
-      displayMessages.length,
-      threadId ?? 'null',
-      sending,
-      Boolean(proposal),
-      toolTimeline.length,
-      liveResponse.length
-    );
-  }, [displayMessages, threadId, sending, proposal, toolTimeline, liveResponse]);
-
+  // Transcript rendering + scroll pinning (stick-to-bottom) are owned by the
+  // shared `ChatThreadView` below — the copilot no longer hand-rolls the
+  // transcript. This component keeps only the authoring concerns: the
+  // structured `flows_build` send path, the seed auto-sends, and the
+  // proposal / capped cards surfaced in the footer.
   const submit = useCallback(
     async (raw?: string) => {
       const trimmed = (raw ?? text).trim();
@@ -372,6 +357,35 @@ export default function WorkflowCopilotPanel({
     },
     [text, sending, send, graph, flowId, updatePendingAsk]
   );
+
+  // Claim this thread's write path for assistant-ui's runtime.
+  //
+  // Step-4 decision (how the copilot's richer transport is bridged): NO
+  // widening of `ChatSurfaceHandlers` was needed, and no signal is discarded.
+  // The seam's `send` is not "the transport" — it is "whatever the surface's
+  // composer does", which for this panel is `submit` above. `submit` already
+  // has the exact `(text?: string) => Promise<void>` shape, and it is the ONLY
+  // place that may legitimately construct a `WorkflowBuilderSendParams`: the
+  // build mode is derived there from live panel state (a one-shot prefill
+  // `build`/`create`, else `revise`) together with the current `graph` +
+  // `flowId`, and the returned `WorkflowBuilderSendResult` is consumed there by
+  // `updatePendingAsk`, which is what keeps an unanswered clarifying question
+  // alive across turns. Handing the runtime a narrower `send` that rebuilt
+  // those params itself would be the fork this registry exists to prevent, and
+  // a widened seam that returned the raw result to the runtime would leave
+  // `pendingAskRef` unset — the copilot's actual carry-forward logic — so
+  // routing through `submit` is both the smaller and the correct change.
+  //
+  // The auto-send retry paths (`buildSeed` / `repairSeed`, which branch on
+  // `outcome === 'skipped'` vs `'failed'`) are deliberately NOT reachable from
+  // the runtime: they are seeded, once-per-mount effects rather than composer
+  // sends, and they keep calling `send` directly with their full structured
+  // request and their own outcome handling.
+  const submitRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  submitRef.current = submit;
+  const stopRef = useRef<(() => void) | null>(null);
+  stopRef.current = stop;
+  useChatSurfaceRegistration(threadId, submitRef, stopRef);
 
   // (B34) One-click resume for a turn that hit the agent's tool-call budget
   // (`capped`, see `useWorkflowBuilderChat`'s doc) with no proposal yet.
@@ -413,49 +427,63 @@ export default function WorkflowCopilotPanel({
 
   // Accept now review-and-saves: `onAccept` (the host's `handleAcceptProposal`)
   // applies the proposal to the draft AND persists it. Track a local
-  // `acceptSaving` flag so the button can show a saving state and disable
-  // re-clicks while that's in flight. If the host's save throws, leave the
-  // proposal card visible (don't `clearProposal()`) so the user can retry —
-  // otherwise a failed autosave would silently vanish the only affordance to
-  // try again from the copilot itself (the header Save button is a fallback,
-  // but this keeps the copilot's own flow self-contained).
-  const [acceptSaving, setAcceptSaving] = useState(false);
-  const accept = useCallback(async () => {
-    // Self-guard against re-entrance: the JSX `disabled={acceptSaving}` on
-    // the Accept button prevents a normal double-click, but `acceptSaving`
-    // only flips after the FIRST call's `setAcceptSaving(true)` commits — a
-    // second invocation racing ahead of that render (e.g. programmatic
-    // re-fire) must not start a second concurrent save.
-    if (!proposal || acceptSaving) return;
-    setAcceptSaving(true);
-    log('accept: saving proposal via host onAccept');
-    try {
-      await onAccept(proposal);
-      log('accept: save succeeded, clearing proposal');
-      clearProposal();
-      lastSurfacedRef.current = null;
-    } catch (err) {
-      log('accept: save failed, leaving proposal visible for retry err=%o', err);
-    } finally {
-      setAcceptSaving(false);
-    }
-  }, [proposal, acceptSaving, onAccept, clearProposal]);
+  // `acceptState` union (rather than a plain boolean) so the two accept
+  // buttons ("Accept & save" / "Save & enable", PR1) can each show their own
+  // in-flight label while BOTH stay disabled — a save-in-flight click on the
+  // other button, or Reject, must not race the pending persist. If the
+  // host's save (or enable) throws, leave the proposal card visible (don't
+  // `clearProposal()`) so the user can retry — otherwise a failed autosave
+  // would silently vanish the only affordance to try again from the copilot
+  // itself (the header Save button is a fallback, but this keeps the
+  // copilot's own flow self-contained).
+  const [acceptState, setAcceptState] = useState<'idle' | 'saving' | 'enabling'>('idle');
+  const acceptBusy = acceptState !== 'idle';
+  const runAccept = useCallback(
+    async (opts?: { enable?: boolean }) => {
+      // Self-guard against re-entrance: the JSX `disabled={acceptBusy}` on
+      // both buttons prevents a normal double-click, but `acceptState` only
+      // flips after the FIRST call's `setAcceptState(...)` commits — a
+      // second invocation racing ahead of that render (e.g. programmatic
+      // re-fire) must not start a second concurrent save.
+      if (!proposal || acceptBusy) return;
+      const enable = Boolean(opts?.enable);
+      setAcceptState(enable ? 'enabling' : 'saving');
+      setEnableError(false);
+      log('accept: saving proposal via host onAccept enable=%s', enable);
+      try {
+        // Plain "Accept & save" calls `onAccept` with just the proposal (no
+        // second argument at all) — matching the pre-PR1 call signature
+        // exactly — so a host that doesn't care about `opts` (or a caller
+        // asserting on `onAccept`'s exact arguments) sees no behavioral
+        // change. Only "Save & enable" adds the `{ enable: true }` opts.
+        if (enable) {
+          await onAccept(proposal, opts);
+        } else {
+          await onAccept(proposal);
+        }
+        log('accept: save succeeded, clearing proposal');
+        clearProposal();
+        lastSurfacedRef.current = null;
+      } catch (err) {
+        log('accept: save (or enable) failed, leaving proposal visible for retry err=%o', err);
+        if (enable) setEnableError(true);
+      } finally {
+        setAcceptState('idle');
+      }
+    },
+    [proposal, acceptBusy, onAccept, clearProposal, setEnableError]
+  );
+  const accept = useCallback(() => runAccept(), [runAccept]);
+  const acceptAndEnable = useCallback(() => runAccept({ enable: true }), [runAccept]);
 
   const reject = useCallback(() => {
     onReject();
     clearProposal();
     lastSurfacedRef.current = null;
-  }, [onReject, clearProposal]);
+    setEnableError(false);
+  }, [onReject, clearProposal, setEnableError]);
 
   const diff = proposal ? diffGraphs(graph, proposal.graph as WorkflowGraph) : null;
-  const hasTimeline = toolTimeline.length > 0;
-  // B25: the in-flight streaming text can also carry the raw tool-call
-  // envelope mid-turn — unwrap once and reuse the clean text everywhere below
-  // (the pre-tool streaming bubble and the shared `ToolTimelineBlock`).
-  const liveResponseText = unwrapToolCallEnvelope(liveResponse).text;
-  const hasLiveText = liveResponseText.trim().length > 0;
-  const isEmpty =
-    displayMessages.length === 0 && !proposal && !sending && !error && !hasTimeline && !hasLiveText;
 
   return (
     <aside
@@ -463,97 +491,50 @@ export default function WorkflowCopilotPanel({
       className={`flex h-full w-full flex-col border-l border-line bg-surface ${
         fullWidth ? '' : 'max-w-sm'
       }`}>
-      <header className="flex items-start gap-2 border-b border-line px-3 py-2.5">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-content">{t('flows.copilot.title')}</p>
-          <p className="text-[11px] text-content-muted">{t('flows.copilot.subtitle')}</p>
-        </div>
-        <button
-          type="button"
-          data-testid="workflow-copilot-close"
-          aria-label={t('flows.copilot.close')}
-          onClick={onClose}
-          className="shrink-0 rounded-full p-1.5 text-content-faint hover:bg-surface-hover hover:text-content-secondary">
-          ✕
-        </button>
-      </header>
+      {/* No header. It carried a "Workflow copilot" title, a subtitle
+          describing the proposal flow, and a close ✕ — none of which earned
+          permanent height above a transcript. The panel is opened from a
+          `Copilot | Manual` toggle in the canvas header that both names it and
+          closes it (clicking the active segment collapses the rail), so the
+          title restated the control the user just pressed and the ✕ duplicated
+          it. `onClose` went with the button; nothing else called it. */}
 
-      <div
-        ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto px-3 py-3"
-        data-testid="workflow-copilot-transcript">
-        {isEmpty && (
-          <p className="text-xs text-content-muted" data-testid="workflow-copilot-empty">
-            {t('flows.copilot.emptyState')}
-          </p>
-        )}
-
-        {/* Conversation transcript: user turns right-aligned, agent turns left.
-            Renders `displayMessages` (interim narration bubbles filtered out —
-            that narration already streams via the tool timeline / live text
-            below it double-renders it as a bubble too, see B4). */}
-        {displayMessages.map(message => {
-          if (message.sender === 'user') {
-            return (
-              <div
-                key={message.id}
-                className="flex justify-end"
-                data-testid="workflow-copilot-user">
-                <div className="max-w-[85%] rounded-2xl bg-primary-500 px-3 py-1.5 text-sm text-content-inverted">
-                  {message.content}
-                </div>
-              </div>
-            );
-          }
-          // B25: a turn that both talks and calls a tool can carry the
-          // provider wire-format `{ content, tool_calls }` envelope as this
-          // message's raw `content` — unwrap it so the bubble renders only
-          // the human text (+ a compact tool-activity chip), never raw JSON.
-          const { text, toolNames } = unwrapToolCallEnvelope(message.content);
-          return (
-            <div
-              key={message.id}
-              className="max-w-[92%] rounded-2xl bg-surface-subtle px-3 py-1.5"
-              data-testid="workflow-copilot-agent">
-              <BubbleMarkdown content={text} />
-              <ToolActivityChip toolNames={toolNames} />
+      {/* Full builder transcript — the SAME rich renderer the home composer
+          chat uses (message bubbles, past-turn insights, the shared tool
+          timeline + sub-agent drawer, streaming/interrupted/parallel previews),
+          driven by this copilot's DEDICATED thread. `flows_build` streams the
+          `workflow_builder` turn onto `threadId` via the global
+          `ChatRuntimeProvider`, exactly as a normal chat turn streams, so the
+          copilot now reads like the real chat instead of a bespoke transcript.
+          The empty hint, proposal preview, and capped card are the copilot's
+          own authoring affordances, kept in the footer below. */}
+      {/* A SECOND assistant-ui runtime, scoped to this copilot's dedicated
+          builder thread. The app-wide instance in `ChatRuntimeProvider`
+          follows `selectedThreadId`, which is the home chat's thread and never
+          this one; leaving the transcript under it would make every
+          assistant-ui primitive inside `ChatThreadView` render the home chat's
+          messages here. Nesting overrides the context for this subtree only. */}
+      <AssistantUiRuntimeProvider threadId={threadId}>
+        <ChatThreadView
+          threadId={threadId}
+          variant="sidebar"
+          scrollResetKey="workflow-copilot"
+          shareAgentName={t('flows.copilot.title')}
+          emptyContent={
+            <div className="flex h-full items-center justify-center px-3">
+              <p className="text-xs text-content-muted" data-testid="workflow-copilot-empty">
+                {t('flows.copilot.emptyState')}
+              </p>
             </div>
-          );
-        })}
+          }
+        />
+      </AssistantUiRuntimeProvider>
 
-        {/* Live builder activity — the SHARED tool timeline (tool cards + the
-            streaming reply) the main chat uses, fed from the runtime's streamed
-            per-thread state. Renders nothing until the turn produces a tool
-            call. */}
-        {hasTimeline && (
-          <div data-testid="workflow-copilot-timeline">
-            <ToolTimelineBlock
-              entries={toolTimeline}
-              liveResponse={hasLiveText ? liveResponseText : undefined}
-              turnActive={turnActive}
-            />
-          </div>
-        )}
-
-        {/* Pre-tool phase: the reply is streaming but no tool has run yet, so the
-            timeline is still empty — surface the live text as an agent bubble so
-            the copilot never looks frozen. */}
-        {hasLiveText && !hasTimeline && (
-          <div
-            className="max-w-[92%] rounded-2xl bg-surface-subtle px-3 py-1.5"
-            data-testid="workflow-copilot-streaming">
-            <BubbleMarkdown content={liveResponseText} />
-          </div>
-        )}
-
-        {sending && !hasTimeline && !hasLiveText && (
-          <p className="text-xs text-content-muted" data-testid="workflow-copilot-thinking">
-            {t('flows.copilot.thinking')}
-          </p>
-        )}
-
+      <div className="space-y-3 border-t border-line px-3 py-2.5">
         {error && (
-          <p className="text-xs text-coral" data-testid="workflow-copilot-error">
+          <p
+            className="text-xs text-coral-600 dark:text-coral-400"
+            data-testid="workflow-copilot-error">
             {error === 'offline' ? t('flows.copilot.offline') : t('flows.copilot.error')}
           </p>
         )}
@@ -561,8 +542,8 @@ export default function WorkflowCopilotPanel({
         {proposal && diff && (
           <div
             data-testid="workflow-copilot-proposal"
-            className="rounded-xl border border-ocean-300 bg-surface p-3 dark:border-ocean-700">
-            <p className="text-xs font-semibold text-ocean-900 dark:text-ocean-100">
+            className="rounded-xl border border-primary-300 bg-surface p-3 dark:border-primary-700">
+            <p className="text-xs font-semibold text-primary-900 dark:text-primary-100">
               {proposal.name || t('flows.copilot.proposalTitle')}
             </p>
             <p className="mt-1 text-[11px] text-content-muted">{t('flows.copilot.previewHint')}</p>
@@ -587,34 +568,56 @@ export default function WorkflowCopilotPanel({
               )}
             </div>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="primary"
                 size="sm"
-                disabled={acceptSaving}
+                analyticsId="workflow-copilot-accept"
+                disabled={acceptBusy}
                 data-testid="workflow-copilot-accept"
                 onClick={() => void accept()}>
-                {acceptSaving ? t('flows.copilot.saving') : t('flows.copilot.acceptAndSave')}
+                {acceptState === 'saving'
+                  ? t('flows.copilot.saving')
+                  : t('flows.copilot.acceptAndSave')}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                analyticsId="workflow-copilot-accept-and-enable"
+                disabled={acceptBusy}
+                data-testid="workflow-copilot-accept-and-enable"
+                onClick={() => void acceptAndEnable()}>
+                {acceptState === 'enabling'
+                  ? t('flows.copilot.enabling')
+                  : t('flows.copilot.saveAndEnable')}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={acceptSaving}
+                disabled={acceptBusy}
                 data-testid="workflow-copilot-reject"
                 onClick={reject}>
                 {t('flows.copilot.reject')}
               </Button>
             </div>
+            {acceptState === 'idle' && enableError && (
+              <p
+                className="mt-2 text-xs text-coral-600 dark:text-coral-400"
+                data-testid="workflow-copilot-enable-error">
+                {t('flows.copilot.enableError')}
+              </p>
+            )}
           </div>
         )}
 
         {/* (B34) The turn hit the agent's iteration limit with no proposal
             yet — distinguish this from a voluntary clarifying question (which
-            renders as a plain agent bubble above, no card) with an explicit
-            "reached its iteration limit" signal and a one-click resume that
-            continues building from the current draft (see `continueBuilding`
+            renders as a plain agent bubble in the transcript, no card) with an
+            explicit "reached its iteration limit" signal and a one-click resume
+            that continues building from the current draft (see `continueBuilding`
             above for why this is accurate rather than a seamless resume).
             Never shown alongside `sending` (a fresh turn already cleared
             `capped`) or a proposal (mutually exclusive server-side — see
@@ -636,31 +639,71 @@ export default function WorkflowCopilotPanel({
             </div>
           </div>
         )}
-      </div>
 
-      <div className="border-t border-line px-3 py-2.5">
-        <ChatComposer
-          inputValue={text}
-          setInputValue={setText}
-          onSend={submit}
-          textInputRef={textInputRef}
-          fileInputRef={fileInputRef}
-          composerInteractionBlocked={sending}
-          isSending={sending}
-          attachments={[]}
-          onAttachFiles={noopAttach}
-          onRemoveAttachment={noop}
-          attachError={null}
-          onSwitchToMicCloud={noop}
-          handleInputKeyDown={handleInputKeyDown}
-          inlineCompletionSuffix=""
-          isComposingTextRef={isComposingTextRef}
-          maxAttachments={0}
-          allowedMimeTypes={[]}
-          attachmentsEnabled={false}
-          micEnabled={false}
-          placeholder={t('flows.copilot.placeholder')}
-        />
+        {/* Parked ApprovalGate request for the copilot's dedicated thread (PR3:
+            flows-copilot-live-run-approval). `flows_build` now runs under
+            `AgentTurnOrigin::WebChat` + `APPROVAL_CHAT_CONTEXT` when streaming,
+            so a `run_flow` / `resume_flow_run` call parks here instead of
+            auto-allowing or being hidden — surfaced via the SAME
+            `pendingApprovalByThread` slice / `approval_request` socket event
+            `Conversations.tsx` reads for the main chat, reusing the identical
+            cards (no new component, no new i18n keys). `composio_connect` parks
+            on the same gate but needs a Connect button + OAuth poll rather than
+            approve/deny, mirroring `Conversations.tsx`'s branch. Rendered above
+            the composer, outside the scrollable transcript, so it stays visible
+            regardless of scroll position. */}
+        {pendingApproval && threadId && (
+          <div data-testid="workflow-copilot-approval">
+            {pendingApproval.toolName === 'composio_connect' ? (
+              <IntegrationConnectCard
+                key={pendingApproval.requestId}
+                threadId={threadId}
+                approval={pendingApproval}
+              />
+            ) : (
+              <ApprovalRequestCard
+                key={pendingApproval.requestId}
+                threadId={threadId}
+                approval={pendingApproval}
+              />
+            )}
+          </div>
+        )}
+
+        {/* A runtime scoped to THIS copilot's builder thread. `ChatComposer` is
+            built on `ComposerPrimitive`, which resolves its runtime from React
+            context — and the panel's own provider above closes around the
+            transcript only, so without this the composer would resolve the
+            app-wide runtime in `ChatRuntimeProvider`, which is bound to
+            `selectedThreadId` (the HOME chat's thread, never this one). Nothing
+            here routes a send through the runtime, so the practical effect
+            today is the composer text store; scoping it correctly anyway is
+            what keeps that true as primitives are adopted. */}
+        <AssistantUiRuntimeProvider threadId={threadId}>
+          <ChatComposer
+            inputValue={text}
+            setInputValue={setText}
+            onSend={submit}
+            textInputRef={textInputRef}
+            fileInputRef={fileInputRef}
+            composerInteractionBlocked={sending}
+            isSending={sending}
+            onStopGeneration={stop}
+            attachments={[]}
+            onAttachFiles={noopAttach}
+            onRemoveAttachment={noop}
+            attachError={null}
+            onSwitchToMicCloud={noop}
+            handleInputKeyDown={handleInputKeyDown}
+            inlineCompletionSuffix=""
+            isComposingTextRef={isComposingTextRef}
+            maxAttachments={0}
+            allowedMimeTypes={[]}
+            attachmentsEnabled={false}
+            micEnabled={false}
+            placeholder={t('flows.copilot.placeholder')}
+          />
+        </AssistantUiRuntimeProvider>
       </div>
     </aside>
   );

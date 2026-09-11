@@ -19,7 +19,8 @@ use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
 
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
+use tinybus::EventHandler;
 use openhuman_core::core::jsonrpc::build_core_http_router;
 use openhuman_core::core::socketio::WebChannelEvent;
 use openhuman_core::openhuman::agent::harness::definition::{
@@ -71,23 +72,23 @@ use openhuman_core::openhuman::channels::{
     IrcChannel, LinqChannel, MattermostChannel, QQChannel, SendMessage, SignalChannel,
     SlackChannel, WhatsAppChannel,
 };
-use openhuman_core::openhuman::composio::all_composio_agent_tools;
+use openhuman_core::openhuman::integrations::composio::all_composio_agent_tools;
 use openhuman_core::openhuman::config::schema::{
     CapabilityProviderConfig, CapabilityProviderTrustState, NodeConfig, WhatsAppConfig,
 };
 use openhuman_core::openhuman::config::{Config, IMessageConfig, WebhookConfig};
-use openhuman_core::openhuman::context::prompt::ConnectedIntegration;
-use openhuman_core::openhuman::credentials::{
+use openhuman_core::openhuman::agent::context::prompt::ConnectedIntegration;
+use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
-use openhuman_core::openhuman::javascript::NodeBootstrap;
+use openhuman_core::openhuman::runtime::javascript::NodeBootstrap;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
 use openhuman_core::openhuman::security::{AuditLogger, AutonomyLevel, SecurityPolicy};
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
-use openhuman_core::openhuman::tool_registry::ops::diagnostics_for_config;
-use openhuman_core::openhuman::tool_registry::{
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::tools::registry::ops::diagnostics_for_config;
+use openhuman_core::openhuman::tools::registry::{
     all_tool_registry_controller_schemas, all_tool_registry_registered_controllers,
     capability_provider_by_id, capability_provider_diagnostics, capability_provider_registry,
     denials, get_tool, is_capability_provider_trusted_enabled, list_capability_providers,
@@ -98,12 +99,10 @@ use openhuman_core::openhuman::tools::generated::{
     admit_generated_tool_definitions, generated_tools_from_definitions, GeneratedToolAdapter,
     GeneratedToolAdmissionConfig, GeneratedToolDefinition, GeneratedToolRisk,
 };
-use openhuman_core::openhuman::tools::local_cli::tools_wrappers_list_json;
 use openhuman_core::openhuman::tools::orchestrator_tools::collect_orchestrator_tools;
 use openhuman_core::openhuman::tools::{
     all_tools, all_tools_controller_schemas, all_tools_registered_controllers,
-    decode_data_url_bytes, default_tools, extract_data_url, extract_saved_path,
-    write_bytes_to_path, ApplyPatchTool, BrowserAction, BrowserTool, CleaningStrategy,
+    default_tools, ApplyPatchTool, BrowserTool, CleaningStrategy,
     ComputerUseConfig, CsvExportTool, CurrentTimeTool, DefaultToolPolicy, DetectToolsTool,
     EditFileTool, FileReadTool, FileWriteTool, GitbooksGetPageTool, GitbooksSearchTool, GlobTool,
     GrepTool, InsertSqlRecordTool, ListFilesTool, LspTool, NodeExecTool, NpmExecTool,
@@ -286,7 +285,6 @@ fn coverage_agent_definition(
         omit_identity: true,
         omit_memory_context: true,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: ModelSpec::Inherit,
@@ -367,6 +365,20 @@ fn ensure_rpc_auth() {
         let token_dir = std::env::temp_dir().join("openhuman-tools-channels-e2e-auth");
         init_rpc_token(&token_dir).expect("init rpc auth token");
     });
+}
+
+/// The bearer this process actually validates.
+///
+/// `core::auth::RPC_TOKEN` is a process-global `OnceLock` and `init_rpc_token`
+/// returns early once it is set — deliberately, so a second call cannot 401 live
+/// clients. Since `tests/raw_coverage/` is one aggregated binary, only the first
+/// suite to reach `ensure_rpc_auth` pins its own `TEST_RPC_TOKEN`; every other
+/// suite sending its literal gets a 401 and trips its own `assert_eq!` (#6112).
+/// Ask the auth module what it settled on instead of assuming we won the race.
+fn rpc_bearer() -> &'static str {
+    ensure_rpc_auth();
+    openhuman_core::core::auth::get_rpc_token()
+        .expect("ensure_rpc_auth initialises the token subsystem on the line above")
 }
 
 async fn serve_rpc() -> (
@@ -483,7 +495,7 @@ async fn mock_backend(request: Request) -> Response {
     let payload = match (method, path.as_str()) {
         (Method::GET, "/auth/me") => json!({
             "success": true,
-            "user": {
+            "data": {
                 "id": "user-e2e",
                 "telegramId": "telegram-user-1",
                 "discord_id": "discord-user-1"
@@ -731,7 +743,7 @@ async fn rpc(rpc_base: &str, id: i64, method: &str, params: Value) -> Value {
     let url = format!("{}/rpc", rpc_base.trim_end_matches('/'));
     let response = client
         .post(&url)
-        .header(AUTHORIZATION, format!("Bearer {TEST_RPC_TOKEN}"))
+        .header(AUTHORIZATION, format!("Bearer {}", rpc_bearer()))
         .json(&json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -1391,7 +1403,6 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
         "example.com".to_string(),
     ];
     config.gitbooks.enabled = true;
-    config.computer_control.enabled = true;
     config.learning.enabled = true;
     config.learning.tool_tracking_enabled = true;
     config.mcp_client.enabled = true;
@@ -1401,12 +1412,10 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
         &config.workspace_dir,
         &config.workspace_dir,
     ));
-    let memory: Arc<dyn Memory> = Arc::new(StubMemory);
     let tools = all_tools(
         Arc::new(config.clone()),
         &security,
         AuditLogger::disabled(),
-        memory,
         &config.browser,
         &config.http_request,
         &config.workspace_dir,
@@ -1425,10 +1434,7 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
         "curl",
         "gitbooks_search",
         "gitbooks_get_page",
-        "mouse",
-        "keyboard",
         "tool_stats",
-        "screenshot",
         "image_info",
     ] {
         assert!(
@@ -1436,6 +1442,8 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
             "missing tool {expected}; got {names:?}"
         );
     }
+    assert!(!names.contains(&"mouse"));
+    assert!(!names.contains(&"keyboard"));
     assert!(!names.contains(&"node_exec"));
     assert!(!names.contains(&"npm_exec"));
 
@@ -1443,14 +1451,6 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
     assert_eq!(baseline.len(), 3);
     assert_eq!(baseline[0].scope(), ToolScope::All);
     assert_eq!(baseline[0].permission_level(), PermissionLevel::Execute);
-
-    let wrappers = tools_wrappers_list_json();
-    assert!(wrappers
-        .pointer("/result/wrappers")
-        .and_then(Value::as_array)
-        .expect("wrapper list")
-        .iter()
-        .any(|wrapper| wrapper.get("name").and_then(Value::as_str) == Some("screenshot")));
 
     let tool_schemas = all_tools_controller_schemas();
     let tool_controllers = all_tools_registered_controllers();
@@ -1571,33 +1571,12 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
     assert!(!default_tool.is_concurrency_safe(&json!({})));
     assert!(!default_tool.external_effect());
     assert!(!default_tool.external_effect_with_args(&json!({})));
-    assert!(default_tool.generated_runtime_context(&json!({})).is_none());
+    assert!(openhuman_core::openhuman::tools::traits::generated_runtime_context(
+        &default_tool,
+        &json!({})
+    )
+    .is_none());
     assert!(default_tool.max_result_size_chars().is_none());
-
-    let png_data_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    let raw_screenshot = format!(
-        "noise\nScreenshot saved to: {}\n{png_data_url}\n",
-        dir.path().join("shot.png").display()
-    );
-    assert_eq!(
-        extract_data_url(&raw_screenshot).as_deref(),
-        Some(png_data_url)
-    );
-    assert_eq!(
-        extract_saved_path(&raw_screenshot).as_deref(),
-        Some(dir.path().join("shot.png").as_path())
-    );
-    let decoded = decode_data_url_bytes(png_data_url).expect("decode png");
-    assert_eq!(&decoded[..4], b"\x89PNG");
-    assert!(decode_data_url_bytes("data:text/plain;base64,aGVsbG8=")
-        .expect_err("non-image data URL rejected")
-        .contains("invalid data URL"));
-    let nested = dir.path().join("screens").join("nested").join("shot.png");
-    write_bytes_to_path(&nested, &decoded).expect("write screenshot bytes");
-    assert_eq!(
-        std::fs::read(&nested).expect("read screenshot bytes"),
-        decoded
-    );
 
     let computer = ComputerUseConfig {
         api_key: Some("secret-key".into()),
@@ -1609,13 +1588,6 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
     let debug = format!("{computer:?}");
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains("secret-key"));
-    let action = serde_json::to_value(BrowserAction::Screenshot {
-        path: Some("shot.png".into()),
-        full_page: true,
-    })
-    .expect("serialize browser action");
-    assert_eq!(action.pointer("/screenshot/path"), Some(&json!("shot.png")));
-    assert_eq!(action.pointer("/screenshot/full_page"), Some(&json!(true)));
 }
 
 #[tokio::test]
@@ -1665,12 +1637,14 @@ async fn orchestrator_tool_synthesis_covers_agent_and_integration_delegation_edg
     assert_eq!(names, vec!["research", "delegate_to_integrations_agent"]);
 
     let research = &tools[0];
-    assert!(research
-        .description()
-        .contains("direct tools are insufficient"));
-    assert!(research
-        .description()
-        .contains("careful public-source research"));
+    // The delegation tool's description is the target agent's `when_to_use`
+    // verbatim (the "Use only when direct response/direct tools are
+    // insufficient." prefix was deliberately dropped — it is stated once in
+    // the orchestrator prompt instead of once per delegate schema per turn).
+    assert_eq!(
+        research.description(),
+        "Use for careful public-source research."
+    );
     assert_eq!(research.permission_level(), PermissionLevel::Execute);
     assert_eq!(research.category(), ToolCategory::System);
     assert_eq!(
@@ -1768,7 +1742,6 @@ async fn browser_tool_with_agent_browser_shim_covers_action_parser_and_command_p
         json!({ "action": "get_text", "selector": "main" }),
         json!({ "action": "get_title" }),
         json!({ "action": "get_url" }),
-        json!({ "action": "screenshot", "path": "shot.png", "full_page": true }),
         json!({ "action": "wait", "selector": ".ready" }),
         json!({ "action": "wait", "ms": 25 }),
         json!({ "action": "wait", "text": "Loaded" }),
@@ -3581,13 +3554,18 @@ async fn node_and_npm_exec_tools_cover_validation_policy_and_disabled_runtime_pa
         &config.workspace_dir,
     ));
     let runtime = Arc::new(NativeRuntime::new());
-    let bootstrap = Arc::new(NodeBootstrap::new(
-        config.node.clone(),
-        workspace,
-        reqwest::Client::new(),
-    ));
+    let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(config.clone())));
 
-    let node = NodeExecTool::new(full_security.clone(), runtime.clone(), bootstrap.clone());
+    let node = NodeExecTool::new(
+        full_security.clone(),
+        runtime.clone(),
+        bootstrap.clone(),
+        openhuman_core::openhuman::config::RuntimePoolConfig {
+            enabled: false,
+            ..Default::default()
+        },
+        config.workspace_dir.clone(),
+    );
     assert_eq!(node.name(), "node_exec");
     assert_eq!(node.permission_level(), PermissionLevel::Execute);
     assert!(node.description().contains("Execute JavaScript"));
@@ -3614,6 +3592,11 @@ async fn node_and_npm_exec_tools_cover_validation_policy_and_disabled_runtime_pa
         readonly_security.clone(),
         runtime.clone(),
         bootstrap.clone(),
+        openhuman_core::openhuman::config::RuntimePoolConfig {
+            enabled: false,
+            ..Default::default()
+        },
+        config.workspace_dir.clone(),
     );
     let blocked = readonly_node
         .execute(json!({ "inline_code": "console.log('blocked')" }))
@@ -3772,7 +3755,9 @@ async fn web_fetch_and_gitbooks_tools_use_local_http_backends() {
     assert!(bad_scheme.output().contains("URL rejected"));
 
     let endpoint = format!("{base}/mcp");
-    let search = GitbooksSearchTool::new(endpoint.clone(), 5);
+    // Fallible since the extraction: building the tool builds an HTTP client,
+    // and an unusable proxy configuration is reported rather than aborting.
+    let search = GitbooksSearchTool::new(endpoint.clone(), 5).expect("the search tool builds");
     assert_eq!(search.name(), "gitbooks_search");
     assert_eq!(search.permission_level(), PermissionLevel::ReadOnly);
     let blank_query = search
@@ -3790,7 +3775,7 @@ async fn web_fetch_and_gitbooks_tools_use_local_http_backends() {
         .output()
         .contains("gitbooks mocked searchDocumentation"));
 
-    let get_page = GitbooksGetPageTool::new(endpoint, 5);
+    let get_page = GitbooksGetPageTool::new(endpoint, 5).expect("the page tool builds");
     assert_eq!(get_page.name(), "gitbooks_get_page");
     let blank_url = get_page
         .execute(json!({ "url": "" }))

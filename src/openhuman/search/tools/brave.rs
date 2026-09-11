@@ -25,7 +25,7 @@ use std::time::Duration;
 const DEFAULT_API_BASE: &str = "https://api.search.brave.com/res/v1";
 
 fn http_client(timeout_secs: u64) -> anyhow::Result<reqwest::Client> {
-    crate::openhuman::tls::tls_client_builder()
+    crate::openhuman::util::tls::tls_client_builder()
         .timeout(Duration::from_secs(timeout_secs.max(1)))
         .connect_timeout(Duration::from_secs(10))
         .build()
@@ -269,9 +269,13 @@ fn render_web_plain(results: &[WebResult], query: &str, max: usize) -> String {
 
 fn render_web_markdown(results: &[WebResult], query: &str, max: usize) -> String {
     if results.is_empty() {
-        return format!("_No results for `{query}`._");
+        return format!("_No results for `{query}`_ (via Brave)");
     }
-    let mut out = format!("# Search results — `{query}` (Brave)\n");
+    // `(via Brave)` — the shared attribution marker every engine emits, which
+    // the tool timeline reads back to label the row (#5136). The markdown
+    // renderer is what production shows (`output_for_llm(true)`), so it has to
+    // carry the same marker the plain-text renderer already did.
+    let mut out = format!("# Search results — `{query}` (via Brave)\n");
     for r in results.iter().take(max) {
         let title = if r.title.trim().is_empty() {
             "Untitled"
@@ -639,67 +643,5 @@ impl Tool for BraveVideoSearchTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn require_key_rejects_blank() {
-        let cfg = BraveConfig {
-            api_key: Some("   ".into()),
-            max_results: 5,
-            timeout_secs: 5,
-        };
-        assert!(cfg.require_key().is_err());
-    }
-
-    #[test]
-    fn require_key_accepts_trimmed() {
-        let cfg = BraveConfig {
-            api_key: Some("  abc  ".into()),
-            max_results: 5,
-            timeout_secs: 5,
-        };
-        assert_eq!(cfg.require_key().unwrap(), "abc");
-    }
-
-    #[test]
-    fn web_tool_advertises_unified_name() {
-        let t = BraveWebSearchTool::new(Some("k".into()), 5, 5);
-        assert_eq!(t.name(), "web_search_tool");
-    }
-
-    #[test]
-    fn news_tool_name() {
-        let t = BraveNewsSearchTool::new(Some("k".into()), 5, 5);
-        assert_eq!(t.name(), "brave_news_search");
-    }
-
-    #[test]
-    fn image_tool_name() {
-        let t = BraveImageSearchTool::new(Some("k".into()), 5, 5);
-        assert_eq!(t.name(), "brave_image_search");
-    }
-
-    #[test]
-    fn video_tool_name() {
-        let t = BraveVideoSearchTool::new(Some("k".into()), 5, 5);
-        assert_eq!(t.name(), "brave_video_search");
-    }
-
-    #[tokio::test]
-    async fn execute_without_key_returns_error() {
-        let t = BraveWebSearchTool::new(None, 5, 5);
-        let err = t
-            .execute(json!({ "query": "test" }))
-            .await
-            .expect_err("should error without key");
-        assert!(err.to_string().contains("no API key"));
-    }
-
-    #[test]
-    fn clamped_count_respects_max() {
-        assert_eq!(clamped_count(&json!({"count": 99}), 5, 20), 20);
-        assert_eq!(clamped_count(&json!({"count": 0}), 5, 20), 1);
-        assert_eq!(clamped_count(&json!({}), 5, 20), 5);
-    }
-}
+#[path = "brave_tests.rs"]
+mod tests;

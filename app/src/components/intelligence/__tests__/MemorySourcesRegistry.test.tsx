@@ -16,6 +16,11 @@ import {
   openhumanGetMemorySyncSettings,
   openhumanUpdateMemorySyncSettings,
 } from '../../../utils/tauriCommands/config';
+import {
+  memoryTreeBackfillStatus,
+  memoryTreePipelineStatus,
+  type MemoryTreePipelineStatus,
+} from '../../../utils/tauriCommands/memoryTree';
 import { MemorySourcesRegistry } from '../MemorySourcesRegistry';
 
 // Mock the entire service so we don't hit RPC
@@ -34,9 +39,25 @@ vi.mock('../../../services/memorySourcesService', async () => {
   };
 });
 
-// Mock tauriCommands/memoryTree — not needed in these tests
+// Mock tauriCommands/memoryTree. The registry now also polls
+// memoryTreePipelineStatus for downstream health (GH-4690) and
+// memoryTreeBackfillStatus for embed work in flight (openhuman#6025); default
+// both to a healthy, idle snapshot so no source row shows a spurious warning.
 vi.mock('../../../utils/tauriCommands/memoryTree', () => ({
+  memoryTreeBackfillStatus: vi.fn().mockResolvedValue({ in_progress: false, pending_jobs: 0 }),
   memoryTreeFlushSource: vi.fn().mockResolvedValue({ seals_fired: 0 }),
+  memoryTreePipelineStatus: vi
+    .fn()
+    .mockResolvedValue({
+      status: 'running',
+      reason: null,
+      last_sync_ms: 0,
+      total_chunks: 0,
+      wiki_size_bytes: 0,
+      pipeline_jobs: { ready: 0, running: 0, failed: 0 },
+      is_syncing: false,
+      is_paused: false,
+    }),
 }));
 
 // Mock the memory-sync schedule config RPCs (#3302).
@@ -51,6 +72,25 @@ const mockedUpdate = vi.mocked(service.updateMemorySource);
 const mockedApplyAllIn = vi.mocked(service.applyAllIn);
 const mockedGetSync = vi.mocked(openhumanGetMemorySyncSettings);
 const mockedUpdateSync = vi.mocked(openhumanUpdateMemorySyncSettings);
+const mockedPipeline = vi.mocked(memoryTreePipelineStatus);
+const mockedBackfill = vi.mocked(memoryTreeBackfillStatus);
+
+/** A healthy `memory_tree_pipeline_status` snapshot (no degradation). */
+function healthyPipeline(
+  overrides: Partial<MemoryTreePipelineStatus> = {}
+): MemoryTreePipelineStatus {
+  return {
+    status: 'running',
+    reason: null,
+    last_sync_ms: 0,
+    total_chunks: 0,
+    wiki_size_bytes: 0,
+    pipeline_jobs: { ready: 0, running: 0, failed: 0 },
+    is_syncing: false,
+    is_paused: false,
+    ...overrides,
+  };
+}
 
 function syncSettings(overrides: Record<string, unknown> = {}) {
   return {
@@ -95,6 +135,7 @@ describe('MemorySourcesRegistry', () => {
     // Default: schedule RPCs succeed with the unset/default 24h view.
     mockedGetSync.mockResolvedValue(syncSettings());
     mockedUpdateSync.mockResolvedValue(syncSettings());
+    mockedBackfill.mockResolvedValue({ in_progress: false, pending_jobs: 0 });
   });
 
   // -------------------------------------------------------------------------
@@ -114,6 +155,53 @@ describe('MemorySourcesRegistry', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Embed backlog: pending vs stuck (openhuman#6025)
+  // -------------------------------------------------------------------------
+  it('hands the backfill snapshot to rows so a draining backlog reads as pending, not failed', async () => {
+    // Nothing about this source alone says "still moving" (idle freshness);
+    // only the registry's backfill poll does. If the poll were not wired
+    // through to the row, this would render the amber warning.
+    mockedStatus.mockResolvedValue([
+      {
+        source_id: 'src_1',
+        chunks_synced: 10,
+        chunks_pending: 4,
+        last_chunk_at_ms: 0,
+        freshness: 'idle',
+      },
+    ]);
+    mockedBackfill.mockResolvedValue({ in_progress: true, pending_jobs: 1 });
+    mockedList.mockResolvedValue([makeSource()]);
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+
+    const note = await screen.findByTestId('memory-source-vectors-pending-src_1');
+    expect(note).toHaveTextContent('Chunks waiting for vectors: 4');
+    expect(screen.queryByTestId('memory-source-pipeline-warning-src_1')).not.toBeInTheDocument();
+    expect(mockedBackfill).toHaveBeenCalled();
+  });
+
+  it('falls back to the amber warning when the backfill poll fails and nothing is fresh', async () => {
+    // Best-effort: a failed backfill RPC must neither hide the source list
+    // nor invent a "draining" state. With the source idle, the truthful
+    // verdict is the warning.
+    mockedStatus.mockResolvedValue([
+      {
+        source_id: 'src_1',
+        chunks_synced: 10,
+        chunks_pending: 4,
+        last_chunk_at_ms: 0,
+        freshness: 'idle',
+      },
+    ]);
+    mockedBackfill.mockRejectedValue(new Error('backfill_status unavailable'));
+    mockedList.mockResolvedValue([makeSource()]);
+    renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+
+    await screen.findByTestId('memory-source-pipeline-warning-src_1');
+    expect(screen.queryByTestId('memory-source-vectors-pending-src_1')).not.toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
   // Toggle (existing behaviour)
   // -------------------------------------------------------------------------
   it('toggle calls updateMemorySource and flips state', async () => {
@@ -122,7 +210,7 @@ describe('MemorySourcesRegistry', () => {
     setup([source]);
     await screen.findByText('My Repo');
 
-    const toggle = screen.getByTitle(/disable/i);
+    const toggle = screen.getByRole('switch', { name: /disable/i });
     fireEvent.click(toggle);
 
     await waitFor(() => {
@@ -170,7 +258,12 @@ describe('MemorySourcesRegistry', () => {
 
   it('confirming All In calls applyAllIn, updates sources, and shows success toast', async () => {
     const updatedSrc = makeSource({ id: 'src_2', label: 'New Repo', enabled: true });
-    mockedApplyAllIn.mockResolvedValue({ sources: [updatedSrc], sync_triggered: 1 });
+    mockedApplyAllIn.mockResolvedValue({
+      sources: [updatedSrc],
+      sync_triggered: 1,
+      sync_failed: 0,
+      sync_errors: [],
+    });
 
     const { onToast } = setup();
     await screen.findByText('My Repo');
@@ -191,6 +284,58 @@ describe('MemorySourcesRegistry', () => {
     // Modal should close
     await waitFor(() => {
       expect(screen.queryByText('Go All In?')).not.toBeInTheDocument();
+    });
+  });
+
+  it('All In with every trigger failing shows an error toast, not success (openhuman#5820)', async () => {
+    const updatedSrc = makeSource({ id: 'src_2', label: 'New Repo', enabled: true });
+    mockedApplyAllIn.mockResolvedValue({
+      sources: [updatedSrc],
+      sync_triggered: 0,
+      sync_failed: 1,
+      sync_errors: ['src_2: not found: no memory source registered as src_2'],
+    });
+
+    const { onToast } = setup();
+    await screen.findByText('My Repo');
+    fireEvent.click(screen.getByTestId('all-in-button'));
+    await screen.findByText('Go All In?');
+    fireEvent.click(screen.getByText('Yes'));
+
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'error',
+          message: 'src_2: not found: no memory source registered as src_2',
+        })
+      );
+    });
+    expect(onToast).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+  });
+
+  it('All In with a partial start shows a warning naming both counts', async () => {
+    const updatedSrc = makeSource({ id: 'src_2', label: 'New Repo', enabled: true });
+    mockedApplyAllIn.mockResolvedValue({
+      sources: [updatedSrc],
+      sync_triggered: 2,
+      sync_failed: 1,
+      sync_errors: ['src_3: boom'],
+    });
+
+    const { onToast } = setup();
+    await screen.findByText('My Repo');
+    fireEvent.click(screen.getByTestId('all-in-button'));
+    await screen.findByText('Go All In?');
+    fireEvent.click(screen.getByText('Yes'));
+
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'warning',
+          title: 'Syncs started: 2. Could not start: 1.',
+          message: 'src_3: boom',
+        })
+      );
     });
   });
 
@@ -492,5 +637,124 @@ describe('MemorySourcesRegistry', () => {
     rerender(tree(true));
     await waitFor(() => expect(mockedList).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Reloaded Repo')).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // Layered pipeline status — Data Sync must not show a clean "synced" badge
+  // when the downstream retrieval pipeline failed (GH-4690).
+  // -------------------------------------------------------------------------
+  describe('layered pipeline warnings (GH-4690)', () => {
+    it('no regression: a fully healthy sync keeps the clean freshness badge', async () => {
+      mockedList.mockResolvedValue([makeSource({ id: 'src_1', label: 'Healthy Repo' })]);
+      mockedStatus.mockResolvedValue([
+        {
+          source_id: 'src_1',
+          chunks_synced: 5,
+          chunks_pending: 0,
+          last_chunk_at_ms: Date.now(),
+          freshness: 'recent',
+        },
+      ]);
+      mockedPipeline.mockResolvedValue(healthyPipeline());
+
+      renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+      await screen.findByText('Healthy Repo');
+      // Clean state: freshness pill shows, no "Ingested only" warning surfaces.
+      await waitFor(() => {
+        expect(screen.getByText('Recent')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('memory-source-ingested-only-src_1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('memory-source-pipeline-warning-src_1')).not.toBeInTheDocument();
+    });
+
+    it('flags "Stored without vectors" from per-source pending chunks', async () => {
+      mockedList.mockResolvedValue([makeSource({ id: 'src_1', label: 'Notes' })]);
+      mockedStatus.mockResolvedValue([
+        {
+          source_id: 'src_1',
+          chunks_synced: 1,
+          chunks_pending: 1,
+          // Long idle: nothing is draining this backlog (openhuman#6025 —
+          // a recent chunk or a running backfill would read as "pending").
+          last_chunk_at_ms: Date.now() - 60 * 60_000,
+          freshness: 'idle',
+        },
+      ]);
+      // Even with a "healthy" global snapshot, the per-source pending chunks
+      // are the precise signal that this source has no vectors.
+      mockedPipeline.mockResolvedValue(healthyPipeline());
+
+      renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+      await screen.findByText('Notes');
+      expect(await screen.findByTestId('memory-source-ingested-only-src_1')).toBeInTheDocument();
+      expect(screen.getByTestId('memory-source-pipeline-warning-src_1')).toHaveTextContent(
+        /Stored without vectors/i
+      );
+      // Clean freshness badge must be gone.
+      expect(screen.queryByText('Idle')).not.toBeInTheDocument();
+      // A link to the full memory-health panel is offered.
+      expect(screen.getByTestId('memory-source-view-health-src_1')).toBeInTheDocument();
+    });
+
+    it('offers "Sign in to enable" when embeddings fail for lack of a backend session', async () => {
+      mockedList.mockResolvedValue([makeSource({ id: 'src_1', label: 'Notes' })]);
+      mockedStatus.mockResolvedValue([
+        {
+          source_id: 'src_1',
+          chunks_synced: 2,
+          chunks_pending: 2,
+          last_chunk_at_ms: Date.now(),
+          freshness: 'idle',
+        },
+      ]);
+      mockedPipeline.mockResolvedValue(
+        healthyPipeline({
+          status: 'error',
+          first_blocking_cause: {
+            code: 'auth_missing',
+            class: 'unrecoverable',
+            remediation_key: 'memory.health.remediation.auth_missing',
+          },
+        })
+      );
+
+      renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+      await screen.findByText('Notes');
+      // Unauthenticated (no CoreStateProvider ⇒ isAuthenticated false), auth-related.
+      const signIn = await screen.findByTestId('memory-source-signin-src_1');
+      expect(signIn).toBeInTheDocument();
+      // Clicking must not throw (navigates within the MemoryRouter).
+      fireEvent.click(signIn);
+    });
+
+    it('surfaces extraction failure from the global pipeline health', async () => {
+      mockedList.mockResolvedValue([makeSource({ id: 'src_1', label: 'Notes' })]);
+      mockedStatus.mockResolvedValue([
+        {
+          source_id: 'src_1',
+          chunks_synced: 5,
+          chunks_pending: 0,
+          last_chunk_at_ms: Date.now(),
+          freshness: 'recent',
+        },
+      ]);
+      mockedPipeline.mockResolvedValue(
+        healthyPipeline({
+          status: 'degraded',
+          first_blocking_cause: {
+            code: 'extraction_timeout',
+            class: 'transient',
+            remediation_key: 'memory.health.remediation.extraction_timeout',
+          },
+        })
+      );
+
+      renderWithProviders(<MemorySourcesRegistry pollIntervalMs={0} />);
+      await screen.findByText('Notes');
+      expect(await screen.findByTestId('memory-source-ingested-only-src_1')).toBeInTheDocument();
+      expect(screen.getByTestId('memory-source-pipeline-warning-src_1')).toHaveTextContent(
+        /extraction failed/i
+      );
+    });
   });
 });

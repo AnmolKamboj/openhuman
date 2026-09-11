@@ -234,14 +234,14 @@ describe('safeInvoke (tauriCommands/common)', () => {
       throw cefThrow;
     });
 
-    const err = await safeInvoke<void>('webview_account_hide').catch((e: unknown) => e);
+    const err = await safeInvoke<void>('mascot_window_hide').catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(IpcUnavailableError);
     const typed = err as IpcUnavailableError;
     expect(typed.name).toBe('IpcUnavailableError');
-    expect(typed.cmd).toBe('webview_account_hide');
+    expect(typed.cmd).toBe('mascot_window_hide');
     expect(typed.cause).toBe(cefThrow);
-    expect(typed.message).toContain('webview_account_hide');
+    expect(typed.message).toContain('mascot_window_hide');
     expect(typed.message).toContain('postMessage');
   });
 
@@ -267,9 +267,43 @@ describe('safeInvoke (tauriCommands/common)', () => {
     const cefThrow = new TypeError("Cannot read properties of undefined (reading 'postMessage')");
     coreInvokeMock.mockRejectedValue(cefThrow);
 
-    const err = await safeInvoke<void>('webview_account_reveal').catch((e: unknown) => e);
+    const err = await safeInvoke<void>('mascot_window_show').catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(IpcUnavailableError);
-    expect((err as IpcUnavailableError).cmd).toBe('webview_account_reveal');
+    expect((err as IpcUnavailableError).cmd).toBe('mascot_window_show');
+  });
+
+  // #5155: the dereference is now *guarded* — the vendored bootstrap and
+  // `utils/ipcTransportFallback.ts` settle the pending callback with a plain
+  // `{ message }` object instead of letting a `TypeError` escape. That shape
+  // is not a `TypeError`, so the classifier must recognise it by message or
+  // every `instanceof IpcUnavailableError` degradation branch goes dead.
+  it.each([
+    'IPC postMessage interface is unavailable on this platform',
+    'Tauri IPC bridge is unavailable (custom protocol not wired)',
+    'Tauri IPC bridge is unavailable (fallback queue full)',
+    'Tauri IPC bridge never became available',
+    'Tauri IPC fallback transport failed for "core_rpc_url": net down',
+  ])(
+    'classifies the guarded IPC-unavailable rejection %j as IpcUnavailableError',
+    async message => {
+      coreInvokeMock.mockRejectedValue({ message });
+
+      const err = await safeInvoke<void>('core_rpc_url').catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(IpcUnavailableError);
+      // The underlying reason survives instead of collapsing to the generic
+      // 'IPC bridge not wired' fallback string.
+      expect((err as IpcUnavailableError).message).toContain(message);
+    }
+  );
+
+  it('does NOT classify an unrelated rejection object as IpcUnavailableError', async () => {
+    const other = { message: 'thread not found' };
+    coreInvokeMock.mockRejectedValue(other);
+
+    const err = await safeInvoke<void>('threads_get').catch((e: unknown) => e);
+
+    expect(err).toBe(other);
   });
 });

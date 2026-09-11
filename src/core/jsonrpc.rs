@@ -6,22 +6,48 @@
 //! - SSE (Server-Sent Events) for real-time event streaming.
 //! - Helper routes for health checks, schema discovery, and Telegram authentication.
 
+// Only the gated router build (`build_core_http_router`) uses the bare `Arc`;
+// the kept dispatch/bootstrap paths qualify it (`std::sync::Arc`) or import it
+// locally, so this module-level import is `http-server`-only (#5048).
+#[cfg(feature = "http-server")]
 use std::sync::Arc;
 
+// The axum server surface — router, handlers, middleware, extractors, SSE — is
+// exclusive to the `http-server` feature (#5048). Only the RPC-dispatch surface
+// (`invoke_method`, `parse_json_params`, `default_state`, the `run_server*`
+// CoreBuilder shims, `register_domain_subscribers`, `bootstrap_core_runtime`)
+// stays compiled; a slim build drives it over the CLI / native dispatch path
+// without binding a listener. `Map`/`Value` stay ungated (dispatch uses them).
+#[cfg(feature = "http-server")]
 use axum::extract::{DefaultBodyLimit, Query, State, WebSocketUpgrade};
+#[cfg(feature = "http-server")]
 use axum::http::{header, HeaderValue, Method, StatusCode};
+#[cfg(feature = "http-server")]
 use axum::middleware::{self, Next};
+#[cfg(feature = "http-server")]
 use axum::response::sse::{Event, KeepAlive, Sse};
+#[cfg(feature = "http-server")]
 use axum::response::{IntoResponse, Response};
+#[cfg(feature = "http-server")]
 use axum::routing::{get, post};
+#[cfg(feature = "http-server")]
 use axum::{extract::Request, Json, Router};
+#[cfg(feature = "http-server")]
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+#[cfg(feature = "http-server")]
+use serde_json::json;
+use serde_json::{Map, Value};
+#[cfg(feature = "http-server")]
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::core::all;
-use crate::core::types::{AppState, RpcError, RpcFailure, RpcRequest, RpcSuccess};
+use crate::core::types::AppState;
+// The JSON-RPC envelope types are only shaped into HTTP responses by the gated
+// `rpc_handler`; the kept dispatch surface returns `Result<Value, String>`.
+#[cfg(feature = "http-server")]
+use crate::core::types::{RpcError, RpcFailure, RpcRequest, RpcSuccess};
+#[cfg(feature = "http-server")]
 use crate::rpc::StructuredRpcError;
 
 /// Axum handler for JSON-RPC POST requests.
@@ -36,6 +62,7 @@ use crate::rpc::StructuredRpcError;
 ///
 /// * `state` - The application state, injected by Axum.
 /// * `req` - The parsed [`RpcRequest`].
+#[cfg(feature = "http-server")]
 pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcRequest>) -> Response {
     let id = req.id.clone();
     let method = req.method.clone();
@@ -104,11 +131,8 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                     display_message
                 );
             } else if is_wallet_not_configured_error(&display_message) {
-                // A `tinyplace_*` RPC needs a wallet-derived signer but the user
-                // has not set one up. Expected user-state (the UI shows a
-                // "set up wallet" prompt), not an internal failure — skip Sentry
-                // here so the message is left untouched for direct (agent-tool)
-                // callers. See `is_wallet_not_configured_error`.
+                // A wallet-backed RPC cannot run before wallet setup. This is
+                // expected user state, not an internal failure.
                 tracing::info!(
                     method = %method,
                     "[rpc] wallet-not-configured (expected user-state) — skipping Sentry"
@@ -190,6 +214,24 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                         &[("method", method.as_str()), ("elapsed_ms", &ms.to_string())],
                     );
                 }
+            } else if crate::openhuman::memory::tree::tree::rpc::is_invalid_ingest_payload_message(
+                &display_message,
+            ) {
+                // The caller submitted an ingest payload that does not match
+                // the canonicaliser schema for its `source_kind` (#5169). The
+                // handler already returned a precise error naming the missing
+                // or malformed field, and no core-side change can fix a
+                // producer sending the wrong shape — so this is a caller
+                // error, not an actionable core defect. Same treatment as an
+                // unrecognised method above: still captured for triage (a
+                // spike means a producer regressed) but at warn severity, so
+                // it does not page.
+                crate::core::observability::report_warning_message(
+                    display_message.as_str(),
+                    "rpc",
+                    "invoke_method",
+                    &[("method", method.as_str()), ("elapsed_ms", &ms.to_string())],
+                );
             } else {
                 crate::core::observability::report_error_or_expected(
                     display_message.as_str(),
@@ -248,17 +290,15 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
             // `scrub_secret_patterns` and truncates.
             //
             // Local-session protection is handled by `SessionExpiredSubscriber`
-            // in `src/openhuman/credentials/bus.rs` — it checks `is_local_session_token`
+            // in `src/openhuman/security/credentials/bus.rs` — it checks `is_local_session_token`
             // after config load and short-circuits teardown with
             // `scheduler_gate::set_signed_out(false)`. Duplicating that check
             // here would pull a domain concern into the transport layer and would
             // add an extra config-load round-trip on every 401.
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
-                    source: format!("jsonrpc.invoke_method:{method}"),
-                    reason: sanitized_reason,
-                },
-            );
+            crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+                source: format!("jsonrpc.invoke_method:{method}"),
+                reason: sanitized_reason,
+            });
         } else if is_unconfirmed_unauthorized_error(msg) {
             log::info!(
                 "[jsonrpc] unconfirmed unauthorized error for method='{}' (not session expiry) — leaving session intact: {}",
@@ -374,6 +414,7 @@ fn is_unconfirmed_unauthorized_error(msg: &str) -> bool {
 /// session-expired predicate uses `.contains()` because session-expired markers
 /// can appear mid-message — flip these to match and the test
 /// `is_param_validation_error_does_not_match_unrelated_errors` will break.
+#[cfg(feature = "http-server")]
 fn is_param_validation_error(msg: &str) -> bool {
     msg.starts_with("unknown param '")
         || msg.starts_with("missing required param '")
@@ -382,23 +423,16 @@ fn is_param_validation_error(msg: &str) -> bool {
 
 /// Returns `true` when the error is the wallet's "not configured yet" message.
 ///
-/// Several `tinyplace_*` RPCs derive a signer seed from the wallet before they
-/// can run (the feed, signal/messaging, etc. — backend `GraphQLAuth::Agent`
-/// requires a signer). For a user who has not set up a wallet, the wallet layer
-/// returns [`crate::openhuman::wallet::WALLET_NOT_CONFIGURED_MESSAGE`]. That is
-/// an expected user-state, not an internal failure: the UI already renders a
-/// "set up wallet" prompt, and there is no local lever to make the call succeed
-/// until the user creates a wallet. Classifying it here — at the single Sentry
-/// boundary — keeps it out of Sentry for *every* path that surfaces it (the
-/// shared client builder and the direct `signal_store` seed call alike) without
-/// the controllers returning a structured envelope, which would leak the raw
-/// sentinel string to agent tools that call those handlers directly.
+/// Wallet-backed RPCs return
+/// [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`] before
+/// setup. That is expected user state, not an internal failure.
 ///
 /// Matched against the shared wallet constant (exact equality) so a wording
 /// change in the wallet layer fails the coupling test in `jsonrpc_tests.rs`
 /// rather than silently letting the noise back into Sentry.
+#[cfg(feature = "http-server")]
 fn is_wallet_not_configured_error(msg: &str) -> bool {
-    msg == crate::openhuman::wallet::WALLET_NOT_CONFIGURED_MESSAGE
+    msg == crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE
 }
 
 /// Internal method invocation logic.
@@ -472,6 +506,7 @@ pub fn default_state() -> AppState {
 // --- HTTP server (Axum) ----------------------------------------------------
 
 /// Query parameters for the Telegram authentication callback.
+#[cfg(feature = "http-server")]
 #[derive(Debug, serde::Deserialize)]
 struct TelegramAuthQuery {
     /// The one-time login token received from the Telegram bot.
@@ -479,6 +514,7 @@ struct TelegramAuthQuery {
 }
 
 /// Query parameters for the generic desktop auth callback.
+#[cfg(feature = "http-server")]
 #[derive(Debug, serde::Deserialize)]
 struct DesktopAuthQuery {
     /// One-time login token consumed through the backend.
@@ -488,6 +524,7 @@ struct DesktopAuthQuery {
 }
 
 /// Returns the HTML for a successful connection page.
+#[cfg(feature = "http-server")]
 fn success_html(message: &str) -> String {
     let escaped_message = escape_html(message);
     r#"<!DOCTYPE html>
@@ -517,6 +554,7 @@ fn success_html(message: &str) -> String {
 }
 
 /// Simple HTML escaping for error messages.
+#[cfg(feature = "http-server")]
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -526,6 +564,7 @@ fn escape_html(s: &str) -> String {
 }
 
 /// Returns the HTML for an error page.
+#[cfg(feature = "http-server")]
 fn error_html(message: &str) -> String {
     let escaped_message = escape_html(message);
     format!(
@@ -556,6 +595,7 @@ fn error_html(message: &str) -> String {
 }
 
 /// Query params for the MCP browser-OAuth callback (`/oauth/mcp/callback`).
+#[cfg(feature = "http-server")]
 #[derive(Debug, serde::Deserialize)]
 struct OAuthMcpCallbackQuery {
     code: Option<String>,
@@ -566,8 +606,9 @@ struct OAuthMcpCallbackQuery {
 
 /// Loopback redirect target for MCP browser OAuth (RFC 8252). The authorization
 /// server redirects the browser here with `?code=…&state=…`; we hand it to
-/// `mcp_registry::oauth::complete`, which exchanges the code for a token, stores
+/// `mcp::registry::oauth::complete`, which exchanges the code for a token, stores
 /// it as the server's `Authorization` header, and reconnects.
+#[cfg(feature = "http-server")]
 async fn oauth_mcp_callback_handler(
     Query(query): Query<OAuthMcpCallbackQuery>,
 ) -> impl IntoResponse {
@@ -615,7 +656,7 @@ async fn oauth_mcp_callback_handler(
     let config = match crate::openhuman::config::Config::load_or_init().await {
         Ok(c) => c,
         Err(e) => {
-            log::error!("[oauth:mcp] config load failed: {e}");
+            log::warn!("[oauth:mcp] config load failed: {e}");
             return html(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 error_html("Internal error loading config. Please try again."),
@@ -623,7 +664,7 @@ async fn oauth_mcp_callback_handler(
         }
     };
 
-    match crate::openhuman::mcp_registry::oauth::complete(&config, &state, &code).await {
+    match crate::openhuman::mcp::registry::oauth::complete(&config, &state, &code).await {
         Ok(server_id) => {
             log::info!("[oauth:mcp] completed sign-in for server_id={server_id}");
             html(
@@ -632,7 +673,7 @@ async fn oauth_mcp_callback_handler(
             )
         }
         Err(e) => {
-            log::error!("[oauth:mcp] complete failed: {e}");
+            log::warn!("[oauth:mcp] complete failed: {e}");
             html(
                 StatusCode::BAD_GATEWAY,
                 error_html(&format!("Sign-in could not be completed: {e}")),
@@ -647,6 +688,7 @@ async fn oauth_mcp_callback_handler(
 /// The preferred Tauri loopback listener has a per-login state nonce. This
 /// legacy core fallback cannot rely on that state, so it must reject embedded
 /// resource loads (`<img>`, iframe, fetch, script) before token exchange.
+#[cfg(feature = "http-server")]
 fn desktop_callback_navigation_ok(headers: &axum::http::HeaderMap) -> Result<(), &'static str> {
     let get_str = |name: &str| -> Option<&str> {
         headers
@@ -696,6 +738,7 @@ fn desktop_callback_navigation_ok(headers: &axum::http::HeaderMap) -> Result<(),
 ///   iframe embeds from malicious pages).
 /// - `Sec-Fetch-Site: cross-site` with a `Referer`/`Origin` that is not
 ///   `https://t.me/...` (CSRF redirect from a third-party site).
+#[cfg(feature = "http-server")]
 fn telegram_callback_origin_ok(headers: &axum::http::HeaderMap) -> Result<(), &'static str> {
     let get_str = |name: &str| -> Option<&str> {
         headers
@@ -756,6 +799,7 @@ fn telegram_callback_origin_ok(headers: &axum::http::HeaderMap) -> Result<(), &'
 ///
 /// It consumes a one-time token, exchanges it for a JWT from the backend,
 /// and stores the session locally.
+#[cfg(feature = "http-server")]
 async fn telegram_auth_handler(
     headers: axum::http::HeaderMap,
     Query(query): Query<TelegramAuthQuery>,
@@ -855,7 +899,7 @@ async fn telegram_auth_handler(
     };
 
     // Store the resulting session token in the local configuration.
-    match crate::openhuman::credentials::ops::store_session_with_deferred_validation(
+    match crate::openhuman::security::credentials::ops::store_session_with_deferred_validation(
         &config, &jwt_token, None, None,
     )
     .await
@@ -890,6 +934,7 @@ async fn telegram_auth_handler(
 /// flows can fall back to the local core callback (`/auth`). This route is
 /// public because the callback carries its own one-time login token; raw
 /// session JWT callbacks are intentionally rejected on this public surface.
+#[cfg(feature = "http-server")]
 async fn desktop_auth_handler(
     headers: axum::http::HeaderMap,
     Query(query): Query<DesktopAuthQuery>,
@@ -976,7 +1021,7 @@ async fn desktop_auth_handler(
         }
     };
 
-    match crate::openhuman::credentials::ops::store_session_with_deferred_validation(
+    match crate::openhuman::security::credentials::ops::store_session_with_deferred_validation(
         &config, &jwt_token, None, None,
     )
     .await
@@ -1010,6 +1055,7 @@ async fn desktop_auth_handler(
 /// the FE forwards the per-process core bearer as a `?token=…` query param —
 /// validated against the same in-process RPC token via [`verify_bearer_token`]
 /// (single source of truth, no separate credential).
+#[cfg(feature = "http-server")]
 #[derive(Debug, serde::Deserialize)]
 struct DictationQuery {
     #[serde(default)]
@@ -1024,6 +1070,7 @@ struct DictationQuery {
 /// set headers), and — when an `Origin` header is present — that origin must be
 /// on the local-app allowlist, mirroring the Socket.IO handshake check. Missing
 /// or wrong credentials are rejected with 401 and the socket is never upgraded.
+#[cfg(feature = "http-server")]
 async fn dictation_ws_handler(
     headers: axum::http::HeaderMap,
     Query(query): Query<DictationQuery>,
@@ -1100,6 +1147,7 @@ async fn dictation_ws_handler(
 /// maximum image payload — 4 × 8 MiB raw ≈ 43 MiB once base64-encoded into
 /// `[IMAGE:data:…]` markers — plus message text and JSON-RPC envelope overhead.
 /// Axum's 2 MiB default would otherwise reject any image attachment (#3205).
+#[cfg(feature = "http-server")]
 const MAX_RPC_BODY_BYTES: usize = 64 * 1024 * 1024;
 
 /// Builds the main Axum router for the core HTTP server.
@@ -1111,8 +1159,9 @@ const MAX_RPC_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// 1. `cors_middleware`       — handles `OPTIONS` preflight and adds CORS headers
 /// 2. `rpc_auth_middleware`   — validates `Authorization: Bearer <token>` on protected paths
 /// 3. `http_request_log_middleware` — logs non-RPC HTTP requests with timing
+#[cfg(feature = "http-server")]
 pub fn build_core_http_router(socketio_enabled: bool) -> Router {
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/schema", get(schema_handler))
@@ -1139,49 +1188,11 @@ pub fn build_core_http_router(socketio_enabled: bool) -> Router {
         .route("/oauth/mcp/callback", get(oauth_mcp_callback_handler))
         // OpenAI-compatible inference endpoint (/v1/chat/completions, /v1/models)
         .nest("/v1", crate::openhuman::inference::http::router())
-        // Apply `AppState` here (before any state-less sub-routers such as
-        // AgentBox are merged below) so the outer router becomes
-        // `Router<()>` and matches them.
+        // Apply `AppState` here so the outer router becomes `Router<()>` and
+        // matches any state-less sub-router merged into it.
         .with_state(AppState {
             core_version: env!("CARGO_PKG_VERSION").to_string(),
         });
-
-    // Mount AgentBox marketplace routes when explicitly enabled.
-    //
-    // Gate is strict literal "1" — "true"/"yes"/etc. do NOT enable it. Auth
-    // bypass for `/run` and `/jobs/{id}` is unconditional in
-    // [`crate::core::auth`]; the router-side gate is what actually exposes
-    // the handlers. The spawned sweep loop lives until process exit.
-    if crate::openhuman::agentbox::agentbox_mode_enabled() {
-        let store = crate::openhuman::agentbox::JobStore::new(std::time::Duration::from_secs(3600));
-        let invoker: std::sync::Arc<dyn crate::openhuman::agentbox::invoker::AgentInvoker> =
-            std::sync::Arc::new(crate::openhuman::agentbox::invoker::CoreAgentInvoker);
-        let job_timeout = std::env::var("OPENHUMAN_AGENTBOX_JOB_TIMEOUT_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .map(std::time::Duration::from_secs)
-            .unwrap_or_else(|| std::time::Duration::from_secs(600));
-
-        // Spawn sweep loop — bounds memory under sustained traffic.
-        let sweep_store = store.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
-            loop {
-                tick.tick().await;
-                let evicted = sweep_store.sweep_now();
-                if evicted > 0 {
-                    log::info!("[agentbox] sweep evicted {} terminal jobs", evicted);
-                }
-            }
-        });
-
-        log::info!("[agentbox] enabled; public routes: POST /run, GET /jobs/{{id}}, GET /health");
-        router = router.merge(crate::openhuman::agentbox::agentbox_router(
-            store,
-            invoker,
-            job_timeout,
-        ));
-    }
 
     let router = router
         .fallback(not_found_handler)
@@ -1202,6 +1213,7 @@ pub fn build_core_http_router(socketio_enabled: bool) -> Router {
 ///
 /// The `/rpc` path is logged inside [`rpc_handler`] instead (with the
 /// JSON-RPC method name), so we skip it here to avoid a redundant line.
+#[cfg(feature = "http-server")]
 async fn http_request_log_middleware(req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -1229,6 +1241,7 @@ async fn http_request_log_middleware(req: Request, next: Next) -> Response {
 /// Environment variable for additional comma-separated origins to allow.
 /// Intended for debug harnesses and E2E setups that don't run on loopback —
 /// e.g. `OPENHUMAN_CORE_ALLOWED_ORIGINS=https://e2e.internal,http://my-debugger:8080`.
+#[cfg(feature = "http-server")]
 const ALLOWED_ORIGINS_ENV: &str = "OPENHUMAN_CORE_ALLOWED_ORIGINS";
 
 /// Decides whether a browser `Origin` header value is allowed to make
@@ -1245,11 +1258,13 @@ const ALLOWED_ORIGINS_ENV: &str = "OPENHUMAN_CORE_ALLOWED_ORIGINS";
 /// token via leaked logs / screenshots / a compromised third-party origin
 /// loaded in a CEF child webview) must be refused — the bearer token alone
 /// is not enough authorization without an origin binding.
+#[cfg(feature = "http-server")]
 pub(super) fn is_origin_allowed(origin: &str) -> bool {
     let extra_origins = std::env::var(ALLOWED_ORIGINS_ENV).ok();
     is_origin_allowed_with_extra(origin, extra_origins.as_deref())
 }
 
+#[cfg(feature = "http-server")]
 pub(super) fn is_origin_allowed_with_extra(origin: &str, extra_origins: Option<&str>) -> bool {
     // Tauri v2 webview origins. Windows uses an HTTP(S) custom host; macOS
     // and Linux use the `tauri://` scheme. We accept both for portability.
@@ -1290,6 +1305,7 @@ pub(super) fn is_origin_allowed_with_extra(origin: &str, extra_origins: Option<&
 ///
 /// Reads the request's `Origin` header before invoking the inner handler so
 /// the same value can be echoed back (when allowed) on the response.
+#[cfg(feature = "http-server")]
 async fn cors_middleware(req: Request, next: Next) -> Response {
     let origin = req
         .headers()
@@ -1317,6 +1333,7 @@ async fn cors_middleware(req: Request, next: Next) -> Response {
 /// For Docker / cloud deployments where the server binds to `0.0.0.0`,
 /// extend the allowlist via the `OPENHUMAN_CORE_ALLOWED_ORIGINS` env var
 /// (comma-separated) rather than wildcarding `Access-Control-Allow-Origin`.
+#[cfg(feature = "http-server")]
 pub(super) fn with_cors_headers(mut response: Response, origin: Option<&str>) -> Response {
     let headers = response.headers_mut();
     headers.append(header::VARY, HeaderValue::from_static("Origin"));
@@ -1354,9 +1371,10 @@ pub(super) fn with_cors_headers(mut response: Response, origin: Option<&str>) ->
 /// `health::CRITICAL_COMPONENTS`); otherwise it returns 200 — with a `degraded`
 /// flag and per-component buckets in the body so readiness probes and operators
 /// can still see partial failures.
+#[cfg(feature = "http-server")]
 async fn health_handler() -> impl IntoResponse {
-    let snapshot = crate::openhuman::health::snapshot();
-    let verdict = crate::openhuman::health::verdict(&snapshot);
+    let snapshot = crate::openhuman::platform::health::snapshot();
+    let verdict = crate::openhuman::platform::health::verdict(&snapshot);
 
     let status = if verdict.healthy {
         StatusCode::OK
@@ -1394,6 +1412,7 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 /// Handler for the schema discovery endpoint.
+#[cfg(feature = "http-server")]
 async fn schema_handler(State(_state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(build_http_schema_dump())).into_response()
 }
@@ -1405,6 +1424,7 @@ async fn schema_handler(State(_state): State<AppState>) -> impl IntoResponse {
 /// Both are required — browser `EventSource` cannot attach an
 /// `Authorization` header, so the bind token is the only credential the
 /// endpoint accepts.
+#[cfg(feature = "http-server")]
 #[derive(Debug, serde::Deserialize)]
 struct EventsQuery {
     client_id: String,
@@ -1426,6 +1446,7 @@ struct EventsQuery {
 ///
 /// Both paths converge on the same broadcast stream filtered by
 /// `client_id`.
+#[cfg(feature = "http-server")]
 async fn events_handler(
     headers: axum::http::HeaderMap,
     Query(query): Query<EventsQuery>,
@@ -1503,6 +1524,7 @@ async fn events_handler(
 }
 
 /// Handler for the webhook debug events SSE endpoint.
+#[cfg(feature = "http-server")]
 async fn webhook_events_handler() -> Response {
     let stream = tokio_stream::once(Ok::<Event, std::convert::Infallible>(
         Event::default()
@@ -1518,6 +1540,7 @@ async fn webhook_events_handler() -> Response {
 ///
 /// Requires bearer auth. Streams all domain events as JSON with event type
 /// set to the domain name (agent, tool, memory, etc.).
+#[cfg(feature = "http-server")]
 async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
     let bearer = headers
         .get(header::AUTHORIZATION)
@@ -1556,7 +1579,7 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
             .into_response();
     }
 
-    let bus = match crate::core::event_bus::global() {
+    let bus = match crate::core::bus::BUS.get() {
         Some(bus) => bus,
         None => {
             log::warn!("[events/domain] event bus not initialized");
@@ -1570,35 +1593,88 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
 
     log::debug!("[events/domain] client connected, streaming domain events");
 
+    // The active workspace, resolved once here so a client that connects
+    // mid-life starts out knowing which rows are its own rather than
+    // waiting for the next event to tell it (#5966). This is the one place
+    // in this handler that can afford the authoritative read — it happens
+    // per connection, not per event — and it refills the cache the row
+    // stamping below relies on.
+    let active_workspace = crate::openhuman::config::active_workspace_dir()
+        .await
+        .map(|dir| crate::openhuman::config::workspace_handle(&dir))
+        .map_err(|error| {
+            log::warn!(
+                "[events/domain] could not resolve the active workspace ({error}); \
+                 the client will scope the log once an event says which workspace is active"
+            );
+        })
+        .ok();
+
     // Send config as first SSE event so frontend can apply settings.
     let config_event = Event::default().event("config").data(
         serde_json::to_string(&json!({
             "max_entries": es_cfg.max_entries,
             "new_entries": es_cfg.new_entries,
+            "active_workspace": active_workspace,
         }))
         .unwrap_or_default(),
     );
 
-    let rx = bus.raw_receiver();
-    let event_stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
-        |item| -> Option<Result<Event, std::convert::Infallible>> {
-            let event = match item {
-                Ok(ev) => ev,
-                Err(_) => return None,
-            };
-            let domain = event.domain().to_string();
-            let event_name = event.variant_name();
-            let agent = event.agent_hint().unwrap_or("").to_string();
-            let data = json!({
-                "domain": domain,
-                "event": event_name,
-                "agent": agent,
-                "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
-            });
-            let data_str = serde_json::to_string(&data).ok()?;
-            Some(Ok(Event::default().event(domain).data(data_str)))
-        },
-    );
+    // `BroadcastStream` wraps a raw `broadcast::Receiver`; tinybus hands back a
+    // decoding receiver instead, so the stream is built by unfolding it. Lag is
+    // already handled inside `recv`, which is why there is no error arm to
+    // filter out any more.
+    let event_stream = futures::stream::unfold(bus.receiver(), |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|event| (Ok::<_, std::convert::Infallible>(event), rx))
+    })
+    .filter_map(|item| -> Option<Result<Event, std::convert::Infallible>> {
+        let event = match item {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
+        let domain = event.domain().to_string();
+        let event_name = event.variant_name();
+        let agent = event.agent_hint().unwrap_or("").to_string();
+        // Most variants say everything in their name; the ones whose point is
+        // a failure *reason* would otherwise reach the log with the reason
+        // discarded, so they opt into one already-redacted line (#5931). It is
+        // `null` for every other variant, which renders as no change.
+        let detail = event.log_detail();
+        // Which workspace this row belongs to, and which one is current
+        // (#5966). One process serves more than one workspace over its life,
+        // so without these two a row left over from a workspace the user has
+        // switched away from is indistinguishable from one belonging to the
+        // workspace they are in.
+        //
+        // Both are *handles*, never `workspace_dir` itself: this envelope
+        // feeds a settings panel and its NDJSON download, and the path is
+        // under the user's home directory.
+        //
+        // `active` is read from the cache rather than resolved. This closure
+        // is synchronous — `tokio_stream`'s `filter_map` — so it could not
+        // await a resolve, and it runs for every domain event the process
+        // publishes, so it should not want to. `None` means "not resolved
+        // since the last workspace marker write", which the client treats as
+        // unknown rather than as a mismatch.
+        let workspace = event
+            .workspace_dir()
+            .map(crate::openhuman::config::workspace_handle);
+        let active = crate::openhuman::config::active_workspace_dir_cached()
+            .map(|dir| crate::openhuman::config::workspace_handle(&dir));
+        let data = json!({
+            "domain": domain,
+            "event": event_name,
+            "agent": agent,
+            "detail": detail,
+            "workspace": workspace,
+            "active_workspace": active,
+            "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
+        });
+        let data_str = serde_json::to_string(&data).ok()?;
+        Some(Ok(Event::default().event(domain).data(data_str)))
+    });
 
     let config_stream =
         futures::stream::once(async move { Ok::<_, std::convert::Infallible>(config_event) });
@@ -1610,6 +1686,7 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
 }
 
 /// Handler for the root endpoint, returning server information and available endpoints.
+#[cfg(feature = "http-server")]
 async fn root_handler() -> impl IntoResponse {
     let api_server = match crate::openhuman::config::Config::load_or_init().await {
         Ok(cfg) => crate::api::config::effective_backend_api_url(&cfg.api_url),
@@ -1640,6 +1717,7 @@ async fn root_handler() -> impl IntoResponse {
 }
 
 /// Fallback handler for unknown routes.
+#[cfg(feature = "http-server")]
 async fn not_found_handler() -> impl IntoResponse {
     (
         StatusCode::NOT_FOUND,
@@ -1652,6 +1730,7 @@ async fn not_found_handler() -> impl IntoResponse {
 }
 
 /// Resolves the port for the core server from environment variables or defaults.
+#[cfg(feature = "http-server")]
 pub(crate) fn core_port() -> u16 {
     std::env::var("OPENHUMAN_CORE_PORT")
         .ok()
@@ -1660,6 +1739,7 @@ pub(crate) fn core_port() -> u16 {
 }
 
 /// Resolves the bind address host for the core server from environment variables or defaults.
+#[cfg(feature = "http-server")]
 pub(crate) fn core_host() -> String {
     std::env::var("OPENHUMAN_CORE_HOST")
         .ok()
@@ -1813,19 +1893,29 @@ async fn run_server_with_services(
 /// always registered as core/platform infra and intentionally absent here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DomainSubscriberPlan {
-    /// webhook + notification-bridge + composio trigger + task-sources + device-tunnel.
+    /// Reserved for subscribers with no family of their own. Currently none:
+    /// the reorg gave every subscriber that used to live here a real family
+    /// (see the fields below), so this stays for future kernel-level ones.
     pub platform: bool,
+    /// composio trigger archive + trigger subscriber + task-sources poller.
+    pub integrations: bool,
+    /// device tunnel handshake/peer-status subscriber.
+    pub security: bool,
+    /// notification bridge (desktop-shell delivery).
+    pub desktop: bool,
+    /// webhook request subscriber (skills own inbound webhook routing).
+    pub skills: bool,
     /// channel-inbound + web-only proactive.
     pub channels: bool,
     /// flows trigger dispatch.
     pub flows: bool,
     /// memory conversation-persistence + sync-stage bridge.
     pub memory: bool,
-    /// agent_meetings calendar + meeting-event subscribers.
-    pub meet: bool,
     /// agent handlers + background delivery + run-ledger finalizer + orchestration ingest.
     pub agent: bool,
-    /// mcp_registry lifecycle bus init.
+    /// hosted orchestration ingest.
+    pub hosted: bool,
+    /// mcp::registry lifecycle bus init.
     pub mcp: bool,
 }
 
@@ -1835,14 +1925,78 @@ impl DomainSubscriberPlan {
         use crate::core::all::DomainGroup;
         Self {
             platform: domains.allows(DomainGroup::Platform),
+            integrations: domains.allows(DomainGroup::Integrations),
+            security: domains.allows(DomainGroup::Security),
+            desktop: domains.allows(DomainGroup::Desktop),
+            skills: domains.allows(DomainGroup::Skills),
             channels: domains.allows(DomainGroup::Channels),
             flows: domains.allows(DomainGroup::Flows),
             memory: domains.allows(DomainGroup::Memory),
-            meet: domains.allows(DomainGroup::Meet),
             agent: domains.allows(DomainGroup::Agent),
+            hosted: domains.allows(DomainGroup::Hosted),
             mcp: domains.allows(DomainGroup::Mcp),
         }
     }
+}
+
+/// Consume a domain's registration token only when the global event bus is
+/// ready. An early bus-unavailable attempt therefore remains retryable.
+fn group_first_time_when_bus_ready(
+    completed: &std::sync::Mutex<std::collections::HashSet<crate::core::all::DomainGroup>>,
+    group: crate::core::all::DomainGroup,
+    bus_ready: bool,
+) -> bool {
+    if !bus_ready {
+        log::warn!("[event_bus] deferred {group:?} subscriber registration - bus not initialized");
+        return false;
+    }
+
+    completed
+        .lock()
+        .expect("domain-subscriber registry lock poisoned")
+        .insert(group)
+}
+
+fn group_first_time(group: crate::core::all::DomainGroup) -> bool {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+
+    static DONE: OnceLock<Mutex<HashSet<crate::core::all::DomainGroup>>> = OnceLock::new();
+    group_first_time_when_bus_ready(
+        DONE.get_or_init(|| Mutex::new(HashSet::new())),
+        group,
+        crate::core::event_bus::global().is_some(),
+    )
+}
+
+/// Consume the learning-subscriber token only when the global event bus is
+/// ready. Learning has a separate token from the Agent group because both
+/// registration blocks must run exactly once.
+fn learning_first_time_when_bus_ready(completed: &std::sync::Mutex<bool>, bus_ready: bool) -> bool {
+    if !bus_ready {
+        log::warn!(
+            "[event_bus] deferred Agent learning subscriber registration - bus not initialized"
+        );
+        return false;
+    }
+
+    let mut completed = completed
+        .lock()
+        .expect("learning-subscriber registry lock poisoned");
+    if *completed {
+        false
+    } else {
+        *completed = true;
+        true
+    }
+}
+
+fn learning_first_time() -> bool {
+    static DONE: std::sync::OnceLock<std::sync::Mutex<bool>> = std::sync::OnceLock::new();
+    learning_first_time_when_bus_ready(
+        DONE.get_or_init(|| std::sync::Mutex::new(false)),
+        crate::core::event_bus::global().is_some(),
+    )
 }
 
 /// Registers all long-lived domain event-bus subscribers, each group at most
@@ -1850,7 +2004,7 @@ impl DomainSubscriberPlan {
 ///
 /// Ungated core/platform infra runs exactly once behind `INFRA: Once`; each
 /// gated [`DomainGroup`](crate::core::all::DomainGroup) installs the first time
-/// it is enabled (tracked by `group_first_time`), so widening the ambient
+/// it is enabled after the event bus is ready, so widening the ambient
 /// `DomainSet` on a later call (`harness()` → `full()`) still installs the
 /// newly-enabled groups without double-subscribing the ones already registered.
 fn register_domain_subscribers(
@@ -1860,27 +2014,41 @@ fn register_domain_subscribers(
     domains: crate::core::runtime::DomainSet,
 ) {
     use crate::core::all::DomainGroup;
-    use std::collections::HashSet;
-    use std::sync::{Arc, Mutex, Once, OnceLock};
+    use std::sync::{Arc, Once};
 
     let plan = DomainSubscriberPlan::for_domains(domains);
     log::debug!("[event_bus] register_domain_subscribers: domains={domains:?} plan={plan:?}");
 
-    // Per-group idempotency (#4808 review): the previous single process-wide
-    // `Once` fixed the subscriber set to the FIRST caller's DomainSet — an
-    // embedder or test that built `harness()`/`none()` first and later widened
-    // to `full()` would never install the subscribers skipped on that first
-    // call, even though those domains' controllers are now exposed. Tracking the
-    // set of already-registered groups lets a later, wider DomainSet install
-    // exactly the newly-enabled groups (and no group twice). `insert` returns
-    // `true` only the first time a group is seen.
-    fn group_first_time(group: DomainGroup) -> bool {
-        static DONE: OnceLock<Mutex<HashSet<DomainGroup>>> = OnceLock::new();
-        DONE.get_or_init(|| Mutex::new(HashSet::new()))
-            .lock()
-            .expect("domain-subscriber registry lock poisoned")
-            .insert(group)
-    }
+    // `subscribe_global` returns `None` only before the process-global bus is
+    // initialized. Because that bus is a monotonic `OnceLock`, checking it here
+    // guarantees the registrations in the guarded block cannot later lose bus
+    // availability. A premature call leaves the group absent from `DONE`, so a
+    // later bootstrap retries it instead of permanently skipping subscribers.
+
+    // Seed the live tool-execution timeout from the persisted `[agent]` config
+    // so a user-configured value (Settings → Agent OS access → Action timeout)
+    // is in effect from the first tool call. `OPENHUMAN_TOOL_TIMEOUT_SECS`, when
+    // set, still overrides this inside `set_tool_timeout_secs`. This lives on
+    // the always-on boot path (not `channels::runtime::startup::start_channels`,
+    // which is skipped for channel-less / web-chat-only cores) so the timeout
+    // seeds for every install regardless of DomainSet — it is DomainSet-
+    // independent process-global state, not a gated subscriber (#5027).
+    //
+    // Deliberately OUTSIDE the `INFRA: Once` below: `bootstrap_core_runtime`
+    // re-runs on an in-process core restart (`CoreProcessHandle::restart` →
+    // `ensure_running`, and `reset_local_data`/Clear-Local-Data) with a freshly
+    // reloaded `Config`, but `INFRA` is already consumed — so a seed gated by it
+    // would leave the process-global timeout pinned to the previous config's
+    // value until Settings is re-saved. `set_tool_timeout_secs` is idempotent
+    // (a plain atomic store honouring the env override), so re-seeding on every
+    // call is correct and cheap and re-applies the current config each boot.
+    let effective_timeout =
+        crate::openhuman::tools::timeout::set_tool_timeout_secs(config.agent.agent_timeout_secs);
+    log::debug!(
+        "[tool_timeout] seeded tool-execution timeout from config: configured={}s effective={}s",
+        config.agent.agent_timeout_secs,
+        effective_timeout
+    );
 
     // Ungated core/platform infra — health, scheduler-gate, TokenJuice
     // content-router, session-token seeding, the SessionExpired handler, and
@@ -1892,52 +2060,46 @@ fn register_domain_subscribers(
     // (`SubscriptionHandle::drop` aborts the task).
     static INFRA: Once = Once::new();
     INFRA.call_once(|| {
-        crate::openhuman::health::bus::register_health_subscriber();
+        crate::openhuman::platform::health::bus::register_health_subscriber();
 
         // Initialise the scheduler gate before any background AI workers start
         // so they observe a real policy on their first iteration (otherwise they
         // fall back to `Policy::Normal` and miss the initial throttle decision on
         // battery-powered hosts).
-        crate::openhuman::scheduler_gate::init_global(&config);
-
-        // Install the TokenJuice content-router runtime config (compressor
-        // toggles + CCR cache limits + optional on-disk tier). Compaction runs on
-        // every agent's tool output, so this must be set before any agent loop
-        // executes a tool.
-        crate::openhuman::tokenjuice::install_from_config(&config);
+        crate::openhuman::cron::scheduler_gate::init_global(&config);
 
         // Seed the scheduler-gate signed-out override from the on-disk session.
         // Without this, a sidecar that boots with no stored JWT would happily
         // spin up cron / channel loops and fire LLM requests that all 401.
         match crate::api::jwt::get_session_token(&config) {
             Ok(Some(_)) => {
-                crate::openhuman::scheduler_gate::set_signed_out(false);
+                crate::openhuman::cron::scheduler_gate::set_signed_out(false);
             }
             Ok(None) => {
                 log::info!(
                     "[auth] no session token at startup — scheduler gate set to signed_out \
                      (config_path={}, keyring_backend={})",
                     config.config_path.display(),
-                    crate::openhuman::keyring::backend_name(),
+                    crate::openhuman::security::keyring::backend_name(),
                 );
-                crate::openhuman::scheduler_gate::set_signed_out(true);
+                crate::openhuman::cron::scheduler_gate::set_signed_out(true);
             }
             Err(err) => {
                 log::warn!(
                     "[auth] failed to read session token at startup ({err}) — assuming signed_out \
                      (config_path={}, keyring_backend={})",
                     config.config_path.display(),
-                    crate::openhuman::keyring::backend_name(),
+                    crate::openhuman::security::keyring::backend_name(),
                 );
-                crate::openhuman::scheduler_gate::set_signed_out(true);
+                crate::openhuman::cron::scheduler_gate::set_signed_out(true);
             }
         }
 
         // Register the SessionExpired handler before any subscribers that might
         // publish 401-derived events, so the very first 401 is routed through
         // `clear_session` + the scheduler-gate override.
-        if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
-            crate::openhuman::credentials::bus::SessionExpiredSubscriber::new(),
+        if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
+            crate::openhuman::security::credentials::bus::SessionExpiredSubscriber::new(),
         )) {
             std::mem::forget(handle);
         } else {
@@ -1948,7 +2110,7 @@ fn register_domain_subscribers(
 
         // Restart requests go through a subscriber so every trigger path shares
         // the same respawn logic.
-        crate::openhuman::service::bus::register_restart_subscriber();
+        crate::openhuman::platform::service::bus::register_restart_subscriber();
         if embedded_core {
             log::info!(
                 "[event_bus] embedded core: service shutdown subscriber not registered; Tauri cancellation token owns shutdown"
@@ -1956,19 +2118,19 @@ fn register_domain_subscribers(
         } else {
             // Shutdown requests use the same pattern; the standalone CLI
             // subscriber exits the current process after a short grace period.
-            crate::openhuman::service::bus::register_shutdown_subscriber();
+            crate::openhuman::platform::service::bus::register_shutdown_subscriber();
         }
     });
 
     // ---- Gated domain subscribers — each group installed at most once, the
     // first time its owning DomainGroup is enabled. -------------------------
 
-    // Platform: webhook + notification bridge + composio trigger + task-sources
-    // proactive ingestion + device tunnel.
-    if plan.platform {
-        if group_first_time(DomainGroup::Platform) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
-                crate::openhuman::webhooks::bus::WebhookRequestSubscriber::new(),
+    // Carved-out families: webhook (Skills), notification bridge (Desktop),
+    // composio + task-sources (Integrations), and device tunnel (Security).
+    if plan.skills {
+        if group_first_time(DomainGroup::Skills) {
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
+                crate::openhuman::skills::webhooks::bus::WebhookRequestSubscriber::new(),
             )) {
                 std::mem::forget(handle);
             } else {
@@ -1976,40 +2138,77 @@ fn register_domain_subscribers(
                     "[event_bus] failed to register webhook subscriber — bus not initialized"
                 );
             }
-            crate::openhuman::notifications::register_notification_bridge_subscriber(
+        }
+    } else {
+        log::debug!("[event_bus] webhook subscriber SKIPPED — Skills domain disabled");
+    }
+
+    if plan.desktop {
+        if group_first_time(DomainGroup::Desktop) {
+            crate::openhuman::desktop::notifications::register_notification_bridge_subscriber(
                 config.clone(),
             );
+        }
+    } else {
+        log::debug!("[event_bus] notification bridge SKIPPED — Desktop domain disabled");
+    }
+
+    if plan.integrations {
+        if group_first_time(DomainGroup::Integrations) {
             if let Err(error) =
-                crate::openhuman::composio::init_composio_trigger_history(workspace_dir.clone())
+                crate::openhuman::integrations::composio::init_composio_trigger_history(
+                    workspace_dir.clone(),
+                )
             {
                 log::warn!("[composio][history] failed to initialize trigger archive: {error}");
             }
-            crate::openhuman::composio::register_composio_trigger_subscriber();
-            crate::openhuman::task_sources::bus::register_task_sources_subscriber();
+            crate::openhuman::integrations::composio::register_composio_trigger_subscriber();
+            crate::openhuman::integrations::task_sources::bus::register_task_sources_subscriber();
+        }
+    } else {
+        log::debug!(
+            "[event_bus] composio + task-sources subscribers SKIPPED — Integrations domain disabled"
+        );
+    }
+
+    if plan.security {
+        if group_first_time(DomainGroup::Security) {
             // Device tunnel subscriber: handles tunnel:frame handshakes,
             // peer-status events, and register acks. Must be live before any
             // tunnel:frame events can arrive.
-            crate::openhuman::devices::bus::register_device_tunnel_subscriber();
+            crate::openhuman::security::devices::bus::register_device_tunnel_subscriber();
+        }
+    } else {
+        log::debug!("[event_bus] device-tunnel subscriber SKIPPED — Security domain disabled");
+    }
+
+    if plan.agent {
+        if learning_first_time() {
             // Always-on learning subscribers (email-signature producer, rebuild
             // trigger + periodic loop, ProfileMdRenderer). Previously wired only
             // in `channels::runtime::startup::start_channels`, which is skipped
             // when no channel is configured — silently dropping ALL learning for
-            // channel-less users (#5003). Registered here on the unconditional
-            // Platform boot path; idempotent, so it never double-registers.
-            crate::openhuman::learning::startup::register_learning_subscribers(
+            // channel-less users (#5003). `agent::learning` is an Agent-family
+            // domain; it sat on the Platform boot path only because `learning`
+            // used to be a top-level directory. Idempotent.
+            crate::openhuman::agent::learning::startup::register_learning_subscribers(
                 workspace_dir.clone(),
             );
         }
     } else {
-        log::debug!(
-            "[event_bus] Platform subscribers (webhook/notification/composio/task-sources/device-tunnel) SKIPPED — Platform domain disabled"
-        );
+        log::debug!("[event_bus] learning subscribers SKIPPED — Agent domain disabled");
     }
 
     // Channels: inbound dispatch + web-only proactive messaging.
+    // The `plan.channels` runtime guard cannot stand in for the compile-time
+    // gate: the `channels::bus::ChannelInboundSubscriber` +
+    // `channels::proactive` type paths below must still resolve for this to
+    // compile, so the whole block is `#[cfg]`-gated too (mirrors the flows
+    // dual-gate below).
+    #[cfg(feature = "channels")]
     if plan.channels {
         if group_first_time(DomainGroup::Channels) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::channels::bus::ChannelInboundSubscriber::new(),
             )) {
                 std::mem::forget(handle);
@@ -2027,6 +2226,10 @@ fn register_domain_subscribers(
             "[event_bus] Channels subscribers (inbound + web-only proactive) SKIPPED — Channels domain disabled"
         );
     }
+    #[cfg(not(feature = "channels"))]
+    log::debug!(
+        "[event_bus] Channels subscribers (inbound + web-only proactive) SKIPPED — channels feature disabled at compile time"
+    );
 
     // Flows trigger dispatch (issue B2): maps FlowScheduleTick /
     // ComposioTriggerReceived / WebhookIncomingRequest onto enabled flows and
@@ -2039,13 +2242,52 @@ fn register_domain_subscribers(
     #[cfg(feature = "flows")]
     if plan.flows {
         if group_first_time(DomainGroup::Flows) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::FlowTriggerSubscriber::new(Arc::new(config.clone())),
             )) {
                 std::mem::forget(handle);
             } else {
                 log::warn!(
                     "[event_bus] failed to register flows trigger subscriber — bus not initialized"
+                );
+            }
+            // Post-run memory digest (issue #5173): on a successful
+            // `FlowRunFinished`, writes a compact summary into the flow's own
+            // private memory namespace so a later run can `flow_memory_recall`
+            // it (e.g. a scheduled digest flow deduping what it already sent).
+            // Registered in the same `group_first_time(DomainGroup::Flows)`
+            // block as the trigger subscriber above — that guard only returns
+            // `true` once per process, so a second, separate call here would
+            // never register.
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
+                crate::openhuman::flows::bus::FlowRunDigestSubscriber::new(Arc::new(
+                    config.clone(),
+                )),
+            )) {
+                std::mem::forget(handle);
+            } else {
+                log::warn!(
+                    "[event_bus] failed to register flows run-digest subscriber — bus not initialized"
+                );
+            }
+            // Dedup commit-on-success (issue #5263 PR2): on every terminal
+            // `FlowRunFinished`, settles each `dedup` node in the flow's graph
+            // — unions tentative keys into committed on success, releases
+            // (clears) tentative on failure/cancel/interrupt. This is the
+            // host half of the `dedup` node's exactly-once contract; the node
+            // itself (`tinyflows::nodes::control_flow::dedup`) only ever
+            // reads `committed` and writes `tentative`. Registered in the
+            // same `group_first_time(DomainGroup::Flows)` block as the other
+            // two flows subscribers above — see the digest subscriber's
+            // comment just above for why a second `group_first_time` guard
+            // here would be redundant.
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
+                crate::openhuman::flows::bus::DedupCommitSubscriber::new(Arc::new(config.clone())),
+            )) {
+                std::mem::forget(handle);
+            } else {
+                log::warn!(
+                    "[event_bus] failed to register flows dedup-commit subscriber — bus not initialized"
                 );
             }
         }
@@ -2060,10 +2302,10 @@ fn register_domain_subscribers(
     // Memory: conversation-persistence + sync-stage bridge.
     if plan.memory {
         if group_first_time(DomainGroup::Memory) {
-            crate::openhuman::memory_conversations::register_conversation_persistence_subscriber(
+            crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
                 workspace_dir.clone(),
             );
-            crate::openhuman::memory::sync::register_sync_stage_bridge(&config);
+            crate::openhuman::memory::sync_events_bridge::register_sync_stage_bridge(&config);
         }
     } else {
         log::debug!(
@@ -2071,22 +2313,10 @@ fn register_domain_subscribers(
         );
     }
 
-    // Meet: calendar + meeting-event subscribers.
-    if plan.meet {
-        if group_first_time(DomainGroup::Meet) {
-            crate::openhuman::agent_meetings::calendar::register_meet_calendar_subscriber();
-            crate::openhuman::agent_meetings::bus::register_meeting_event_subscriber();
-        }
-    } else {
-        log::debug!("[event_bus] agent_meetings subscribers SKIPPED — Meet domain disabled");
-    }
-
-    // Agent: orchestration ingest + native agent handlers + background-completion
-    // delivery + run-ledger finalizer.
+    // Agent: native agent handlers + background-completion delivery +
+    // run-ledger finalizer.
     if plan.agent {
         if group_first_time(DomainGroup::Agent) {
-            // Orchestration: ingest tiny.place harness session DMs off the stream bus.
-            crate::openhuman::orchestration::register_orchestration_ingest_subscriber();
             // Native request handlers — the agent `agent.run_turn` handler is
             // what channel dispatch calls instead of importing
             // `run_tool_call_loop` directly.
@@ -2094,18 +2324,18 @@ fn register_domain_subscribers(
             // Background-completion delivery: when a detached sub-agent
             // (spawn_async_subagent) finishes, surface its result back into the
             // originating chat as an idle-gated, batched, system-injected turn.
-            crate::openhuman::agent_orchestration::background_delivery::register_background_delivery();
+            crate::openhuman::agent::orchestration::background_delivery::register_background_delivery();
             // Run-ledger finalizer: detached `spawn_async_subagent` runs outlive
             // their parent turn, so their terminal `AgentProgress` never reaches
             // the per-turn progress bridge that settles the ledger. This
             // global-bus subscriber settles `agent_runs` from
             // `DomainEvent::Subagent{Completed,Failed}`, preventing rows from
             // leaking as perpetual `running` timeline entries on thread reopen.
-            crate::openhuman::agent_orchestration::run_ledger_finalize::register_run_ledger_finalize_subscriber(&config);
+            crate::openhuman::agent::orchestration::run_ledger_finalize::register_run_ledger_finalize_subscriber(&config);
         }
     } else {
         log::debug!(
-            "[event_bus] agent handlers + background delivery + run-ledger finalizer + orchestration ingest SKIPPED — Agent domain disabled"
+            "[event_bus] agent handlers + background delivery + run-ledger finalizer SKIPPED — Agent domain disabled"
         );
     }
 
@@ -2114,9 +2344,16 @@ fn register_domain_subscribers(
     // spawn of installed servers (boot::spawn_installed_servers) runs later in
     // bootstrap_core_runtime; this subscriber must be live before then so those
     // connect events are observed (issue #3039 gap A1).
+    //
+    // What bringing the domain up means is the domain's own; this only says
+    // when. The service it opens is wanted here rather than later for the same
+    // reason as the subscriber: every RPC handler in the domain reaches for it,
+    // and opening it from the boot-connect job would leave a window where a
+    // handler answers "still starting" to a caller whose domain is, as far as
+    // anything else can tell, already up.
     if plan.mcp {
         if group_first_time(DomainGroup::Mcp) {
-            crate::openhuman::mcp_registry::bus::init();
+            crate::openhuman::mcp::start(&config);
         }
     } else {
         log::debug!("[event_bus] mcp_registry bus init SKIPPED — Mcp domain disabled");
@@ -2138,7 +2375,7 @@ pub async fn bootstrap_core_runtime(
     config: Option<crate::openhuman::config::Config>,
     domains: crate::core::runtime::DomainSet,
 ) {
-    use crate::openhuman::socket::{set_global_socket_manager, SocketManager};
+    use crate::openhuman::platform::socket::{set_global_socket_manager, SocketManager};
     use std::sync::Arc;
     // `embedded_core` derived from host_kind so the rest of the function (which
     // already keys behavior off the boolean) stays unchanged.
@@ -2153,14 +2390,32 @@ pub async fn bootstrap_core_runtime(
 
     // --- Event bus bootstrap ---
     // Ensure the global event bus is initialized (no-op if already done by start_channels).
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-    crate::openhuman::file_state::init_global();
+    crate::core::bus::init().await.expect("bus init");
+    let agent_enabled = domains.allows(crate::core::all::DomainGroup::Agent);
+    if agent_enabled {
+        crate::openhuman::agent::file_state::init_global();
+    } else {
+        log::debug!("[boot] agent file-state coordinator SKIPPED — Agent domain disabled");
+    }
     // Register domain subscribers for cross-module event handling. Ungated infra
     // runs once (INFRA: Once) and each DomainGroup installs at most once via the
     // per-group `group_first_time` set, so repeated calls to
     // bootstrap_core_runtime() cannot double-subscribe (and a later, wider
     // DomainSet still installs its newly-enabled groups).
     register_domain_subscribers(workspace_dir.clone(), cfg.clone(), embedded_core, domains);
+
+    // Latch the config-corruption recovery signal (#5167) so `app_state_snapshot`
+    // keeps reporting it after the loader heals the file on this same boot; the
+    // frontend raises a one-shot "settings were reset" notice off it.
+    crate::openhuman::desktop::app_state::latch_from_config(&cfg);
+
+    // --- Configurable hooks -------------------------------------------
+    // Read every `hooks.json` layer and, only if something is configured,
+    // install the harness bridge. Boot is the right moment: a hook that is
+    // meant to gate the first tool call of the first turn has to be loaded
+    // before any session exists, and the alternative — loading lazily on the
+    // first event — would let that first call through while the file is read.
+    crate::openhuman::hooks::init(&cfg).await;
 
     // --- Turn-state recovery -------------------------------------------
     // Any per-thread turn snapshots left on disk from a previous process
@@ -2189,23 +2444,23 @@ pub async fn bootstrap_core_runtime(
     // at boot is orphaned — its driver died without firing a terminal event, so
     // the finalizer never settled it. Stamp such rows `interrupted` so they stop
     // rendering as perpetual "running" timeline entries on thread reopen.
-    match crate::openhuman::session_db::run_ledger::interrupt_orphaned_agent_runs(&cfg) {
-        Ok(0) => {}
-        Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
-        Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
-    }
+    if agent_enabled {
+        match tinyagents_session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
+            Ok(0) => {}
+            Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
+            Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
+        }
 
-    // --- Detached sub-agent TaskStore reconciliation -------------------
-    // The durable orchestration TaskStore (`<workspace>/.openhuman/
-    // orchestration_tasks.jsonl`) can hold non-terminal sub-agent records left
-    // by a previous process — their detached executor (abort handle +
-    // cooperative CancellationToken) died with that process, so they cannot be
-    // re-attached. Reconcile each orphan to a terminal state and emit the typed
-    // terminal lifecycle event so the run ledger finalizes. Best-effort and
-    // non-fatal (issue #4249 / 07.2 steps 2 & 4).
-    {
+        // --- Detached sub-agent TaskStore reconciliation -------------------
+        // The durable orchestration TaskStore (`<workspace>/.openhuman/
+        // orchestration_tasks.jsonl`) can hold non-terminal sub-agent records left
+        // by a previous process — their detached executor (abort handle +
+        // cooperative CancellationToken) died with that process, so they cannot be
+        // re-attached. Reconcile each orphan to a terminal state and emit the typed
+        // terminal lifecycle event so the run ledger finalizes. Best-effort and
+        // non-fatal (issue #4249 / 07.2 steps 2 & 4).
         let reconciled =
-            crate::openhuman::agent_orchestration::running_subagents::reconcile_orphaned_tasks_on_boot(
+            crate::openhuman::agent::orchestration::running_subagents::reconcile_orphaned_tasks_on_boot(
                 &workspace_dir,
             );
         if reconciled > 0 {
@@ -2213,13 +2468,17 @@ pub async fn bootstrap_core_runtime(
                 "[runtime] reconciled {reconciled} orphaned detached sub-agent task(s) on startup"
             );
         }
+    } else {
+        log::debug!(
+            "[boot] agent run-ledger + orchestration task reconciliation SKIPPED — Agent domain disabled"
+        );
     }
 
     // --- Cost dashboard tracker ---
     // Activates the previously-dormant CostTracker so the dashboard RPC
     // surface (`openhuman.cost_get_dashboard`) and `record_provider_usage`
     // share one JSONL-backed store. Idempotent.
-    crate::openhuman::cost::init_global(cfg.cost.clone(), &workspace_dir);
+    crate::openhuman::platform::cost::init_global(cfg.cost.clone(), &workspace_dir);
 
     // --- x402 payment ledger ---
     // Initializes the JSONL-backed spending ledger for machine-payable API
@@ -2229,7 +2488,7 @@ pub async fn bootstrap_core_runtime(
     // their ledger must not initialize either.
     if domains.allows(crate::core::all::DomainGroup::Web3) {
         let x402_session = format!("x402-{}", uuid::Uuid::new_v4());
-        crate::openhuman::x402::init_ledger(&workspace_dir, &x402_session);
+        crate::openhuman::web3::x402::init_ledger(&workspace_dir, &x402_session);
     } else {
         log::debug!("[boot] x402 payment ledger SKIPPED — Web3 domain disabled");
     }
@@ -2238,13 +2497,17 @@ pub async fn bootstrap_core_runtime(
     // Loads built-in archetype definitions plus any custom TOML files
     // under `<workspace>/agents/*.toml`. Idempotent — safe to call
     // multiple times. Uses the per-user scoped workspace_dir.
-    if let Err(err) =
-        crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&workspace_dir)
-    {
-        log::warn!(
-            "[runtime] AgentDefinitionRegistry::init_global failed: {err} — \
-             spawn_subagent will be unavailable until restart"
-        );
+    if agent_enabled {
+        if let Err(err) =
+            crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&workspace_dir)
+        {
+            log::warn!(
+                "[runtime] AgentDefinitionRegistry::init_global failed: {err} — \
+                 spawn_subagent will be unavailable until restart"
+            );
+        }
+    } else {
+        log::debug!("[boot] agent definition registry SKIPPED — Agent domain disabled");
     }
 
     // --- Agent sandbox + projects dirs ---
@@ -2327,8 +2590,8 @@ pub async fn bootstrap_core_runtime(
     // Record the boot decision before publishing the warning event so the
     // first poll of `approval_get_gate_state` after boot reflects the same
     // host-aware verdict the event itself describes — no race.
-    crate::openhuman::approval::gate::record_boot_state(
-        crate::openhuman::approval::gate::ApprovalGateBootState {
+    crate::openhuman::security::approval::gate::record_boot_state(
+        crate::openhuman::security::approval::gate::ApprovalGateBootState {
             installed: decision.install_gate,
             disabled_by_env: decision.gate_disabled_by_override,
             override_ignored: decision.override_ignored,
@@ -2336,6 +2599,7 @@ pub async fn bootstrap_core_runtime(
                 crate::core::types::HostKind::TauriShell => "tauri-shell",
                 crate::core::types::HostKind::Cli => "cli",
                 crate::core::types::HostKind::Docker => "docker",
+                crate::core::types::HostKind::Library => "library",
             },
         },
     );
@@ -2345,8 +2609,8 @@ pub async fn bootstrap_core_runtime(
              gate is always on for the Tauri host (host={})",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateOverrideIgnored {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::ApprovalGateOverrideIgnored {
                 host: host_kind.tag().to_string(),
             },
         );
@@ -2360,12 +2624,6 @@ pub async fn bootstrap_core_runtime(
     // unguarded standalone/CLI/Docker core would park a plan review that never
     // reaches the UI and dies at the gate TTL. Idempotent (Once-guarded).
     crate::openhuman::web_chat::register_approval_surface_subscriber();
-    // Bridge emergency-stop halt/resume → the `automation_halt` broadcast on the
-    // same always-run boot path. `start_channels` (which also registers this)
-    // is skipped on a web-chat-only desktop with no listening integrations, so
-    // without this a halt/resume initiated from the CLI or another client would
-    // never reach the UI. Idempotent (Once-guarded). (#4255)
-    crate::openhuman::web_chat::register_automation_halt_subscriber();
     // Egress-surface bridge (privacy epic S2, #4436) — registered
     // unconditionally alongside the approval surface so external-transfer
     // disclosures reach the UI even on cores that skip `start_channels` or run
@@ -2382,9 +2640,10 @@ pub async fn bootstrap_core_runtime(
         // from prior launches remain visible after restart; only the
         // per-session audit grouping changes across launches.
         let session_id = format!("session-{}", uuid::Uuid::new_v4());
-        let _ =
-            crate::openhuman::approval::ApprovalGate::init_global(cfg.clone(), session_id.clone());
-        crate::openhuman::emergency_stop::EmergencyStop::init_global();
+        let _ = crate::openhuman::security::approval::ApprovalGate::init_global(
+            cfg.clone(),
+            session_id.clone(),
+        );
         log::info!(
             "[runtime] approval gate installed (on by default; set OPENHUMAN_APPROVAL_GATE=0 to disable, session_id={session_id}) — \
              Prompt-class external-effect tool calls park for approval in interactive chat turns"
@@ -2393,17 +2652,15 @@ pub async fn bootstrap_core_runtime(
         // above — it must run even when this gate-install branch is skipped.)
         crate::openhuman::web_chat::register_artifact_surface_subscriber();
     } else {
-        log::error!(
+        log::info!(
             "[runtime] approval gate DISABLED (OPENHUMAN_APPROVAL_GATE=0 honored on host={}) — \
              Prompt-class external-effect tool calls run unprompted",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateDisabled {
-                host: host_kind.tag().to_string(),
-                reason: "env-override".to_string(),
-            },
-        );
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::ApprovalGateDisabled {
+            host: host_kind.tag().to_string(),
+            reason: "env-override".to_string(),
+        });
     }
     // Artifact surface bridges DomainEvent::ArtifactReady/Failed onto the web
     // channel ("Files in this chat" panel + ArtifactCard updates). This is
@@ -2414,7 +2671,7 @@ pub async fn bootstrap_core_runtime(
     crate::openhuman::web_chat::register_artifact_surface_subscriber();
 
     // --- Workspace migrations --------------------------------------------
-    crate::openhuman::startup::run_workspace_migrations(&workspace_dir);
+    crate::openhuman::platform::startup::run_workspace_migrations(&workspace_dir);
 
     // --- Socket manager bootstrap ---
     let socket_mgr = Arc::new(SocketManager::new());
@@ -2428,9 +2685,10 @@ pub async fn bootstrap_core_runtime(
 /// `CoreBuilder::build()` only to use in-process RPC, and a failed listener bind
 /// must not leave pollers, one-shot jobs, MCP processes, or socket reconnect work
 /// running without a live runtime.
-pub fn start_core_runtime_services(
+pub async fn start_core_runtime_services(
     services: crate::core::runtime::ServiceSet,
     config: Option<&crate::openhuman::config::Config>,
+    flows_enabled: bool,
 ) {
     let Some(cfg) = config else {
         log::error!(
@@ -2440,19 +2698,25 @@ pub fn start_core_runtime_services(
     };
 
     // Long-lived bootstrap loops selected by ServiceSet.
-    crate::core::runtime::services::start_bootstrap_jobs(services, cfg);
-
     // One-time first-run initialization (managed Python runtime, spaCy model,
     // managed Node runtime). Spawned AFTER subscribers are live but does NOT
     // block the ready signal — the core becomes RPC-ready immediately and the
     // frontend watches per-step progress via `openhuman.harness_init_status`.
     // On a warm host every step's `is_done` probe passes and this settles
-    // instantly. See `crate::openhuman::harness_init`.
-    crate::core::runtime::services::start_boot_once_jobs(services, cfg);
+    // instantly. See `crate::openhuman::agent::harness_init`.
+    crate::core::runtime::services::start_boot_once_jobs(services, cfg).await;
 
-    match crate::openhuman::socket::global_socket_manager() {
+    // Long-lived bootstrap loops selected by ServiceSet. These start only
+    // after the legacy goal/task-board migrations above have completed.
+    crate::core::runtime::services::start_bootstrap_jobs(services, cfg);
+
+    match crate::openhuman::platform::socket::global_socket_manager() {
         Some(socket_mgr) => {
-            crate::core::runtime::services::spawn_socket_auto_connect(services, socket_mgr.clone());
+            crate::core::runtime::services::spawn_socket_auto_connect(
+                services,
+                socket_mgr.clone(),
+                flows_enabled,
+            );
         }
         None => {
             log::warn!(
@@ -2463,6 +2727,7 @@ pub fn start_core_runtime_services(
 }
 
 /// JSON-serializable wrapper for the entire RPC schema dump.
+#[cfg(feature = "http-server")]
 #[derive(Serialize)]
 struct HttpSchemaDump {
     /// List of all available RPC methods and their schemas.
@@ -2470,6 +2735,7 @@ struct HttpSchemaDump {
 }
 
 /// JSON-serializable schema for a single RPC method.
+#[cfg(feature = "http-server")]
 #[derive(Serialize)]
 struct HttpMethodSchema {
     /// Fully qualified JSON-RPC method name.
@@ -2489,6 +2755,7 @@ struct HttpMethodSchema {
 /// Aggregates schemas from all registered controllers into a single dump.
 ///
 /// Also includes built-in core methods like `core.ping` and `core.version`.
+#[cfg(feature = "http-server")]
 fn build_http_schema_dump() -> HttpSchemaDump {
     let mut methods: Vec<HttpMethodSchema> = all::all_http_method_schemas()
         .into_iter()
@@ -2512,6 +2779,8 @@ fn build_http_schema_dump() -> HttpSchemaDump {
 #[path = "jsonrpc_tests.rs"]
 mod tests;
 
-#[cfg(test)]
+// Every cors test names a gated CORS symbol (`is_origin_allowed`,
+// `with_cors_headers`), so the whole module gates in lockstep (#5048).
+#[cfg(all(test, feature = "http-server"))]
 #[path = "jsonrpc_cors_tests.rs"]
 mod cors_tests;

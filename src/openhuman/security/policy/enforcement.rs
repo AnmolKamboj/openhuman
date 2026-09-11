@@ -13,6 +13,31 @@ impl SecurityPolicy {
         self.autonomy != AutonomyLevel::ReadOnly
     }
 
+    /// The **tier** half of an act check, without touching the hourly action
+    /// budget.
+    ///
+    /// [`Self::enforce_tool_operation`]'s `Act` arm is tier *plus* budget, and
+    /// that budget is denominated in agent *tool calls*. Callers that write on
+    /// a caller's behalf at a finer grain than a tool call — the kernel memory
+    /// guard, which sits under `MemoryCore::store` and is hit hundreds of times
+    /// by one bulk ingest — want the tier refusal and nothing else. That is the
+    /// same shape the ~15 acting tools which gate on bare [`Self::can_act`]
+    /// already use (e.g. `tools/impl/filesystem/file_write.rs`,
+    /// `tools/impl/system/python_exec.rs`, `cron/scheduler.rs`).
+    pub fn enforce_write_tier(&self, operation_name: &str) -> Result<(), String> {
+        if !self.can_act() {
+            log::warn!(
+                "[openhuman:policy] Operation '{}' blocked: read-only mode",
+                operation_name
+            );
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} Security policy: read-only mode, cannot perform \
+                 '{operation_name}'. Do not retry; this tier blocks all write actions."
+            ));
+        }
+        Ok(())
+    }
+
     /// Enforce policy for a tool operation.
     ///
     /// Read operations are always allowed by autonomy/rate gates.
@@ -25,16 +50,7 @@ impl SecurityPolicy {
         match operation {
             ToolOperation::Read => Ok(()),
             ToolOperation::Act => {
-                if !self.can_act() {
-                    log::warn!(
-                        "[openhuman:policy] Operation '{}' blocked: read-only mode",
-                        operation_name
-                    );
-                    return Err(format!(
-                        "{POLICY_BLOCKED_MARKER} Security policy: read-only mode, cannot perform \
-                         '{operation_name}'. Do not retry; this tier blocks all write actions."
-                    ));
-                }
+                self.enforce_write_tier(operation_name)?;
 
                 if !self.record_action() {
                     log::warn!(
@@ -77,11 +93,12 @@ impl SecurityPolicy {
         action_dir: &Path,
     ) -> Self {
         log::info!(
-            "[openhuman:policy] SecurityPolicy created: autonomy={:?}, workspace_only={}, allowed_cmds={}, max_actions/hr={}",
+            "[openhuman:policy] SecurityPolicy created: autonomy={:?}, workspace_only={}, allowed_cmds={}, max_actions/hr={}, auto_approve_all={}",
             autonomy_config.level,
             autonomy_config.workspace_only,
             autonomy_config.allowed_commands.len(),
-            autonomy_config.max_actions_per_hour
+            autonomy_config.max_actions_per_hour,
+            autonomy_config.auto_approve_all
         );
 
         // `auto_approve` is the user's "Always allow" allowlist: the
@@ -164,9 +181,41 @@ impl SecurityPolicy {
             trusted_roots,
             allow_tool_install: autonomy_config.allow_tool_install,
             auto_approve: autonomy_config.auto_approve.clone(),
+            auto_approve_all: autonomy_config.auto_approve_all,
             tracker: ActionTracker::new(),
             canonical_workspace: Arc::new(OnceCell::new()),
+            // No active profile by default — armed explicitly by the session
+            // builder via [`with_active_profile`] when any profile is in play.
+            // Keeps every existing profile-less `from_config` caller on
+            // the byte-identical, guard-off path.
+            active_profile: None,
         }
+    }
+
+    /// Return a copy of this policy with the cross-profile write guard armed for
+    /// `profile_id`, whose sibling workspaces live under
+    /// `<action_dir>/profiles/<id>/` (1b).
+    ///
+    /// Builder-style so the session builder reads as
+    /// `SecurityPolicy::from_config(..).with_active_profile(id, action_dir)`.
+    /// Every profiled session calls this; a profile-less session never does, so
+    /// the guard stays dormant and path validation is unchanged.
+    #[must_use]
+    pub fn with_active_profile(
+        mut self,
+        profile_id: String,
+        action_dir: std::path::PathBuf,
+    ) -> Self {
+        tracing::debug!(
+            profile_id = %profile_id,
+            action_dir = %action_dir.display(),
+            "[profiles][security] cross-profile write guard armed for session"
+        );
+        self.active_profile = Some(super::types::ActiveProfileGuard {
+            profile_id,
+            action_dir,
+        });
+        self
     }
 
     /// Return a copy of this policy with `privacy_mode` set. Used by the live-
@@ -280,25 +329,5 @@ pub fn validate_path_within_root(
 }
 
 #[cfg(test)]
-mod scratch_dir_tests {
-    use super::{ensure_openhuman_scratch_dir, openhuman_scratch_dir};
-
-    #[test]
-    fn scratch_dir_is_namespaced_on_every_platform() {
-        // Always the dedicated `openhuman` scratch namespace — never a bare
-        // temp root, so only this subdir is ever granted as a trusted root.
-        let dir = openhuman_scratch_dir();
-        assert_eq!(dir.file_name().and_then(|s| s.to_str()), Some("openhuman"));
-        #[cfg(not(windows))]
-        assert_eq!(dir, std::path::PathBuf::from("/tmp/openhuman"));
-    }
-
-    #[test]
-    fn ensure_scratch_dir_creates_and_returns_it() {
-        // Idempotent: creates the dir, returns its path, and it exists after.
-        let ensured = ensure_openhuman_scratch_dir();
-        let expected = openhuman_scratch_dir();
-        assert_eq!(ensured.as_deref(), Some(expected.as_path()));
-        assert!(expected.is_dir());
-    }
-}
+#[path = "enforcement_scratch_dir_tests_tests.rs"]
+mod scratch_dir_tests;

@@ -1,32 +1,30 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use openhuman_core::openhuman::agent::debug::{dump_agent_prompt, DumpPromptOptions};
-use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
-use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::config::AgentConfig;
-use openhuman_core::openhuman::context::prompt::{
+use openhuman_core::openhuman::agent::context::prompt::{
     render_ambient_environment, render_safety, render_subagent_system_prompt_with_format,
     render_tools, ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData,
     NamespaceSummary as PromptNamespaceSummary, PersonalityRosterEntry, PersonalityRosterSection,
     PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder, ToolCallFormat,
     UserIdentity,
 };
-use openhuman_core::openhuman::inference::provider::traits::ProviderCapabilities;
-use openhuman_core::openhuman::inference::provider::{
-    ChatMessage, ChatRequest, ChatResponse, Provider, UsageInfo,
-};
+use openhuman_core::openhuman::agent::debug::{dump_agent_prompt, DumpPromptOptions};
+use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
+use openhuman_core::openhuman::agent::Agent;
+use openhuman_core::openhuman::config::AgentConfig;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
 use openhuman_core::openhuman::skills::ops_types::Workflow;
-use openhuman_core::openhuman::subconscious::SourceChunk;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tinyinference::message::Message;
+use tinyinference::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyinference::usage::Usage;
 
 struct EnvGuard {
     key: &'static str,
@@ -59,22 +57,20 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[derive(Clone, Debug)]
 struct CapturedRequest {
-    messages: Vec<ChatMessage>,
+    messages: Vec<Message>,
     tool_names: Vec<String>,
 }
 
-struct ScriptedProvider {
-    responses: Mutex<VecDeque<ChatResponse>>,
+struct ScriptedModel {
+    responses: Mutex<VecDeque<ModelResponse>>,
     requests: Mutex<Vec<CapturedRequest>>,
-    native_tools: bool,
 }
 
-impl ScriptedProvider {
-    fn new(responses: Vec<ChatResponse>) -> Arc<Self> {
+impl ScriptedModel {
+    fn new(responses: Vec<ModelResponse>) -> Arc<Self> {
         Arc::new(Self {
             responses: Mutex::new(VecDeque::from(responses)),
             requests: Mutex::new(Vec::new()),
-            native_tools: true,
         })
     }
 
@@ -84,42 +80,31 @@ impl ScriptedProvider {
 }
 
 #[async_trait]
-impl Provider for ScriptedProvider {
-    fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
-            native_tool_calling: self.native_tools,
-            vision: false,
-        }
+impl ChatModel<()> for ScriptedModel {
+    fn profile(&self) -> Option<&ModelProfile> {
+        static PROFILE: OnceLock<ModelProfile> = OnceLock::new();
+        Some(PROFILE.get_or_init(|| ModelProfile {
+            provider: Some("round26".to_string()),
+            tool_calling: true,
+            parallel_tool_calls: true,
+            ..ModelProfile::default()
+        }))
     }
 
-    async fn chat(
+    async fn invoke(
         &self,
-        request: ChatRequest<'_>,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<ChatResponse> {
+        _state: &(),
+        request: ModelRequest,
+    ) -> tinyinference::Result<ModelResponse> {
         self.requests.lock().push(CapturedRequest {
-            messages: request.messages.to_vec(),
-            tool_names: request
-                .tools
-                .map(|tools| tools.iter().map(|tool| tool.name.clone()).collect())
-                .unwrap_or_default(),
+            messages: request.messages,
+            tool_names: request.tools.iter().map(|tool| tool.name.clone()).collect(),
         });
         Ok(self
             .responses
             .lock()
             .pop_front()
             .unwrap_or_else(|| text_response("round26 fallback")))
-    }
-
-    async fn chat_with_system(
-        &self,
-        _system_prompt: Option<&str>,
-        message: &str,
-        _model: &str,
-        _temperature: f64,
-    ) -> Result<String> {
-        Ok(format!("summary: {message}"))
     }
 }
 
@@ -214,21 +199,10 @@ impl Tool for Round26Tool {
     }
 }
 
-fn text_response(text: &str) -> ChatResponse {
-    ChatResponse {
-        text: Some(text.to_string()),
-        tool_calls: Vec::new(),
-        usage: Some(UsageInfo {
-            input_tokens: 3,
-            output_tokens: 2,
-            context_window: 16_000,
-            cached_input_tokens: 1,
-            cache_creation_tokens: 0,
-            reasoning_tokens: 0,
-            charged_amount_usd: 0.0001,
-        }),
-        reasoning_content: None,
-    }
+fn text_response(text: &str) -> ModelResponse {
+    let mut usage = Usage::new(3, 2);
+    usage.cache_read_tokens = 1;
+    ModelResponse::assistant(text).with_usage(usage)
 }
 
 fn prompt_context<'a>(
@@ -286,6 +260,8 @@ fn prompt_context<'a>(
             description: "Checks cold prompt paths".to_string(),
             memory_summary: Some("x".repeat(240)),
         }],
+        agents_md_global: None,
+        agents_md_local: None,
     }
 }
 
@@ -317,20 +293,6 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
 
     let built = SystemPromptBuilder::with_defaults()
         .add_section(Box::new(PersonalityRosterSection))
-        .with_reflection_context(vec![
-            SourceChunk {
-                ref_id: "entity:alpha".to_string(),
-                kind: "entity".to_string(),
-                content: "Resolved source chunk\nwith newline.".to_string(),
-                metadata: json!({"hotness": 7}),
-            },
-            SourceChunk {
-                ref_id: "missing:beta".to_string(),
-                kind: "missing".to_string(),
-                content: String::new(),
-                metadata: json!({}),
-            },
-        ])
         .build(&ctx)?;
 
     assert!(built.contains("round26 personality soul override"));
@@ -340,9 +302,6 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
     assert!(built.contains("## User Memory"));
     assert!(built.contains("projects (last updated 2026-05-28)"));
     assert!(built.contains("round26_tool[alpha|zeta]"));
-    assert!(built.contains("## Memory context"));
-    assert!(built.contains("Resolved source chunk with newline."));
-    assert!(!built.contains("missing:beta"));
     assert!(built.contains("## Available Personalities"));
     assert!(built.contains("Recent context: "));
 
@@ -371,12 +330,13 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
         SubagentRenderOptions {
             include_safety_preamble: true,
             include_identity: true,
-            include_skills_catalog: false,
             include_profile: true,
             include_memory_md: true,
         },
         ToolCallFormat::Json,
         &[],
+        None,
+        None,
     );
     assert!(subagent_json.contains("Round26 archetype"));
     assert!(subagent_json.contains("### PROFILE.md"));
@@ -395,6 +355,8 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
         SubagentRenderOptions::narrow(),
         ToolCallFormat::Native,
         &[],
+        None,
+        None,
     );
     assert!(!subagent_native.contains("## Tools"));
     assert!(subagent_native.contains("native tool-calling output"));
@@ -405,7 +367,7 @@ fn prompt_renderers_cover_user_memory_identity_tools_and_subagent_variants() -> 
 #[tokio::test]
 async fn builder_dedupes_visible_native_tools_and_seed_resume_bounds_history() -> Result<()> {
     let workspace = tempfile::tempdir()?;
-    let provider = ScriptedProvider::new(vec![text_response("round26 resumed final")]);
+    let provider = ScriptedModel::new(vec![text_response("round26 resumed final")]);
 
     let tools: Vec<Box<dyn Tool>> = vec![
         Box::new(Round26Tool {
@@ -422,7 +384,7 @@ async fn builder_dedupes_visible_native_tools_and_seed_resume_bounds_history() -
     visible.insert("round26_duplicate".to_string());
 
     let mut agent = Agent::builder()
-        .provider_arc(provider.clone())
+        .chat_model(provider.clone())
         .tools(tools)
         .visible_tool_names(visible)
         .memory(Arc::new(StubMemory))
@@ -462,11 +424,11 @@ async fn builder_dedupes_visible_native_tools_and_seed_resume_bounds_history() -
     assert!(requests[0]
         .messages
         .iter()
-        .any(|msg| msg.role == "assistant" && msg.content == "old assistant two"));
+        .any(|msg| matches!(msg, Message::Assistant(_)) && msg.text() == "old assistant two"));
     assert!(requests[0]
         .messages
         .iter()
-        .any(|msg| msg.role == "user" && msg.content == "falls back to user"));
+        .any(|msg| matches!(msg, Message::User(_)) && msg.text() == "falls back to user"));
     // The live turn's user message is stamped with the per-turn
     // `Current Date & Time:` line (#3602), so match by suffix rather than
     // exact equality — the dedup contract (exactly one "current message"
@@ -475,7 +437,9 @@ async fn builder_dedupes_visible_native_tools_and_seed_resume_bounds_history() -
         requests[0]
             .messages
             .iter()
-            .filter(|msg| msg.role == "user" && msg.content.ends_with("current message"))
+            .filter(|msg| {
+                matches!(msg, Message::User(_)) && msg.text().ends_with("current message")
+            })
             .count(),
         1
     );

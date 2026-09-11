@@ -125,13 +125,17 @@ impl Default for WebSearchConfig {
 // which tools are registered: `disabled` → no search tools; `managed` →
 // backend-proxied `web_search`; `parallel` → direct Parallel API tools
 // (search/extract/chat/research/enrich/dataset); `brave` → direct Brave Search
-// tools (web/news/images/videos); `querit` → direct Querit web search.
+// tools (web/news/images/videos); `querit` → direct Querit web search;
+// `exa` → direct Exa neural search (search / find similar / contents);
+// `tavily` → direct Tavily Search + Extract (web / news / finance).
 
 pub const SEARCH_ENGINE_DISABLED: &str = "disabled";
 pub const SEARCH_ENGINE_MANAGED: &str = "managed";
 pub const SEARCH_ENGINE_PARALLEL: &str = "parallel";
 pub const SEARCH_ENGINE_BRAVE: &str = "brave";
 pub const SEARCH_ENGINE_QUERIT: &str = "querit";
+pub const SEARCH_ENGINE_EXA: &str = "exa";
+pub const SEARCH_ENGINE_TAVILY: &str = "tavily";
 
 fn default_search_engine() -> String {
     SEARCH_ENGINE_MANAGED.into()
@@ -177,15 +181,17 @@ impl SearchEngineCredentials {
 
 /// Unified search-engine configuration. Exactly one engine drives tool
 /// registration at a time. `disabled` suppresses all search tools; `managed` is
-/// the backend-proxied default and requires no key; `parallel`, `brave`, and
-/// `querit` are BYO and require their own API key in the matching sub-block.
+/// the backend-proxied default and requires no key; `parallel`, `brave`,
+/// `querit`, `exa`, and `tavily` are BYO and require their own API key in the
+/// matching sub-block.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SearchConfig {
     /// Active search engine. One of [`SEARCH_ENGINE_DISABLED`],
     /// [`SEARCH_ENGINE_MANAGED`], [`SEARCH_ENGINE_PARALLEL`],
-    /// [`SEARCH_ENGINE_BRAVE`], or [`SEARCH_ENGINE_QUERIT`]. Unknown values
-    /// fall back to managed at registration time.
+    /// [`SEARCH_ENGINE_BRAVE`], [`SEARCH_ENGINE_QUERIT`],
+    /// [`SEARCH_ENGINE_EXA`], or [`SEARCH_ENGINE_TAVILY`]. Unknown values fall
+    /// back to managed at registration time.
     #[serde(default = "default_search_engine")]
     pub engine: String,
 
@@ -208,6 +214,17 @@ pub struct SearchConfig {
     /// Querit credentials (used when `engine = "querit"`).
     #[serde(default)]
     pub querit: SearchEngineCredentials,
+
+    /// Exa credentials (used when `engine = "exa"`). BYOK: search calls go
+    /// straight to `https://api.exa.ai`, never through the managed backend.
+    #[serde(default)]
+    pub exa: SearchEngineCredentials,
+
+    /// Tavily credentials (used when `engine = "tavily"`). BYOK: search and
+    /// extract calls go straight to `https://api.tavily.com`, never through
+    /// the managed backend.
+    #[serde(default)]
+    pub tavily: SearchEngineCredentials,
 }
 
 impl Default for SearchConfig {
@@ -219,6 +236,8 @@ impl Default for SearchConfig {
             parallel: SearchEngineCredentials::default(),
             brave: SearchEngineCredentials::default(),
             querit: SearchEngineCredentials::default(),
+            exa: SearchEngineCredentials::default(),
+            tavily: SearchEngineCredentials::default(),
         }
     }
 }
@@ -233,6 +252,8 @@ pub enum SearchEngine {
     Parallel,
     Brave,
     Querit,
+    Exa,
+    Tavily,
 }
 
 impl SearchConfig {
@@ -246,6 +267,8 @@ impl SearchConfig {
             SEARCH_ENGINE_PARALLEL if self.parallel.has_key() => SearchEngine::Parallel,
             SEARCH_ENGINE_BRAVE if self.brave.has_key() => SearchEngine::Brave,
             SEARCH_ENGINE_QUERIT if self.querit.has_key() => SearchEngine::Querit,
+            SEARCH_ENGINE_EXA if self.exa.has_key() => SearchEngine::Exa,
+            SEARCH_ENGINE_TAVILY if self.tavily.has_key() => SearchEngine::Tavily,
             _ => SearchEngine::Managed,
         }
     }
@@ -261,77 +284,5 @@ impl SearchConfig {
 }
 
 #[cfg(test)]
-mod search_config_tests {
-    use super::*;
-    use crate::openhuman::config::schema::tools::http::HttpRequestConfig;
-
-    #[test]
-    fn defaults_to_managed() {
-        let cfg = SearchConfig::default();
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-    }
-
-    #[test]
-    fn disabled_stays_disabled() {
-        let cfg = SearchConfig {
-            engine: SEARCH_ENGINE_DISABLED.into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.effective_engine(), SearchEngine::Disabled);
-    }
-
-    #[test]
-    fn parallel_requires_key() {
-        let mut cfg = SearchConfig {
-            engine: SEARCH_ENGINE_PARALLEL.into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-        cfg.parallel.api_key = Some("  ".into());
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-        cfg.parallel.api_key = Some("real".into());
-        assert_eq!(cfg.effective_engine(), SearchEngine::Parallel);
-    }
-
-    #[test]
-    fn brave_requires_key() {
-        let mut cfg = SearchConfig {
-            engine: SEARCH_ENGINE_BRAVE.into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-        cfg.brave.api_key = Some("real".into());
-        assert_eq!(cfg.effective_engine(), SearchEngine::Brave);
-    }
-
-    #[test]
-    fn querit_requires_key() {
-        let mut cfg = SearchConfig {
-            engine: SEARCH_ENGINE_QUERIT.into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-        cfg.querit.api_key = Some("real".into());
-        assert_eq!(cfg.effective_engine(), SearchEngine::Querit);
-    }
-
-    #[test]
-    fn http_request_defaults_to_allow_all() {
-        // Web research works out of the box: the default allowlist is the
-        // wildcard. The SSRF guard (url_guard) still blocks local/private
-        // hosts regardless, so this only opens public sites.
-        let cfg = HttpRequestConfig::default();
-        assert_eq!(cfg.allowed_domains, vec!["*".to_string()]);
-        assert_eq!(cfg.max_response_size, 1_000_000);
-        assert_eq!(cfg.timeout_secs, 30);
-    }
-
-    #[test]
-    fn unknown_engine_falls_back_to_managed() {
-        let cfg = SearchConfig {
-            engine: "duckduckgo".into(),
-            ..Default::default()
-        };
-        assert_eq!(cfg.effective_engine(), SearchEngine::Managed);
-    }
-}
+#[path = "search_search_config_tests_tests.rs"]
+mod search_config_tests;

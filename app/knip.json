@@ -1,27 +1,28 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/main.tsx", "test/e2e/specs/**/*.spec.ts"],
-  "project": [
-    "src/**/*.{ts,tsx}",
-    "test/**/*.{ts,tsx}",
-    "test/e2e/globals.d.ts",
-    "*.config.{js,ts}"
+  "entry": [
+    "src/features/conversations/index.ts",
+    "test/wdio.conf.ts",
+    "test/e2e/specs/**/*.spec.ts",
+    "test/playwright/specs/**/*.spec.ts"
   ],
+  "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}", "*.config.{js,ts}"],
+  "tags": ["-knipignore"],
   "ignoreDependencies": [
-    "@tauri-apps/cli",
-    "@testing-library/dom",
     "@wdio/appium-service",
     "@wdio/cli",
     "@wdio/local-runner",
     "@wdio/mocha-framework",
     "@wdio/spec-reporter",
+    "@tailwindcss/forms",
+    "@tailwindcss/typography",
     "buffer",
-    "eslint",
     "husky",
     "os-browserify",
-    "prettier",
     "process",
+    "tailwindcss",
+    "tw-animate-css",
     "util"
   ],
-  "ignoreBinaries": ["eslint", "knip", "open", "prettier", "tauri", "tsc", "vite", "vitest"]
+  "ignoreBinaries": ["open"]
 }

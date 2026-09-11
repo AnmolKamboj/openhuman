@@ -11,7 +11,7 @@
  */
 
 /** Surface (background) token keys, without the leading `--`. */
-export const SURFACE_KEYS = [
+const SURFACE_KEYS = [
   'surface',
   'surface-canvas',
   'surface-muted',
@@ -19,10 +19,15 @@ export const SURFACE_KEYS = [
   'surface-strong',
   'surface-hover',
   'surface-overlay',
+  // The window chrome: the tinted frame the sidebar sits on, behind the inset
+  // content card. It is the outermost background the user actually sees, and it
+  // was the one surface the editor did not expose — so a custom theme could
+  // restyle every card and panel and leave the frame around them untouched.
+  'surface-chrome',
 ] as const;
 
 /** Text token keys. */
-export const CONTENT_KEYS = [
+const CONTENT_KEYS = [
   'content',
   'content-secondary',
   'content-muted',
@@ -31,7 +36,10 @@ export const CONTENT_KEYS = [
 ] as const;
 
 /** Border token keys. */
-export const LINE_KEYS = ['line', 'line-strong', 'line-subtle'] as const;
+// `line-chrome` is the counterpart to `surface-chrome` — the hairline where the
+// content card meets that frame (and the sidebar rail's drag indicator). Same
+// omission, same consequence: a theme could not touch the app's outer edge.
+const LINE_KEYS = ['line', 'line-strong', 'line-subtle', 'line-chrome'] as const;
 
 /** Accent palette family names. Each expands to shades 50…950. */
 export const ACCENT_FAMILIES = ['primary', 'sage', 'amber', 'coral'] as const;
@@ -39,23 +47,8 @@ export const ACCENT_FAMILIES = ['primary', 'sage', 'amber', 'coral'] as const;
 /** Tailwind accent shade steps. */
 export const ACCENT_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
 
-/** All accent token keys, e.g. `primary-500`. */
-export const ACCENT_KEYS = ACCENT_FAMILIES.flatMap(fam =>
-  ACCENT_SHADES.map(shade => `${fam}-${shade}` as const)
-);
-
 /** The `-500` base key of each accent family (what the editor shows by default). */
-export const ACCENT_BASE_KEYS = ACCENT_FAMILIES.map(fam => `${fam}-500`);
-
-/** Every colour token key the theme system knows about. */
-export const ALL_COLOR_KEYS: string[] = [
-  ...SURFACE_KEYS,
-  ...CONTENT_KEYS,
-  ...LINE_KEYS,
-  ...ACCENT_KEYS,
-];
-
-export type ColorTokenKey = string;
+const ACCENT_BASE_KEYS = ACCENT_FAMILIES.map(fam => `${fam}-500`);
 
 /** Font role keys, mapped to the `--font-<role>` vars. */
 export const FONT_ROLES = ['title', 'heading', 'body', 'mono', 'serif'] as const;
@@ -66,7 +59,7 @@ export type FontRole = (typeof FONT_ROLES)[number];
  * heading; `keys` are the tokens shown in that group. Accent shades beyond the
  * base `-500` are surfaced via the per-family advanced expander, not listed here.
  */
-export interface ColorGroup {
+interface ColorGroup {
   id: string;
   i18nKey: string;
   keys: string[];
@@ -80,7 +73,7 @@ export const COLOR_GROUPS: ColorGroup[] = [
 ];
 
 /** Curated font choices offered per role in the Theme Studio. */
-export interface FontChoice {
+interface FontChoice {
   /** Stable id stored in the theme. */
   id: string;
   /** Human label (not translated — font names are proper nouns). */
