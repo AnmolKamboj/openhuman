@@ -656,10 +656,7 @@ fn completing_an_aborted_tool_cycle_only_appends() {
     // Turn N: the opener at index 2 has no results yet, so it is withheld.
     let aborted = dispatcher.to_provider_messages(&history[..3]);
     assert_eq!(
-        aborted
-            .iter()
-            .map(|m| m.role.as_str())
-            .collect::<Vec<_>>(),
+        aborted.iter().map(|m| m.role.as_str()).collect::<Vec<_>>(),
         vec!["user", "assistant"],
         "an unpaired opener must not reach the wire"
     );
