@@ -333,7 +333,7 @@ fn catalog_spec(
         name: name.to_string(),
         description: description.to_string(),
         parameters: serde_json::json!({"type": "object"}),
-    }
+    })
 }
 
 /// A parent context whose inheritable registry (`all_tool_specs`) and own
