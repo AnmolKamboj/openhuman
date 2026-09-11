@@ -99,24 +99,26 @@ fn hook_env_does_not_drop_inherited_parameters_containing_non_utf8() {
 
 /// A repository-set command-valued key must not reach a shell-spawned `git`.
 ///
-/// `core.pager` is the readable stand-in for the family: a repository can set
-/// it to any program, git runs it, and the repository config is agent-writable.
-/// Before `git_operations` moved behind a tool pack, `shell git` was the only
-/// path that inherited none of that hardening — this pins that it now does.
+/// `core.fsmonitor` is the probe because it is the one entry of the family
+/// that git actually executes with stdout piped: `core.pager` and
+/// `core.editor` are skipped without a terminal, so a test built on either
+/// would pass whether or not the hardening existed. `git status` runs the
+/// fsmonitor program, the repository config is agent-writable, and the
+/// program is arbitrary — which is the whole shape of the hole.
 ///
 /// The assertion is on behaviour, not on the env var: a test that only checked
 /// `GIT_CONFIG_PARAMETERS` contained the right string would pass just as
 /// happily if git ignored it.
 #[cfg(unix)]
 #[test]
-fn a_repository_pager_does_not_run_under_the_shell_git_environment() {
+fn a_repository_fsmonitor_does_not_run_under_the_shell_git_environment() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
     let temp = tempfile::tempdir().unwrap();
     let repo = temp.path().join("repo");
     std::fs::create_dir(&repo).unwrap();
-    let marker = temp.path().join("pager-ran");
+    let marker = temp.path().join("fsmonitor-ran");
 
     let git = |args: &[&str]| {
         let output = Command::new("git")
@@ -134,51 +136,49 @@ fn a_repository_pager_does_not_run_under_the_shell_git_environment() {
     git(&["config", "user.name", "Test"]);
     git(&["config", "user.email", "test@example.com"]);
     std::fs::write(repo.join("a"), "a").unwrap();
-    git(&["add", "a"]);
-    git(&["commit", "-q", "-m", "subject"]);
 
-    // A "pager" that records that it was executed at all.
-    let pager = temp.path().join("pager.sh");
+    // An "fsmonitor" that records that it was executed at all. Exiting
+    // non-zero makes git fall back to a normal scan, so `git status` still
+    // succeeds either way and the marker is the only signal.
+    let hook = temp.path().join("fsmonitor.sh");
     std::fs::write(
-        &pager,
-        format!("#!/bin/sh\ntouch '{}'\ncat\n", marker.display()),
+        &hook,
+        format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
     )
     .unwrap();
-    std::fs::set_permissions(&pager, std::fs::Permissions::from_mode(0o755)).unwrap();
-    git(&["config", "core.pager", pager.to_str().unwrap()]);
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    git(&["config", "core.fsmonitor", hook.to_str().unwrap()]);
 
-    // Baseline: without the hardening the repository's pager really does run,
-    // so the assertion below is discriminating rather than vacuously true.
-    // `--paginate` is required — git skips the pager entirely when stdout is
-    // not a terminal, which it never is under `cargo test`.
+    // Baseline: without the hardening the repository's program really does
+    // run, so the assertion below is discriminating rather than vacuous.
     let bare = Command::new("git")
-        .args(["--paginate", "log", "-1"])
+        .args(["status", "--porcelain"])
         .current_dir(&repo)
         .output()
         .unwrap();
     assert!(bare.status.success());
     assert!(
         marker.exists(),
-        "the fixture pager never ran, so this test proves nothing"
+        "the fixture fsmonitor never ran, so this test proves nothing"
     );
     std::fs::remove_file(&marker).unwrap();
 
     // Now with the environment the shell tool hands every command.
     let hook_env = super::hook::test_hook_env(None);
     let mut cmd = Command::new("git");
-    cmd.args(["--paginate", "log", "-1"]).current_dir(&repo);
+    cmd.args(["status", "--porcelain"]).current_dir(&repo);
     for (key, value) in &hook_env {
         cmd.env(key, value);
     }
     let output = cmd.output().unwrap();
     assert!(
         output.status.success(),
-        "git log failed under the shell git environment: {}",
+        "git status failed under the shell git environment: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
         !marker.exists(),
-        "the repository's core.pager ran under the shell git environment"
+        "the repository's core.fsmonitor ran under the shell git environment"
     );
 }
 
