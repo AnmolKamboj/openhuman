@@ -85,18 +85,6 @@ pub struct MemoryBinding {
     /// surface drift underneath an already-filtered RPC/tool registration.
     capabilities: Capabilities,
     fallback: Option<FallbackReason>,
-    /// The `Arc<dyn Memory>` view over [`Self::provider`], built at most once
-    /// per binding.
-    ///
-    /// Every session built against this subtree wants the same trait-object
-    /// view of the same driver, and the view is stateless — it forwards each
-    /// call to `provider`. Building one per session made each live agent hold
-    /// its own allocation for a value indistinguishable from its neighbours'.
-    /// Memoising it *here* rather than in a second cache is what keeps the
-    /// lifetime right: the view dies with the binding, so the exit path's
-    /// rebind (`forget_shut_down`) cannot leave a session holding a view over
-    /// a driver that has already been torn down.
-    memory_view: std::sync::OnceLock<Arc<dyn crate::openhuman::memory::Memory>>,
 }
 
 impl MemoryBinding {
@@ -107,17 +95,6 @@ impl MemoryBinding {
 
     pub(crate) fn unguarded_provider(&self) -> &Arc<dyn MemoryProvider> {
         &self.provider
-    }
-
-    /// The shared `Arc<dyn Memory>` view over this binding's driver.
-    ///
-    /// `make` runs at most once per binding; every later caller gets the same
-    /// handle. See [`Self::memory_view`] for why the memo lives on the binding.
-    pub fn shared_memory_view(
-        &self,
-        make: impl FnOnce(&Arc<dyn MemoryProvider>) -> Arc<dyn crate::openhuman::memory::Memory>,
-    ) -> Arc<dyn crate::openhuman::memory::Memory> {
-        Arc::clone(self.memory_view.get_or_init(|| make(&self.provider)))
     }
 
     pub fn guard(&self) -> Arc<MemoryGuard> {
@@ -478,7 +455,6 @@ fn bind_provider(
         class,
         capabilities,
         fallback,
-        memory_view: std::sync::OnceLock::new(),
     }
 }
 
