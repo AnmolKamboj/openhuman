@@ -640,9 +640,16 @@ fn tools_agent_is_registered() {
 /// Dropping an entry removes a synthesised `delegate_*` schema from every turn
 /// without removing the agent — cheaper than packing it, because a packed
 /// delegate still costs a row in the prompt's withheld-capability block.
-/// `spawn_async_subagent` builds its `agent_id` enum from the whole registry,
-/// so both stay reachable by id; this test pins that the trade is intact in
-/// both directions, since re-adding either silently costs ~1.2 kB a turn.
+///
+/// This test pins registry membership only. It does NOT pin that either
+/// agent is dispatchable through `spawn_async_subagent` — today it is not:
+/// `execute_with_context_inner` additionally checks
+/// `parent.allowed_subagent_ids`, which is derived from this very
+/// `subagents.allowlist` (see `session/turn/tools.rs`), so a model that asks
+/// for either id gets a clean allowlist error rather than a spawn. See the
+/// comment above `[subagents]` in `orchestrator/agent.toml` for the tracked
+/// follow-up. Do not read `registry.get(dropped).is_some()` below as "and
+/// therefore spawnable" — it only proves the definition was not deleted.
 #[test]
 fn the_orchestrator_does_not_delegate_to_the_generalist_or_the_archivist() {
     let registry = crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
@@ -671,11 +678,13 @@ fn the_orchestrator_does_not_delegate_to_the_generalist_or_the_archivist() {
             "`{dropped}` is back on the orchestrator's subagent list, which \
              re-adds its delegate schema to every turn"
         );
-        // Still a real agent, still spawnable by id.
+        // Still a real agent, resolvable by id in the registry — NOT a claim
+        // that it is currently reachable via spawn_async_subagent (it isn't;
+        // see the doc comment above).
         assert!(
             registry.get(dropped).is_some(),
-            "`{dropped}` must stay registered — it is reached through \
-             spawn_async_subagent, not deleted"
+            "`{dropped}` must stay registered — its definition should not be \
+             deleted, only dropped from the orchestrator's advertised list"
         );
     }
 }
