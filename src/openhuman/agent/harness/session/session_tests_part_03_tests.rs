@@ -676,7 +676,9 @@ async fn a_resumed_transcript_prefix_is_absorbed_into_history() {
     // replayed conversation, rather than starting from just its own message.
     agent
         .history
-        .push(ConversationMessage::Chat(ChatMessage::user("third question")));
+        .push(ConversationMessage::Chat(ChatMessage::user(
+            "third question",
+        )));
     agent.absorb_resumed_transcript_prefix();
     assert_eq!(
         agent.history.len(),
