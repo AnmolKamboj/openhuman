@@ -40,6 +40,7 @@ use crate::openhuman::agent::harness::definition::{
 #[allow(unused_imports)]
 use super::SpawnWorkerThreadTool;
 use super::{ArchetypeDelegationTool, SkillDelegationTool, Tool};
+use crate::openhuman::agent::orchestration::tools::DelegationTarget;
 
 /// Synthesise the delegation tool list for an agent based on its
 /// declarative `subagents` field.
@@ -133,7 +134,7 @@ pub fn collect_orchestrator_tools(
                 // paying for it on every delegate schema on every turn.
                 tools.push(Box::new(ArchetypeDelegationTool {
                     tool_name,
-                    agent_id: target.id.clone(),
+                    agent_id: DelegationTarget(target.id.clone()),
                     tool_description: target.when_to_use.clone(),
                 }));
             }
