@@ -296,7 +296,6 @@ impl Agent {
             .tool_dispatcher
             .prompt_instructions_for_specs(&visible_specs_owned)
             .unwrap_or_else(|| self.tool_dispatcher.prompt_instructions(tools_slice));
-        drop(visible_specs_owned);
         // Adapt the agent's whole callable surface into the shared PromptTool
         // shape that every prompt-building call-site uses. Temporary vec
         // borrows from the two tool `Arc`s and lives for the duration of the
