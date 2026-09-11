@@ -338,8 +338,8 @@ fn catalog_spec(name: &str, description: &str) -> crate::openhuman::tools::ToolS
 /// `visible_tool_names` is derived from the visible specs, as the turn
 /// builder derives it.
 fn parent_context_with_specs(
-    all_tool_specs: Vec<crate::openhuman::tools::ToolSpec>,
-    visible_tool_specs: Vec<crate::openhuman::tools::ToolSpec>,
+    all_tool_specs: Vec<std::sync::Arc<crate::openhuman::tools::ToolSpec>>,
+    visible_tool_specs: Vec<std::sync::Arc<crate::openhuman::tools::ToolSpec>>,
 ) -> crate::openhuman::agent::harness::fork_context::ParentExecutionContext {
     use std::sync::Arc;
     let workspace = tempfile::TempDir::new().expect("temp workspace");
