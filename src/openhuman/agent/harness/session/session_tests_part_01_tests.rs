@@ -719,3 +719,97 @@ fn superseded_synthesized_instances_are_released_when_readers_drop() {
         "only the agent's own Arc and this test's clone remain"
     );
 }
+
+/// The tool block is part of the KV-cache prefix, so a refresh that changes
+/// nothing must change no bytes.
+///
+/// Every prefix cache renders the tool catalogue ahead of the conversation, so
+/// the `tools` array sits *in front of* the frozen system prompt rather than
+/// after it. A rebuild that reorders an unchanged set — or that rebuilds at all
+/// when the connection set is the same — therefore costs the entire cached
+/// prefix on that turn, system prompt included, while every functional test
+/// still passes because the same capabilities are advertised.
+///
+/// Two properties keep that from happening and both are easy to lose:
+/// `refresh_delegation_tools` appends the synthesised specs in a deterministic
+/// sequence (derived from `definition.subagents`, a `Vec`) rather than from the
+/// `HashSet` it also maintains, and `connected_set_hash` sorts before hashing so
+/// a backend that returns the same toolkits in a new order never reaches here at
+/// all. This asserts the observable consequence rather than either mechanism, so
+/// it survives a refactor of either.
+#[test]
+fn an_unchanged_integration_set_leaves_the_tool_block_byte_stable() {
+    use crate::openhuman::agent::harness::AgentDefinitionRegistry;
+
+    AgentDefinitionRegistry::init_global_builtins().unwrap();
+    let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
+
+    let integrations = || {
+        vec![
+            crate::openhuman::agent::context::prompt::ConnectedIntegration {
+                toolkit: "gmail".into(),
+                description: "Email".into(),
+                tools: vec![],
+                gated_tools: vec![],
+                connected: true,
+                connections: Vec::new(),
+                non_active_status: None,
+            },
+            crate::openhuman::agent::context::prompt::ConnectedIntegration {
+                toolkit: "notion".into(),
+                description: "Docs".into(),
+                tools: vec![],
+                gated_tools: vec![],
+                connected: true,
+                connections: Vec::new(),
+                non_active_status: None,
+            },
+        ]
+    };
+
+    // Exactly what a provider request carries: name and schema, in order.
+    let wire_block = |agent: &Agent| -> Vec<(String, String)> {
+        agent
+            .tool_specs()
+            .iter()
+            .map(|spec| (spec.name.clone(), spec.parameters.to_string()))
+            .collect()
+    };
+
+    agent.set_connected_integrations(integrations());
+    agent.refresh_delegation_tools();
+    let first = wire_block(&agent);
+    assert!(
+        first.iter().any(|(name, _)| name.starts_with("delegate_")),
+        "the fixture must actually synthesise delegates, or this pins nothing"
+    );
+
+    // A second reconcile over the same connection set — the turn-boundary path
+    // when the Composio cache answers with what it answered last turn.
+    agent.refresh_delegation_tools();
+    assert_eq!(
+        wire_block(&agent),
+        first,
+        "re-synthesising an unchanged integration set rewrote the tool block; \
+         the tool catalogue precedes the conversation in every provider's cached \
+         prefix, so this costs the frozen system prompt too"
+    );
+
+    // The same set in the opposite order is the same capability surface. The
+    // hash is order-insensitive, so a reordered backend response must not even
+    // reach a rebuild — and if it does, it must still land on the same bytes.
+    let mut reordered = integrations();
+    reordered.reverse();
+    assert_eq!(
+        crate::openhuman::integrations::composio::connected_set_hash(&reordered),
+        crate::openhuman::integrations::composio::connected_set_hash(&integrations()),
+        "connected_set_hash must not see a reordering as a change"
+    );
+    agent.set_connected_integrations(reordered);
+    agent.refresh_delegation_tools();
+    assert_eq!(
+        wire_block(&agent),
+        first,
+        "the same toolkits in a different order produced a different tool block"
+    );
+}
