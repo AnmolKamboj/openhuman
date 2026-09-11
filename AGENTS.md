@@ -1235,7 +1235,7 @@ Each domain owns `bus.rs` with handlers. Convention: `<Purpose>Subscriber`, `nam
 
 ## Design & patterns
 
-**Visual**: primary `#2F6EF4`, sage/amber/coral semantics, Inter + Cabinet Grotesk + JetBrains Mono. Canonical tokens in [`app/src/styles/tokens.css`](app/src/styles/tokens.css) (RGB channel triples); [`app/tailwind.config.js`](app/tailwind.config.js) wraps each as `rgb(var(--token) / <alpha-value>)`.
+**Visual**: primary `#2F6EF4`, sage/amber/coral semantics, Inter + Cabinet Grotesk + JetBrains Mono. Canonical tokens live in [`app/src/styles/tokens.css`](app/src/styles/tokens.css).
 
 **Key rules:**
 
