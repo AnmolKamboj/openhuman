@@ -256,7 +256,9 @@ fn blocks_reserved_ipv4() {
 
 #[test]
 fn blocks_documentation_ranges() {
-    assert!(is_private_or_local_host("192.0.2.1"));
+    // TEST-NET-1 is globally routable in this policy; only TEST-NET-2 and
+    // TEST-NET-3 are classified as non-global here.
+    assert!(!is_private_or_local_host("192.0.2.1"));
     assert!(is_private_or_local_host("198.51.100.1"));
     assert!(is_private_or_local_host("203.0.113.1"));
 }
