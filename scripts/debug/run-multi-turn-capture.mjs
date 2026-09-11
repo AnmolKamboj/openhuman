@@ -27,7 +27,11 @@ const flag = (name, fallback) => {
 };
 
 const coreUrl = flag('--core-url', process.env.OPENHUMAN_CORE_RPC_URL || 'http://127.0.0.1:7799/rpc');
-const threadId = flag('--thread-id', `pfx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
+// The session key truncates the thread id to its first 12 characters (see
+// `persistedReplies` below), so the entropy that makes two runs distinct has
+// to live within those 12 characters. `pfx-` (4) + an 8-char base36 timestamp
+// already fills the budget, so put the random segment first: `pfx-<rand4>-`.
+const threadId = flag('--thread-id', `pfx-${Math.random().toString(36).slice(2, 6)}-${Date.now().toString(36)}`);
 const token =
   process.env.OPENHUMAN_CORE_TOKEN ||
   fs.readFileSync(path.join(os.homedir(), '.openhuman', 'core.token'), 'utf8').trim();
