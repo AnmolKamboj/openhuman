@@ -67,9 +67,20 @@ impl Tool for AskClarificationTool {
     }
 
     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
+        // Blank counts as absent. The schema has no `minLength`, so
+        // `{"question":""}` is a legal call, and `as_str()` answers `Some("")` —
+        // which slipped past the missing-argument fallback below. That was
+        // survivable only while the `[CLARIFICATION NEEDED]` prefix kept the
+        // output non-empty; now that this output *is* the message the user
+        // reads, an empty one would park the turn on a blank prompt: a blank
+        // assistant reply on the channel path, and an `AwaitingUser` sub-agent
+        // card with nothing in it. Trimmed for the same reason — a whitespace
+        // question is a blank one (#6213 review).
         let question = args
             .get("question")
             .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|q| !q.is_empty())
             .unwrap_or("Could you clarify?");
 
         let options = args.get("options").and_then(|v| v.as_array()).map(|arr| {
