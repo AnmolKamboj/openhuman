@@ -556,6 +556,17 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             ],
         ),
         (
+            "files",
+            &[
+                "file_read",
+                "file_write",
+                "grep",
+                "glob",
+                "list",
+                "git_operations",
+            ],
+        ),
+        (
             "storage",
             &[
                 "storage_upload_file",
@@ -582,6 +593,7 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             &[
                 "create_image",
                 "create_video",
+                "analyze_image",
                 "media_generate_image",
                 "media_generate_video",
                 "media_list_models",

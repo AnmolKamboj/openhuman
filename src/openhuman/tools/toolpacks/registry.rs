@@ -206,6 +206,39 @@ pub const PACKS: &[ToolPack] = &[
         owners: &["settings_agent"],
     },
     ToolPack {
+        id: "files",
+        summary: "Direct file and repository access: read, write, search by content, match by glob, list a directory, and read git state.",
+        // `shell` covers every one of these for an agent that has it, so on a
+        // belt that also carries `shell` the family is duplicate surface
+        // charged on every turn. It stays one `use_skill` away, and the
+        // specialists below keep it advertised because inspecting files IS
+        // their loop rather than an occasional step inside it.
+        //
+        // `apply_patch` is deliberately NOT here. Editing an existing file
+        // through a shell heredoc is the failure mode the patch tool exists to
+        // prevent, so it is not duplicate surface in the way a `cat` is.
+        tools: &[
+            "file_read",
+            "file_write",
+            "grep",
+            "glob",
+            "list",
+            "git_operations",
+        ],
+        owners: &[
+            "code_executor",
+            "critic",
+            "planner",
+            "skill_creator",
+            "skill_executor",
+            "tool_maker",
+            "image_agent",
+            "video_agent",
+            "vision_agent",
+            "integrations_agent",
+        ],
+    },
+    ToolPack {
         id: "storage",
         summary: "Workspace file storage: upload a file, download one, list what is stored, and mint a shareable link.",
         tools: &[
@@ -241,15 +274,19 @@ pub const PACKS: &[ToolPack] = &[
     },
     ToolPack {
         id: "media",
-        summary: "Generate an image or a video, and list the models available for either.",
+        summary: "Anything centred on a picture or a clip: generate one, or read one (describe, OCR, charts, UI elements).",
         tools: &[
             "create_image",
             "create_video",
+            // Reading an image, not making one, but it is the same belt from
+            // the model's point of view: the request that reaches for it names
+            // a picture either way.
+            "analyze_image",
             "media_generate_image",
             "media_generate_video",
             "media_list_models",
         ],
-        owners: &["image_agent", "video_agent"],
+        owners: &["image_agent", "video_agent", "vision_agent"],
     },
     ToolPack {
         id: "tasks",
