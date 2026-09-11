@@ -634,3 +634,48 @@ fn tools_agent_is_registered() {
     let def = find("tools_agent");
     assert!(matches!(def.tools, ToolScope::Wildcard));
 }
+
+/// Two agents are deliberately missing from the orchestrator's subagent list.
+///
+/// Dropping an entry removes a synthesised `delegate_*` schema from every turn
+/// without removing the agent — cheaper than packing it, because a packed
+/// delegate still costs a row in the prompt's withheld-capability block.
+/// `spawn_async_subagent` builds its `agent_id` enum from the whole registry,
+/// so both stay reachable by id; this test pins that the trade is intact in
+/// both directions, since re-adding either silently costs ~1.2 kB a turn.
+#[test]
+fn the_orchestrator_does_not_delegate_to_the_generalist_or_the_archivist() {
+    let registry = crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
+        .or_else(|| {
+            crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins().ok()?;
+            crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
+        })
+        .expect("builtin agent definitions must load");
+    let orchestrator = registry
+        .get("orchestrator")
+        .expect("orchestrator is builtin");
+
+    let listed: Vec<&str> = orchestrator
+        .subagents
+        .iter()
+        .filter_map(|entry| match entry {
+            crate::openhuman::agent::harness::definition::SubagentEntry::AgentId(id) => {
+                Some(id.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    for dropped in ["tools_agent", "archivist"] {
+        assert!(
+            !listed.contains(&dropped),
+            "`{dropped}` is back on the orchestrator's subagent list, which \
+             re-adds its delegate schema to every turn"
+        );
+        // Still a real agent, still spawnable by id.
+        assert!(
+            registry.get(dropped).is_some(),
+            "`{dropped}` must stay registered — it is reached through \
+             spawn_async_subagent, not deleted"
+        );
+    }
+}
