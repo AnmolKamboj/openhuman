@@ -206,6 +206,40 @@ pub const PACKS: &[ToolPack] = &[
         owners: &["settings_agent"],
     },
     ToolPack {
+        id: "storage",
+        summary: "Workspace file storage: upload a file, download one, list what is stored, and mint a shareable link.",
+        tools: &[
+            "storage_upload_file",
+            "storage_download_file",
+            "storage_list_files",
+            "storage_get_link",
+        ],
+        // Not ownerless: `code_executor` and `integrations_agent` both declare
+        // the family on their own belts, and an agent that uploads its own
+        // artifacts should not pay a `use_skill` round trip to hand one back.
+        owners: &["code_executor", "integrations_agent"],
+    },
+    ToolPack {
+        id: "scheduling",
+        summary: "Reminders and scheduled jobs: create, list, update, remove, run and inspect one-shot and recurring jobs.",
+        tools: &[
+            "schedule_task",
+            "cron_add",
+            "cron_list",
+            "cron_remove",
+            "cron_update",
+            "cron_run",
+            "cron_runs",
+        ],
+        owners: &["scheduler_agent"],
+    },
+    ToolPack {
+        id: "preferences",
+        summary: "Record a durable user preference (tone, defaults, working style) so later turns honour it without being told again.",
+        tools: &["save_preference", "remember_preference"],
+        owners: &["profile_memory_agent"],
+    },
+    ToolPack {
         id: "media",
         summary: "Generate an image or a video, and list the models available for either.",
         tools: &[

@@ -556,6 +556,28 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             ],
         ),
         (
+            "storage",
+            &[
+                "storage_upload_file",
+                "storage_download_file",
+                "storage_list_files",
+                "storage_get_link",
+            ],
+        ),
+        (
+            "scheduling",
+            &[
+                "schedule_task",
+                "cron_add",
+                "cron_list",
+                "cron_remove",
+                "cron_update",
+                "cron_run",
+                "cron_runs",
+            ],
+        ),
+        ("preferences", &["save_preference", "remember_preference"]),
+        (
             "media",
             &[
                 "create_image",
