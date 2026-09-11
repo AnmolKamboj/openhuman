@@ -36,9 +36,7 @@ use std::sync::Arc;
 /// implementation: the main agent holds `Arc<ToolSpec>` (the three spec views
 /// share their leaves), while the sub-agent assembly still materialises owned
 /// `ToolSpec`s for the public `AgentTurnRequest`.
-pub(crate) fn dedup_visible_tool_specs<S: std::borrow::Borrow<ToolSpec>>(
-    specs: Vec<S>,
-) -> Vec<S> {
+pub(crate) fn dedup_visible_tool_specs<S: std::borrow::Borrow<ToolSpec>>(specs: Vec<S>) -> Vec<S> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut deduped: Vec<S> = Vec::with_capacity(specs.len());
     let mut dropped: Vec<String> = Vec::new();
