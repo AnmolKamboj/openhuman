@@ -145,7 +145,6 @@ fn an_unchanged_integration_set_leaves_the_tool_block_byte_stable() {
     );
 }
 
-
 /// A resumed prefix with no leading system message must not erase this
 /// turn's freshly rendered one.
 ///
