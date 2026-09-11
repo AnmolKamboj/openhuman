@@ -6,6 +6,7 @@
 //! registry from a loaded [`Config`]. Per-turn behaviour lives in
 //! [`super::turn`]; accessors and run-helpers live in [`super::runtime`].
 
+mod builder_build;
 mod factory;
 mod helpers;
 mod setters;
