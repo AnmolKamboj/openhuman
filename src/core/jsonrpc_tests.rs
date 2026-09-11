@@ -498,7 +498,7 @@ fn http_schema_dump_includes_openhuman_and_core_methods() {
     assert!(
         methods
             .iter()
-            .any(|m| m.method == "openhuman.billing_get_current_plan"),
+            .any(|m| m.method == "openhuman.billing_get_summary"),
         "schema dump should include billing methods"
     );
 
@@ -515,6 +515,18 @@ async fn billing_get_current_plan_rejects_unknown_param() {
     let err = invoke_method(
         default_state(),
         "openhuman.billing_get_current_plan",
+        json!({ "extra": true }),
+    )
+    .await
+    .expect_err("unknown param should fail");
+    assert!(err.contains("unknown param 'extra'"));
+}
+
+#[tokio::test]
+async fn billing_get_summary_rejects_unknown_param() {
+    let err = invoke_method(
+        default_state(),
+        "openhuman.billing_get_summary",
         json!({ "extra": true }),
     )
     .await
@@ -688,6 +700,7 @@ async fn schema_dump_includes_new_billing_and_team_methods() {
     let dump = build_http_schema_dump();
     let methods: Vec<&str> = dump.methods.iter().map(|m| m.method.as_str()).collect();
     for expected in &[
+        "openhuman.billing_get_summary",
         "openhuman.billing_get_current_plan",
         "openhuman.billing_purchase_plan",
         "openhuman.billing_create_portal_session",

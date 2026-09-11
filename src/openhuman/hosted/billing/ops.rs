@@ -53,6 +53,11 @@ pub async fn get_current_plan(config: &Config) -> Result<RpcOutcome<Value>, Stri
     ))
 }
 
+pub async fn get_summary(config: &Config) -> Result<RpcOutcome<Value>, String> {
+    let data = get_authed_value(config, Method::GET, "/payments/summary", None).await?;
+    Ok(RpcOutcome::single_log(data, "billing summary fetched"))
+}
+
 pub async fn get_balance(config: &Config) -> Result<RpcOutcome<Value>, String> {
     let data = get_authed_value(config, Method::GET, "/payments/credits/balance", None).await?;
     Ok(RpcOutcome::single_log(data, "credit balance fetched"))
