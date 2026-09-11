@@ -528,6 +528,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': '개발 빌드에서 항상 활성화',
   'settings.clearAppData': '앱 데이터 삭제',
   'settings.clearAppDataDesc': '로그아웃하고 모든 로컬 앱 데이터를 영구적으로 삭제',
+  'settings.clearAppDataIrreversible': '되돌릴 수 없습니다.',
+  'settings.clearAppDataAction': '데이터 삭제',
   'settings.logOut': '로그아웃',
   'settings.logOutDesc': '계정에서 로그아웃',
   'settings.exitLocalSession': '로컬 세션 종료',
@@ -4896,6 +4898,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': '실시간',
   'settings.developerMenu.eventLog.disconnected': '연결 끊김',
   'settings.developerMenu.eventLog.waiting': '이벤트 대기 중...',
+  'settings.developerMenu.eventLog.waitingHint':
+    '에이전트, 도구, 시스템이 작업하면 여기에 이벤트가 나타납니다. 아직 아무 일도 없었습니다.',
+  'settings.developerMenu.eventLog.notConnectedHint': '스트림을 재개하려면 코어에 다시 연결하세요.',
   'settings.developerMenu.eventLog.notConnected': '코어에 연결되지 않음',
   'settings.developerMenu.eventLog.jumpToLatest': '최신으로 이동',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

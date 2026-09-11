@@ -551,6 +551,8 @@ const messages: TranslationMap = {
   'settings.clearAppData': 'Cancella dati app',
   'settings.clearAppDataDesc':
     "Disconnetti e cancella permanentemente tutti i dati locali dell'app",
+  'settings.clearAppDataIrreversible': 'Questa azione è irreversibile.',
+  'settings.clearAppDataAction': 'Cancella i dati',
   'settings.logOut': 'Disconnetti',
   'settings.logOutDesc': 'Disconnetti dal tuo account',
   'settings.exitLocalSession': 'Esci dalla sessione locale',
@@ -5031,6 +5033,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Vivere',
   'settings.developerMenu.eventLog.disconnected': 'Disconnesso',
   'settings.developerMenu.eventLog.waiting': 'In attesa degli eventi...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Gli eventi compaiono qui mentre agenti, strumenti e sistema lavorano. Per ora non è successo nulla.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Riconnettiti al core per riprendere lo streaming.',
   'settings.developerMenu.eventLog.notConnected': 'Non connesso al nucleo',
   'settings.developerMenu.eventLog.jumpToLatest': "Vai all'ultimo",
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

@@ -338,8 +338,11 @@ const en: TranslationMap = {
   'settings.developerMode.title': 'Developer mode',
   'settings.developerMode.description': 'Show advanced developer & diagnostic tools',
   'settings.developerMode.enabledByBuild': 'Always on in development builds',
-  'settings.clearAppData': 'Clear App Data',
-  'settings.clearAppDataDesc': 'Sign out and permanently clear all local app data',
+  'settings.clearAppData': 'Clear app data',
+  'settings.clearAppDataDesc':
+    'Signs you out and deletes every thread, setting, and cached file stored on this device.',
+  'settings.clearAppDataIrreversible': 'This cannot be undone.',
+  'settings.clearAppDataAction': 'Clear data',
   'settings.logOut': 'Log out',
   'settings.logOutDesc': 'Sign out of your account',
   'settings.exitLocalSession': 'Exit local session',
@@ -430,7 +433,7 @@ const en: TranslationMap = {
   'settings.ai.llmProviderDesc': 'Choose and configure your AI provider',
 
   // Clear App Data modal
-  'clearData.title': 'Clear App Data',
+  'clearData.title': 'Clear app data',
   'clearData.warning': 'This will sign you out and permanently delete local app data including:',
   'clearData.bulletSettings': 'App settings and conversations',
   'clearData.bulletCache': 'All local integration cache data',
@@ -5654,6 +5657,9 @@ const en: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Live',
   'settings.developerMenu.eventLog.disconnected': 'Disconnected',
   'settings.developerMenu.eventLog.waiting': 'Waiting for events...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Events appear here as agents, tools, and the system do work. Nothing has happened yet.',
+  'settings.developerMenu.eventLog.notConnectedHint': 'Reconnect to the core to resume the stream.',
   'settings.developerMenu.eventLog.notConnected': 'Not connected to core',
   'settings.developerMenu.eventLog.jumpToLatest': 'Jump to latest',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

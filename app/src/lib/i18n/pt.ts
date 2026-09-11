@@ -545,6 +545,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'Sempre ativado em builds de desenvolvimento',
   'settings.clearAppData': 'Limpar Dados do App',
   'settings.clearAppDataDesc': 'Sair e excluir permanentemente todos os dados locais do app',
+  'settings.clearAppDataIrreversible': 'Isso não pode ser desfeito.',
+  'settings.clearAppDataAction': 'Limpar dados',
   'settings.logOut': 'Sair',
   'settings.logOutDesc': 'Sair da sua conta',
   'settings.exitLocalSession': 'Sair da sessão local',
@@ -5026,6 +5028,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Ao vivo',
   'settings.developerMenu.eventLog.disconnected': 'Desconectado',
   'settings.developerMenu.eventLog.waiting': 'Aguardando eventos...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Os eventos aparecem aqui conforme os agentes, as ferramentas e o sistema trabalham. Ainda não aconteceu nada.',
+  'settings.developerMenu.eventLog.notConnectedHint': 'Reconecte ao core para retomar o fluxo.',
   'settings.developerMenu.eventLog.notConnected': 'Não conectado ao núcleo',
   'settings.developerMenu.eventLog.jumpToLatest': 'Ir para o mais recente',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
