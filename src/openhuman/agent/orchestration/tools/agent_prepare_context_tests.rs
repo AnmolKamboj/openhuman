@@ -325,8 +325,11 @@ fn credits_exhausted_scout_failure_does_not_reach_sentry() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A spec with the given name and description; the schema is irrelevant here.
-fn catalog_spec(name: &str, description: &str) -> crate::openhuman::tools::ToolSpec {
-    crate::openhuman::tools::ToolSpec {
+fn catalog_spec(
+    name: &str,
+    description: &str,
+) -> std::sync::Arc<crate::openhuman::tools::ToolSpec> {
+    std::sync::Arc::new(crate::openhuman::tools::ToolSpec {
         name: name.to_string(),
         description: description.to_string(),
         parameters: serde_json::json!({"type": "object"}),
