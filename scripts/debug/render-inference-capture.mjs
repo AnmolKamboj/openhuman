@@ -41,6 +41,18 @@ w('');
 (body.messages || []).forEach((m, i) => {
   w(`## ${i + 1}. \`${m.role}\``);
   w('');
+  // `tool_call_id` (and `name`, on some providers' tool-result messages) is
+  // what correlates a tool-result message back to the assistant `tool_calls`
+  // entry that produced it — dropping it would misrepresent this as a partial
+  // view when the header promises every byte the model receives, verbatim.
+  if (m.tool_call_id !== undefined) {
+    w(`tool_call_id: \`${m.tool_call_id}\``);
+    w('');
+  }
+  if (m.name !== undefined) {
+    w(`name: \`${m.name}\``);
+    w('');
+  }
   // String content is reproduced as-is — it is already Markdown and rewriting
   // it would defeat the purpose. Anything structured (multimodal parts, tool
   // calls) is shown as the JSON it is.
@@ -55,6 +67,16 @@ w('');
     w('');
     w('```json');
     w(JSON.stringify(m.tool_calls));
+    w('```');
+  }
+  // Anything else on the message (provider-specific fields, reasoning blocks,
+  // …) that the fields above didn't already cover — same "verbatim" promise.
+  const known = new Set(['role', 'content', 'tool_calls', 'tool_call_id', 'name']);
+  const rest = Object.fromEntries(Object.entries(m).filter(([k]) => !known.has(k)));
+  if (Object.keys(rest).length > 0) {
+    w('');
+    w('```json');
+    w(JSON.stringify(rest));
     w('```');
   }
   w('');
