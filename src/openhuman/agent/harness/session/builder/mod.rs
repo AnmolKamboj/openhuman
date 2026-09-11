@@ -6,6 +6,7 @@
 //! registry from a loaded [`Config`]. Per-turn behaviour lives in
 //! [`super::turn`]; accessors and run-helpers live in [`super::runtime`].
 
+mod builder_build;
 mod factory;
 mod helpers;
 mod setters;
@@ -16,6 +17,7 @@ mod builder_tests;
 use crate::openhuman::agent::harness::definition::{AgentDefinition, ToolScope};
 use crate::openhuman::tools::agent_policy::ToolPolicySession;
 use crate::openhuman::tools::{Tool, ToolSpec};
+use std::sync::Arc;
 
 /// Drop entries with duplicate `name` fields, first occurrence wins.
 ///
@@ -30,15 +32,21 @@ use crate::openhuman::tools::{Tool, ToolSpec};
 /// list — initial build, post-composio refresh, scope-filter change —
 /// so the request the provider sees is always name-unique regardless
 /// of which path produced it.
-pub(crate) fn dedup_visible_tool_specs(specs: Vec<ToolSpec>) -> Vec<ToolSpec> {
+///
+/// Generic over the element type so the two carriers of a spec list share one
+/// implementation: the main agent holds `Arc<ToolSpec>` (the three spec views
+/// share their leaves), while the sub-agent assembly still materialises owned
+/// `ToolSpec`s for the public `AgentTurnRequest`.
+pub(crate) fn dedup_visible_tool_specs<S: std::borrow::Borrow<ToolSpec>>(specs: Vec<S>) -> Vec<S> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut deduped: Vec<ToolSpec> = Vec::with_capacity(specs.len());
+    let mut deduped: Vec<S> = Vec::with_capacity(specs.len());
     let mut dropped: Vec<String> = Vec::new();
     for spec in specs {
-        if seen.insert(spec.name.clone()) {
+        let name = spec.borrow().name.clone();
+        if seen.insert(name.clone()) {
             deduped.push(spec);
         } else {
-            dropped.push(spec.name);
+            dropped.push(name);
         }
     }
     if !dropped.is_empty() {
@@ -87,10 +95,10 @@ pub(crate) fn drop_synthesized_name_collisions(
 }
 
 pub(super) fn visible_tool_specs_for_policy(
-    tool_specs: &[ToolSpec],
+    tool_specs: &[Arc<ToolSpec>],
     visible_names: &std::collections::HashSet<String>,
     tool_policy: &ToolPolicySession,
-) -> Vec<ToolSpec> {
+) -> Vec<Arc<ToolSpec>> {
     // `load_skill`'s description carries the pack index, and its `skill` enum
     // carries the pack ids. Both are built once in `LoadSkillTool::new`, before
     // any session exists, so every agent was told all ten packs were loadable —
@@ -119,8 +127,14 @@ pub(super) fn visible_tool_specs_for_policy(
             if spec.name == crate::openhuman::tools::toolpacks::LOAD_SKILL {
                 // `false` means no pack has a callable tool: an empty index and
                 // an empty enum are not a tool, so drop it rather than ship one.
+                // `Arc::make_mut`, not `&mut spec`: the three spec views share
+                // their leaves, so rewriting the pack index through the `Arc`
+                // would rewrite it for every view that holds this schema — and
+                // `durable_tool_specs` is meant to stay the unscoped truth.
+                // This copies exactly the one spec being rewritten and leaves
+                // the other ~48 visible schemas shared.
                 return crate::openhuman::tools::toolpacks::scope_load_skill_spec(
-                    &mut spec,
+                    Arc::make_mut(&mut spec),
                     &is_callable,
                 )
                 .then_some(spec);

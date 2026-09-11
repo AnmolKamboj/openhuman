@@ -237,7 +237,11 @@ async fn list_core_tools() -> Result<Value, ToolCallError> {
 
 async fn core_tool_instructions() -> Result<Value, ToolCallError> {
     let agent = build_orchestrator_agent().await?;
-    let schemas: Vec<_> = agent.tool_specs().iter().map(spec_to_schema).collect();
+    let schemas: Vec<_> = agent
+        .tool_specs()
+        .iter()
+        .map(|spec| spec_to_schema(spec))
+        .collect();
     Ok(tool_text_success(
         tinyagents_harness::tool::prompt_tool_instructions(&schemas),
     ))
