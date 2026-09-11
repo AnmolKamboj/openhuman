@@ -47,10 +47,19 @@ if (!fs.existsSync(dir)) {
   process.exit(2);
 }
 
+// `req-<N>.json` pads N to a minimum of 3 digits (see capture-first-inference.mjs),
+// so a lexicographic sort places `req-1000.json` before `req-999.json` once a
+// sequence runs past 999 captures. Sort by the numeric index so adjacent
+// comparisons always compare consecutive requests.
+function sequenceIndex(filename) {
+  const match = /^req-(\d+)\.json$/.exec(filename);
+  return match ? Number.parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+}
+
 const files = fs
   .readdirSync(dir)
   .filter(f => f.endsWith('.json'))
-  .sort();
+  .sort((a, b) => sequenceIndex(a) - sequenceIndex(b));
 
 if (files.length < 2) {
   process.stderr.write(
