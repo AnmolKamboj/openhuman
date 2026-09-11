@@ -87,7 +87,7 @@ impl Agent {
                 .chain(tail)
                 .collect();
         }
-        let messages = self.tool_dispatcher.to_provider_messages(&self.history);
+        let mut messages = self.tool_dispatcher.to_provider_messages(&self.history);
 
         // Multimodal prep (parity with the legacy engine): rehydrate image
         // placeholders for vision-capable providers, then expand `[IMAGE:…]` /
