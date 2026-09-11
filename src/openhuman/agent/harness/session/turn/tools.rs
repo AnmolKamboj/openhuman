@@ -591,8 +591,8 @@ impl Agent {
         );
         let synthed_names: std::collections::HashSet<String> =
             synthed.iter().map(|t| t.name().to_string()).collect();
-        let synthed_specs: Vec<crate::openhuman::tools::ToolSpec> =
-            synthed.iter().map(|t| t.spec()).collect();
+        let synthed_specs: Vec<Arc<crate::openhuman::tools::ToolSpec>> =
+            synthed.iter().map(|t| Arc::new(t.spec())).collect();
 
         // Skip mutation when neither the previous nor the next synthesis
         // produced any names — saves work on agents without dynamic
