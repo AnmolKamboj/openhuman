@@ -814,6 +814,9 @@ fn spec_views_stay_consistent_for_a_tool_less_agent() {
         .chat_model(model)
         .tools(Vec::new())
         .memory(crate::openhuman::memory::test_support::noop_memory())
+        .tool_dispatcher(Box::new(
+            crate::openhuman::agent::dispatcher::XmlToolDispatcher,
+        ))
         .build()
         .expect("a tool-less agent is a legal build");
 
