@@ -48,6 +48,8 @@ use crate::openhuman::memory::api::provider::retrieval::{FastRetrieveQuery, Retr
 use crate::openhuman::memory::source_scope::as_bus_scope;
 use crate::openhuman::tools::{Tool, ToolCategory, ToolSpec};
 use tinyagents_harness::tool::SandboxMode as TinyagentsSandboxMode;
+
+include!("runner_part_01.rs");
 use tinyagents_harness::workspace::WorkspaceDescriptor;
 
 use super::prompt::{
@@ -107,39 +109,6 @@ pub(super) fn tier_gate_decision(
         });
     }
     Ok(())
-}
-
-async fn filter_cached_toolkit_actions_with_current_scope(
-    agent_id: &str,
-    toolkit: &str,
-    config: &crate::openhuman::config::Config,
-    actions: &[crate::openhuman::agent::context::prompt::ConnectedIntegrationTool],
-) -> Vec<crate::openhuman::agent::context::prompt::ConnectedIntegrationTool> {
-    let pref =
-        crate::openhuman::integrations::composio::ops::load_user_scope_pref(config, toolkit).await;
-    let before = actions.len();
-    let filtered: Vec<_> = actions
-        .iter()
-        .filter(|action| {
-            crate::openhuman::integrations::composio::providers::is_action_visible_with_pref(
-                &action.name,
-                &pref,
-            )
-        })
-        .cloned()
-        .collect();
-    tracing::debug!(
-        agent_id = %agent_id,
-        toolkit = %toolkit,
-        cached_actions = before,
-        visible_actions = filtered.len(),
-        hidden_actions = before.saturating_sub(filtered.len()),
-        read = pref.read,
-        write = pref.write,
-        admin = pref.admin,
-        "[subagent_runner:typed] re-filtered cached toolkit catalogue with current user scope"
-    );
-    filtered
 }
 
 /// Definition id of the pure-retrieval memory agent, reached from chat as the

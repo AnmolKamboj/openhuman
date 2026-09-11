@@ -25,6 +25,7 @@
 mod tests;
 include!("middleware_part_01.rs");
 include!("middleware_part_02.rs");
+include!("middleware_part_07.rs");
 include!("middleware_part_03.rs");
 include!("middleware_part_04.rs");
 include!("middleware_part_05.rs");
