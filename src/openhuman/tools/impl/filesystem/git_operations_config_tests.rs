@@ -9,7 +9,9 @@
 //! still resolves `GitOperationsTool` the way it did before the split, and so
 //! the fixtures in the sibling test module stay reachable.
 
-use super::super::git_operations_config::normalise_config_key;
+use super::super::git_operations_config::{
+    normalise_config_key, NEUTRALISED_CONFIG, SHELL_NEUTRALISED_CONFIG,
+};
 // The fixtures stay in `git_operations_tests.rs` and are shared rather than
 // duplicated: both modules are children of `git_operations`, so `pub(super)`
 // there makes them reachable here.
