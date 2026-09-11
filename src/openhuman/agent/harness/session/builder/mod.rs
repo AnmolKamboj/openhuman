@@ -9,6 +9,7 @@
 mod factory;
 mod helpers;
 mod setters;
+mod setters_more;
 
 #[cfg(test)]
 mod builder_tests;
