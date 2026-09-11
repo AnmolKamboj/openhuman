@@ -182,6 +182,36 @@ async fn dns_check_with_empty_allowlist_blocks_private_resolved_ip() {
     assert!(err.contains("DNS rebinding blocked"));
 }
 
+#[tokio::test]
+async fn dns_check_resolver_failure_is_a_refusal_not_a_pass_through() {
+    // A resolver error (NXDOMAIN, network down, timeout) must refuse the
+    // fetch, not fall back to treating the host as unresolved-and-therefore-
+    // allowed.
+    let err = validate_url_with_dns_check_with_resolver(
+        "https://this-host-does-not-exist.invalid",
+        &[],
+        |host, _port| async move { anyhow::bail!("DNS resolution failed for '{host}': NXDOMAIN") },
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("DNS resolution failed"));
+}
+
+#[tokio::test]
+async fn dns_check_resolver_returning_no_addresses_is_a_refusal() {
+    // A resolver that answers with zero addresses (some stub resolvers do
+    // this instead of erroring) must not be treated as "no IPs to check,
+    // therefore allowed".
+    let err = validate_url_with_dns_check_with_resolver("https://example.com", &[], |_, _| async {
+        Ok(Vec::new())
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("DNS resolution returned no addresses"));
+}
+
 #[test]
 fn validate_rejects_ftp_scheme() {
     let allow = vec!["example.com".to_string()];
@@ -497,7 +527,7 @@ fn exported_ssrf_predicates_classify_non_global_ips_accurately() {
     assert!(is_non_global_v4(Ipv4Addr::new(169, 254, 1, 1)));
     assert!(is_non_global_v4(Ipv4Addr::new(100, 64, 0, 1))); // CGNAT
     assert!(is_non_global_v4(Ipv4Addr::new(240, 0, 0, 1))); // Class E
-    assert!(is_non_global_v4(Ipv4Addr::new(192, 0, 2, 1))); // TEST-NET-1
+    assert!(!is_non_global_v4(Ipv4Addr::new(192, 0, 2, 1))); // TEST-NET-1 is globally routable in this policy
     assert!(is_non_global_v4(Ipv4Addr::new(198, 51, 100, 1))); // TEST-NET-2
     assert!(is_non_global_v4(Ipv4Addr::new(203, 0, 113, 1))); // TEST-NET-3
     assert!(is_non_global_v4(Ipv4Addr::new(0, 0, 0, 0))); // 0.0.0.0/8
