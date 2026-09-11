@@ -288,7 +288,9 @@ fn use_skill_survives_a_ceiling_that_excludes_it_when_a_pack_is_still_reachable(
     // `run_workflow`) exceeded the channel's permission ceiling.
     let session = session_allowing(&["run_workflow"]);
     assert!(
-        !session.allowed_tool_names.contains(crate::openhuman::tools::toolpacks::USE_SKILL),
+        !session
+            .allowed_tool_names
+            .contains(crate::openhuman::tools::toolpacks::USE_SKILL),
         "precondition: use_skill itself is not in the allowlist"
     );
 
