@@ -1,5 +1,5 @@
 //! `AgentBuilder` fluent setters. See `builder_build.rs` for the `build()`
-//! validator that assembles the final [`Agent`].
+//! validator that assembles the final `Agent`.
 
 use crate::openhuman::agent::harness::session::types::AgentBuilder;
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
