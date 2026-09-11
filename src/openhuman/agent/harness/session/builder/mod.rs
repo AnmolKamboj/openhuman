@@ -119,8 +119,22 @@ pub(super) fn visible_tool_specs_for_policy(
     tool_specs
         .iter()
         .filter(|spec| {
-            (visible_names.is_empty() || visible_names.contains(&spec.name))
-                && tool_policy.is_allowed(&spec.name)
+            if !(visible_names.is_empty() || visible_names.contains(&spec.name)) {
+                return false;
+            }
+            // `use_skill`'s own listing action (`skill` named, no `tool`) is
+            // always `ReadOnly` — see `UseSkillTool::permission_level_with_args`.
+            // Its argument-less `permission_level()` instead reports the max
+            // over every packed tool, because that IS the honest ceiling for a
+            // *named* call — but `tool_policy.is_allowed` was built from that
+            // same argument-less ceiling, so one Dangerous packed tool anywhere
+            // made the whole proxy fail this filter and vanish from the wire,
+            // hiding every other pack's tools along with it. `scope_use_skill_spec`
+            // below already does the real per-tool narrowing via `is_callable`
+            // (and drops the spec entirely when nothing survives), so this
+            // filter only needs to gate *other* tools on the static ceiling.
+            spec.name == crate::openhuman::tools::toolpacks::USE_SKILL
+                || tool_policy.is_allowed(&spec.name)
         })
         .cloned()
         .filter_map(|mut spec| {
