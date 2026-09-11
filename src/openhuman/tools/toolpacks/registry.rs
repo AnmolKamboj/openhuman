@@ -224,15 +224,26 @@ pub const PACKS: &[ToolPack] = &[
         owners: &["task_manager_agent"],
     },
     ToolPack {
-        id: "thread_goals",
-        // Named for the scope, not the noun. There are two goal surfaces and
-        // they are different things: the `goals` tool holds the user's durable
-        // long-term objectives in memory, while these three hold the
-        // completion contract for one conversation thread. This pack was
-        // called `goals` and read as the other one.
-        summary: "The completion contract for THIS thread: read, set and complete the objective the current conversation is working toward. Not the user's long-term goals (that is the `goals` tool).",
-        tools: &["goal_set", "goal_get", "goal_complete"],
-        owners: &[],
+        id: "goals",
+        // Everything about goals EXCEPT closing one.
+        //
+        // Two different surfaces live here, and the pack is the seam that lets
+        // the model find either: `goals` is the user's durable long-term
+        // objectives held in memory, `goal_get` / `goal_set` are the
+        // completion contract for one conversation thread. Both are things a
+        // user edits far more often than an agent does, and both stayed
+        // user-reachable — the `memory_goals.*` and `thread_goals.*` RPC the
+        // UI drives is untouched by the withholding.
+        //
+        // `goal_complete` is deliberately NOT a member. Closing a goal is the
+        // one goal operation an agent reaches for reactively, at the end of
+        // work it has just finished, and a `use_skill` round trip at that
+        // moment buys nothing: the alternative to a visible `goal_complete` is
+        // an objective that silently stays open and keeps driving autonomous
+        // continuation. Same reasoning as `DELIBERATELY_UNPACKED_FLEET_TOOLS`.
+        summary: "Read, add and edit goals: the user's durable long-term objectives, and the objective THIS thread is working toward. Closing one is the separate, always-available `goal_complete`.",
+        tools: &["goals", "goal_get", "goal_set"],
+        owners: &["goals_agent"],
     },
     ToolPack {
         id: "app_update",
