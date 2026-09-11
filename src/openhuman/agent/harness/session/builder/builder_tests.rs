@@ -268,3 +268,45 @@ fn a_realistic_withheld_session_keeps_its_packs_advertised() {
         load.description
     );
 }
+
+/// **Listing visibility must not ride on the named-call permission ceiling.**
+///
+/// `UseSkillTool::permission_level()` reports the MAX over every packed
+/// tool — correct for a *named* call, where the worst case genuinely is the
+/// most dangerous packed tool. But `tool_policy.is_allowed(&spec.name)` is
+/// built from that same argument-less ceiling, so a session excluding
+/// `use_skill` from `allowed_tool_names` (exactly what the real engine does
+/// when one packed tool exceeds the channel's permission ceiling) must not
+/// erase the whole proxy — `use_skill`'s own listing action
+/// (`skill` alone, no `tool`) is always `ReadOnly` per
+/// `permission_level_with_args`, and every OTHER pack's tools stay reachable
+/// through it regardless of what one dangerous tool in some other pack needs.
+#[test]
+fn use_skill_survives_a_ceiling_that_excludes_it_when_a_pack_is_still_reachable() {
+    // `allowed_tool_names` deliberately omits `USE_SKILL` itself — simulating
+    // the real engine having excluded it because *some* packed tool (not
+    // `run_workflow`) exceeded the channel's permission ceiling.
+    let session = session_allowing(&["run_workflow"]);
+    assert!(
+        !session.allowed_tool_names.contains(crate::openhuman::tools::toolpacks::USE_SKILL),
+        "precondition: use_skill itself is not in the allowlist"
+    );
+
+    let specs: Vec<std::sync::Arc<ToolSpec>> =
+        vec![std::sync::Arc::new(use_skill_spec_from_registry())];
+    let visible: std::collections::HashSet<String> = specs.iter().map(|s| s.name.clone()).collect();
+
+    let out = visible_tool_specs_for_policy(&specs, &visible, &session);
+    let load = out
+        .iter()
+        .find(|s| s.name == crate::openhuman::tools::toolpacks::USE_SKILL)
+        .expect(
+            "use_skill must survive even though it is not itself in allowed_tool_names — \
+             its listing action is always ReadOnly and the workflows pack is reachable",
+        );
+    assert!(
+        load.description.contains("`workflows`"),
+        "the reachable pack must still be advertised: {}",
+        load.description
+    );
+}
