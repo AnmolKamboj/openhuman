@@ -98,12 +98,21 @@ fn an_unchanged_integration_set_leaves_the_tool_block_byte_stable() {
         ]
     };
 
-    // Exactly what a provider request carries: name and schema, in order.
-    let wire_block = |agent: &Agent| -> Vec<(String, String)> {
+    // Exactly what a provider request carries: name, description and schema,
+    // in order. Description is part of the wire bytes too — a stale delegate
+    // description surviving a reconcile is the same class of bug as a stale
+    // schema and this fixture should catch either.
+    let wire_block = |agent: &Agent| -> Vec<(String, String, String)> {
         agent
             .tool_specs()
             .iter()
-            .map(|spec| (spec.name.clone(), spec.parameters.to_string()))
+            .map(|spec| {
+                (
+                    spec.name.clone(),
+                    spec.description.clone(),
+                    spec.parameters.to_string(),
+                )
+            })
             .collect()
     };
 
