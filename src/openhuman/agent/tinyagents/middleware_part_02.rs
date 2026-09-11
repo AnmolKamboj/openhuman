@@ -276,6 +276,8 @@ fn approval_tool_name<'a>(
     }
 }
 
+}
+
 pub(super) struct ApprovalSecurityMiddleware {
     /// The same `Arc`-shared tool sets the runner registers, used to resolve a
     /// call's OpenHuman `Tool` by name so `external_effect_with_args` can gate.
