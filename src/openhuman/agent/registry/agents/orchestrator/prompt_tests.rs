@@ -595,7 +595,10 @@ fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
     let mut prose = match text.find("## Capabilities not in your tool list") {
         Some(start) => {
             let rest = &text[start + 1..];
-            let end = rest.find("\n## ").map(|i| start + 1 + i).unwrap_or(text.len());
+            let end = rest
+                .find("\n## ")
+                .map(|i| start + 1 + i)
+                .unwrap_or(text.len());
             format!("{}{}", &text[..start], &text[end..])
         }
         None => text.to_string(),
