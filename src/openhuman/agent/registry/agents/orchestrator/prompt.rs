@@ -130,6 +130,10 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
     // Empty is the harness's "everything is visible" sentinel, not "nothing
     // visible" — with no filter, nothing is withheld and the section is void.
     if ctx.visible_tool_names.is_empty() {
+        tracing::debug!(
+            agent = ctx.agent_id,
+            "[orchestrator-prompt] no visible-tool filter; nothing can be withheld"
+        );
         return String::new();
     }
     let Some(registry) = AgentDefinitionRegistry::global() else {
@@ -177,6 +181,12 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
     }
 
     if rows.is_empty() {
+        tracing::debug!(
+            agent = ctx.agent_id,
+            subagents = definition.subagents.len(),
+            visible = ctx.visible_tool_names.len(),
+            "[orchestrator-prompt] no withheld specialists to render"
+        );
         return String::new();
     }
     tracing::debug!(
