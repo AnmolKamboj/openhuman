@@ -521,6 +521,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'مفعّل دائمًا في إصدارات التطوير',
   'settings.clearAppData': 'مسح بيانات التطبيق',
   'settings.clearAppDataDesc': 'تسجيل الخروج وحذف جميع البيانات المحلية للتطبيق نهائيًا',
+  'settings.clearAppDataIrreversible': 'لا يمكن التراجع عن هذا الإجراء.',
+  'settings.clearAppDataAction': 'حذف البيانات',
   'settings.logOut': 'تسجيل الخروج',
   'settings.logOutDesc': 'تسجيل الخروج من حسابك',
   'settings.exitLocalSession': 'الخروج من الجلسة المحلية',
@@ -4838,6 +4840,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'الحياة',
   'settings.developerMenu.eventLog.disconnected': 'مفصولة',
   'settings.developerMenu.eventLog.waiting': 'ننتظر الأحداث...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'تظهر الأحداث هنا عندما تعمل الوكلاء والأدوات والنظام. لم يحدث شيء بعد.',
+  'settings.developerMenu.eventLog.notConnectedHint': 'أعد الاتصال بالنواة لاستئناف البث.',
   'settings.developerMenu.eventLog.notConnected': 'غير متصل بالنواة',
   'settings.developerMenu.eventLog.jumpToLatest': 'اقفز على آخر',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',
