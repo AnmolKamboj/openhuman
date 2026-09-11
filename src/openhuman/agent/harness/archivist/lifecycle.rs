@@ -559,7 +559,10 @@ impl ArchivistHook {
                     segment.segment_id, summary
                 );
                 crate::openhuman::memory::goals::spawn_enrich_goals(
-                    cfg.clone(),
+                    // The hook now shares the factory's `Arc<Config>`; this
+                    // detached task still owns a `Config`, so materialise one
+                    // here. Once per closed segment, not once per live agent.
+                    cfg.as_ref().clone(),
                     cfg.workspace_dir.clone(),
                     context,
                 );
