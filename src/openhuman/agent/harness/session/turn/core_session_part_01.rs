@@ -390,9 +390,9 @@ impl Agent {
         };
 
         // Enforce the required structured-output contract (issue #4117) on the
-        // accepted reply — for ALL of the branches above (normal finish, cap
-        // checkpoint, #4093 synthesized close), since each delivers a reply
-        // downstream parsing depends on. When this agent must emit a JSON block
+        // accepted reply — for the branches above that actually deliver one
+        // (normal finish, cap checkpoint, #4093 synthesized close), since each
+        // is a reply downstream parsing depends on. When this agent must emit a JSON block
         // every turn and the reply omitted it, validate-and-repair before the
         // turn is accepted, reconciling with streaming (append-only when a live
         // stream is attached, replace otherwise — see `enforce_required_output`).
@@ -403,12 +403,25 @@ impl Agent {
         // helpers below are part of the runtime slated to move into TinyAgents
         // and so speak the crate type, while the session still holds the host's
         // `AgentConfig`. See `tinyagents::config::required_output_from`.
-        let reply = if let Some(contract) = self
-            .config
-            .required_output
-            .as_ref()
-            .map(crate::openhuman::agent::tinyagents::config::required_output_from)
-        {
+        //
+        // NOT for a turn paused on `ask_user_clarification`. The reply there is
+        // the question itself, which will not carry the required block, so
+        // enforcement would spend a repair model call rewriting the very text
+        // the user is being asked to answer — and `replace_last_assistant_reply`
+        // would persist the rewrite, so the question in the transcript would
+        // stop matching the one on screen. A paused turn delivers no reply for
+        // downstream parsing to depend on; the contract applies to the answer
+        // this agent gives after the user replies, not to the asking (#6213
+        // review).
+        let required_output = if outcome.early_exit_tool.is_some() {
+            None
+        } else {
+            self.config
+                .required_output
+                .as_ref()
+                .map(crate::openhuman::agent::tinyagents::config::required_output_from)
+        };
+        let reply = if let Some(contract) = required_output {
             match self
                 .enforce_required_output(
                     &reply,
