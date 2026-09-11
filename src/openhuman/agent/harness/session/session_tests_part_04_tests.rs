@@ -120,7 +120,9 @@ fn an_unchanged_integration_set_leaves_the_tool_block_byte_stable() {
     agent.refresh_delegation_tools();
     let first = wire_block(&agent);
     assert!(
-        first.iter().any(|(name, _, _)| name.starts_with("delegate_")),
+        first
+            .iter()
+            .any(|(name, _, _)| name.starts_with("delegate_")),
         "the fixture must actually synthesise delegates, or this pins nothing"
     );
 
