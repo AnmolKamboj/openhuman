@@ -195,7 +195,11 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
     );
 
     let mut out = String::from(
-        "## Capabilities not in your tool list\n\n         These exist but their schemas are not loaded. Reach one with          `use_skill { \"skill\": \"<skill>\", \"tool\": \"<tool>\", \"args\": { … } }`;          call `use_skill` with the `skill` alone first to read the tool's arguments.          Do not tell the user a capability is unavailable because it is listed here.\n\n",
+        "## Capabilities not in your tool list\n\nThese exist but their schemas are not \
+         loaded. Reach one with `use_skill { \"skill\": \"<skill>\", \"tool\": \"<tool>\", \
+         \"args\": { … } }`; call `use_skill` with the `skill` alone first to read the \
+         tool's arguments. Do not tell the user a capability is unavailable because it \
+         is listed here.\n\n",
     );
     for (tool, intent, pack) in rows {
         let _ = writeln!(out, "- {intent} — skill `{pack}`, tool `{tool}`.");
@@ -245,8 +249,19 @@ fn resolve_definition<'r>(
 /// once it has loaded the schema.
 fn first_sentence(text: &str) -> String {
     let text = text.trim();
-    if let Some(end) = text.find(". ") {
-        return text[..=end].trim_end().to_string();
+    for (idx, _) in text.match_indices(". ") {
+        // "…an ALREADY-CONNECTED MCP server (e.g. `gmail`)…" is one sentence.
+        // An abbreviation carries a second period two bytes back, and a real
+        // sentence boundary is followed by a capital; requiring both keeps the
+        // row readable instead of cutting it mid-parenthetical.
+        let is_abbreviation = text[..idx].ends_with('.') || text[..idx].ends_with(". ");
+        let starts_new = text[idx + 2..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase());
+        if !is_abbreviation && starts_new {
+            return text[..=idx].trim_end().to_string();
+        }
     }
     if text.chars().count() <= 200 {
         return text.to_string();
