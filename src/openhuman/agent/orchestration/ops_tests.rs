@@ -4,7 +4,7 @@ use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::fork_context::{with_parent_context, ParentExecutionContext};
 use crate::openhuman::config::AgentConfig;
 use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
-use crate::openhuman::tools::{Tool, ToolSpec};
+use crate::openhuman::tools::Tool;
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use std::sync::{
