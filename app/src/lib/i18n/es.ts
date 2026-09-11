@@ -547,6 +547,8 @@ const messages: TranslationMap = {
   'settings.clearAppData': 'Borrar datos de la app',
   'settings.clearAppDataDesc':
     'Cerrar sesión y eliminar permanentemente todos los datos locales de la app',
+  'settings.clearAppDataIrreversible': 'Esto no se puede deshacer.',
+  'settings.clearAppDataAction': 'Borrar datos',
   'settings.logOut': 'Cerrar sesión',
   'settings.logOutDesc': 'Salir de tu cuenta',
   'settings.exitLocalSession': 'Salir de la sesión local',
@@ -5041,6 +5043,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Vivir',
   'settings.developerMenu.eventLog.disconnected': 'desconectado',
   'settings.developerMenu.eventLog.waiting': 'Esperando eventos...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Los eventos aparecen aquí a medida que los agentes, las herramientas y el sistema trabajan. Todavía no ha ocurrido nada.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Vuelve a conectar con el core para reanudar el flujo.',
   'settings.developerMenu.eventLog.notConnected': 'No conectado al núcleo',
   'settings.developerMenu.eventLog.jumpToLatest': 'Saltar a lo más reciente',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

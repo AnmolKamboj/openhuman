@@ -98,6 +98,23 @@ pub(super) fn visible_tool_specs_for_policy(
     visible_names: &std::collections::HashSet<String>,
     tool_policy: &ToolPolicySession,
 ) -> Vec<Arc<ToolSpec>> {
+    // `load_skill`'s description carries the pack index, and its `skill` enum
+    // carries the pack ids. Both are built once in `LoadSkillTool::new`, before
+    // any session exists, so every agent was told all ten packs were loadable —
+    // including ones it can call nothing in. The model went, found out, and came
+    // back.
+    //
+    // This is the only place that turns tools into the specs a provider sees AND
+    // holds the session, so it is where the invitation is made to agree with the
+    // gate. The same predicate the gate uses (`decision_for(..).is_denied()`),
+    // not `is_allowed` — matching the filter above would re-introduce the two
+    // sources of truth this whole fix exists to collapse.
+    // `blocks_execution`, not `is_denied`: a withheld packed tool is
+    // `HideFromPrompt` and perfectly callable through `use_skill`. Using
+    // `is_denied` here would drop every pack from the index and then drop
+    // `load_skill` / `use_skill` themselves — the exact capability the pack
+    // mechanism exists to preserve.
+    let is_callable = |name: &str| !tool_policy.decision_for(name).blocks_execution();
     tool_specs
         .iter()
         .filter(|spec| {
@@ -105,6 +122,31 @@ pub(super) fn visible_tool_specs_for_policy(
                 && tool_policy.is_allowed(&spec.name)
         })
         .cloned()
+        .filter_map(|mut spec| {
+            if spec.name == crate::openhuman::tools::toolpacks::LOAD_SKILL {
+                // `false` means no pack has a callable tool: an empty index and
+                // an empty enum are not a tool, so drop it rather than ship one.
+                // `Arc::make_mut`, not `&mut spec`: the three spec views share
+                // their leaves, so rewriting the pack index through the `Arc`
+                // would rewrite it for every view that holds this schema — and
+                // `durable_tool_specs` is meant to stay the unscoped truth.
+                // This copies exactly the one spec being rewritten and leaves
+                // the other ~48 visible schemas shared.
+                return crate::openhuman::tools::toolpacks::scope_load_skill_spec(
+                    Arc::make_mut(&mut spec),
+                    &is_callable,
+                )
+                .then_some(spec);
+            }
+            if spec.name == crate::openhuman::tools::toolpacks::USE_SKILL {
+                // `use_skill` is only reachable through a loaded pack, so it
+                // goes wherever `load_skill` goes.
+                let any_callable =
+                    !crate::openhuman::tools::toolpacks::callable_pack_ids(&is_callable).is_empty();
+                return any_callable.then_some(spec);
+            }
+            Some(spec)
+        })
         .collect()
 }
 
