@@ -714,3 +714,110 @@ fn from_config_keeps_build_time_delegation_tools_out_of_the_durable_registry() {
         );
     }
 }
+
+/// The three spec views an agent keeps share their leaf schemas.
+///
+/// `durable_tool_specs` is a prefix of `tool_specs`, and `visible_tool_specs`
+/// is a filtered subset of it. Before openhuman#6218 each was an independent
+/// `Vec<ToolSpec>`, so every JSON-Schema `parameters` value was resident up to
+/// three times per live agent — ~1.1 MiB of the ~2.5 MiB marginal cost of a
+/// `fleet` agent. Pointer identity is the property that keeps it at one copy,
+/// so assert it directly rather than asserting equal contents (which the old
+/// deep-cloning shape also satisfied).
+#[test]
+fn the_three_spec_views_share_their_leaf_schemas() {
+    crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global_builtins().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+
+    let agent = crate::openhuman::agent::Agent::from_config_for_agent(&config, "orchestrator")
+        .expect("orchestrator session build");
+
+    let durable = agent.durable_tool_specs_arc();
+    let all = agent.tool_specs_arc();
+    let visible = agent.visible_tool_specs_arc();
+
+    assert!(
+        !durable.is_empty(),
+        "the orchestrator carries a durable registry, so there is something to share"
+    );
+    assert!(
+        durable.len() <= all.len(),
+        "the durable set is a prefix of the full set"
+    );
+
+    for (i, spec) in durable.iter().enumerate() {
+        assert!(
+            std::sync::Arc::ptr_eq(spec, &all[i]),
+            "durable spec `{}` must be the same allocation as the full view's entry, \
+             not a deep copy",
+            spec.name
+        );
+    }
+
+    assert!(
+        !visible.is_empty(),
+        "the orchestrator advertises tools, so the visible view is non-empty"
+    );
+    for spec in visible.iter() {
+        let shared = all
+            .iter()
+            .any(|candidate| std::sync::Arc::ptr_eq(candidate, spec));
+        assert!(
+            shared,
+            "visible spec `{}` must point at the full view's allocation, not a deep copy",
+            spec.name
+        );
+    }
+}
+
+/// Failure path: a duplicate name must not smuggle a *different* allocation
+/// through the dedup.
+///
+/// `dedup_visible_tool_specs` keeps the first occurrence. With shared leaves
+/// the survivor must still be the exact entry that was handed in — a helper
+/// that rebuilt the kept spec would reintroduce the per-agent copy the sharing
+/// exists to remove, while every content-equality assertion still passed.
+#[test]
+fn dedup_keeps_the_original_allocation_of_the_winning_spec() {
+    let first = std::sync::Arc::new(spec("research"));
+    let mut shadow = spec("research");
+    shadow.description = "the delegate that must lose".to_string();
+    let shadow = std::sync::Arc::new(shadow);
+    let other = std::sync::Arc::new(spec("plan"));
+
+    let deduped = dedup_visible_tool_specs(vec![
+        std::sync::Arc::clone(&first),
+        std::sync::Arc::clone(&other),
+        std::sync::Arc::clone(&shadow),
+    ]);
+
+    assert_eq!(deduped.len(), 2, "the shadowing duplicate must be dropped");
+    assert!(
+        std::sync::Arc::ptr_eq(&deduped[0], &first),
+        "the surviving `research` spec must be the first allocation, not a rebuild"
+    );
+    assert!(
+        !std::sync::Arc::ptr_eq(&deduped[0], &shadow),
+        "the shadowing delegate's schema must not reach the provider"
+    );
+    assert!(std::sync::Arc::ptr_eq(&deduped[1], &other));
+}
+
+/// Failure path: an agent with no tools at all must still build, and its three
+/// spec views must be empty rather than desynchronised.
+#[test]
+fn spec_views_stay_consistent_for_a_tool_less_agent() {
+    let agent = AgentBuilder::new()
+        .turn_model_source(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(
+            std::sync::Arc::new(tinyagents_harness::testkit::ScriptedModel::new(Vec::new())),
+        ))
+        .tools(Vec::new())
+        .memory(crate::openhuman::memory::test_support::noop_memory())
+        .build()
+        .expect("a tool-less agent is a legal build");
+
+    assert!(agent.tool_specs().is_empty());
+    assert!(agent.durable_tool_specs_arc().is_empty());
+    assert!(agent.visible_tool_specs_arc().is_empty());
+}
