@@ -14,7 +14,10 @@ import SettingsPanel from '../layout/SettingsPanel';
 import InferenceBudget from './billing/InferenceBudget';
 
 const log = createDebug('openhuman:billing:panel');
-const formatUsd = (amount: number): string => `$${amount.toFixed(2)}`;
+const formatUsd = (amount: unknown, unavailable: string): string =>
+  typeof amount === 'number' && Number.isFinite(amount) && amount >= 0
+    ? `$${amount.toFixed(2)}`
+    : unavailable;
 
 const BillingPanel = () => {
   const { t } = useT();
@@ -70,8 +73,9 @@ const BillingPanel = () => {
   // The summary's totalUsd is wallet-only (promotion + top-up), so it is not a
   // safe fallback for the account's true available balance.
   const availableUsd = teamUsage?.remainingUsd;
-  const topUpUrl = summary?.links.topUpUrl ?? `${BILLING_DASHBOARD_URL}?tab=billing`;
-  const manageUrl = summary?.links.manageUrl ?? BILLING_DASHBOARD_URL;
+  const unavailable = t('settings.billing.inferenceBudget.notAvailable');
+  const topUpUrl = summary?.links?.topUpUrl || `${BILLING_DASHBOARD_URL}?tab=billing`;
+  const manageUrl = summary?.links?.manageUrl || BILLING_DASHBOARD_URL;
 
   return (
     <SettingsPanel>
@@ -88,10 +92,7 @@ const BillingPanel = () => {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryTile
             label={t('settings.billing.subscription.currentPlan')}
-            value={
-              summary?.plan.plan ??
-              (loading ? '...' : t('settings.billing.inferenceBudget.notAvailable'))
-            }
+            value={summary?.plan?.plan ?? teamUsage?.plan?.plan ?? (loading ? '...' : unavailable)}
           />
           <SummaryTile
             label={t('settings.billing.payAsYouGo.available')}
@@ -99,28 +100,28 @@ const BillingPanel = () => {
               availableUsd === undefined
                 ? loading
                   ? '...'
-                  : t('settings.billing.inferenceBudget.notAvailable')
-                : formatUsd(availableUsd)
+                  : unavailable
+                : formatUsd(availableUsd, unavailable)
             }
           />
           <SummaryTile
             label={t('settings.billing.payAsYouGo.promotionalCredits')}
             value={
               summary
-                ? formatUsd(summary.credits.promotionBalanceUsd)
+                ? formatUsd(summary.credits?.promotionBalanceUsd, unavailable)
                 : loading
                   ? '...'
-                  : t('settings.billing.inferenceBudget.notAvailable')
+                  : unavailable
             }
           />
           <SummaryTile
             label={t('settings.billing.payAsYouGo.topUpBalance')}
             value={
               summary
-                ? formatUsd(summary.credits.teamTopupUsd)
+                ? formatUsd(summary.credits?.teamTopupUsd, unavailable)
                 : loading
                   ? '...'
-                  : t('settings.billing.inferenceBudget.notAvailable')
+                  : unavailable
             }
           />
         </div>

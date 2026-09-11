@@ -50,7 +50,7 @@ Coupon codes are redeemed against the backend (`POST /coupons/redeem`), and you 
 
 ### Where billing lives in the app
 
-The desktop **Settings → Billing** panel is read-only. It shows the current plan, promotional and top-up balances, total remaining funds, current-cycle spend, and usage breakdowns. Buttons link to the hosted web **billing dashboard**, which is the single place to manage plans, top-ups, coupons, cards, and invoices. The agent can also read billing state through default-ON tools (plan, balance, transactions, cards, coupons, the Stripe portal link); every money-moving or payment-method mutator ships **default-OFF** behind a `billing_writes` toggle, and card deletion is flagged dangerous.
+The desktop **Settings → Billing** panel is read-only. It shows the current plan, promotional and top-up balances, total remaining funds, current-cycle spend, and usage breakdowns. Buttons link to the hosted web **billing dashboard**, which is the single place to manage plans, top-ups, coupons, cards, and invoices. Other clients can reach the same hosted billing operations through the authenticated RPC controllers described below; they are not exposed as agent tools.
 
 ### RPC surface
 
