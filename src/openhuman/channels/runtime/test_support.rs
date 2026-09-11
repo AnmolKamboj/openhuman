@@ -15,17 +15,19 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::channels::context::{ChannelRuntimeContext, CHANNEL_MESSAGE_TIMEOUT_SECS};
 use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
+use crate::openhuman::channels::ChannelSystemPrompt;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig, ReliabilityConfig};
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
-use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse};
+use tinyinference::model::{ChatModel, ModelRequest, ModelResponse};
+use tinymemory_api::types::{MemoryCategory, MemoryEntry};
 
 #[derive(Debug, Clone)]
 pub struct DispatchHarnessOptions {
@@ -41,6 +43,61 @@ pub struct DispatchHarnessOptions {
     pub timeout_secs: u64,
     pub seed_history_len: usize,
     pub memory_entries: Vec<TestMemoryEntry>,
+    /// Workspace the runtime context reports; `None` falls back to the OS temp dir.
+    ///
+    /// `pub`, like every other field here, and it has to be: integration tests
+    /// under `tests/` are a separate crate, and a struct-update expression
+    /// (`..DispatchHarnessOptions::default()`) requires **every** field to be
+    /// visible — including the ones the caller never names. Added as
+    /// `pub(crate)` in `a45b1c1af`, which broke three of them with E0451.
+    pub workspace_dir: Option<PathBuf>,
+    /// The prompt every dispatch is seeded with; the default pins a fixed literal.
+    /// Pass one `ChannelSystemPrompt::refreshing` clone to several dispatches
+    /// to observe a re-render across them.
+    ///
+    /// Wrapped in [`HarnessSystemPrompt`] rather than exposing
+    /// `Option<ChannelSystemPrompt>` — see that type for why.
+    pub system_prompt: HarnessSystemPrompt,
+}
+
+/// Opaque carrier for the harness's system prompt.
+///
+/// [`DispatchHarnessOptions`] is `pub` and integration tests build it with
+/// `..DispatchHarnessOptions::default()`, so every field must be visible from
+/// another crate. The prompt itself must **not** become visible with it:
+/// `ChannelSystemPrompt` is `pub(crate)`, its `Refreshing` variant wraps a
+/// `Mutex`-backed render cache (`RefreshingInner`), and widening it would
+/// cascade to `RefreshingInner` and `ChannelPromptInputs` — production types
+/// with real invariants — purely to satisfy a test harness. A `pub` field of a
+/// `pub(crate)` type is also exactly what the `private_interfaces` lint exists
+/// to catch, and `-D warnings` makes that a hard error.
+///
+/// A `pub` newtype with a **private** field settles both: the field is visible,
+/// the type inside it is not. An out-of-crate caller can therefore only ever
+/// get the default (no prompt), which is all those tests want; in-crate tests
+/// set one with [`HarnessSystemPrompt::new`].
+#[derive(Clone, Default)]
+pub struct HarnessSystemPrompt(Option<ChannelSystemPrompt>);
+
+impl HarnessSystemPrompt {
+    /// Seed the harness with `prompt`. Crate-internal, because the prompt is.
+    pub(crate) fn new(prompt: ChannelSystemPrompt) -> Self {
+        Self(Some(prompt))
+    }
+
+    /// The prompt, if one was set.
+    pub(crate) fn into_inner(self) -> Option<ChannelSystemPrompt> {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for HarnessSystemPrompt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Some(prompt) => f.debug_tuple("HarnessSystemPrompt").field(prompt).finish(),
+            None => f.write_str("HarnessSystemPrompt(default)"),
+        }
+    }
 }
 
 impl Default for DispatchHarnessOptions {
@@ -58,6 +115,8 @@ impl Default for DispatchHarnessOptions {
             timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
             seed_history_len: 0,
             memory_entries: Vec::new(),
+            workspace_dir: None,
+            system_prompt: HarnessSystemPrompt::default(),
         }
     }
 }
@@ -188,7 +247,7 @@ impl ChatModel<()> for HarnessModel {
         &self,
         _state: &(),
         request: ModelRequest,
-    ) -> tinyagents::Result<ModelResponse> {
+    ) -> tinyinference::Result<ModelResponse> {
         let message = request
             .messages
             .last()
@@ -198,16 +257,19 @@ impl ChatModel<()> for HarnessModel {
     }
 }
 
+/// A provider whose `recall` answers with a fixed entry list regardless of
+/// query.
+///
+/// Deliberately not [`InMemoryProvider`](crate::openhuman::memory::guard::in_memory::InMemoryProvider):
+/// that one substring-matches, and these harness entries are scripted to come
+/// back for whatever the test sends. The point here is the channel pipeline
+/// downstream of recall, not recall itself.
 struct HarnessMemory {
     entries: Vec<MemoryEntry>,
 }
 
 #[async_trait]
-impl Memory for HarnessMemory {
-    fn name(&self) -> &str {
-        "harness-memory"
-    }
-
+impl tinymemory_api::provider::MemoryCore for HarnessMemory {
     async fn store(
         &self,
         _namespace: &str,
@@ -215,21 +277,25 @@ impl Memory for HarnessMemory {
         _content: &str,
         _category: MemoryCategory,
         _session_id: Option<&str>,
-    ) -> Result<()> {
+        _taint: tinymemory_api::types::MemoryTaint,
+    ) -> std::result::Result<(), tinymemory_api::error::MemoryError> {
         Ok(())
     }
 
-    async fn recall(
+    async fn get(
         &self,
-        _query: &str,
-        _limit: usize,
-        _opts: RecallOpts<'_>,
-    ) -> Result<Vec<MemoryEntry>> {
-        Ok(self.entries.clone())
+        _namespace: &str,
+        _key: &str,
+    ) -> std::result::Result<Option<MemoryEntry>, tinymemory_api::error::MemoryError> {
+        Ok(None)
     }
 
-    async fn get(&self, _namespace: &str, _key: &str) -> Result<Option<MemoryEntry>> {
-        Ok(None)
+    async fn forget(
+        &self,
+        _namespace: &str,
+        _key: &str,
+    ) -> std::result::Result<bool, tinymemory_api::error::MemoryError> {
+        Ok(false)
     }
 
     async fn list(
@@ -237,24 +303,73 @@ impl Memory for HarnessMemory {
         _namespace: Option<&str>,
         _category: Option<&MemoryCategory>,
         _session_id: Option<&str>,
-    ) -> Result<Vec<MemoryEntry>> {
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
         Ok(Vec::new())
     }
 
-    async fn forget(&self, _namespace: &str, _key: &str) -> Result<bool> {
-        Ok(false)
-    }
-
-    async fn namespace_summaries(&self) -> Result<Vec<NamespaceSummary>> {
+    async fn namespaces(
+        &self,
+    ) -> std::result::Result<
+        Vec<tinymemory_api::types::NamespaceSummary>,
+        tinymemory_api::error::MemoryError,
+    > {
         Ok(Vec::new())
     }
+}
 
-    async fn count(&self) -> Result<usize> {
-        Ok(self.entries.len())
+#[async_trait]
+impl tinymemory_api::provider::MemoryRecall for HarnessMemory {
+    async fn recall(
+        &self,
+        _query: &str,
+        _limit: usize,
+        _opts: &tinymemory_api::recall::OwnedRecallOpts,
+        _scope: Option<&tinymemory_api::provider::types::SourceScope>,
+    ) -> std::result::Result<Vec<MemoryEntry>, tinymemory_api::error::MemoryError> {
+        Ok(self.entries.clone())
+    }
+}
+
+#[async_trait]
+impl tinymemory_api::provider::MemoryPortability for HarnessMemory {
+    async fn export_page(
+        &self,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> std::result::Result<
+        tinymemory_api::provider::types::ExportPage,
+        tinymemory_api::error::MemoryError,
+    > {
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not export"
+        )))
     }
 
-    async fn health_check(&self) -> bool {
-        true
+    async fn import_records(
+        &self,
+        _records: Vec<tinymemory_api::provider::types::ExportRecord>,
+    ) -> std::result::Result<
+        tinymemory_api::provider::types::ImportOutcome,
+        tinymemory_api::error::MemoryError,
+    > {
+        Err(tinymemory_api::error::MemoryError::Other(anyhow::anyhow!(
+            "harness memory does not import"
+        )))
+    }
+}
+
+#[async_trait]
+impl tinymemory_api::provider::MemoryProvider for HarnessMemory {
+    fn driver_id(&self) -> &str {
+        "harness-memory"
+    }
+
+    fn capabilities(&self) -> tinymemory_api::capabilities::Capabilities {
+        tinymemory_api::capabilities::Capabilities::mandatory()
+    }
+
+    async fn health(&self) -> tinymemory_api::health::MemoryHealth {
+        tinymemory_api::health::MemoryHealth::Ready
     }
 }
 
@@ -289,7 +404,7 @@ fn memory_entry(input: TestMemoryEntry) -> MemoryEntry {
         timestamp: "now".to_string(),
         session_id: None,
         score: input.score,
-        taint: crate::openhuman::memory::MemoryTaint::Internal,
+        taint: tinymemory_api::types::MemoryTaint::Internal,
     }
 }
 
@@ -430,21 +545,30 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
         );
     }
 
+    let harness_system_prompt = options
+        .system_prompt
+        .clone()
+        .into_inner()
+        .unwrap_or_else(|| ChannelSystemPrompt::fixed("system prompt"));
+    let harness_workspace_dir = options
+        .workspace_dir
+        .clone()
+        .unwrap_or_else(std::env::temp_dir);
     let ctx = Arc::new(ChannelRuntimeContext {
         channels_by_name: Arc::new(channels_by_name),
         turn_model_source: Some(
             crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
         ),
         default_provider: Arc::new("harness-provider".to_string()),
-        memory: Arc::new(HarnessMemory {
+        memory: crate::openhuman::memory::guard::in_memory::guard_over(Arc::new(HarnessMemory {
             entries: options
                 .memory_entries
                 .into_iter()
                 .map(memory_entry)
                 .collect(),
-        }),
+        })),
         tools_registry: Arc::new(vec![Box::new(HarnessTool) as Box<dyn Tool>]),
-        system_prompt: Arc::new("system prompt".to_string()),
+        system_prompt: harness_system_prompt,
         model: Arc::new("harness-model".to_string()),
         temperature: 0.0,
         auto_save_memory: true,
@@ -457,7 +581,7 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
         inference_url: None,
         reliability: Arc::new(ReliabilityConfig::default()),
         provider_runtime_options: ProviderRuntimeOptions::default(),
-        workspace_dir: Arc::new(std::env::temp_dir()),
+        workspace_dir: Arc::new(harness_workspace_dir),
         message_timeout_secs: options.timeout_secs,
         multimodal: MultimodalConfig::default(),
         multimodal_files: MultimodalFileConfig::default(),

@@ -24,6 +24,7 @@ const Harness = ({
   catalogLoading = false,
   catalogError = null,
   onRetry,
+  providerSlug,
 }: {
   endpoint?: string;
   model?: string;
@@ -31,6 +32,7 @@ const Harness = ({
   catalogLoading?: boolean;
   catalogError?: string | null;
   onRetry?: () => void;
+  providerSlug?: string;
 }) => {
   const mode = useModelEntryMode({ endpoint, model, catalogIds: catalog.map(m => m.id) });
   return (
@@ -45,6 +47,7 @@ const Harness = ({
       label="Model"
       placeholder="model-id"
       analyticsId="test-toggle"
+      providerSlug={providerSlug}
     />
   );
 };
@@ -73,6 +76,43 @@ describe('ModelEntryField', () => {
     const malformed = 'gpt-5.6-terra~p=reasoning:%E0%A4%A';
 
     expect(parseCursorSelection(malformed)).toEqual({ id: malformed, parameters: new Map() });
+  });
+
+  it('groups Cursor model variants and updates encoded parameters', () => {
+    const onModelChange = vi.fn();
+    const catalog = [
+      { id: 'gpt-5.6~p=reasoning:high~p=fast:true' },
+      { id: 'gpt-5.6~p=reasoning:low~p=fast:false' },
+    ];
+    // Render through a small inline harness so the hook remains mounted with
+    // the same provider/model state as the production picker.
+    const CursorHarness = () => {
+      const entryMode = useModelEntryMode({
+        endpoint: 'http://127.0.0.1:8790/v1',
+        model: 'gpt-5.6',
+        catalogIds: catalog.map(m => m.id),
+      });
+      return (
+        <ModelEntryField
+          mode={entryMode}
+          model="gpt-5.6"
+          onModelChange={onModelChange}
+          catalog={catalog}
+          label="Model"
+          placeholder="model-id"
+          analyticsId="test-cursor"
+          providerSlug="cursor"
+        />
+      );
+    };
+
+    renderWithProviders(<CursorHarness />);
+    expect(screen.getByRole('combobox', { name: 'Model' })).toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    fireEvent.change(screen.getByRole('combobox', { name: /Reasoning effort/i }), {
+      target: { value: 'high' },
+    });
+    expect(onModelChange).toHaveBeenCalledWith('gpt-5.6~p=reasoning:high');
   });
 
   it('relabels the field for an Azure endpoint and opens on free text', () => {
