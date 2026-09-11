@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import BillingPanel from './BillingPanel';
@@ -88,6 +88,23 @@ describe('<BillingPanel />', () => {
     expect(screen.getByText('$4.50')).toBeInTheDocument();
     expect(screen.getByText('$10.00')).toBeInTheDocument();
     expect(screen.getByText(/Spent \$6\.00 this cycle/i)).toBeInTheDocument();
+  });
+
+  it('shows each response without waiting for the other request to settle', async () => {
+    let resolveUsage: (value: typeof usage) => void = () => undefined;
+    getTeamUsageMock.mockReturnValue(
+      new Promise<typeof usage>(resolve => {
+        resolveUsage = resolve;
+      })
+    );
+    render(<BillingPanel />);
+
+    expect(await screen.findByText('$4.50')).toBeInTheDocument();
+    expect(screen.getByText('$10.00')).toBeInTheDocument();
+    expect(screen.queryByText('$39.50')).not.toBeInTheDocument();
+
+    await act(async () => resolveUsage(usage));
+    expect(await screen.findByText('$39.50')).toBeInTheDocument();
   });
 
   it('uses backend-provided dashboard URLs for billing actions', async () => {
