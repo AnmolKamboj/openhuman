@@ -398,7 +398,6 @@ impl AgentBuilder {
         self
     }
 
-
     /// Validates the configuration and constructs a new `Agent` instance.
     ///
     /// This method is responsible for wiring together the provided components,
