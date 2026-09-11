@@ -336,6 +336,7 @@ pub fn is_non_global_v4(v4: std::net::Ipv4Addr) -> bool {
         || (a == 100 && (64..=127).contains(&b))
         || a >= 240
         || (a == 192 && b == 0 && c == 0)
+        || (a == 192 && b == 88 && c == 99)
         || (a == 198 && b == 51 && c == 100)
         || (a == 203 && b == 0 && c == 113)
         || (a == 198 && (18..=19).contains(&b))
@@ -353,6 +354,10 @@ pub fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
         || (segs[0] & 0xfe00) == 0xfc00
         || (segs[0] & 0xffc0) == 0xfe80
         || (segs[0] == 0x2001 && segs[1] == 0x0db8)
+        || (segs[0] == 0x0100 && segs[1] == 0 && segs[2] == 0 && segs[3] <= 1)
+        || (segs[0] == 0x2001 && segs[1] == 0x0002 && segs[2] == 0)
+        || (segs[0] & 0xfff0) == 0x3ff0
+        || segs[0] == 0x5f00
         || v6.to_ipv4_mapped().is_some_and(is_non_global_v4)
 }
 
