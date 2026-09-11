@@ -1247,7 +1247,7 @@ async fn run_typed_mode(
     filtered_specs.extend(
         allowed_indices
             .iter()
-            .map(|&i| parent.all_tool_specs[i].clone()),
+            .map(|&i| parent.all_tool_specs[i].as_ref().clone()),
     );
     let mut allowed_names: HashSet<String> = allowed_indices
         .iter()

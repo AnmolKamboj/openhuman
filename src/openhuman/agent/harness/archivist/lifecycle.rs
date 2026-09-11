@@ -91,7 +91,7 @@ impl ArchivistHook {
     /// `new`, `disabled` or `new_with_stubs*` — and the tests that do need a
     /// deterministic LLM install the task-local around the call itself, which
     /// is where it has to be anyway for `summarise` to see it.
-    pub fn with_config(mut self, config: Config) -> Self {
+    pub fn with_config(mut self, config: std::sync::Arc<Config>) -> Self {
         // Probe the summariser: can this host build a chat model for the recap
         // role right now? The model is dropped immediately — see above.
         let probe = crate::openhuman::inference::provider::create_chat_model_with_model_id(
@@ -559,7 +559,10 @@ impl ArchivistHook {
                     segment.segment_id, summary
                 );
                 crate::openhuman::memory::goals::spawn_enrich_goals(
-                    cfg.clone(),
+                    // The hook now shares the factory's `Arc<Config>`; this
+                    // detached task still owns a `Config`, so materialise one
+                    // here. Once per closed segment, not once per live agent.
+                    cfg.as_ref().clone(),
                     cfg.workspace_dir.clone(),
                     context,
                 );
