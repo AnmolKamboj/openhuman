@@ -287,7 +287,7 @@ impl Agent {
         // `&[ToolSpec]`. Materialise a borrow-slice for the call: this is one
         // transient copy per system-prompt build, not a per-agent resident one,
         // and keeping it here is what lets the trait stay source-compatible.
-        let visible_specs_owned: Vec<ToolSpec> = self
+        let visible_specs_owned: Vec<crate::openhuman::tools::ToolSpec> = self
             .visible_tool_specs
             .iter()
             .map(|spec| spec.as_ref().clone())
