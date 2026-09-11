@@ -76,19 +76,18 @@ fn for_each_pack_tool(
 ///
 /// This is the whole compression: the tools stay registered and executable, but
 /// their schemas never reach the provider. An agent that declared none of the
-/// packed tools is unaffected, and `load_skill` / `use_skill` are only added
-/// when the agent actually lost something to a pack — otherwise every narrow
-/// sub-agent would grow two tools that can only report an empty skill.
+/// packed tools is unaffected, and `use_skill` is only added when the agent
+/// actually lost something to a pack — otherwise every narrow sub-agent would
+/// grow a tool that can only report an empty skill.
 ///
 /// `agent_id` selects which packs apply: a pack is skipped for the specialist
 /// that owns its family (see [`super::types::ToolPack::owners`]), because
 /// withholding a belt from the agent that exists to run it only buys a
-/// `load_skill` round trip per turn.
+/// `use_skill` round trip per turn.
 ///
 /// A caller with an *empty* `visible` set means "everything is visible"
 /// (the harness's historical sentinel), so there is nothing to subtract from
 /// and the set is left alone.
-
 pub fn strip_packed_from_visible(visible: &mut HashSet<String>, agent_id: &str) {
     if visible.is_empty() {
         return;
