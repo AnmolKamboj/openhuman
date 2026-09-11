@@ -335,7 +335,7 @@ pub fn is_non_global_v4(v4: std::net::Ipv4Addr) -> bool {
         || v4.is_multicast()
         || (a == 100 && (64..=127).contains(&b))
         || a >= 240
-        || (a == 192 && b == 0 && (c == 0 || c == 2))
+        || (a == 192 && b == 0 && c == 0)
         || (a == 198 && b == 51 && c == 100)
         || (a == 203 && b == 0 && c == 113)
         || (a == 198 && (18..=19).contains(&b))
