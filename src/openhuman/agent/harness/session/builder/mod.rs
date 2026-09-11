@@ -43,12 +43,11 @@ pub(crate) fn dedup_visible_tool_specs<S: std::borrow::Borrow<ToolSpec>>(
     let mut deduped: Vec<S> = Vec::with_capacity(specs.len());
     let mut dropped: Vec<String> = Vec::new();
     for spec in specs {
-        if seen.insert(spec.borrow().name.clone()) {
-            dropped.push(spec.borrow().name.clone());
+        let name = spec.borrow().name.clone();
+        if seen.insert(name.clone()) {
             deduped.push(spec);
-            dropped.pop();
         } else {
-            dropped.push(spec.borrow().name.clone());
+            dropped.push(name);
         }
     }
     if !dropped.is_empty() {
