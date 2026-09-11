@@ -9,7 +9,7 @@ use super::*;
 /// so assert it directly rather than asserting equal contents (which the old
 /// deep-cloning shape also satisfied).
 ///
-/// One spec is exempt by design — see the `load_skill` branch below.
+/// One spec is exempt by design — see the `use_skill` branch below.
 #[test]
 fn the_three_spec_views_share_their_leaf_schemas() {
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global_builtins().unwrap();
@@ -45,31 +45,32 @@ fn the_three_spec_views_share_their_leaf_schemas() {
         !visible.is_empty(),
         "the orchestrator advertises tools, so the visible view is non-empty"
     );
-    // `load_skill` is the one deliberate exception, and it is deliberate in the
+    // `use_skill` is the one deliberate exception, and it is deliberate in the
     // other direction: `visible_tool_specs_for_policy` rewrites its pack index
     // and `skill` enum down to the packs THIS session can actually call, so the
     // visible entry must NOT be the durable one — `durable_tool_specs` stays the
     // unscoped truth, and sharing the leaf would scope it for every view that
-    // holds it. `use_skill` is filtered wholesale, never rewritten, so it shares
-    // like everything else.
+    // holds it. Every other spec is filtered wholesale, never rewritten, so it
+    // shares like everything else.
     //
     // Asserted rather than merely excluded: a future change that made the
     // rewrite mutate in place would silently scope the durable set, and a
     // change that deep-copied everything again would still pass an
     // exclusion-only test.
-    let load_skill = crate::openhuman::tools::toolpacks::LOAD_SKILL;
-    let mut saw_scoped_load_skill = false;
+    let use_skill = crate::openhuman::tools::toolpacks::USE_SKILL;
+    let mut saw_scoped_use_skill = false;
 
     for spec in visible.iter() {
         let shared = all
             .iter()
             .any(|candidate| std::sync::Arc::ptr_eq(candidate, spec));
-        if spec.name == load_skill {
+        if spec.name == use_skill {
             assert!(
                 !shared,
-                "`{load_skill}` must be scoped into its own allocation — sharing the                  leaf would rewrite the durable set's copy too"
+                "`{use_skill}` must be scoped into its own allocation — sharing the leaf would \
+                 rewrite the durable set's copy too"
             );
-            saw_scoped_load_skill = true;
+            saw_scoped_use_skill = true;
             continue;
         }
         assert!(
@@ -80,8 +81,9 @@ fn the_three_spec_views_share_their_leaf_schemas() {
     }
 
     assert!(
-        saw_scoped_load_skill,
-        "the orchestrator advertises `{load_skill}`, so the scoped-copy exception          above must actually have been exercised rather than vacuously skipped"
+        saw_scoped_use_skill,
+        "the orchestrator advertises `{use_skill}`, so the scoped-copy exception above \
+         must actually have been exercised rather than vacuously skipped"
     );
 }
 

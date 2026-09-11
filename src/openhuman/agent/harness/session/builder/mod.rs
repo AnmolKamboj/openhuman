@@ -99,8 +99,8 @@ pub(super) fn visible_tool_specs_for_policy(
     visible_names: &std::collections::HashSet<String>,
     tool_policy: &ToolPolicySession,
 ) -> Vec<Arc<ToolSpec>> {
-    // `load_skill`'s description carries the pack index, and its `skill` enum
-    // carries the pack ids. Both are built once in `LoadSkillTool::new`, before
+    // `use_skill`'s description carries the pack index, and its `skill` enum
+    // carries the pack ids. Both are built once in `UseSkillTool::new`, before
     // any session exists, so every agent was told all ten packs were loadable —
     // including ones it can call nothing in. The model went, found out, and came
     // back.
@@ -113,18 +113,32 @@ pub(super) fn visible_tool_specs_for_policy(
     // `blocks_execution`, not `is_denied`: a withheld packed tool is
     // `HideFromPrompt` and perfectly callable through `use_skill`. Using
     // `is_denied` here would drop every pack from the index and then drop
-    // `load_skill` / `use_skill` themselves — the exact capability the pack
-    // mechanism exists to preserve.
+    // `use_skill` itself — the exact capability the pack mechanism exists to
+    // preserve.
     let is_callable = |name: &str| !tool_policy.decision_for(name).blocks_execution();
     tool_specs
         .iter()
         .filter(|spec| {
-            (visible_names.is_empty() || visible_names.contains(&spec.name))
-                && tool_policy.is_allowed(&spec.name)
+            if !(visible_names.is_empty() || visible_names.contains(&spec.name)) {
+                return false;
+            }
+            // `use_skill`'s own listing action (`skill` named, no `tool`) is
+            // always `ReadOnly` — see `UseSkillTool::permission_level_with_args`.
+            // Its argument-less `permission_level()` instead reports the max
+            // over every packed tool, because that IS the honest ceiling for a
+            // *named* call — but `tool_policy.is_allowed` was built from that
+            // same argument-less ceiling, so one Dangerous packed tool anywhere
+            // made the whole proxy fail this filter and vanish from the wire,
+            // hiding every other pack's tools along with it. `scope_use_skill_spec`
+            // below already does the real per-tool narrowing via `is_callable`
+            // (and drops the spec entirely when nothing survives), so this
+            // filter only needs to gate *other* tools on the static ceiling.
+            spec.name == crate::openhuman::tools::toolpacks::USE_SKILL
+                || tool_policy.is_allowed(&spec.name)
         })
         .cloned()
         .filter_map(|mut spec| {
-            if spec.name == crate::openhuman::tools::toolpacks::LOAD_SKILL {
+            if spec.name == crate::openhuman::tools::toolpacks::USE_SKILL {
                 // `false` means no pack has a callable tool: an empty index and
                 // an empty enum are not a tool, so drop it rather than ship one.
                 // `Arc::make_mut`, not `&mut spec`: the three spec views share
@@ -133,18 +147,11 @@ pub(super) fn visible_tool_specs_for_policy(
                 // `durable_tool_specs` is meant to stay the unscoped truth.
                 // This copies exactly the one spec being rewritten and leaves
                 // the other ~48 visible schemas shared.
-                return crate::openhuman::tools::toolpacks::scope_load_skill_spec(
+                return crate::openhuman::tools::toolpacks::scope_use_skill_spec(
                     Arc::make_mut(&mut spec),
                     &is_callable,
                 )
                 .then_some(spec);
-            }
-            if spec.name == crate::openhuman::tools::toolpacks::USE_SKILL {
-                // `use_skill` is only reachable through a loaded pack, so it
-                // goes wherever `load_skill` goes.
-                let any_callable =
-                    !crate::openhuman::tools::toolpacks::callable_pack_ids(&is_callable).is_empty();
-                return any_callable.then_some(spec);
             }
             Some(spec)
         })

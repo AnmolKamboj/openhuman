@@ -621,14 +621,20 @@ impl ToolPolicyMiddleware {
         )
     }
 
-    /// Render a `load_skill` listing scoped to what this session may call.
+    /// Render a `use_skill` listing scoped to what this session may call.
     ///
     /// This lives in the middleware because the middleware is the only layer
-    /// that holds the session — `LoadSkillTool` is built once per registry and
-    /// has no idea who is calling it. Returns `None` when there is nothing to
-    /// scope (no `skill` argument, no pack handle), so the call falls through to
-    /// the tool's own `execute` unchanged.
+    /// that holds the session — `UseSkillTool` is built once per registry and
+    /// has no idea who is calling it. Only the disclosure half is rendered here:
+    /// a call that names a `tool` is the execution half, which
+    /// `channel_permission_block` has already gated and the tool's own
+    /// `execute` dispatches. Returns `None` when there is nothing to scope (a
+    /// tool named, no `skill` argument, no pack handle), so the call falls
+    /// through to the tool's own `execute` unchanged.
     fn render_skill_for_session(&self, call: &TaToolCall) -> Option<TaToolResult> {
+        if crate::openhuman::tools::toolpacks::named_tool(&call.arguments).is_some() {
+            return None;
+        }
         let skill = call
             .arguments
             .get("skill")

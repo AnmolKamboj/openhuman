@@ -100,6 +100,127 @@ fn find<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> &'a dyn Tool {
         .unwrap_or_else(|| panic!("{name} missing"))
 }
 
+/// A registry split the way a real agent's is: the pack tool in the durable
+/// vector, the packed tool in the separate synthesised one.
+///
+/// This is not a contrived shape. Every `delegate_*` tool is synthesised into
+/// `Agent::synthesized_tools`, a different `Arc` from the durable registry
+/// (#6145), and seven delegates were already packed.
+fn split_registries(
+    name: &'static str,
+    level: PermissionLevel,
+) -> (Arc<Vec<Box<dyn Tool>>>, Arc<Vec<Box<dyn Tool>>>) {
+    let mut durable: Vec<Box<dyn Tool>> = Vec::new();
+    append_pack_tools(&mut durable);
+    let durable = Arc::new(durable);
+    let synthesized: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(FakeTool {
+        name,
+        level,
+        external: false,
+        timeout: ToolTimeout::Inherit,
+    })]);
+    bind_pack_registry(&durable);
+    bind_synthesized_pack_registry(&durable, &synthesized);
+    (durable, synthesized)
+}
+
+/// A packed **delegate** must be reachable, not merely withheld.
+///
+/// It was not. `use_skill` was bound only to the durable registry, and no
+/// `delegate_*` tool is in it — so `do_crypto`, `run_skill`, `setup_skills`,
+/// `build_workflow`, `discover_workflows`, `use_mcp_server` and
+/// `setup_mcp_server` were all dropped from the wire and then unreachable
+/// through the route that was supposed to replace them. Withholding a tool the
+/// model then cannot call is strictly worse than never packing it.
+#[tokio::test]
+async fn a_packed_delegate_in_the_synthesised_set_is_reachable() {
+    let (durable, _synthesized) = split_registries("do_crypto", PermissionLevel::ReadOnly);
+    let use_skill = find(&durable, USE_SKILL);
+
+    // Disclosure half: the schema must render even though the tool is in the
+    // other registry.
+    let rendered = use_skill.execute(json!({"skill": "crypto"})).await.unwrap();
+    assert!(!rendered.is_error, "{}", rendered.text());
+    assert!(
+        format!("{:?}", rendered.content).contains("do_crypto"),
+        "the pack listing omitted the synthesised delegate"
+    );
+
+    // Dispatch half.
+    let ran = use_skill
+        .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {"marker": "x"}}))
+        .await
+        .unwrap();
+    assert!(
+        !ran.is_error,
+        "packed delegate was not dispatchable: {}",
+        ran.text()
+    );
+    assert!(format!("{:?}", ran.content).contains("marker"));
+}
+
+/// Replacing the synthesised `Arc` must re-point the handle at the new one.
+///
+/// `refresh_delegation_tools` rebuilds that set on every Composio reconcile. A
+/// handle left holding the old `Weak` stops upgrading once the last reader of
+/// the previous allocation goes, and every packed delegate silently becomes
+/// unreachable for the rest of the session — the same class of bug the durable
+/// `OnceLock` rebinding fix already addressed on the other registry.
+#[tokio::test]
+async fn rebinding_the_synthesised_set_repoints_the_handle() {
+    let (durable, first) = split_registries("do_crypto", PermissionLevel::ReadOnly);
+    let use_skill = find(&durable, USE_SKILL);
+
+    // A reconcile: a fresh set, and the old allocation dropped.
+    let second: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(FakeTool {
+        name: "wallet_status",
+        level: PermissionLevel::ReadOnly,
+        external: false,
+        timeout: ToolTimeout::Inherit,
+    })]);
+    bind_synthesized_pack_registry(&durable, &second);
+    drop(first);
+
+    let ran = use_skill
+        .execute(json!({"skill": "crypto", "tool": "wallet_status", "args": {}}))
+        .await
+        .unwrap();
+    assert!(
+        !ran.is_error,
+        "handle did not follow the rebind: {}",
+        ran.text()
+    );
+    // And the retired instance is gone with its allocation.
+    let stale = use_skill
+        .execute(json!({"skill": "crypto", "tool": "do_crypto", "args": {}}))
+        .await
+        .unwrap();
+    assert!(stale.is_error, "a dropped delegate stayed reachable");
+}
+
+/// Closing a goal must stay directly callable.
+///
+/// `goal_complete` is the one goal operation an agent reaches for reactively —
+/// at the end of work it has just finished. Packing it would put a `use_skill`
+/// round trip at exactly that moment, and the failure when the model does not
+/// pay it is silent: the objective stays open and keeps driving autonomous
+/// continuation. Everything else about goals is behind the `goals` pack
+/// precisely so this one tool is cheap to keep visible.
+#[test]
+fn closing_a_goal_is_never_packed() {
+    assert!(
+        !all_packed_tool_names().contains(&"goal_complete"),
+        "`goal_complete` was packed; see the carve-out note on the `goals` pack"
+    );
+    // And the rest of the family is, or the carve-out saved nothing.
+    for held in ["goals", "goal_get", "goal_set"] {
+        assert!(
+            all_packed_tool_names().contains(&held),
+            "`{held}` should be reachable through the `goals` pack, not on the wire"
+        );
+    }
+}
+
 #[test]
 fn every_packed_name_belongs_to_exactly_one_pack() {
     let mut seen = HashSet::new();
@@ -112,25 +233,25 @@ fn every_packed_name_belongs_to_exactly_one_pack() {
 fn packed_names_are_withheld_and_replaced() {
     let packed = all_packed_tool_names();
     let sample = packed[0];
-    let mut visible: HashSet<String> = [sample.to_string(), "file_read".to_string()]
+    let mut visible: HashSet<String> = [sample.to_string(), "shell".to_string()]
         .into_iter()
         .collect();
 
     strip_packed_from_visible(&mut visible, "orchestrator");
 
     assert!(!visible.contains(sample), "packed tool stayed advertised");
-    assert!(visible.contains("file_read"), "unpacked tool was dropped");
-    assert!(visible.contains(LOAD_SKILL) && visible.contains(USE_SKILL));
+    assert!(visible.contains("shell"), "unpacked tool was dropped");
+    assert!(visible.contains(USE_SKILL));
 }
 
 #[test]
 fn an_agent_that_lost_nothing_gains_nothing() {
-    // A narrow sub-agent must not grow two tools that can only report an empty
-    // skill, so the pack tools are added only when something was withheld.
-    let mut visible: HashSet<String> = ["file_read".to_string()].into_iter().collect();
+    // A narrow sub-agent must not grow a tool that can only report an empty
+    // skill, so the pack tool is added only when something was withheld.
+    let mut visible: HashSet<String> = ["shell".to_string()].into_iter().collect();
     strip_packed_from_visible(&mut visible, "orchestrator");
     assert_eq!(visible.len(), 1);
-    assert!(!visible.contains(LOAD_SKILL));
+    assert!(!visible.contains(USE_SKILL));
 }
 
 #[test]
@@ -142,10 +263,10 @@ fn an_empty_visible_set_is_left_alone() {
 }
 
 #[tokio::test]
-async fn load_skill_renders_the_schema_of_a_present_tool() {
+async fn use_skill_without_a_tool_renders_the_schema_of_a_present_tool() {
     let name = pack("crypto").unwrap().tools[0];
     let tools = registry_with(name, PermissionLevel::ReadOnly);
-    let result = find(&tools, LOAD_SKILL)
+    let result = find(&tools, USE_SKILL)
         .execute(json!({"skill": "crypto"}))
         .await
         .unwrap();
@@ -159,9 +280,9 @@ async fn load_skill_renders_the_schema_of_a_present_tool() {
 }
 
 #[tokio::test]
-async fn load_skill_rejects_an_unknown_skill() {
+async fn use_skill_rejects_an_unknown_skill() {
     let tools = registry_with("do_crypto", PermissionLevel::ReadOnly);
-    let result = find(&tools, LOAD_SKILL)
+    let result = find(&tools, USE_SKILL)
         .execute(json!({"skill": "nope"}))
         .await
         .unwrap();
@@ -204,6 +325,30 @@ fn use_skill_reports_the_inner_tools_permission_level() {
     let name = pack("crypto").unwrap().tools[0];
     let tools = registry_with(name, PermissionLevel::Dangerous);
     let use_skill = find(&tools, USE_SKILL);
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": name})),
+        PermissionLevel::Dangerous
+    );
+}
+
+#[test]
+fn naming_no_tool_is_read_only_even_when_the_pack_is_dangerous() {
+    // The disclosure branch renders a schema and does nothing else. Reporting
+    // the packed ceiling here would put an approval prompt in front of reading
+    // a tool list, which is the round trip merging the two tools removed.
+    let name = pack("crypto").unwrap().tools[0];
+    let tools = registry_with(name, PermissionLevel::Dangerous);
+    let use_skill = find(&tools, USE_SKILL);
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto"})),
+        PermissionLevel::ReadOnly
+    );
+    // An empty string is a named-nothing call, not a tool called "".
+    assert_eq!(
+        use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": ""})),
+        PermissionLevel::ReadOnly
+    );
+    // Naming a real one still reports that tool's level, not this branch's.
     assert_eq!(
         use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": name})),
         PermissionLevel::Dangerous
@@ -269,7 +414,7 @@ fn an_unbound_handle_degrades_closed() {
 #[test]
 fn every_pack_declares_the_tools_it_is_named_for() {
     // Membership is compiled-in data, so a typo here is invisible until a
-    // `load_skill` at runtime renders a pack that withheld nothing. Pin the
+    // `use_skill` at runtime renders a pack that withheld nothing. Pin the
     // exact set per pack rather than a count.
     let expect: &[(&str, &[&str])] = &[
         (
@@ -373,9 +518,17 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "install_workflow_from_url",
                 "uninstall_workflow",
                 "read_workflow_resource",
+                "create_skill",
             ],
         ),
-        ("documents", &["generate_document", "generate_presentation"]),
+        (
+            "documents",
+            &[
+                "generate_document",
+                "generate_presentation",
+                "make_presentation",
+            ],
+        ),
         (
             "audio",
             &[
@@ -413,9 +566,62 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "daemon_host_prefs_get",
                 "daemon_host_prefs_set",
                 "proxy_config",
+                "manage_settings",
             ],
         ),
-        ("goals", &["goal_set", "goal_get", "goal_complete"]),
+        (
+            "files",
+            &[
+                "file_read",
+                "file_write",
+                "grep",
+                "glob",
+                "list",
+                "git_operations",
+            ],
+        ),
+        (
+            "storage",
+            &[
+                "storage_upload_file",
+                "storage_download_file",
+                "storage_list_files",
+                "storage_get_link",
+            ],
+        ),
+        (
+            "scheduling",
+            &[
+                "schedule_task",
+                "cron_add",
+                "cron_list",
+                "cron_remove",
+                "cron_update",
+                "cron_run",
+                "cron_runs",
+            ],
+        ),
+        (
+            "profile",
+            &[
+                "save_preference",
+                "remember_preference",
+                "manage_profile_memory",
+            ],
+        ),
+        (
+            "media",
+            &[
+                "create_image",
+                "create_video",
+                "analyze_image",
+                "media_generate_image",
+                "media_generate_video",
+                "media_list_models",
+            ],
+        ),
+        ("tasks", &["manage_tasks"]),
+        ("goals", &["goals", "goal_get", "goal_set"]),
         ("app_update", &["update_check", "update_apply"]),
     ];
 
@@ -434,8 +640,8 @@ fn every_pack_declares_the_tools_it_is_named_for() {
 #[test]
 fn a_packs_owner_keeps_its_belt_advertised() {
     // `settings_agent` IS the system family. Withholding its own belt would
-    // buy a `load_skill` round trip per turn and hide nothing that is idle.
-    let mut visible: HashSet<String> = ["doctor_health".to_string(), "file_read".to_string()]
+    // buy a `use_skill` round trip per turn and hide nothing that is idle.
+    let mut visible: HashSet<String> = ["doctor_health".to_string(), "shell".to_string()]
         .into_iter()
         .collect();
     strip_packed_from_visible(&mut visible, "settings_agent");
@@ -443,7 +649,7 @@ fn a_packs_owner_keeps_its_belt_advertised() {
         visible.contains("doctor_health"),
         "the system pack's owner lost its own tool"
     );
-    assert!(!visible.contains(LOAD_SKILL), "owner gained pack tools");
+    assert!(!visible.contains(USE_SKILL), "owner gained pack tools");
 }
 
 #[test]
@@ -459,7 +665,7 @@ fn a_packs_owner_still_loses_every_other_pack() {
         !visible.contains("wallet_status"),
         "non-owned pack survived"
     );
-    assert!(visible.contains(LOAD_SKILL) && visible.contains(USE_SKILL));
+    assert!(visible.contains(USE_SKILL));
 }
 
 #[test]
@@ -487,7 +693,7 @@ fn every_owner_names_a_pack_tool_it_actually_declares() {
 
 #[test]
 fn the_reactive_fleet_tools_are_never_packed() {
-    // Packing these would put a `load_skill` round-trip between an async
+    // Packing these would put a `use_skill` round-trip between an async
     // worker returning and the parent being able to steer or collect it.
     // See `DELIBERATELY_UNPACKED_FLEET_TOOLS` for the full reasoning.
     for name in registry::DELIBERATELY_UNPACKED_FLEET_TOOLS {
@@ -496,140 +702,6 @@ fn the_reactive_fleet_tools_are_never_packed() {
             "`{name}` is needed reactively mid-turn and must stay advertised"
         );
     }
-}
-
-#[test]
-fn rebinding_a_pack_handle_repoints_it_at_the_new_registry() {
-    // `bind_pack_registry`'s own docs say to "call this after **every**
-    // rebinding of the agent's tool `Arc`", but the handle used to hold a
-    // `OnceLock`, so the second write was dropped on the floor. An agent that
-    // rebuilt its tool vector kept a `Weak` into the old allocation; once that
-    // allocation went away the upgrade failed and every `load_skill` /
-    // `use_skill` reported the registry as unavailable for the rest of the
-    // session. Last write must win.
-    let name = pack("crypto").unwrap().tools[0];
-
-    // The agent's first tool `Arc`, with the packed tool marked Dangerous.
-    let first = registry_with(name, PermissionLevel::Dangerous);
-    let use_skill = find(&first, USE_SKILL);
-    let args = json!({"skill": "crypto", "tool": name});
-    assert_eq!(
-        use_skill.permission_level_with_args(&args),
-        PermissionLevel::Dangerous,
-        "sanity: the first binding resolves"
-    );
-
-    // The agent rebuilds its registry into a *different* allocation, where the
-    // same packed tool is only ReadOnly.
-    let mut rebuilt: Vec<Box<dyn Tool>> = vec![Box::new(FakeTool {
-        name,
-        level: PermissionLevel::ReadOnly,
-        external: false,
-        timeout: ToolTimeout::Inherit,
-    })];
-    append_pack_tools(&mut rebuilt);
-    let rebuilt = Arc::new(rebuilt);
-
-    // Re-point the ORIGINAL handle at it, which is what a rebuild does.
-    crate::openhuman::tools::traits::pack_registry_handle(use_skill)
-        .expect("use_skill exposes a pack registry handle")
-        .bind(Arc::downgrade(&rebuilt));
-
-    assert_eq!(
-        use_skill.permission_level_with_args(&args),
-        PermissionLevel::ReadOnly,
-        "the rebound handle must resolve against the new registry, not the old one"
-    );
-}
-
-// ── the listing must agree with the gate ────────────────────────────────────
-
-/// The bug, at the layer it lives on: a non-owner was shown `propose_workflow`
-/// and then refused when it called it.
-///
-/// `is_callable` here stands in for the session allowlist the middleware
-/// applies (`channel_permission_block` denies `propose_workflow` for every
-/// agent that is not `workflow_builder` / `flow_discovery`). The listing must
-/// not mention a tool that gate will refuse.
-#[test]
-fn a_non_owner_listing_omits_the_tools_the_gate_will_refuse() {
-    let tools = registry_with_all(&["build_workflow", "propose_workflow"]);
-    let handle = crate::openhuman::tools::traits::pack_registry_handle(find(&tools, LOAD_SKILL))
-        .expect("load_skill carries the pack handle");
-
-    let rendered = render_pack_filtered(
-        "workflows",
-        handle,
-        &|name: &str| name != "propose_workflow",
-        "",
-    )
-    .expect("the pack still has a callable tool");
-
-    assert!(
-        rendered.contains("build_workflow"),
-        "a tool the session CAN call must still be listed: {rendered}"
-    );
-    assert!(
-        !rendered.contains("propose_workflow"),
-        "a tool the session will refuse must not be advertised: {rendered}"
-    );
-}
-
-/// When the session can reach nothing in the pack, the failure has to carry the
-/// way out. A bare "no tools available" is the dead end the model retried into.
-#[test]
-fn a_listing_with_nothing_callable_names_the_route_out() {
-    let tools = registry_with_all(&["build_workflow", "propose_workflow"]);
-    let handle = crate::openhuman::tools::traits::pack_registry_handle(find(&tools, LOAD_SKILL))
-        .expect("load_skill carries the pack handle");
-
-    let route = route_sentence(&["build_workflow".to_string()], &["workflow_builder"]);
-    let err = render_pack_filtered("workflows", handle, &|_| false, &route)
-        .expect_err("nothing callable must not render a menu");
-
-    assert!(
-        err.contains("build_workflow"),
-        "the denial must name the delegate to call instead: {err}"
-    );
-}
-
-/// Naming the tool, not just the agent, is the difference between an
-/// instruction and a guess — and a model that guesses wrong retries.
-#[test]
-fn route_sentence_prefers_a_callable_tool_and_falls_back_to_owners() {
-    let named = route_sentence(&["build_workflow".to_string()], &["workflow_builder"]);
-    assert!(named.contains("`build_workflow`"), "{named}");
-    assert!(
-        !named.contains("`workflow_builder`"),
-        "naming the agent as well is noise once the call is named: {named}"
-    );
-
-    let fallback = route_sentence(&[], &["workflow_builder", "flow_discovery"]);
-    assert!(fallback.contains("`workflow_builder`"), "{fallback}");
-    assert!(fallback.contains("`flow_discovery`"), "{fallback}");
-
-    assert!(
-        route_sentence(&[], &[]).is_empty(),
-        "an ownerless pack has no route to offer and must stay silent"
-    );
-}
-
-/// The route only exists because these owners do. If the `workflows` pack is
-/// ever re-owned, the hint silently stops naming `workflow_builder` — this
-/// pins the assumption the two tests above rest on.
-#[test]
-fn the_workflows_pack_is_still_owned_by_the_flow_agents() {
-    let pack = pack("workflows").expect("the workflows pack exists");
-    assert!(
-        pack.owners.contains(&"workflow_builder"),
-        "owners moved: {:?}",
-        pack.owners
-    );
-    assert!(
-        pack.tools.contains(&"propose_workflow"),
-        "propose_workflow left the pack: {:?}",
-        pack.tools
-    );
 }
 
 #[path = "toolpacks_tests_part_02_tests.rs"]

@@ -13,7 +13,7 @@ use crate::openhuman::tools::agent_policy::{
     TaskProfile, TaskRiskLevel, ToolCapability, ToolPolicyAction, ToolPolicyDecision,
     ToolPolicySession,
 };
-use crate::openhuman::tools::toolpacks::{append_pack_tools, bind_pack_registry, LOAD_SKILL};
+use crate::openhuman::tools::toolpacks::{append_pack_tools, bind_pack_registry, USE_SKILL};
 use crate::openhuman::tools::traits::{PermissionLevel, ToolResult};
 
 struct RoutingFakeTool(&'static str);
@@ -50,8 +50,8 @@ fn allow(name: &str) -> (String, ToolPolicyDecision) {
 }
 
 /// A non-owner session: it holds the whole `workflows` pack in its registry and
-/// a `build_workflow` delegate, but may only call the delegate and the two pack
-/// tools — exactly the orchestrator's shape. Anything not named here is denied,
+/// a `build_workflow` delegate, but may only call the delegate and the pack
+/// tool — exactly the orchestrator's shape. Anything not named here is denied,
 /// because `decision_for` defaults to `Deny`.
 fn non_owner_middleware() -> ToolPolicyMiddleware {
     let mut tools: Vec<Box<dyn crate::openhuman::tools::traits::Tool>> = vec![
@@ -79,7 +79,7 @@ fn non_owner_middleware() -> ToolPolicyMiddleware {
             name: "build_workflow".to_string(),
             required_permission: PermissionLevel::ReadOnly,
         }],
-        allowed_tool_names: ["build_workflow", LOAD_SKILL, "use_skill"]
+        allowed_tool_names: ["build_workflow", USE_SKILL]
             .into_iter()
             .map(str::to_string)
             .collect(),
@@ -88,13 +88,9 @@ fn non_owner_middleware() -> ToolPolicyMiddleware {
             .map(str::to_string)
             .collect(),
         hidden_tool_names: Default::default(),
-        decisions: [
-            allow("build_workflow"),
-            allow(LOAD_SKILL),
-            allow("use_skill"),
-        ]
-        .into_iter()
-        .collect(),
+        decisions: [allow("build_workflow"), allow(USE_SKILL)]
+            .into_iter()
+            .collect(),
     };
 
     ToolPolicyMiddleware::new(
@@ -119,11 +115,11 @@ fn call(name: &str, args: serde_json::Value) -> TaToolCall {
 /// The bug: the orchestrator loaded `workflows`, read `propose_workflow` off
 /// the listing, called it, and was refused. The listing must not offer it.
 #[tokio::test]
-async fn load_skill_hides_what_this_session_cannot_call_and_names_the_route() {
+async fn a_use_skill_listing_hides_what_this_session_cannot_call_and_names_the_route() {
     let mw = non_owner_middleware();
     let result = mw
-        .render_skill_for_session(&call(LOAD_SKILL, json!({ "skill": "workflows" })))
-        .expect("a load_skill call with a skill argument renders here");
+        .render_skill_for_session(&call(USE_SKILL, json!({ "skill": "workflows" })))
+        .expect("a use_skill call naming a skill and no tool renders here");
 
     assert!(
         !result.content.contains("propose_workflow"),
@@ -150,6 +146,33 @@ async fn load_skill_hides_what_this_session_cannot_call_and_names_the_route() {
         result.content.starts_with("# Skill `workflows`"),
         "expected a rendered pack listing:\n{}",
         result.content
+    );
+}
+
+/// The middleware renders the *disclosure* half only. A `use_skill` call that
+/// names a `tool` is the execution half: it has already passed
+/// `channel_permission_block`, and rendering a listing in its place would turn
+/// every packed-tool call into a menu. That call must fall through to the
+/// tool's own `execute`.
+#[tokio::test]
+async fn a_use_skill_call_that_names_a_tool_is_not_rendered_as_a_listing() {
+    let mw = non_owner_middleware();
+    assert!(
+        mw.render_skill_for_session(&call(
+            USE_SKILL,
+            json!({ "skill": "workflows", "tool": "build_workflow" }),
+        ))
+        .is_none(),
+        "the execution half must reach the tool, not the listing"
+    );
+    // An empty `tool` is the disclosure half — the same rule `named_tool` applies.
+    assert!(
+        mw.render_skill_for_session(&call(
+            USE_SKILL,
+            json!({ "skill": "workflows", "tool": "" }),
+        ))
+        .is_some(),
+        "an empty tool name is a listing request, not a call"
     );
 }
 
@@ -195,18 +218,13 @@ async fn a_session_without_the_delegate_is_not_told_to_call_it() {
             allowed_permission: PermissionLevel::Dangerous,
         },
         capabilities: vec![],
-        allowed_tool_names: [LOAD_SKILL, "use_skill"]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        allowed_tool_names: [USE_SKILL].into_iter().map(str::to_string).collect(),
         blocked_tool_names: ["propose_workflow"]
             .into_iter()
             .map(str::to_string)
             .collect(),
         hidden_tool_names: Default::default(),
-        decisions: [allow(LOAD_SKILL), allow("use_skill")]
-            .into_iter()
-            .collect(),
+        decisions: [allow(USE_SKILL)].into_iter().collect(),
     };
     let mw = ToolPolicyMiddleware::new(
         Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy::default()),
