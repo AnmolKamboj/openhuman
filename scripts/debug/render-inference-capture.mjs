@@ -162,8 +162,11 @@ w('');
   w('');
   w(t.function.description || '_(no description)_');
   w('');
+  // Minified, matching what the provider actually receives. Pretty-printing
+  // costs roughly a third more lines for indentation the reader gains nothing
+  // from, and it misrepresents the byte count the tables above report.
   w('````json');
-  w(JSON.stringify(t.function.parameters, null, 1));
+  w(JSON.stringify(t.function.parameters));
   w('````');
   w('');
 });
