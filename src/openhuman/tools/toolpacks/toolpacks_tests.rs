@@ -214,14 +214,14 @@ fn every_packed_name_belongs_to_exactly_one_pack() {
 fn packed_names_are_withheld_and_replaced() {
     let packed = all_packed_tool_names();
     let sample = packed[0];
-    let mut visible: HashSet<String> = [sample.to_string(), "file_read".to_string()]
+    let mut visible: HashSet<String> = [sample.to_string(), "shell".to_string()]
         .into_iter()
         .collect();
 
     strip_packed_from_visible(&mut visible, "orchestrator");
 
     assert!(!visible.contains(sample), "packed tool stayed advertised");
-    assert!(visible.contains("file_read"), "unpacked tool was dropped");
+    assert!(visible.contains("shell"), "unpacked tool was dropped");
     assert!(visible.contains(USE_SKILL));
 }
 
@@ -229,7 +229,7 @@ fn packed_names_are_withheld_and_replaced() {
 fn an_agent_that_lost_nothing_gains_nothing() {
     // A narrow sub-agent must not grow a tool that can only report an empty
     // skill, so the pack tool is added only when something was withheld.
-    let mut visible: HashSet<String> = ["file_read".to_string()].into_iter().collect();
+    let mut visible: HashSet<String> = ["shell".to_string()].into_iter().collect();
     strip_packed_from_visible(&mut visible, "orchestrator");
     assert_eq!(visible.len(), 1);
     assert!(!visible.contains(USE_SKILL));
@@ -620,7 +620,7 @@ fn every_pack_declares_the_tools_it_is_named_for() {
 fn a_packs_owner_keeps_its_belt_advertised() {
     // `settings_agent` IS the system family. Withholding its own belt would
     // buy a `use_skill` round trip per turn and hide nothing that is idle.
-    let mut visible: HashSet<String> = ["doctor_health".to_string(), "file_read".to_string()]
+    let mut visible: HashSet<String> = ["doctor_health".to_string(), "shell".to_string()]
         .into_iter()
         .collect();
     strip_packed_from_visible(&mut visible, "settings_agent");
