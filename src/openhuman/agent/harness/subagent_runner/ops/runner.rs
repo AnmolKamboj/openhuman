@@ -115,7 +115,8 @@ async fn filter_cached_toolkit_actions_with_current_scope(
     config: &crate::openhuman::config::Config,
     actions: &[crate::openhuman::agent::context::prompt::ConnectedIntegrationTool],
 ) -> Vec<crate::openhuman::agent::context::prompt::ConnectedIntegrationTool> {
-    let pref = crate::openhuman::integrations::composio::ops::load_user_scope_pref(config, toolkit).await;
+    let pref =
+        crate::openhuman::integrations::composio::ops::load_user_scope_pref(config, toolkit).await;
     let before = actions.len();
     let filtered: Vec<_> = actions
         .iter()
