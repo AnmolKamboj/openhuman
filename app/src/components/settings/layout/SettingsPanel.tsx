@@ -98,6 +98,11 @@ export default function SettingsPanel<T extends string = string>({
   // above this panel, so render just the tabs/body without title/description/
   // sub-nav to avoid a doubled header.
   if (headerless) {
+    // `scrollable` / `bodyClassName` are forwarded here too. They were declared
+    // on the props but only wired into the routed return, so a headerless host
+    // passing either got the PanelPage defaults with no type error and no
+    // warning -- the same silent-drop failure the `children` comment below
+    // describes. `PanelPage` calls the body class `contentClassName`.
     if (tabs && tabs.length > 0) {
       return (
         <PanelPage<T>
@@ -109,11 +114,17 @@ export default function SettingsPanel<T extends string = string>({
           onChange={onChange}
           tabsAriaLabel={tabsAriaLabel}
           tabsTestIdPrefix={tabsTestIdPrefix}
+          scrollable={scrollable}
         />
       );
     }
     return (
-      <PanelPage className="z-10" testId={testId} action={action}>
+      <PanelPage
+        className="z-10"
+        testId={testId}
+        action={action}
+        scrollable={scrollable}
+        contentClassName={bodyClassName}>
         {children}
       </PanelPage>
     );

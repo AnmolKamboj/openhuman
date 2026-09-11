@@ -387,14 +387,14 @@ const EventLogPanel = () => {
           page that failed to load. Bounded and framed, the same emptiness reads
           as a log that is connected and has not received anything yet, which is
           what it is. */}
-      <section className="flex min-h-[22rem] flex-1 flex-col overflow-hidden rounded-xl border border-line">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line">
         <div
           ref={containerRef}
           onScroll={handleScroll}
           data-testid="event-log-scroll"
           className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
           {filteredEntries.length === 0 && (
-            <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-1 text-center">
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
               <p className="text-sm text-content-secondary">
                 {isLive
                   ? t('settings.developerMenu.eventLog.waiting')
