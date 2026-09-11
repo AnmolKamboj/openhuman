@@ -3,7 +3,8 @@
 use super::{dedup_visible_tool_specs, visible_tool_specs_for_policy};
 use crate::openhuman::agent::context::ContextManager;
 use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
-use crate::openhuman::tools::ToolSpec;
+use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
+use crate::openhuman::tools::{Tool, ToolSpec};
 use anyhow::Result;
 use std::sync::Arc;
 
