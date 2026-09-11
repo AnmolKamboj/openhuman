@@ -112,9 +112,10 @@ pub(super) fn tier_gate_decision(
 async fn filter_cached_toolkit_actions_with_current_scope(
     agent_id: &str,
     toolkit: &str,
+    config: &crate::openhuman::config::Config,
     actions: &[crate::openhuman::agent::context::prompt::ConnectedIntegrationTool],
 ) -> Vec<crate::openhuman::agent::context::prompt::ConnectedIntegrationTool> {
-    let pref = crate::openhuman::integrations::composio::providers::load_user_scope_or_default(toolkit).await;
+    let pref = crate::openhuman::integrations::composio::ops::load_user_scope_pref(config, toolkit).await;
     let before = actions.len();
     let filtered: Vec<_> = actions
         .iter()
@@ -1046,6 +1047,7 @@ async fn run_typed_mode(
                     filter_cached_toolkit_actions_with_current_scope(
                         &definition.id,
                         tk,
+                        arc_config.as_ref(),
                         &cached_integration.tools,
                     )
                     .await
