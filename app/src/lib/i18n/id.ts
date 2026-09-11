@@ -542,6 +542,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'Selalu aktif di build pengembangan',
   'settings.clearAppData': 'Bersihkan Data Aplikasi',
   'settings.clearAppDataDesc': 'Keluar dan hapus permanen semua data aplikasi lokal',
+  'settings.clearAppDataIrreversible': 'Tindakan ini tidak dapat dibatalkan.',
+  'settings.clearAppDataAction': 'Hapus data',
   'settings.logOut': 'Keluar',
   'settings.logOutDesc': 'Keluar dari akun Anda',
   'settings.exitLocalSession': 'Keluar dari sesi lokal',
@@ -4979,6 +4981,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'Live',
   'settings.developerMenu.eventLog.disconnected': 'Terputus',
   'settings.developerMenu.eventLog.waiting': 'Menunggu peristiwa...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'Peristiwa muncul di sini saat agen, alat, dan sistem bekerja. Belum ada yang terjadi.',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'Hubungkan kembali ke core untuk melanjutkan aliran.',
   'settings.developerMenu.eventLog.notConnected': 'Tidak terhubung ke inti',
   'settings.developerMenu.eventLog.jumpToLatest': 'Lompat ke terbaru',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

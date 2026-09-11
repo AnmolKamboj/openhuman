@@ -535,6 +535,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': 'डेवलपमेंट बिल्ड में हमेशा चालू',
   'settings.clearAppData': 'ऐप डेटा क्लियर करें',
   'settings.clearAppDataDesc': 'साइन आउट करें और सारा लोकल ऐप डेटा हमेशा के लिए मिटाएं',
+  'settings.clearAppDataIrreversible': 'इसे पूर्ववत नहीं किया जा सकता।',
+  'settings.clearAppDataAction': 'डेटा हटाएँ',
   'settings.logOut': 'लॉग आउट',
   'settings.logOutDesc': 'अपने अकाउंट से साइन आउट करें',
   'settings.exitLocalSession': 'स्थानीय सत्र से बाहर निकलें',
@@ -4953,6 +4955,10 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': 'लाइव',
   'settings.developerMenu.eventLog.disconnected': 'डिस्कनेक्ट',
   'settings.developerMenu.eventLog.waiting': 'घटनाओं के लिए प्रतीक्षा...',
+  'settings.developerMenu.eventLog.waitingHint':
+    'जब एजेंट, टूल और सिस्टम काम करते हैं तो घटनाएँ यहाँ दिखती हैं। अभी तक कुछ नहीं हुआ है।',
+  'settings.developerMenu.eventLog.notConnectedHint':
+    'स्ट्रीम फिर से शुरू करने के लिए कोर से दोबारा कनेक्ट करें।',
   'settings.developerMenu.eventLog.notConnected': 'कोर से जुड़ा नहीं है',
   'settings.developerMenu.eventLog.jumpToLatest': 'नवीनतम',
   'settings.developerMenu.eventLog.badge.tool': 'TOOL',

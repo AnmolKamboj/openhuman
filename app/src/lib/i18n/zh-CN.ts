@@ -497,6 +497,8 @@ const messages: TranslationMap = {
   'settings.developerMode.enabledByBuild': '开发版本中始终启用',
   'settings.clearAppData': '清除应用数据',
   'settings.clearAppDataDesc': '退出登录并永久清除所有本地应用数据',
+  'settings.clearAppDataIrreversible': '此操作无法撤销。',
+  'settings.clearAppDataAction': '清除数据',
   'settings.logOut': '退出登录',
   'settings.logOutDesc': '退出当前账户',
   'settings.exitLocalSession': '退出本地会话',
@@ -4679,6 +4681,9 @@ const messages: TranslationMap = {
   'settings.developerMenu.eventLog.live': '实时',
   'settings.developerMenu.eventLog.disconnected': '已断开连接',
   'settings.developerMenu.eventLog.waiting': '正在等待事件...',
+  'settings.developerMenu.eventLog.waitingHint':
+    '当智能体、工具和系统开始工作时，事件会显示在这里。目前还没有任何事件。',
+  'settings.developerMenu.eventLog.notConnectedHint': '重新连接到核心以恢复事件流。',
   'settings.developerMenu.eventLog.notConnected': '未连接到核心',
   'settings.developerMenu.eventLog.jumpToLatest': '跳到最新',
   'settings.developerMenu.eventLog.badge.tool': '工具',
