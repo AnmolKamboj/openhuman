@@ -201,9 +201,17 @@ fn every_packed_tool_name_resolves_to_a_registered_tool() {
     // absent here. `owners` holds agent ids (`crypto_agent`); the names that
     // appear in `tools` are delegate names (`do_crypto`), so resolve them from
     // the agent registry rather than from `owners`.
+    //
+    // `.expect`, not `.unwrap_or_default()`: an empty delegate set would make
+    // EVERY pack delegate (`do_crypto`, `build_workflow`, `run_skill`, …) report
+    // as missing, so a registry that failed to load would surface as a list of
+    // phantom names — the exact failure this test exists to report, raised for
+    // the wrong reason. `load_builtins` documents that built-in TOML is baked
+    // into the binary and must always parse, so an `Err` here is a broken
+    // invariant worth failing loudly on rather than absorbing.
     let delegates: std::collections::HashSet<String> =
         crate::openhuman::agent::registry::agents::load_builtins()
-            .unwrap_or_default()
+            .expect("built-in agent registry must load; without it every pack delegate would be reported as a phantom name")
             .into_iter()
             .filter_map(|d| d.delegate_name)
             .collect();
