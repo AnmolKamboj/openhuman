@@ -642,3 +642,36 @@ fn a_thread_renamed_session_still_resolves_to_its_registry_entry() {
         "a name that merely starts with an id is not that agent"
     );
 }
+
+/// The generated block must actually render for a real, renamed session.
+///
+/// The first live capture had every `prompt.md` edit in it and no block, which
+/// only a silent early return can produce. Pin the whole path: a renamed agent
+/// id, a visible set that withholds the packed delegates, and at least one row
+/// naming a real route.
+#[test]
+fn the_withheld_block_renders_for_a_renamed_session_with_a_filter() {
+    crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
+        .expect("builtin agent definitions must load");
+
+    // A visible set shaped like the live one: the advertised delegates are in,
+    // the packed ones are not.
+    let visible: HashSet<String> = ["research", "plan", "ask_docs", "file_read", "goal_complete"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut ctx = ctx_with(&[]);
+    ctx.agent_id = "orchestrator_thread-captu";
+    ctx.visible_tool_names = &visible;
+
+    let block = render_withheld_specialists(&ctx);
+    assert!(
+        block.starts_with("## Capabilities not in your tool list"),
+        "expected the generated heading, got: {:?}",
+        block.chars().take(120).collect::<String>()
+    );
+    assert!(
+        block.contains("skill `documents`, tool `make_presentation`"),
+        "a packed delegate must render with its route:\n{block}"
+    );
+}
