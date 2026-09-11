@@ -14,7 +14,7 @@
  */
 import { createElement, type ReactElement } from 'react';
 import type { IconType } from 'react-icons';
-import { LuSparkles } from 'react-icons/lu';
+import { LuMousePointer2, LuSparkles } from 'react-icons/lu';
 import {
   SiAnthropic,
   SiApple,
@@ -70,6 +70,7 @@ const PROVIDER_ICONS: Record<string, IconType> = {
   xai: SiX,
   ollama: SiOllama,
   omlx: SiApple,
+  cursor: LuMousePointer2,
 };
 
 /** Locally bundled marks for providers absent from the installed icon set. */
