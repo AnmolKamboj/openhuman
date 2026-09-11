@@ -30,15 +30,15 @@ use crate::openhuman::tools::{Tool, ToolSpec};
 /// list — initial build, post-composio refresh, scope-filter change —
 /// so the request the provider sees is always name-unique regardless
 /// of which path produced it.
-pub(crate) fn dedup_visible_tool_specs(specs: Vec<ToolSpec>) -> Vec<ToolSpec> {
+pub(crate) fn dedup_visible_tool_specs(specs: Vec<Arc<ToolSpec>>) -> Vec<Arc<ToolSpec>> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut deduped: Vec<ToolSpec> = Vec::with_capacity(specs.len());
+    let mut deduped: Vec<Arc<ToolSpec>> = Vec::with_capacity(specs.len());
     let mut dropped: Vec<String> = Vec::new();
     for spec in specs {
         if seen.insert(spec.name.clone()) {
             deduped.push(spec);
         } else {
-            dropped.push(spec.name);
+            dropped.push(spec.name.clone());
         }
     }
     if !dropped.is_empty() {
@@ -87,10 +87,10 @@ pub(crate) fn drop_synthesized_name_collisions(
 }
 
 pub(super) fn visible_tool_specs_for_policy(
-    tool_specs: &[ToolSpec],
+    tool_specs: &[Arc<ToolSpec>],
     visible_names: &std::collections::HashSet<String>,
     tool_policy: &ToolPolicySession,
-) -> Vec<ToolSpec> {
+) -> Vec<Arc<ToolSpec>> {
     tool_specs
         .iter()
         .filter(|spec| {
