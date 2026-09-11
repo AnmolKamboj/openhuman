@@ -208,36 +208,38 @@ fn every_packed_tool_name_resolves_to_a_registered_tool() {
             .filter_map(|d| d.delegate_name)
             .collect();
 
-    // Whether this build can say anything about a pack at all.
+    // `PACKS` is unconditional, but most packs' tools are behind Cargo features
+    // that are NOT in `default` — `flows`, `mcp`, `skills`, `web3`, `documents`,
+    // `voice`. Under a partial feature set "missing" means "compiled out", not
+    // "stale", and asserting there reports the pack's REAL tools as missing.
+    // That is what the `Rust Feature-Gate Smoke (gates off)` lane caught twice.
     //
-    // `PACKS` is unconditional but several packs' tools are behind Cargo
-    // features that are NOT in `default` (`web3`, `documents`, `voice` — see
-    // Cargo.toml `default = [...]`). Under a bare `cargo test` those tools are
-    // never constructed, so iterating them would report every entry as missing
-    // and fail for a reason that has nothing to do with a stale name.
+    // A stale name is a property of the `PACKS` table, not of the build, so
+    // checking it in one fully-featured configuration is sufficient. The product
+    // lane runs with all of these on, which is where a stale entry is caught.
     //
-    // This map is deliberately explicit rather than inferred from "zero tools
-    // resolved": a pack whose every name is stale would also resolve zero, and
-    // inferring would silently skip exactly the case this test exists to catch.
-    // A new feature-gated pack therefore fails here until it is added below —
-    // loud, which is the correct direction for a guard.
-    fn pack_is_assertable(id: &str) -> bool {
-        match id {
-            // Registered only once the user is signed in to Composio
-            // (`all_composio_agent_tools` returns an empty vec otherwise,
-            // `integrations/composio/tools_part_03.rs:320-323`) — runtime auth
-            // state a unit test cannot satisfy.
-            "composio" => false,
-            "crypto" => cfg!(feature = "web3"),
-            "documents" => cfg!(feature = "documents"),
-            "audio" => cfg!(feature = "voice"),
-            _ => true,
-        }
+    // Deliberately ONE condition rather than a per-pack feature map: a map has
+    // to be updated every time a pack becomes gated, and the failure mode of
+    // forgetting is a confusing red in an unrelated lane rather than a clear
+    // signal here.
+    if !cfg!(all(
+        feature = "flows",
+        feature = "mcp",
+        feature = "skills",
+        feature = "web3",
+        feature = "documents",
+        feature = "voice",
+    )) {
+        return;
     }
 
     let mut missing: Vec<String> = Vec::new();
     for pack in crate::openhuman::tools::toolpacks::PACKS {
-        if !pack_is_assertable(pack.id) {
+        // Registered only once the user is signed in to Composio
+        // (`all_composio_agent_tools` returns an empty vec otherwise,
+        // `integrations/composio/tools_part_03.rs:320-323`) — runtime auth
+        // state no unit test can satisfy, in any feature configuration.
+        if pack.id == "composio" {
             continue;
         }
         for name in pack.tools {
