@@ -52,6 +52,13 @@ async function rpc(method, params) {
     signal: AbortSignal.timeout(300_000),
   });
   const text = await response.text();
+  if (!response.ok) {
+    // A non-2xx status may not even be a JSON-RPC envelope (a proxy error
+    // page, a 401 from an expired token, …), so `body.error` can be absent
+    // and `body.result` silently `undefined` if we fell through to the
+    // normal parse path below.
+    throw new Error(`RPC ${method} failed with HTTP ${response.status}: ${text.slice(0, 300)}`);
+  }
   let body;
   try {
     body = JSON.parse(text);
@@ -128,6 +135,20 @@ async function waitForTurnToSettle(repliesBefore, { timeoutMs = 300_000 } = {}) 
     }
   }
   throw new Error(`turn did not persist a reply within ${timeoutMs}ms`);
+}
+
+// `waitForTurnToSettle` treats "one more persisted reply than before" as the
+// completion signal, so a leftover transcript file matching this thread id's
+// truncated session-key prefix (a stale run, or an unlucky collision) would
+// make turn 1 look complete the instant it is dispatched. The random segment
+// in the default `--thread-id` (see above) makes a collision unlikely, but
+// "unlikely" is not "impossible" — fail fast and loud rather than silently
+// racing ahead on a false completion signal.
+if (persistedReplies() > 0) {
+  throw new Error(
+    `thread_id=${threadId} already has persisted replies before turn 1 was dispatched — ` +
+      'pick a different --thread-id or clear the stale transcript.'
+  );
 }
 
 console.log(`[multi-turn] core=${coreUrl} thread_id=${threadId}`);
