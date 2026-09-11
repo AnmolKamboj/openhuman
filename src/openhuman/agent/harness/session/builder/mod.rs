@@ -31,15 +31,24 @@ use std::sync::Arc;
 /// list — initial build, post-composio refresh, scope-filter change —
 /// so the request the provider sees is always name-unique regardless
 /// of which path produced it.
-pub(crate) fn dedup_visible_tool_specs(specs: Vec<Arc<ToolSpec>>) -> Vec<Arc<ToolSpec>> {
+///
+/// Generic over the element type so the two carriers of a spec list share one
+/// implementation: the main agent holds `Arc<ToolSpec>` (the three spec views
+/// share their leaves), while the sub-agent assembly still materialises owned
+/// `ToolSpec`s for the public `AgentTurnRequest`.
+pub(crate) fn dedup_visible_tool_specs<S: std::borrow::Borrow<ToolSpec>>(
+    specs: Vec<S>,
+) -> Vec<S> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut deduped: Vec<Arc<ToolSpec>> = Vec::with_capacity(specs.len());
+    let mut deduped: Vec<S> = Vec::with_capacity(specs.len());
     let mut dropped: Vec<String> = Vec::new();
     for spec in specs {
-        if seen.insert(spec.name.clone()) {
+        if seen.insert(spec.borrow().name.clone()) {
+            dropped.push(spec.borrow().name.clone());
             deduped.push(spec);
+            dropped.pop();
         } else {
-            dropped.push(spec.name.clone());
+            dropped.push(spec.borrow().name.clone());
         }
     }
     if !dropped.is_empty() {
