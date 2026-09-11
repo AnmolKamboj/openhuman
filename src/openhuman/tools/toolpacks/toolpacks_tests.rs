@@ -314,13 +314,8 @@ fn every_pack_declares_the_tools_it_is_named_for() {
             &[
                 "do_crypto",
                 "wallet_status",
-                "wallet_balances",
-                "wallet_network_defaults",
-                "wallet_supported_assets",
                 "wallet_chain_status",
-                "wallet_encode_erc20_transfer",
                 "wallet_prepare_transfer",
-                "wallet_execute_prepared",
                 "wallet_tx_status",
                 "wallet_tx_receipt",
                 "wallet_lookup_tx",
