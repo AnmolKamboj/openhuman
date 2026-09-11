@@ -138,7 +138,11 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
         );
         return String::new();
     };
-    let Some(definition) = registry.get(ctx.agent_id) else {
+    let Some(definition) = resolve_definition(registry, ctx.agent_id) else {
+        tracing::debug!(
+            agent = ctx.agent_id,
+            "[orchestrator-prompt] agent id does not resolve to a registry entry"
+        );
         return String::new();
     };
 
@@ -187,6 +191,41 @@ fn render_withheld_specialists(ctx: &PromptContext<'_>) -> String {
         let _ = writeln!(out, "- {intent} — skill `{pack}`, tool `{tool}`.");
     }
     out
+}
+
+/// The registry entry behind `agent_id`, tolerating the web channel's rename.
+///
+/// `PromptContext::agent_id` carries `Agent::agent_definition_name`, which the
+/// web channel rewrites to `"orchestrator_<short_thread>"` so each thread gets
+/// its own transcript namespace. The canonical id lives in a different field
+/// (`agent_definition_id`, whose docs say to use it for exactly this), but that
+/// one is not on `PromptContext` and adding it would mean editing all 62
+/// construction sites of a struct with no `Default`.
+///
+/// So: exact match first, then the longest registry id that `agent_id` extends
+/// at an `_` boundary. Longest wins because ids are not prefix-free —
+/// `integrations_agent` starts with no other id today, but `mcp_agent` and
+/// `mcp_setup` share a stem, and a shorter accidental match would resolve a
+/// renamed session onto the wrong agent's subagent list.
+fn resolve_definition<'r>(
+    registry: &'r AgentDefinitionRegistry,
+    agent_id: &str,
+) -> Option<&'r crate::openhuman::agent::harness::definition::AgentDefinition> {
+    if let Some(found) = registry.get(agent_id) {
+        return Some(found);
+    }
+    let best = registry
+        .list()
+        .iter()
+        .filter(|d| {
+            agent_id
+                .strip_prefix(d.id.as_str())
+                .is_some_and(|rest| rest.starts_with('_'))
+        })
+        .max_by_key(|d| d.id.len())?
+        .id
+        .clone();
+    registry.get(&best)
 }
 
 /// The first sentence of `text`, or a hard-capped prefix when it has none.
