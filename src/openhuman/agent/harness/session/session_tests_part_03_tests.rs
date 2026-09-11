@@ -703,3 +703,4 @@ async fn a_resumed_transcript_prefix_is_absorbed_into_history() {
             "third question",
         ],
     );
+}
