@@ -675,3 +675,46 @@ fn the_withheld_block_renders_for_a_renamed_session_with_a_filter() {
         "a packed delegate must render with its route:\n{block}"
     );
 }
+
+/// The row text must be one readable sentence, not a cut parenthetical.
+///
+/// `mcp_agent`'s `when_to_use` opens "…an ALREADY-CONNECTED MCP server (e.g.
+/// `gmail`)…", and a naive split on ". " ends the row at "(e.g." — which is
+/// what the first live capture rendered.
+#[test]
+fn a_row_is_not_cut_at_an_abbreviation() {
+    assert_eq!(
+        first_sentence("Calls tools on a connected server (e.g. gmail). Then reports back."),
+        "Calls tools on a connected server (e.g. gmail).",
+    );
+    // A genuine boundary still ends the row.
+    assert_eq!(
+        first_sentence("Builds decks from evidence. Use for pitch-deck requests."),
+        "Builds decks from evidence.",
+    );
+    // No boundary at all: capped, not truncated mid-word by accident.
+    let long = "a ".repeat(200);
+    assert!(first_sentence(&long).ends_with('…'));
+    // Short and unterminated: returned whole.
+    assert_eq!(
+        first_sentence("Runs installed agent skills"),
+        "Runs installed agent skills"
+    );
+}
+
+/// The generated intro must not carry the source's line-continuation padding.
+#[test]
+fn the_generated_block_has_no_stray_whitespace_runs() {
+    crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
+        .expect("builtin agent definitions must load");
+    let visible: HashSet<String> = ["research".to_string()].into_iter().collect();
+    let mut ctx = ctx_with(&[]);
+    ctx.agent_id = "orchestrator";
+    ctx.visible_tool_names = &visible;
+    let block = render_withheld_specialists(&ctx);
+    assert!(!block.is_empty(), "expected a rendered block");
+    assert!(
+        !block.contains("  "),
+        "the block carries doubled spaces from the source literal:\n{block}"
+    );
+}
