@@ -11,6 +11,19 @@ import SettingsTabbedPage from './SettingsTabbedPage';
 
 interface SettingsPanelProps<T extends string = string> {
   /**
+   * Replaces the default `space-y-5` body wrapper. A panel whose main region is
+   * meant to fill the height (a live log, a list) needs to be a flex column
+   * rather than a stack of margins, and cannot express that from the outside.
+   */
+  bodyClassName?: string;
+  /**
+   * Forwarded to {@link SettingsTabbedPage}. Pass `false` when the panel owns
+   * its own scroll region: the page wrapper then has a definite height, which
+   * is what a `flex-1` child needs in order to fill it. Without this the log
+   * region below sized to its content and left the rest of the pane blank.
+   */
+  scrollable?: boolean;
+  /**
    * Override the panel title. Defaults to the active route's registry title, so
    * most panels omit it. Supply it for dynamic sub-pages (profile/agent
    * editors, team management) that don't map 1:1 to a registry entry.
@@ -74,6 +87,8 @@ export default function SettingsPanel<T extends string = string>({
   tabsTestIdPrefix,
   children,
   testId,
+  bodyClassName,
+  scrollable,
 }: SettingsPanelProps<T>) {
   const { t } = useT();
   const { currentRoute, navigateBack } = useSettingsNavigation();
@@ -129,7 +144,7 @@ export default function SettingsPanel<T extends string = string>({
       {children}
     </div>
   ) : (
-    <div className="space-y-5">{children}</div>
+    <div className={bodyClassName ?? 'space-y-5'}>{children}</div>
   );
 
   return (
@@ -151,7 +166,8 @@ export default function SettingsPanel<T extends string = string>({
         value={active ? active.id : undefined}
         onChange={onChange}
         tabsAriaLabel={tabsAriaLabel}
-        tabsTestIdPrefix={tabsTestIdPrefix}>
+        tabsTestIdPrefix={tabsTestIdPrefix}
+        scrollable={scrollable}>
         {body}
       </SettingsTabbedPage>
     </div>
