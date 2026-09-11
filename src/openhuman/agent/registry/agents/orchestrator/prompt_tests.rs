@@ -596,12 +596,17 @@ fn the_rendered_prompt_never_names_a_withheld_tool() {
 ///   own is still a call.
 fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
     let packed = crate::openhuman::tools::toolpacks::all_packed_tool_names();
-    let mut prose = match text.find("## Capabilities not in your tool list") {
+    const HEADING: &str = "## Capabilities not in your tool list";
+    let mut prose = match text.find(HEADING) {
         Some(start) => {
-            let rest = &text[start + 1..];
-            let end = rest
+            // Search for the next heading strictly after this one's own text
+            // (`start + HEADING.len()`, not `start + 1`) — both indices land on
+            // an ASCII byte, so this can never split a multi-byte UTF-8
+            // character or run past `text.len()`.
+            let search_from = start + HEADING.len();
+            let end = text[search_from..]
                 .find("\n## ")
-                .map(|i| start + 1 + i)
+                .map(|i| search_from + i)
                 .unwrap_or(text.len());
             format!("{}{}", &text[..start], &text[end..])
         }
