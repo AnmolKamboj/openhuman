@@ -621,8 +621,12 @@ fn withheld_names_presented_as_callable(text: &str) -> Vec<&'static str> {
 /// gone from the prompt and nothing had replaced it.
 #[test]
 fn a_thread_renamed_session_still_resolves_to_its_registry_entry() {
+    // The process-global registry is not initialised in unit tests, and
+    // initialising it here would leak into every other test in the binary.
+    crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
+        .expect("builtin agent definitions must load");
     let registry = crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
-        .expect("the builtin agent registry is initialised in tests");
+        .expect("init_global_builtins publishes the registry");
 
     let exact = resolve_definition(registry, "orchestrator").expect("exact id must resolve");
     assert_eq!(exact.id, "orchestrator");
