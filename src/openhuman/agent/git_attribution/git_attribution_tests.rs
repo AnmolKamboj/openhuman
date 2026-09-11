@@ -149,10 +149,11 @@ fn a_repository_pager_does_not_run_under_the_shell_git_environment() {
 
     // Baseline: without the hardening the repository's pager really does run,
     // so the assertion below is discriminating rather than vacuously true.
+    // `--paginate` is required — git skips the pager entirely when stdout is
+    // not a terminal, which it never is under `cargo test`.
     let bare = Command::new("git")
-        .args(["log", "-1"])
+        .args(["--paginate", "log", "-1"])
         .current_dir(&repo)
-        .env("GIT_PAGER", pager.to_str().unwrap())
         .output()
         .unwrap();
     assert!(bare.status.success());
@@ -165,7 +166,7 @@ fn a_repository_pager_does_not_run_under_the_shell_git_environment() {
     // Now with the environment the shell tool hands every command.
     let hook_env = super::hook::test_hook_env(None);
     let mut cmd = Command::new("git");
-    cmd.args(["log", "-1"]).current_dir(&repo);
+    cmd.args(["--paginate", "log", "-1"]).current_dir(&repo);
     for (key, value) in &hook_env {
         cmd.env(key, value);
     }
