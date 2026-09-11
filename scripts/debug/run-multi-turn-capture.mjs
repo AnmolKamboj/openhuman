@@ -58,20 +58,54 @@ async function rpc(method, params) {
   return body.result;
 }
 
+// `channel_web_chat` ACKs immediately and runs the turn asynchronously, streaming
+// over the socket. Firing the next turn on the ACK would put three turns into one
+// thread concurrently — which is not a multi-turn session at all, and would make
+// the capture unreadable. Wait for the capture directory to go quiet instead: it
+// is the same signal the audit reads, so "the turn's requests have all landed" is
+// observed rather than assumed.
+const captureDir = path.resolve(
+  process.env.CAPTURE_ALL_DIR || 'target/debug-logs/inference-sequence'
+);
+
+const capturedCount = () =>
+  fs.existsSync(captureDir) ? fs.readdirSync(captureDir).filter(f => f.endsWith('.json')).length : 0;
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Wait until at least one new request has landed and none has for `quietMs`. */
+async function waitForTurnToSettle(before, { quietMs = 8_000, timeoutMs = 300_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = before;
+  let lastChange = Date.now();
+  while (Date.now() < deadline) {
+    await sleep(1_000);
+    const now = capturedCount();
+    if (now !== last) {
+      last = now;
+      lastChange = Date.now();
+    } else if (last > before && Date.now() - lastChange >= quietMs) {
+      return last;
+    }
+  }
+  throw new Error(`turn did not settle within ${timeoutMs}ms (captured ${last}, started at ${before})`);
+}
+
 console.log(`[multi-turn] core=${coreUrl} thread_id=${threadId}`);
 
 for (const [index, message] of TURNS.entries()) {
+  const before = capturedCount();
   const started = Date.now();
-  const result = await rpc('openhuman.channel_web_chat', {
+  await rpc('openhuman.channel_web_chat', {
     client_id: `prefix-audit-${threadId}`,
     thread_id: threadId,
     message,
   });
-  const reply = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  const after = await waitForTurnToSettle(before);
   console.log(
-    `[multi-turn] turn ${index + 1}/${TURNS.length} ok in ${Date.now() - started}ms — ` +
-      `reply ${reply.length} chars`
+    `[multi-turn] turn ${index + 1}/${TURNS.length} settled in ${Date.now() - started}ms — ` +
+      `${after - before} inference request(s)`
   );
 }
 
-console.log(`[multi-turn] done; thread_id=${threadId}`);
+console.log(`[multi-turn] done; thread_id=${threadId}, ${capturedCount()} request(s) captured`);
