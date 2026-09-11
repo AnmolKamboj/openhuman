@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { WorkflowGraph } from '../../lib/flows/types';
 import type { Flow } from '../../services/api/flowsApi';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
 import FlowCanvasPage, {
@@ -24,15 +25,46 @@ const updateFlow = vi.hoisted(() => vi.fn());
 const createFlow = vi.hoisted(() => vi.fn());
 const validateFlow = vi.hoisted(() => vi.fn());
 const listFlowConnections = vi.hoisted(() => vi.fn());
-const runFlow = vi.hoisted(() => vi.fn());
+const runFlowDetached = vi.hoisted(() => vi.fn());
+const setFlowEnabled = vi.hoisted(() => vi.fn());
 vi.mock('../../services/api/flowsApi', () => ({
   getFlow,
   updateFlow,
   createFlow,
   validateFlow,
   listFlowConnections,
-  runFlow,
+  runFlowDetached,
+  setFlowEnabled,
 }));
+
+// F-M1: a tiny in-memory socket stand-in (same shape as
+// `EditableFlowCanvas.runOverlay.test.tsx`) so a `flow:run_progress` event can
+// be delivered deterministically, letting us prove nothing was subscribed
+// (and so no event could have been dropped) before `activeRunId` was set.
+const socketHandlers = vi.hoisted(() => new Map<string, Set<(data: unknown) => void>>());
+const socketOn = vi.hoisted(() =>
+  vi.fn((event: string, cb: (data: unknown) => void) => {
+    const set = socketHandlers.get(event) ?? new Set();
+    set.add(cb);
+    socketHandlers.set(event, set);
+  })
+);
+const socketOff = vi.hoisted(() =>
+  vi.fn((event: string, cb: (data: unknown) => void) => {
+    socketHandlers.get(event)?.delete(cb);
+  })
+);
+vi.mock('../../services/socketService', () => ({
+  socketService: { on: socketOn, off: socketOff },
+}));
+
+function emitRunProgress(payload: { run_id: string; node_id: string; status: string }) {
+  act(() => {
+    for (const event of ['flow:run_progress', 'flow_run_progress']) {
+      for (const cb of socketHandlers.get(event) ?? []) cb(payload);
+    }
+  });
+}
 
 // Stub the copilot panel: it drives the real chat runtime (redux + socket),
 // which is out of scope here — we only assert the host opens it and hands the
@@ -43,12 +75,6 @@ vi.mock('../../components/flows/WorkflowCopilotPanel', () => ({
     copilotPanelProps.current = props;
     return <div data-testid="stub-copilot-panel" />;
   },
-}));
-
-// The page auto-collapses the app sidebar via `useRootSidebar` (redux-backed);
-// this test renders without a Provider, so stub the hook to no-ops.
-vi.mock('../../components/layout/shell/RootShellLayout', () => ({
-  useRootSidebar: () => ({ visible: true, toggle: () => {}, show: () => {}, hide: () => {} }),
 }));
 
 function makeFlow(overrides: Partial<Flow> = {}): Flow {
@@ -98,11 +124,16 @@ describe('FlowCanvasPage', () => {
     createFlow.mockReset();
     validateFlow.mockReset();
     listFlowConnections.mockReset();
-    runFlow.mockReset();
+    runFlowDetached.mockReset();
+    setFlowEnabled.mockReset();
     validateFlow.mockResolvedValue({ valid: true, errors: [], warnings: [] });
     listFlowConnections.mockResolvedValue([]);
     updateFlow.mockResolvedValue(makeFlow());
     createFlow.mockResolvedValue(makeFlow({ id: 'created-id', name: 'Daily digest' }));
+    setFlowEnabled.mockResolvedValue(makeFlow({ enabled: true }));
+    socketHandlers.clear();
+    socketOn.mockClear();
+    socketOff.mockClear();
   });
 
   it('shows a loading state while the flow is being fetched', () => {
@@ -163,7 +194,7 @@ describe('FlowCanvasPage', () => {
 
     it('renders the run-error banner (trimmed) without covering undo/redo, and lets it be dismissed', async () => {
       getFlow.mockResolvedValue(makeFlow());
-      runFlow.mockRejectedValue(
+      runFlowDetached.mockRejectedValue(
         new Error(
           'capability error: graph error: capability error: code node exited non-zero (timed_out=false):'
         )
@@ -192,13 +223,13 @@ describe('FlowCanvasPage', () => {
 
     it('auto-dismisses the run-error banner after the timeout, and restarts the timer on a new error', async () => {
       getFlow.mockResolvedValue(makeFlow());
-      runFlow.mockRejectedValue(new Error('capability error: boom'));
+      runFlowDetached.mockRejectedValue(new Error('capability error: boom'));
       renderAtFlowId('test-id');
       await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
 
       // Switch to fake timers only now — the load above already went through
       // `waitFor` (real timers); the run/timeout portion below only needs
-      // fake macrotasks plus microtask flushes for the rejected `runFlow`
+      // fake macrotasks plus microtask flushes for the rejected `runFlowDetached`
       // promise, matching the FlowRunsDrawer.test.tsx fake-timer precedent.
       vi.useFakeTimers();
       try {
@@ -234,6 +265,62 @@ describe('FlowCanvasPage', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('detached run (F-M1): activeRunId set before any progress event', () => {
+    function clickRun() {
+      fireEvent.click(screen.getByTestId('flow-canvas-run'));
+      fireEvent.click(screen.getByTestId('flow-action-confirm-accept'));
+    }
+
+    // The whole point of `flows_run_detached` (F-M1): `flows_run` blocked
+    // server-side until the run finished, so by the time the RPC resolved
+    // every `flow:run_progress` event for that run had already fired and been
+    // dropped — `useFlowRunProgress` only subscribes once `activeRunId` is
+    // set. This proves the fix end to end: no socket subscription exists
+    // before Run resolves, the canvas subscribes the moment `activeRunId` is
+    // set from the immediate `{run_id}` response, and an event delivered
+    // AFTER that point is not dropped.
+    it('subscribes to run progress only after run_detached resolves, and does not drop a subsequent event', async () => {
+      getFlow.mockResolvedValue(makeFlow());
+      let resolveRun!: (value: {
+        run_id: string;
+        flow_id: string;
+        status: 'running';
+        detached: true;
+      }) => void;
+      runFlowDetached.mockReturnValue(
+        new Promise(resolve => {
+          resolveRun = resolve;
+        })
+      );
+      renderAtFlowId('test-id');
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      clickRun();
+      // The RPC is still in flight — nothing has subscribed yet, so an event
+      // that arrived NOW (the pre-fix failure mode) would have nowhere to go.
+      expect(socketOn).not.toHaveBeenCalledWith('flow:run_progress', expect.any(Function));
+
+      await act(async () => {
+        resolveRun({ run_id: 'test-id:t1', flow_id: 'test-id', status: 'running', detached: true });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // `activeRunId` is now set from the immediate response — the canvas
+      // subscribed for exactly that run id.
+      await waitFor(() =>
+        expect(socketOn).toHaveBeenCalledWith('flow:run_progress', expect.any(Function))
+      );
+
+      const nodeWrapper = () =>
+        document.querySelector('.react-flow__node[data-id="t"]') as Element | null;
+      expect(nodeWrapper()).not.toHaveClass('flow-node-running');
+
+      emitRunProgress({ run_id: 'test-id:t1', node_id: 't', status: 'running' });
+      await waitFor(() => expect(nodeWrapper()).toHaveClass('flow-node-running'));
     });
   });
 
@@ -454,6 +541,21 @@ describe('FlowCanvasPage', () => {
       // wheel event) so the test isn't flaky under slow CI runners.
       const pane = document.querySelector('.react-flow__pane');
       expect(pane).not.toBeNull();
+      // jsdom has no layout engine and returns a zero-sized rectangle by
+      // default. React Flow deliberately ignores a wheel pan without a
+      // measurable viewport, which made this otherwise behavioral test flaky
+      // in the Linux coverage container.
+      vi.spyOn(pane as Element, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        toJSON: () => ({}),
+      });
       const viewportEl = document.querySelector('.react-flow__viewport') as HTMLElement | null;
       expect(viewportEl).not.toBeNull();
       const transformBeforePan = viewportEl?.style.transform;
@@ -687,6 +789,7 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     createFlow.mockReset();
     validateFlow.mockReset();
     listFlowConnections.mockReset();
+    setFlowEnabled.mockReset();
     validateFlow.mockResolvedValue({ valid: true, errors: [], warnings: [] });
     listFlowConnections.mockResolvedValue([]);
     // Accept now persists immediately (review + save in one step, see
@@ -695,6 +798,7 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     // by an unmocked (`undefined`-resolving) `updateFlow`/`createFlow`.
     updateFlow.mockResolvedValue(makeFlow());
     createFlow.mockResolvedValue(makeFlow({ id: 'created-id' }));
+    setFlowEnabled.mockResolvedValue(makeFlow({ enabled: true }));
   });
 
   function renderEditor(id = 'test-id') {
@@ -710,12 +814,20 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
 
   // `handleAcceptProposal` is async (it awaits the persist call) — drive it
   // through `act(async () => …)` so React flushes every state update the
-  // resulting save produces before the test asserts on them.
-  function acceptProposal(proposal: WorkflowProposal = makeProposal()) {
+  // resulting save produces before the test asserts on them. `opts` mirrors
+  // the copilot panel's own "Save & enable" call (PR1) — omitted for a plain
+  // Accept & save, `{ enable: true }` for the enable path.
+  function acceptProposal(
+    proposal: WorkflowProposal = makeProposal(),
+    opts?: { enable?: boolean }
+  ) {
     return act(async () => {
-      await (copilotPanelProps.current?.onAccept as (p: WorkflowProposal) => Promise<void>)(
-        proposal
-      );
+      await (
+        copilotPanelProps.current?.onAccept as (
+          p: WorkflowProposal,
+          opts?: { enable?: boolean }
+        ) => Promise<void>
+      )(proposal, opts);
     });
   }
 
@@ -966,12 +1078,17 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     expect(caughtErr).toBeInstanceOf(Error);
     expect((caughtErr as Error).message).toBe('network unreachable');
 
-    // The draft is already applied before `handleSave` is even attempted, so
-    // rethrowing loses no data: the proposal's graph is still on the canvas
-    // (2 nodes: the original trigger + the proposal's agent node), dirty,
-    // with the header Save button enabled as the manual retry — matching
-    // what `WorkflowCopilotPanel`'s own catch branch (which skips
-    // `clearProposal()` on rejection) relies on to keep the card visible.
+    // The proposed graph is handed to the failing save attempt before it is
+    // rethrown. Assert that direct contract rather than the canvas node count:
+    // the canvas may remount while its failed-save state settles, and that
+    // rendering detail is not what keeps the proposal available for retry.
+    expect(updateFlow).toHaveBeenCalledTimes(1);
+    expect((updateFlow.mock.calls[0][1].graph as WorkflowGraph).nodes).toHaveLength(2);
+
+    // The draft remains dirty, with the header Save button enabled as the
+    // manual retry — matching what `WorkflowCopilotPanel`'s own catch branch
+    // (which skips `clearProposal()` on rejection) relies on to keep the card
+    // visible.
     //
     // These three assertions land on state derived from the REMOUNTED canvas
     // (`handleAcceptProposal` bumps `canvasVersion`, which changes the
@@ -980,9 +1097,177 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     // later microtask/effect flush than the outer `act()` above guarantees,
     // so poll via `waitFor` instead of asserting immediately (this was
     // observed to occasionally race in CI).
-    await waitFor(() => expect(screen.getAllByTestId('flow-node')).toHaveLength(2));
     await waitFor(() => expect(screen.getByTestId('flow-editor-dirty')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId('flow-editor-save')).not.toBeDisabled());
+  });
+
+  // PR1 — "Save & enable": `handleAcceptProposal`'s `opts.enable` follow-up.
+  describe('Save & enable (PR1)', () => {
+    it('calls setFlowEnabled(flowId, true) after a successful save on an existing flow', async () => {
+      getFlow.mockResolvedValue(makeFlow({ id: 'test-id', enabled: false }));
+      updateFlow.mockResolvedValue(makeFlow({ id: 'test-id', enabled: false }));
+      renderEditor();
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      await acceptProposal(makeProposal(), { enable: true });
+
+      expect(updateFlow).toHaveBeenCalledTimes(1);
+      expect(setFlowEnabled).toHaveBeenCalledTimes(1);
+      expect(setFlowEnabled).toHaveBeenCalledWith('test-id', true);
+    });
+
+    it('calls setFlowEnabled with the newly-created id on a draft', async () => {
+      createFlow.mockResolvedValue(makeFlow({ id: 'created-id', name: 'Standup reminder' }));
+      getFlow.mockResolvedValue(makeFlow({ id: 'created-id', name: 'Standup reminder' }));
+      render(
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/flows/draft',
+              state: {
+                name: 'New workflow',
+                graph: {
+                  schema_version: 1,
+                  name: 'New workflow',
+                  nodes: [
+                    {
+                      id: 't',
+                      kind: 'trigger',
+                      name: 'Start',
+                      config: {},
+                      ports: [],
+                      position: { x: 0, y: 0 },
+                    },
+                  ],
+                  edges: [],
+                },
+                requireApproval: false,
+              },
+            },
+          ]}>
+          <Routes>
+            <Route path="/flows/draft" element={<FlowCanvasDraftPage />} />
+            <Route path="/flows/:id" element={<FlowCanvasPage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      await acceptProposal(makeProposal(), { enable: true });
+
+      expect(createFlow).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(setFlowEnabled).toHaveBeenCalledTimes(1));
+      expect(setFlowEnabled).toHaveBeenCalledWith('created-id', true);
+    });
+
+    it('on a draft "Save & enable", runs enable BEFORE navigating, and swallows an enable failure (flow saved, armed from its own page)', async () => {
+      createFlow.mockResolvedValue(makeFlow({ id: 'created-id', name: 'Standup reminder' }));
+      getFlow.mockResolvedValue(makeFlow({ id: 'created-id', name: 'Standup reminder' }));
+      setFlowEnabled.mockRejectedValue(new Error('enable rpc failed'));
+      render(
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/flows/draft',
+              state: {
+                name: 'New workflow',
+                graph: {
+                  schema_version: 1,
+                  name: 'New workflow',
+                  nodes: [
+                    {
+                      id: 't',
+                      kind: 'trigger',
+                      name: 'Start',
+                      config: {},
+                      ports: [],
+                      position: { x: 0, y: 0 },
+                    },
+                  ],
+                  edges: [],
+                },
+                requireApproval: false,
+              },
+            },
+          ]}>
+          <Routes>
+            <Route path="/flows/draft" element={<FlowCanvasDraftPage />} />
+            <Route path="/flows/:id" element={<FlowCanvasPage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      let caughtErr: unknown;
+      await act(async () => {
+        try {
+          await (
+            copilotPanelProps.current?.onAccept as (
+              p: WorkflowProposal,
+              opts?: { enable?: boolean }
+            ) => Promise<void>
+          )(makeProposal(), { enable: true });
+        } catch (err) {
+          caughtErr = err;
+        }
+      });
+
+      // On a draft the create succeeds first, so the enable is attempted
+      // BEFORE the deferred navigation (the whole point of the fix — otherwise
+      // navigate would unmount this page and the enable RPC would resolve
+      // against a dead component). And because the flow IS saved, a draft
+      // enable failure must NOT rethrow: rethrowing would strand the user on
+      // the draft and a retry would create a DUPLICATE flow. Instead we
+      // navigate to the real flow and let the user arm it there. (Contrast the
+      // existing-flow rethrow test above, which keeps the proposal for retry.)
+      expect(createFlow).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(setFlowEnabled).toHaveBeenCalledWith('created-id', true));
+      expect(caughtErr).toBeUndefined();
+      // Navigation to the real flow happened afterward (its page fetches it).
+      await waitFor(() => expect(getFlow).toHaveBeenCalledWith('created-id'));
+    });
+
+    it('does NOT call setFlowEnabled for a plain Accept & save (no opts)', async () => {
+      getFlow.mockResolvedValue(makeFlow({ id: 'test-id' }));
+      renderEditor();
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      await acceptProposal();
+
+      expect(updateFlow).toHaveBeenCalledTimes(1);
+      expect(setFlowEnabled).not.toHaveBeenCalled();
+    });
+
+    it('rethrows an enable failure after a successful save, so the saved flow is not lost and the caller can retry', async () => {
+      getFlow.mockResolvedValue(makeFlow({ id: 'test-id' }));
+      updateFlow.mockResolvedValue(makeFlow({ id: 'test-id' }));
+      setFlowEnabled.mockRejectedValue(new Error('enable rpc failed'));
+      renderEditor();
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      let caughtErr: unknown;
+      await act(async () => {
+        try {
+          await (
+            copilotPanelProps.current?.onAccept as (
+              p: WorkflowProposal,
+              opts?: { enable?: boolean }
+            ) => Promise<void>
+          )(makeProposal(), { enable: true });
+        } catch (err) {
+          caughtErr = err;
+        }
+      });
+
+      // The save itself succeeded — `updateFlow` was called and resolved —
+      // only the follow-up enable call failed. Rethrowing lets the copilot
+      // panel's own catch branch skip `clearProposal()`, keeping the card
+      // visible for retry (matching the plain-save failure contract).
+      expect(updateFlow).toHaveBeenCalledTimes(1);
+      expect(setFlowEnabled).toHaveBeenCalledTimes(1);
+      expect(caughtErr).toBeInstanceOf(Error);
+      expect((caughtErr as Error).message).toBe('enable rpc failed');
+    });
   });
 });
 

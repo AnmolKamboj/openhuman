@@ -58,6 +58,65 @@ describe('threadApi', () => {
     expect(result).toEqual(message);
   });
 
+  it('folds the legacy `assistant` sender onto `agent` when listing messages (#5933)', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({
+      data: {
+        messages: [
+          {
+            id: 'user:1',
+            content: 'hi',
+            type: 'text',
+            extraMetadata: {},
+            sender: 'user',
+            createdAt: '2026-04-10T12:01:00Z',
+          },
+          {
+            // Written by an autonomous task run before the core switched its
+            // closing message to the `agent` vocabulary.
+            id: 'assistant:legacy',
+            content: 'done',
+            type: 'text',
+            extraMetadata: { scope: 'autonomous_task_result' },
+            sender: 'assistant',
+            createdAt: '2026-04-10T12:02:00Z',
+          },
+        ],
+        count: 2,
+      },
+    });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.getThreadMessages('default-thread');
+
+    expect(result.count).toBe(2);
+    expect(result.messages.map(m => m.sender)).toEqual(['user', 'agent']);
+    // Everything else on the row is untouched.
+    expect(result.messages[1]).toMatchObject({ id: 'assistant:legacy', content: 'done' });
+  });
+
+  it('folds the legacy `assistant` sender onto `agent` on append and update results', async () => {
+    const stored = {
+      id: 'agent:run-1',
+      content: 'done',
+      type: 'text',
+      extraMetadata: {},
+      sender: 'assistant',
+      createdAt: '2026-04-10T12:02:00Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: stored });
+    mockCallCoreRpc.mockResolvedValueOnce({ data: stored });
+
+    const { threadApi } = await import('./threadApi');
+    const appended = await threadApi.appendMessage('default-thread', {
+      ...stored,
+      sender: 'agent',
+    });
+    const updated = await threadApi.updateMessage('default-thread', 'agent:run-1', {});
+
+    expect(appended.sender).toBe('agent');
+    expect(updated.sender).toBe('agent');
+  });
+
   it('generates a thread title via threads RPC', async () => {
     const thread = {
       id: 'default-thread',
@@ -220,5 +279,40 @@ describe('threadApi', () => {
       method: 'openhuman.run_ledger_events',
       params: { runId: 'sub-1', afterSequence: 0 },
     });
+  });
+
+  it('fetches the derived transcript page with pagination controls', async () => {
+    const pageData = {
+      threadId: 'thread-1',
+      items: [{ kind: 'turnBoundary', requestId: 'req-1' }],
+      total: 1,
+      hasMore: false,
+      hasTranscript: true,
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: pageData });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.getDerivedTranscript('thread-1', { cursor: '10', limit: 50 });
+
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.threads_transcript_get',
+      params: { thread_id: 'thread-1', cursor: '10', limit: 50 },
+    });
+    expect(result).toEqual(pageData);
+  });
+
+  it('fetches the derived transcript with default (undefined) pagination when omitted', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({
+      data: { threadId: 'thread-1', items: [], total: 0, hasMore: false, hasTranscript: false },
+    });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.getDerivedTranscript('thread-1');
+
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.threads_transcript_get',
+      params: { thread_id: 'thread-1', cursor: undefined, limit: undefined },
+    });
+    expect(result.hasTranscript).toBe(false);
   });
 });

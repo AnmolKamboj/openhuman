@@ -1,14 +1,31 @@
 use crate::openhuman::agent::multimodal;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::local::ollama::{
-    ollama_base_url_from_config, redact_ollama_base_url, OllamaEmbedRequest, OllamaEmbedResponse,
-    OllamaGenerateOptions, OllamaGenerateRequest,
+    ollama_base_url_from_config, redact_ollama_base_url, OllamaGenerateOptions,
+    OllamaGenerateRequest,
 };
 use crate::openhuman::inference::model_ids;
 use crate::openhuman::inference::presets::{self, VisionMode};
 use crate::openhuman::inference::types::LocalAiEmbeddingResult;
+use tinyinference::embeddings::{
+    EmbeddingModel, OllamaEmbeddingModel, DEFAULT_OLLAMA_DIMENSIONS,
+    RECOMMENDED_OLLAMA_CONTEXT_TOKENS,
+};
 
 use super::LocalAiService;
+
+fn embedding_dimensions(model_id: &str) -> Option<usize> {
+    let normalized = model_id.trim().to_ascii_lowercase();
+    if normalized.starts_with("all-minilm") {
+        Some(384)
+    } else if normalized.contains("bge-m3") || normalized.starts_with("mxbai-embed-large") {
+        Some(DEFAULT_OLLAMA_DIMENSIONS)
+    } else if normalized.starts_with("nomic-embed-text") {
+        Some(768)
+    } else {
+        None
+    }
+}
 
 impl LocalAiService {
     pub async fn vision_prompt(
@@ -35,21 +52,81 @@ impl LocalAiService {
             );
         }
         self.bootstrap(config).await;
-        let vision_model = model_ids::effective_vision_model_id(config);
-        self.ensure_ollama_model_available(config, &vision_model, "vision")
-            .await?;
+
+        // Resolve through `resolve_vision_model_id` rather than
+        // `effective_vision_model_id`: the latter returns an empty string when
+        // there is no usable vision model, which used to be handed straight to
+        // `ensure_ollama_model_available` and became a nameless `POST
+        // /api/pull` retried three times before failing opaquely (#5146).
+        // The resolver guarantees a non-empty, vision-capable id or a message
+        // that says what to configure.
+        //
+        // Since #5146 P1 it also refuses a *chat-only* configured model instead
+        // of substituting one. That arm IS reachable: `vision_mode_for_config`
+        // only checks the tier, so a user on a vision-enabled tier who points
+        // `vision_model_id` at their chat model reaches here and now gets told
+        // exactly that, rather than having a 1.7 GB substitute pulled behind
+        // their back.
+        let vision_model = match model_ids::resolve_vision_model_id(config) {
+            Ok(model) => model,
+            Err(error) => {
+                self.status.lock().vision_state = "missing".to_string();
+                tracing::warn!(
+                    target: "local_ai::vision",
+                    %error,
+                    "[local_ai:vision] no vision-capable model resolved; refusing request"
+                );
+                return Err(error);
+            }
+        };
+        tracing::debug!(
+            target: "local_ai::vision",
+            model = %vision_model,
+            "[local_ai:vision] resolved vision-capable model"
+        );
+
+        // A model that is configured but not pulled (and cannot be pulled)
+        // must also read as a vision problem, not a generic pull failure.
+        if let Err(error) = self
+            .ensure_ollama_model_available(config, &vision_model, "vision")
+            .await
+        {
+            self.status.lock().vision_state = "missing".to_string();
+            tracing::warn!(
+                target: "local_ai::vision",
+                model = %vision_model,
+                %error,
+                "[local_ai:vision] vision model unavailable"
+            );
+            // `vision_model` is now always the model the user configured, so
+            // "pull it" can no longer name a model they never chose — the
+            // substitution note this used to carry has no case left to cover.
+            return Err(format!(
+                "local vision model `{vision_model}` is not available: {error}. \
+                 Pull it with `ollama pull {vision_model}`, or route the vision \
+                 workload to a cloud provider with `vision_provider`."
+            ));
+        }
 
         let images: Vec<String> = image_refs
             .iter()
             .filter_map(|reference| multimodal::extract_ollama_image_payload(reference))
             .collect();
         if images.is_empty() {
-            return Err("no valid image payloads were provided".to_string());
+            // #5146 P6: the most common cause is a caller passing a filesystem
+            // path. Say what this parameter actually takes rather than leaving
+            // the caller to discover it from Ollama's "illegal base64 data".
+            return Err(format!(
+                "none of the {} supplied image reference(s) carried a usable image payload. \
+                 `image_refs` takes a `data:image/...;base64,<data>` URI or a bare base64 \
+                 string — a filesystem path is not read from disk here.",
+                image_refs.len()
+            ));
         }
 
         // Vision generation is background LLM-bound work; gate it through
         // the scheduler's global LLM permit.
-        let _gate_permit = crate::openhuman::scheduler_gate::wait_for_capacity().await;
+        let _gate_permit = crate::openhuman::cron::scheduler_gate::wait_for_capacity().await;
 
         let body = OllamaGenerateRequest {
             model: vision_model,
@@ -80,7 +157,7 @@ impl LocalAiService {
         );
 
         let response = self.http.post(&url).json(&body).send().await.map_err(|e| {
-            tracing::error!(
+            tracing::warn!(
                 target: "local_ai::vision",
                 %url,
                 error = %e,
@@ -100,7 +177,7 @@ impl LocalAiService {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             let detail = body.trim();
-            tracing::error!(
+            tracing::warn!(
                 target: "local_ai::vision",
                 %url,
                 %status,
@@ -154,169 +231,52 @@ impl LocalAiService {
         // Embeds are bge-m3 calls (8K context, ~1.3 GB resident) — the
         // single concurrent embed that has historically crashed the
         // user's laptop when stacked with other Ollama work. Gate it.
-        let _gate_permit = crate::openhuman::scheduler_gate::wait_for_capacity().await;
+        let _gate_permit = crate::openhuman::cron::scheduler_gate::wait_for_capacity().await;
 
         let embed_base = ollama_base_url_from_config(config);
+        let dimensions = embedding_dimensions(&embedding_model);
         log::debug!(
-            "[local_ai:embed] embed: using base_url={}",
+            "[local_ai:embed] embed: using model={} dimensions={} base_url={}",
+            embedding_model,
+            dimensions
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "dynamic".to_string()),
             redact_ollama_base_url(&embed_base)
         );
-        let response = self
-            .http
-            .post(format!("{embed_base}/api/embed"))
-            .json(&OllamaEmbedRequest {
-                model: embedding_model.clone(),
-                input: items.clone(),
-            })
-            .send()
+        let (dims, vectors) = if let Some(dimensions) = dimensions {
+            let model = OllamaEmbeddingModel::try_new(&embed_base, &embedding_model, dimensions)
+                .map_err(|error| format!("invalid local embedding RPC configuration: {error}"))?
+                .with_client(self.http.clone())
+                .with_context_options(
+                    RECOMMENDED_OLLAMA_CONTEXT_TOKENS,
+                    RECOMMENDED_OLLAMA_CONTEXT_TOKENS,
+                );
+            let vectors = model
+                .embed(&items)
+                .await
+                .map_err(|error| format!("local embedding RPC failed: {error}"))?;
+            (model.dimensions(), vectors)
+        } else {
+            OllamaEmbeddingModel::embed_discovering_dimensions(
+                &embed_base,
+                &embedding_model,
+                self.http.clone(),
+                &items,
+                RECOMMENDED_OLLAMA_CONTEXT_TOKENS,
+                RECOMMENDED_OLLAMA_CONTEXT_TOKENS,
+            )
             .await
-            .map_err(|e| format!("ollama embed request failed: {e}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            let detail = body.trim();
-            return Err(format!(
-                "ollama embed request failed with status {}{}",
-                status,
-                if detail.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {detail}")
-                }
-            ));
-        }
-
-        let payload: OllamaEmbedResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("ollama embed parse failed: {e}"))?;
-        if payload.embeddings.is_empty() {
-            return Err("ollama embed returned no embeddings".to_string());
-        }
-
-        let dims = payload.embeddings.first().map(|v| v.len()).unwrap_or(0);
+            .map_err(|error| format!("local embedding RPC failed: {error}"))?
+        };
         self.status.lock().embedding_state = "ready".to_string();
         Ok(LocalAiEmbeddingResult {
             model_id: embedding_model,
             dimensions: dims,
-            vectors: payload.embeddings,
+            vectors,
         })
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::{routing::post, Json, Router};
-    use serde_json::json;
-
-    async fn spawn_mock(app: Router) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        format!("http://127.0.0.1:{}", addr.port())
-    }
-
-    fn enabled_config() -> Config {
-        let mut c = Config::default();
-        c.local_ai.runtime_enabled = true;
-        c
-    }
-
-    fn ready_service(config: &Config) -> LocalAiService {
-        let s = LocalAiService::new(config);
-        {
-            let mut g = s.status.lock();
-            g.state = "ready".to_string();
-        }
-        s
-    }
-
-    fn mock_with_tags_and(route: &str, handler: axum::routing::MethodRouter) -> Router {
-        use axum::routing::get;
-        // Respond to `/api/tags` with a payload that contains whatever model
-        // the caller asks about, so `has_model` returns true and `embed`
-        // proceeds to the real endpoint.
-        Router::new()
-            .route(
-                "/api/tags",
-                get(|| async {
-                    Json(json!({
-                        "models": [
-                            { "name": "nomic-embed-text:latest", "modified_at": "", "size": 0u64, "digest": "x" },
-                            { "name": "llava:latest", "modified_at": "", "size": 0u64, "digest": "y" }
-                        ]
-                    }))
-                }),
-            )
-            .route(route, handler)
-    }
-
-    #[tokio::test]
-    async fn embed_against_mock_returns_vectors_with_dimensions() {
-        let _guard = crate::openhuman::inference::inference_test_guard();
-
-        let app = mock_with_tags_and(
-            "/api/embed",
-            post(|Json(_b): Json<serde_json::Value>| async {
-                Json(json!({
-                    "model": "m",
-                    "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-                }))
-            }),
-        );
-        let base = spawn_mock(app).await;
-        unsafe {
-            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
-        }
-
-        let config = enabled_config();
-        let service = ready_service(&config);
-        let result = service
-            .embed(&config, &["hello".to_string(), "world".to_string()])
-            .await;
-        let _ = result; // Ensure the call path completes — exact pass/fail
-                        // depends on model name matching in `has_model`.
-
-        unsafe {
-            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn embed_rejects_all_empty_inputs_before_network_call() {
-        let _guard = crate::openhuman::inference::inference_test_guard();
-
-        // Even without a working mock server, entirely-empty inputs must be
-        // rejected before any HTTP call.
-        let config = enabled_config();
-        let service = ready_service(&config);
-        let err = service
-            .embed(&config, &["".to_string(), "   ".to_string()])
-            .await
-            .unwrap_err();
-        assert!(err.contains("non-empty input"));
-    }
-
-    #[tokio::test]
-    async fn embed_disabled_returns_error() {
-        let mut config = Config::default();
-        config.local_ai.runtime_enabled = false;
-        let service = LocalAiService::new(&config);
-        let err = service.embed(&config, &["x".into()]).await.unwrap_err();
-        assert!(err.contains("local ai is disabled"));
-    }
-
-    #[tokio::test]
-    async fn vision_prompt_disabled_returns_error() {
-        let mut config = Config::default();
-        config.local_ai.runtime_enabled = false;
-        let service = LocalAiService::new(&config);
-        let err = service
-            .vision_prompt(&config, "describe", &[], None)
-            .await
-            .unwrap_err();
-        assert!(err.contains("local ai is disabled"));
-    }
-}
+#[path = "vision_embed_tests.rs"]
+mod tests;

@@ -5,8 +5,8 @@ use super::super::context::{
     CHANNEL_MESSAGE_TIMEOUT_SECS, MIN_CHANNEL_MESSAGE_TIMEOUT_SECS,
 };
 use super::super::traits;
-use super::common::DummyProvider;
-use crate::openhuman::inference::provider::ChatMessage;
+use super::common::DummyModel;
+use crate::openhuman::agent::messages::ChatMessage;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -63,18 +63,20 @@ fn compact_sender_history_keeps_recent_truncated_messages() {
 
     let ctx = ChannelRuntimeContext {
         channels_by_name: Arc::new(HashMap::new()),
-        provider: Some(Arc::new(DummyProvider)),
+        turn_model_source: Some(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(Arc::new(
+            DummyModel,
+        ))),
         default_provider: Arc::new("test-provider".to_string()),
         memory: Arc::new(super::common::NoopMemory),
         tools_registry: Arc::new(vec![]),
-        system_prompt: Arc::new("system".to_string()),
+        system_prompt: crate::openhuman::channels::ChannelSystemPrompt::fixed("system"),
         model: Arc::new("test-model".to_string()),
         temperature: 0.0,
         auto_save_memory: false,
         max_tool_iterations: 5,
         min_relevance_score: 0.0,
         conversation_histories: Arc::new(Mutex::new(histories)),
-        provider_cache: Arc::new(Mutex::new(HashMap::new())),
+        turn_model_source_cache: Arc::new(Mutex::new(HashMap::new())),
         route_overrides: Arc::new(Mutex::new(HashMap::new())),
         api_url: None,
         inference_url: None,

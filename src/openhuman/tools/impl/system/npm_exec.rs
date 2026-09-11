@@ -2,7 +2,7 @@
 //! toolchain.
 //!
 //! Thin wrapper over `npm <subcommand> <args...>` that piggybacks on
-//! [`crate::openhuman::javascript::NodeBootstrap`] for binary resolution.
+//! [`crate::openhuman::runtime::javascript::NodeBootstrap`] for binary resolution.
 //! Same security posture as
 //! [`crate::openhuman::tools::impl::system::shell::ShellTool`] and
 //! [`crate::openhuman::tools::impl::system::node_exec::NodeExecTool`]:
@@ -18,7 +18,7 @@
 //! POSIX-safe single-quoting.
 
 use crate::openhuman::agent::host_runtime::RuntimeAdapter;
-use crate::openhuman::javascript::NodeBootstrap;
+use crate::openhuman::runtime::javascript::NodeBootstrap;
 use crate::openhuman::security::{CommandClass, GateDecision, SecurityPolicy};
 use crate::openhuman::tools::traits::{
     PermissionLevel, Tool, ToolCallOptions, ToolResult, ToolTimeout,
@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
-use tinyagents::harness::tool::ToolExecutionContext;
+use tinytools::ToolRunContext;
 
 /// Absolute ceiling callers can request via `timeout_secs`. There is **no**
 /// default timeout — `npm install`/build steps on a cold cache or slow network
@@ -166,7 +166,7 @@ impl Tool for NpmExecTool {
         &self,
         args: serde_json::Value,
         _options: ToolCallOptions,
-        context: Option<&ToolExecutionContext>,
+        context: Option<&dyn ToolRunContext>,
     ) -> anyhow::Result<ToolResult> {
         self.execute_in_context(args, context).await
     }
@@ -176,7 +176,7 @@ impl NpmExecTool {
     async fn execute_in_context(
         &self,
         args: serde_json::Value,
-        context: Option<&ToolExecutionContext>,
+        context: Option<&dyn ToolRunContext>,
     ) -> anyhow::Result<ToolResult> {
         let subcommand = match args.get("subcommand").and_then(|v| v.as_str()) {
             Some(s) => s.trim().to_string(),
@@ -217,7 +217,7 @@ impl NpmExecTool {
 
         // No default deadline — only a caller-supplied `timeout_secs` (capped)
         // bounds the run. `None` ⇒ run to completion.
-        let explicit_timeout = crate::openhuman::tool_timeout::explicit_call_timeout_duration(
+        let explicit_timeout = crate::openhuman::tools::timeout::explicit_call_timeout_duration(
             args.get("timeout_secs").and_then(|v| v.as_u64()),
             NPM_TIMEOUT_MAX_SECS,
         );
@@ -229,6 +229,20 @@ impl NpmExecTool {
                 "[policy-blocked] Action blocked: the agent is in read-only mode and cannot run npm.",
             ));
         }
+        let path_policy = super::security_for_tool_context(&self.security, context, "npm_exec");
+        let cwd = match resolve_cwd(&path_policy.action_dir, cwd_override.as_deref()) {
+            Ok(p) => p,
+            Err(msg) => return Ok(ToolResult::error(msg)),
+        };
+        let guard_command = std::iter::once(subcommand.as_str())
+            .chain(extra_args.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if let Err(reason) =
+            super::check_cross_profile_command(&path_policy, &guard_command, &cwd, "npm_exec")
+        {
+            return Ok(ToolResult::error(reason));
+        }
         if self.security.is_rate_limited() {
             return Ok(ToolResult::error(
                 "Rate limit exceeded: too many actions in the last hour",
@@ -239,13 +253,6 @@ impl NpmExecTool {
                 "Rate limit exceeded: action budget exhausted",
             ));
         }
-
-        let path_policy = super::security_for_tool_context(&self.security, context, "npm_exec");
-
-        let cwd = match resolve_cwd(&path_policy.action_dir, cwd_override.as_deref()) {
-            Ok(p) => p,
-            Err(msg) => return Ok(ToolResult::error(msg)),
-        };
 
         let resolved = match self.bootstrap.resolve().await {
             Ok(r) => r,
@@ -398,7 +405,7 @@ impl NpmExecTool {
         // eventually reclaim a wedged sandbox process. The native path runs
         // truly unbounded.
         let effective = timeout.unwrap_or_else(|| {
-            Duration::from_secs(crate::openhuman::tool_timeout::SANDBOX_UNBOUNDED_CAP_SECS)
+            Duration::from_secs(crate::openhuman::tools::timeout::SANDBOX_UNBOUNDED_CAP_SECS)
         });
 
         // Load the live `RuntimeConfig` so `resolve_sandbox_policy` derives
@@ -446,7 +453,7 @@ impl NpmExecTool {
         } else {
             format!("{}{}{}", bin_dir.display(), sep, host_path)
         };
-        extra_env.insert("PATH".to_string(), prepended);
+        extra_env.insert("PATH".into(), prepended.into());
 
         match sandbox::execute_in_sandbox(&policy, command, cwd, extra_env, effective).await {
             Ok(result) => {
@@ -540,89 +547,5 @@ fn resolve_cwd(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    fn absolute_sample() -> &'static str {
-        if cfg!(windows) {
-            "C:\\Windows\\System32"
-        } else {
-            "/etc"
-        }
-    }
-
-    #[test]
-    fn npm_timeout_policy_unbounded_by_default() {
-        assert_eq!(npm_timeout_policy(&json!({})), ToolTimeout::Unbounded);
-        assert_eq!(
-            npm_timeout_policy(&json!({"timeout_secs": 0})),
-            ToolTimeout::Unbounded
-        );
-    }
-
-    #[test]
-    fn npm_timeout_policy_enforces_and_caps_explicit() {
-        assert_eq!(
-            npm_timeout_policy(&json!({"timeout_secs": 300})),
-            ToolTimeout::Secs(300)
-        );
-        assert_eq!(
-            npm_timeout_policy(&json!({"timeout_secs": 99999})),
-            ToolTimeout::Secs(NPM_TIMEOUT_MAX_SECS)
-        );
-    }
-
-    #[test]
-    fn is_sane_subcommand_accepts_common_npm_verbs() {
-        for v in &[
-            "install",
-            "ci",
-            "run",
-            "exec",
-            "test",
-            "test:watch",
-            "run-script",
-        ] {
-            assert!(is_sane_subcommand(v), "{v} should be accepted");
-        }
-    }
-
-    #[test]
-    fn is_sane_subcommand_rejects_metacharacters() {
-        for v in &["install; rm -rf /", "run && echo", "|cat", "$(whoami)", ""] {
-            assert!(!is_sane_subcommand(v), "{v} should be rejected");
-        }
-    }
-
-    #[test]
-    fn resolve_cwd_defaults_to_workspace() {
-        let ws = std::path::Path::new("/tmp/ws");
-        assert_eq!(resolve_cwd(ws, None).unwrap(), ws);
-        assert_eq!(resolve_cwd(ws, Some("")).unwrap(), ws);
-        assert_eq!(resolve_cwd(ws, Some(".")).unwrap(), ws);
-    }
-
-    #[test]
-    fn resolve_cwd_rejects_absolute_and_parent() {
-        let ws = std::path::Path::new("/tmp/ws");
-        assert!(resolve_cwd(ws, Some(absolute_sample())).is_err());
-        assert!(resolve_cwd(ws, Some("../other")).is_err());
-        assert!(resolve_cwd(ws, Some("sub/../../../etc")).is_err());
-    }
-
-    #[test]
-    fn resolve_cwd_allows_relative_subdir() {
-        let ws = std::path::Path::new("/tmp/ws");
-        let got = resolve_cwd(ws, Some("app")).unwrap();
-        assert_eq!(got, std::path::PathBuf::from("/tmp/ws/app"));
-    }
-
-    #[test]
-    fn safe_env_vars_include_windows_process_essentials() {
-        for var in ["SystemRoot", "COMSPEC", "PATHEXT", "TEMP", "USERPROFILE"] {
-            assert!(
-                SAFE_ENV_VARS.contains(&var),
-                "{var} must be forwarded for Windows child processes"
-            );
-        }
-    }
-}
+#[path = "npm_exec_tests.rs"]
+mod tests;

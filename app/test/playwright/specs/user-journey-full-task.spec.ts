@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import { agentMessageText } from '../helpers/chat-locators';
 import {
   bootAuthenticatedPage,
   callCoreRpc,
@@ -33,7 +34,7 @@ async function openChat(page: Page): Promise<void> {
   await page.goto('/#/chat');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  await expect(page.getByTestId('send-message-button')).toBeVisible();
+  await expect(page.getByTestId('chat-message-input')).toBeVisible();
 }
 
 async function selectedThreadId(page: Page): Promise<string | null> {
@@ -101,7 +102,7 @@ async function waitForSocketConnected(page: Page): Promise<void> {
 async function sendMessage(page: Page, prompt: string): Promise<void> {
   await waitForSocketConnected(page);
   await dismissWalkthroughIfPresent(page);
-  await page.getByPlaceholder('How can I help you today?').fill(prompt);
+  await page.getByTestId('chat-message-input').fill(prompt);
   await dismissWalkthroughIfPresent(page);
   await expect(page.getByTestId('send-message-button')).toBeEnabled();
   await page.getByTestId('send-message-button').click();
@@ -135,7 +136,7 @@ test.describe('User journey - full research task', () => {
     expect(typeof threadId).toBe('string');
 
     await sendMessage(page, PROMPT);
-    await expect(page.getByText(CANARY_FINAL).first()).toBeVisible({ timeout: 45_000 });
+    await expect(agentMessageText(page, CANARY_FINAL)).toBeVisible({ timeout: 45_000 });
 
     // Navigate away and back to confirm the thread (and its messages) persist.
     // Home folded into the unified chat surface, so /home now redirects to
@@ -152,6 +153,6 @@ test.describe('User journey - full research task', () => {
     await page.goto('/#/chat');
     await waitForAppReady(page);
     await page.getByTestId(`thread-row-${threadId}`).click({ force: true });
-    await expect(page.getByText(CANARY_FINAL).first()).toBeVisible({ timeout: 15_000 });
+    await expect(agentMessageText(page, CANARY_FINAL)).toBeVisible({ timeout: 15_000 });
   });
 });

@@ -14,145 +14,62 @@
 // Many types/functions are intended for future use or integration with the frontend.
 #![allow(dead_code)]
 
-pub mod about_app;
-pub mod accessibility;
 pub mod agent;
-pub mod agent_experience;
-pub mod agent_meetings;
-pub mod agent_memory;
-pub mod agent_orchestration;
-pub mod agent_registry;
-pub mod agent_tool_policy;
-pub mod agentbox;
-pub mod announcements;
-pub mod app_state;
-pub mod approval;
-pub mod artifacts;
-#[cfg(feature = "voice")]
-pub mod audio_toolkit;
-pub mod autocomplete;
-pub mod billing;
 pub mod channels;
-pub mod codegraph;
-pub mod composio;
 pub mod config;
-pub mod connectivity;
-pub mod context;
-pub mod cost;
-pub mod council_registry;
-pub mod credentials;
 pub mod cron;
-pub mod cwd_jail;
-pub mod dashboard;
-pub mod desktop_companion;
-pub mod dev_paths;
-pub mod devices;
-pub mod doctor;
-pub mod embeddings;
-pub mod emergency_stop;
-pub mod encryption;
-pub mod file_state;
-pub mod file_storage;
+pub mod desktop;
 #[cfg(feature = "flows")]
 pub mod flows;
-pub mod harness_init;
-pub mod health;
-pub mod heartbeat;
+/// User-authored hooks — `hooks.json` scripts that observe and gate the agent.
+/// Kernel surface, never gated: the whole point is a policy seam a slim build
+/// still honours, and it costs nothing when nothing is configured.
+pub mod hooks;
+pub mod hosted;
+// Hosting: the `hosting_*` tools that put a workspace on a real hosting
+// provider, over the `tinyhosts` unified model. Leaf gate — when `hosting` is
+// off the domain is not compiled and the tools are absent from the registry
+// rather than degraded to an error (see `tools::ops`).
+#[cfg(feature = "hosting")]
+pub mod hosting;
+// The whole http_host domain is an axum static-directory server, so it is
+// exclusive to the `http-server` feature (#5048). Its only outside reference is
+// the controller-registration push in `core::all`, itself gated in lockstep, so
+// no stub facade is needed — a slim build simply omits the `http_host.*` RPC
+// surface (unknown-method over `/rpc`, absent from `/schema`).
+#[cfg(feature = "http-server")]
 pub mod http_host;
-#[cfg(feature = "media")]
-pub mod image;
 pub mod inference;
 pub mod integrations;
-pub mod javascript;
-pub mod keyring;
-pub mod keyring_consent;
-pub mod learning;
-pub mod mcp_audit;
-pub mod mcp_client;
-pub mod mcp_registry;
-pub mod mcp_server;
+// Vendor-neutral JSON Schema / JSON value walking, shared by the Composio
+// catalog and the tinyflows capability adapters. Deliberately owned by neither:
+// if it lived in either, the other would need a dependency edge into it, and
+// one of those directions is the back-edge the kernelization work removes.
+// Ungated — `composio` is always compiled, `tinyflows` is behind `flows`.
+pub mod json_schema;
+// Ungated family root: `mcp/http_client` is always compiled, and the
+// `server`/`registry`/`audit` facades each need their `stub` to resolve in an
+// `mcp`-less build. The gate is pushed onto each member inside `mcp/mod.rs`.
+pub mod mcp;
+// Both children (`generation`, `image`) are wholly gated, so the parent is a
+// leaf gate — a slim build omits the family outright.
 #[cfg(feature = "media")]
-pub mod media_generation;
-#[cfg(feature = "meet")]
-pub mod meet;
-pub mod meet_agent;
+pub mod media;
+pub mod medulla;
 pub mod memory;
-pub mod memory_archivist;
-pub mod memory_conversations;
-pub mod memory_diff;
-pub mod memory_goals;
-pub mod memory_queue;
-pub mod memory_search;
-pub mod memory_sources;
-pub mod memory_store;
-pub mod memory_sync;
-pub mod memory_tools;
-pub mod memory_tree;
-pub mod migration;
-pub mod migrations;
-pub mod model_council;
-pub mod monitor;
-pub mod notifications;
-pub mod orchestration;
-pub mod overlay;
-pub mod people;
-pub mod plan_review;
-pub mod profiles;
-pub mod prompt_injection;
-pub mod provider_surfaces;
-pub mod recall_calendar;
-pub mod redirect_links;
-pub mod referral;
-#[cfg(feature = "flows")]
-pub mod rhai_workflows;
-pub mod routing;
-pub mod runtime_node;
-pub mod runtime_python;
-pub mod runtime_python_server;
+#[cfg(feature = "modules")]
+pub mod modules;
+pub mod platform;
+pub mod runtime;
 pub mod sandbox;
-pub mod scheduler_gate;
-pub mod screen_intelligence;
 pub mod search;
 pub mod security;
-pub mod service;
-pub mod session_db;
-pub mod session_import;
-pub mod skill_registry;
-pub mod skill_runtime;
 pub mod skills;
-pub mod socket;
-pub mod startup;
-pub mod subconscious;
-pub mod subconscious_triggers;
-pub mod task_sources;
-pub mod team;
 #[cfg(feature = "e2e-test-support")]
 pub mod test_support;
-pub mod text_input;
-pub mod thread_goals;
 pub mod threads;
-pub mod tinyagents;
-pub mod tinycortex;
-#[cfg(feature = "flows")]
-pub mod tinyflows;
-pub mod tinyplace;
-pub mod tls;
-pub mod todos;
-pub mod tokenjuice;
-pub mod tool_registry;
-pub mod tool_status;
-pub mod tool_timeout;
 pub mod tools;
-pub mod update;
 pub mod util;
 pub mod voice;
-pub mod wallet;
 pub mod web3;
 pub mod web_chat;
-pub mod webhooks;
-pub mod webview_accounts;
-pub mod webview_apis;
-pub mod webview_notifications;
-pub mod whatsapp_data;
-pub mod workspace;
-pub mod x402;

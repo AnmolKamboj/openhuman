@@ -15,7 +15,7 @@
  * This is a *live overlay only* — the durable `flow_runs` row remains the source
  * of truth and {@link useFlowRunPoller} stays as the 2s fallback, so a dropped
  * broadcast (lag) merely delays the animation, never corrupts run history. The
- * subscription mirrors {@link useTinyplaceStream} exactly (socketService.on/off
+ * subscription uses the standard socketService on/off lifecycle
  * with cleanup on unmount / dependency change).
  */
 import debug from 'debug';
@@ -38,7 +38,7 @@ const EVENT_UNDERSCORE = 'flow_run_progress';
 export type FlowNodeRunStatus = 'running' | 'success' | 'error' | (string & {});
 
 /** node_id → latest live status for the watched run. */
-export type FlowRunProgressMap = Record<string, FlowNodeRunStatus>;
+type FlowRunProgressMap = Record<string, FlowNodeRunStatus>;
 
 /**
  * Maps a live node status to the canvas CSS class that rings/animates the node.
@@ -122,5 +122,3 @@ export function useFlowRunProgress(runId: string | null): FlowRunProgressMap {
 
   return statuses;
 }
-
-export default useFlowRunProgress;

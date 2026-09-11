@@ -18,20 +18,19 @@ import { callCoreRpc } from '../coreRpcClient';
 
 // ---- Domain types ----
 
-export type VoiceWorkloadId = 'stt' | 'tts';
+type VoiceWorkloadId = 'stt' | 'tts';
 
 /**
  * Structured reference to a voice provider. Parsed from wire-format strings.
  *
  * Wire grammar:
  *   "cloud" / "openhuman" / empty -> { kind: 'cloud' }
- *   "whisper"                     -> { kind: 'local', engine: 'whisper', model }
  *   "piper"                       -> { kind: 'local', engine: 'piper', model }
  *   "<slug>:<model>"              -> { kind: 'external', providerSlug, model }
  */
 export type VoiceProviderRef =
   | { kind: 'cloud' }
-  | { kind: 'local'; engine: 'whisper' | 'piper'; model: string }
+  | { kind: 'local'; engine: 'piper'; model: string }
   | { kind: 'external'; providerSlug: string; model: string };
 
 export type VoiceCapability = 'stt' | 'tts' | 'both';
@@ -53,12 +52,7 @@ export interface VoiceProviderView extends VoiceProviderCreds {
   has_api_key: boolean;
 }
 
-export interface VoiceModelInfo {
-  id: string;
-  label?: string | null;
-}
-
-export interface VoiceTestResult {
+interface VoiceTestResult {
   ok: boolean;
   detail: string;
   latency_ms?: number;
@@ -81,9 +75,6 @@ export function parseVoiceProviderString(s: string | null | undefined): VoicePro
   if (!trimmed || trimmed === 'cloud' || trimmed === 'openhuman') {
     return { kind: 'cloud' };
   }
-  if (trimmed === 'whisper') {
-    return { kind: 'local', engine: 'whisper', model: '' };
-  }
   if (trimmed === 'piper') {
     return { kind: 'local', engine: 'piper', model: '' };
   }
@@ -91,9 +82,6 @@ export function parseVoiceProviderString(s: string | null | undefined): VoicePro
   if (colonIdx > 0) {
     const slug = trimmed.slice(0, colonIdx).trim();
     const model = trimmed.slice(colonIdx + 1).trim();
-    if (slug === 'whisper') {
-      return { kind: 'local', engine: 'whisper', model };
-    }
     if (slug === 'piper') {
       return { kind: 'local', engine: 'piper', model };
     }
@@ -225,19 +213,6 @@ function stripHasKey(p: VoiceProviderView): VoiceProviderCreds {
   return rest;
 }
 
-// ---- Model listing ----
-
-export async function listVoiceModels(
-  providerId: string,
-  capability?: VoiceWorkloadId
-): Promise<VoiceModelInfo[]> {
-  const result = await callCoreRpc<{ models: VoiceModelInfo[] }>({
-    method: 'openhuman.voice_list_models',
-    params: { provider_id: providerId, capability },
-  });
-  return result.models ?? [];
-}
-
 // ---- Provider testing ----
 
 const VOICE_TEST_TIMEOUT_MS = 30_000;
@@ -246,14 +221,35 @@ function stripLogPrefix(s: string): string {
   return s.replace(/^\[voice-(?:stt|tts|factory)\]\s*/i, '');
 }
 
+/**
+ * Test a voice provider.
+ *
+ * With `validateOnly`, the core does a lightweight authenticated GET instead of
+ * a real transcription/synthesis, and `apiKey` lets the caller check a key the
+ * user has typed but not yet saved — the key is validated and discarded, never
+ * written to the keychain (#5896).
+ */
 export async function testVoiceProvider(
   workload: VoiceWorkloadId,
   provider: string,
-  validateOnly = false
+  validateOnly = false,
+  apiKey?: string
 ): Promise<VoiceTestResult> {
   const result = await callCoreRpc<VoiceTestResult>({
     method: 'openhuman.voice_test_provider',
-    params: { workload, provider, validate_only: validateOnly },
+    params: {
+      workload,
+      provider,
+      validate_only: validateOnly,
+      // Omit rather than send an empty string: the core reads an empty
+      // candidate as "fall back to the stored credential", and sending one
+      // for a provider with no stored key would report a confusing
+      // "no API key configured" instead of the real validation result.
+      // Trimmed on the way out so the guard and the payload agree — a key
+      // pasted with a trailing newline should be tested as the key the user
+      // will actually save, not as a different string.
+      ...(apiKey?.trim() ? { api_key: apiKey.trim() } : {}),
+    },
     timeoutMs: VOICE_TEST_TIMEOUT_MS,
   });
   return { ...result, detail: stripLogPrefix(result.detail) };

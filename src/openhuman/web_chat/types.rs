@@ -25,12 +25,14 @@ pub(crate) struct SessionCacheFingerprint {
     /// change) — without this the stale session would be reused. Mirrors
     /// [`Self::autonomy_signature`].
     pub(super) model_registry_signature: String,
-    /// Serialized signature of the active agent profile. The cached `Agent`
+    /// Hashed signature of the active agent profile record and its resolved
+    /// SOUL/MEMORY file contents. The cached `Agent`
     /// bakes in the profile's tool/skill/MCP/connector visibility and SOUL/MEMORY
     /// overrides at build time; switching profiles on the same thread keeps the
     /// same model/agent/provider, so without this the previous profile's
     /// capability surface would leak into the new profile's turns. Any change to
-    /// the resolved profile forces a rebuild.
+    /// the resolved profile or a direct edit to either profile file forces a
+    /// rebuild on the next turn.
     pub(super) profile_signature: String,
 }
 
@@ -67,11 +69,19 @@ pub(super) struct ParallelEntry {
 #[derive(Debug, Clone)]
 pub(super) struct WebChatTaskResult {
     pub(super) full_response: String,
-    pub(super) citations: Vec<crate::openhuman::agent_memory::memory_loader::MemoryCitation>,
+    pub(super) citations: Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation>,
     /// Holistic token/cost/context totals for the turn (parent + sub-agents),
     /// forwarded to the frontend on `chat_done`. `None` for synthetic results
     /// (e.g. budget-exhausted placeholders) that never ran a real turn.
     pub(super) usage: Option<crate::openhuman::agent::harness::turn_subagent_usage::LastTurnUsage>,
+    /// The workspace this turn actually ran in, carried to delivery so the
+    /// reply is stored there before it is announced (#6034).
+    ///
+    /// Taken from the config the turn resolved rather than re-read at delivery
+    /// time: a sign-out or account switch moves `workspace_dir`, and a reply
+    /// re-resolved afterwards would be filed under whoever is signed in when
+    /// the turn happens to finish.
+    pub(super) workspace_dir: std::path::PathBuf,
 }
 
 /// Per-request metadata carried alongside a chat send. Currently used by the
@@ -87,24 +97,6 @@ pub struct ChatRequestMetadata {
     /// is resolved — used purely for trace attribution (Langfuse `agent.id` /
     /// `agent.turn:<id>` trace name), never for routing.
     pub agent_id: Option<String>,
-}
-
-impl ChatRequestMetadata {
-    /// Constructor for messages submitted via the AgentBox `/run` HTTP surface
-    /// (`OPENHUMAN_AGENTBOX_MODE=1`). These are background invocations driven
-    /// programmatically by a remote marketplace caller — no live UI is
-    /// attached to surface TTS or PTT signals — so `speak_reply` and
-    /// `session_id` stay `None` and the `source` tag identifies the origin
-    /// for analytics / log filtering downstream (mirrors the `"ptt"` /
-    /// `"dictation"` / `"type"` convention used by the desktop UI).
-    pub fn agentbox() -> Self {
-        Self {
-            speak_reply: None,
-            source: Some("agentbox".to_string()),
-            session_id: None,
-            agent_id: None,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]

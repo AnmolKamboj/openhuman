@@ -8,8 +8,8 @@ use motosan_ai_oauth::Token;
 use serde::Deserialize;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::credentials::profiles::{AuthProfile, AuthProfilesStore, TokenSet};
-use crate::openhuman::credentials::{state_dir_from_config, AuthService};
+use crate::openhuman::security::credentials::profiles::{AuthProfile, AuthProfilesStore, TokenSet};
+use crate::openhuman::security::credentials::{state_dir_from_config, AuthService};
 
 use super::config::codex_oauth_config;
 
@@ -332,6 +332,20 @@ pub fn lookup_openai_oauth_credentials(
                 }
                 Err(e) => {
                     log::warn!("{LOG_PREFIX} oauth refresh failed: {e}");
+                    // If the token has already passed its expiry there is no
+                    // point proceeding — the next inference call will hit 401
+                    // and the user sees a generic error with no remedy.
+                    // Return a string that `is_openai_oauth_session_expired_message`
+                    // recognises ("authentication token is expired") so
+                    // `classify_inference_error` routes to the Codex reconnect
+                    // message (Settings → Integrations), not the OpenHuman
+                    // app-session sign-in flow. (#5869)
+                    if token_set.is_expiring_within(std::time::Duration::ZERO) {
+                        return Err(format!(
+                            "Codex authentication token is expired — refresh failed: {e}. \
+                             Please reconnect Codex in Settings → Integrations."
+                        ));
+                    }
                 }
             }
         }

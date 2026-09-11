@@ -23,7 +23,7 @@
 //! 1. **Cross-process transport.** OpenHuman spawns child `claude` processes that
 //!    re-enter the core over the loopback MCP HTTP hop; the crate's per-run-tree
 //!    recursion stack does not cross that boundary. `current_spawn_depth` feeds
-//!    `mcp_server::subagent_depth` which stamps/reads the depth on that hop.
+//!    `mcp::server::subagent_depth` which stamps/reads the depth on that hop.
 //! 2. **Synchronous pre-dispatch surface.** `subagent_runner` rejects an over-deep
 //!    spawn *before* building the TinyAgents run (so the caller gets the depth
 //!    error without a provider round-trip); tests assert this surface directly.
@@ -62,31 +62,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn current_spawn_depth_defaults_to_zero() {
-        assert_eq!(current_spawn_depth(), 0);
-    }
-
-    #[tokio::test]
-    async fn with_spawn_depth_scopes_value_to_future() {
-        let observed = with_spawn_depth(2, async { current_spawn_depth() }).await;
-        assert_eq!(observed, 2);
-        assert_eq!(current_spawn_depth(), 0);
-    }
-
-    #[tokio::test]
-    async fn nested_spawn_depth_scope_restores_outer_value() {
-        with_spawn_depth(1, async {
-            assert_eq!(current_spawn_depth(), 1);
-            with_spawn_depth(2, async {
-                assert_eq!(current_spawn_depth(), 2);
-            })
-            .await;
-            assert_eq!(current_spawn_depth(), 1);
-        })
-        .await;
-    }
-}
+#[path = "spawn_depth_context_tests.rs"]
+mod tests;

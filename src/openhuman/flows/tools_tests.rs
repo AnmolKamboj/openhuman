@@ -178,6 +178,101 @@ async fn summary_step_count_and_kinds_are_correct() {
     assert_eq!(steps[1]["config_hint"], "slack.post_message");
 }
 
+#[test]
+fn dedup_config_hint_is_truncated_for_a_long_key_expression() {
+    // CodeRabbit (PR #5265): unlike the other config_hint branches, the
+    // dedup branch returned `format!("key: {k}")` unwrapped by
+    // `truncate_hint`, so an oversized `config.key` expression could make
+    // the proposal/summary payload unbounded.
+    let long_key = format!("=item.{}", "x".repeat(200));
+    let graph = WorkflowGraph {
+        nodes: vec![Node {
+            id: "dd".to_string(),
+            kind: NodeKind::Dedup,
+            type_version: 1,
+            name: "Dedup".to_string(),
+            config: json!({ "key": long_key }),
+            ports: Vec::new(),
+            position: None,
+        }],
+        ..Default::default()
+    };
+
+    let summary = build_summary(&graph);
+    let hint = summary["steps"][0]["config_hint"].as_str().unwrap();
+    assert!(
+        hint.chars().count() <= MAX_CONFIG_HINT_CHARS,
+        "hint not truncated: {} chars: {hint}",
+        hint.chars().count()
+    );
+    assert!(hint.ends_with('…'), "expected an ellipsis marker: {hint}");
+    assert!(
+        hint.starts_with("key: "),
+        "expected the key: prefix: {hint}"
+    );
+}
+
+#[test]
+fn approval_config_hint_prefers_the_review_title() {
+    let graph = WorkflowGraph {
+        nodes: vec![Node {
+            id: "review".to_string(),
+            kind: NodeKind::Approval,
+            type_version: 1,
+            name: "Review".to_string(),
+            config: json!({
+                "title": "Publish this draft?",
+                "prompt": "Approve publication"
+            }),
+            ports: Vec::new(),
+            position: None,
+        }],
+        ..Default::default()
+    };
+
+    let summary = build_summary(&graph);
+    assert_eq!(summary["steps"][0]["config_hint"], "Publish this draft?");
+}
+
+#[test]
+fn shell_config_hint_prefers_the_script_path_and_truncates_inline_source() {
+    let graph = WorkflowGraph {
+        nodes: vec![
+            Node {
+                id: "path".to_string(),
+                kind: NodeKind::Shell,
+                type_version: 1,
+                name: "Script file".to_string(),
+                config: json!({
+                    "script_path": "scripts/report.sh",
+                    "source": "ignored when a path is present"
+                }),
+                ports: Vec::new(),
+                position: None,
+            },
+            Node {
+                id: "inline".to_string(),
+                kind: NodeKind::Shell,
+                type_version: 1,
+                name: "Inline script".to_string(),
+                config: json!({ "source": "x".repeat(200) }),
+                ports: Vec::new(),
+                position: None,
+            },
+        ],
+        ..Default::default()
+    };
+
+    let summary = build_summary(&graph);
+    assert_eq!(
+        summary["steps"][0]["config_hint"],
+        "script: scripts/report.sh"
+    );
+    let inline_hint = summary["steps"][1]["config_hint"].as_str().unwrap();
+    assert_eq!(inline_hint.chars().count(), MAX_CONFIG_HINT_CHARS);
+    assert!(inline_hint.ends_with('…'));
+}
+
 #[tokio::test]
 async fn summary_trigger_describes_schedule() {
     let tmp = TempDir::new().unwrap();
@@ -283,10 +378,10 @@ fn display_label_humanizes_the_tool_name() {
 // ── enforcing binding-resolvability gate ────────────────────────────────────
 
 #[tokio::test]
-async fn propose_workflow_rejects_unschemad_agent_binding() {
-    // The proven live-failure graph: `summarize` has no `output_parser.schema`,
-    // so `post`'s `args.channel` binding is guaranteed to resolve null at
-    // runtime. Unlike the advisory dry-run check, propose_workflow must
+async fn propose_workflow_rejects_agent_binding_missing_declared_field() {
+    // A declared schema that omits `channel` proves `notify`'s binding resolves
+    // null at runtime. Unlike a schema-less agent (whose host-defined output is
+    // merely unverifiable), propose_workflow must
     // REJECT this outright rather than warn (warning_count would have been 0
     // here — nothing stopped this from reaching save_workflow before).
     let tmp = TempDir::new().unwrap();
@@ -296,10 +391,12 @@ async fn propose_workflow_rejects_unschemad_agent_binding() {
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "summarize", "kind": "agent", "name": "Summarize",
-              "config": { "agent_ref": "researcher", "prompt": "summarize" } },
+              "config": { "agent_ref": "researcher", "prompt": "summarize",
+                "output_parser": { "schema": { "type": "object",
+                  "properties": { "summary": { "type": "string" } } } } } },
             { "id": "notify", "kind": "tool_call", "name": "Notify",
               "config": { "slug": "SLACK_SEND_MESSAGE",
-                "args": { "channel": "=nodes.summarize.item.json.channel" } } }
+                "args": { "channel": "=nodes.summarize.item.json.channel", "text": "A notification" } } }
         ],
         "edges": [
             { "from_node": "t", "to_node": "summarize" },
@@ -321,6 +418,78 @@ async fn propose_workflow_rejects_unschemad_agent_binding() {
         output.contains("output_parser.schema"),
         "must name the missing schema as the fix: {output}"
     );
+}
+
+#[tokio::test]
+async fn propose_workflow_rejects_an_incompatible_saved_child_reference() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let tool = ProposeWorkflowTool::new(Arc::clone(&config));
+
+    // Simulate a legacy child saved before the current TinyFlows engine
+    // rejected nested conditional fan-in. The parent itself is structurally
+    // valid, so only the config-aware shared builder gate can catch this.
+    let legacy_child = json!({
+        "nodes": [
+            { "id": "start", "kind": "trigger", "name": "Trigger" },
+            { "id": "outer", "kind": "condition", "name": "Outer", "config": { "field": "outer" } },
+            { "id": "inner", "kind": "condition", "name": "Inner", "config": { "field": "inner" } },
+            { "id": "outer_else", "kind": "output_parser", "name": "Outer else" },
+            { "id": "inner_else", "kind": "output_parser", "name": "Inner else" },
+            { "id": "a", "kind": "output_parser", "name": "A" },
+            { "id": "c", "kind": "output_parser", "name": "C" },
+            { "id": "m", "kind": "merge", "name": "Merge" }
+        ],
+        "edges": [
+            { "from_node": "start", "to_node": "outer" },
+            { "from_node": "start", "to_node": "c" },
+            { "from_node": "outer", "from_port": "true", "to_node": "inner" },
+            { "from_node": "outer", "from_port": "false", "to_node": "outer_else" },
+            { "from_node": "inner", "from_port": "true", "to_node": "a" },
+            { "from_node": "inner", "from_port": "false", "to_node": "inner_else" },
+            { "from_node": "a", "to_node": "m" },
+            { "from_node": "c", "to_node": "m" }
+        ]
+    });
+    let child_graph = crate::openhuman::flows::ops::migrate_and_deserialize_graph(legacy_child)
+        .expect("legacy child should deserialize");
+    tinyflows::validate::validate(&child_graph)
+        .expect("legacy child should remain structurally valid");
+    let child = crate::openhuman::flows::store::create_flow(
+        &config,
+        "Legacy unsafe child".to_string(),
+        child_graph,
+        false,
+        false,
+    )
+    .unwrap();
+    let parent = json!({
+        "nodes": [
+            { "id": "start", "kind": "trigger", "name": "Trigger" },
+            {
+                "id": "saved-child",
+                "kind": "sub_workflow",
+                "name": "Saved child",
+                "config": { "workflow_id": child.id }
+            }
+        ],
+        "edges": [{ "from_node": "start", "to_node": "saved-child" }]
+    });
+
+    let result = tool
+        .execute(json!({ "name": "Parent", "graph": parent }))
+        .await
+        .unwrap();
+
+    assert!(result.is_error, "must reject unsafe saved child");
+    let output = result.output();
+    assert!(
+        output.contains("unsupported_nested_conditional_fan_in"),
+        "{output}"
+    );
+    assert!(output.contains(&child.id), "{output}");
+    assert!(output.contains("saved-child"), "{output}");
+    assert!(output.contains("call propose_workflow again"), "{output}");
 }
 
 /// Docs-drift guard (F2): `propose_workflow`'s hand-written description and the
@@ -349,5 +518,36 @@ fn propose_workflow_description_matches_typed_node_contracts() {
                 contract.kind
             );
         }
+    }
+}
+
+/// Same drift class as the description guard above, but for the JSON `enum`
+/// in `parameters_schema()`: a strict schema-constrained caller (some tool-use
+/// providers validate arguments against the advertised schema before
+/// `execute` ever runs) can only submit a `kind` this enum lists, regardless
+/// of what the prose teaches or what `validate_and_migrate_graph` accepts. A
+/// node kind present in `node_contracts.rs` but missing here would silently
+/// be unreachable through `propose_workflow` for such a caller — this is the
+/// exact class of bug the `loop` kind hit when it was documented in prose
+/// but left off this enum.
+#[test]
+fn propose_workflow_schema_enum_matches_typed_node_contracts() {
+    let tmp = TempDir::new().unwrap();
+    let tool = ProposeWorkflowTool::new(test_config(&tmp));
+    let schema = tool.parameters_schema();
+    let enum_kinds: Vec<&str> = schema["properties"]["graph"]["properties"]["nodes"]["items"]
+        ["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("kind enum must be an array")
+        .iter()
+        .map(|v| v.as_str().expect("enum entries are strings"))
+        .collect();
+    for contract in crate::openhuman::flows::all_node_kind_contracts() {
+        assert!(
+            enum_kinds.contains(&contract.kind.as_str()),
+            "propose_workflow's parameters_schema `kind` enum is missing node kind `{}` — \
+             update it to match node_contracts.rs",
+            contract.kind
+        );
     }
 }

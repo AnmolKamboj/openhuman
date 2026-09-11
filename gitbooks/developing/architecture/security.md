@@ -12,8 +12,8 @@ icon: shield-halved
 
 It does **not** own:
 
-- The cross-domain `EncryptionEngine`, which lives in `src/openhuman/encryption/`.
-- Per-channel credential storage, which lives in `src/openhuman/credentials/`.
+- The cross-domain `EncryptionEngine`, which lives in `src/openhuman/security/encryption/`.
+- Per-channel credential storage, which lives in `src/openhuman/security/credentials/`.
 
 This module is the place to look first when asking "is this agent action allowed, and if so, how is it confined?"
 
@@ -83,7 +83,7 @@ The agent never sees the choice; it just calls into `Sandbox::run(...)` and the 
 | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `policy.rs`, `policy_tests.rs`                                | `SecurityPolicy`, `AutonomyLevel`, risk classification, action tracking.  |
 | `traits.rs`                                                   | `Sandbox` trait + `NoopSandbox` fallback.                                 |
-| `detect.rs`                                                   | `create_sandbox`: best-available-backend selection.                      |
+| `detect.rs`                                                   | `create_sandbox`: best-available-backend selection.                       |
 | `docker.rs` / `bubblewrap.rs` / `firejail.rs` / `landlock.rs` | Per-backend `Sandbox` implementations.                                    |
 | `core.rs`                                                     | `redact()` + small shared helpers (has its own `#[cfg(test)] mod tests`). |
 | `audit.rs`                                                    | Append-only audit log types.                                              |
@@ -106,7 +106,7 @@ The agent never sees the choice; it just calls into `Sandbox::run(...)` and the 
 - `src/openhuman/tools/impl/network/{curl,http_request,composio}.rs`: risk-classify outbound calls.
 - `src/openhuman/memory/tools/{store,forget}.rs`: sensitive-write tracking.
 - `src/openhuman/agent/tools/delegate.rs`: sub-agent dispatch goes through the autonomy gate.
-- `src/openhuman/credentials/`: uses `SecretStore` and `redact`.
+- `src/openhuman/security/credentials/`: uses `SecretStore` and `redact`.
 
 ## Tests
 

@@ -30,9 +30,14 @@ import { type FlowNodeRunStatus, useFlowRunProgress } from '../../hooks/useFlowR
 import { type FlowRunItem, normalizeItems } from '../../lib/flows/runItems';
 import { summarizeStep } from '../../lib/flows/runStepSummary';
 import { useT } from '../../lib/i18n/I18nContext';
-import type { FlowRunStatus, FlowRunStep } from '../../services/api/flowsApi';
-import Button from '../ui/Button';
+import type { FlowRunStep } from '../../services/api/flowsApi';
+import { Alert, AlertDescription, Button, CenteredLoadingState } from '../ui';
 import { FlowRunPendingApprovalCard } from './FlowRunPendingApprovalCard';
+import {
+  flowRunStatusAccentClass,
+  flowRunStatusDotClass,
+  flowRunStatusLabel,
+} from './FlowRunStatus';
 import { RunItemDataBrowser } from './RunItemDataBrowser';
 
 /**
@@ -49,51 +54,6 @@ export interface FlowRepairRequest {
 
 const log = debug('flows:run-inspector-drawer');
 
-/**
- * Accent classes per run status (semantic palette from tailwind.config.js).
- * Exported so {@link FlowRunsDrawer} (issue B5a.1) can reuse the same
- * status-pill visual language for its run-history rows instead of
- * duplicating the mapping.
- */
-export const FLOW_RUN_STATUS_ACCENT: Record<FlowRunStatus, string> = {
-  running:
-    'border-ocean-200 bg-ocean-50 text-ocean-700 dark:border-ocean-500/30 dark:bg-ocean-500/10 dark:text-ocean-300',
-  completed:
-    'border-sage-200 bg-sage-50 text-sage-700 dark:border-sage-500/30 dark:bg-sage-500/10 dark:text-sage-300',
-  // Settled like `completed`, but at least one step had a `=`-binding that
-  // resolved to `null` (run honesty, PR2) — reuse `pending_approval`'s amber
-  // so "needs a look" reads consistently across statuses.
-  completed_with_warnings:
-    'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
-  pending_approval:
-    'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
-  failed:
-    'border-coral-200 bg-coral-50 text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300',
-  // Neutral treatment, matching `WorkflowRunDetail.tsx`'s `RUN_STATUS_ACCENT.cancelled`.
-  cancelled: 'border-line bg-surface-muted text-content-secondary',
-};
-
-/** Header status dot per run status — mirrors `PHASE_STATUS_DOT`. Exported, see above. */
-export const FLOW_RUN_STATUS_DOT: Record<FlowRunStatus, string> = {
-  running: 'bg-ocean-500 animate-pulse',
-  completed: 'bg-sage-500',
-  // Settled (no pulse) — the amber signals "worth a look", not "in progress".
-  completed_with_warnings: 'bg-amber-500',
-  pending_approval: 'bg-amber-500 animate-pulse',
-  failed: 'bg-coral-500',
-  cancelled: 'bg-surface-strong',
-};
-
-/** i18n key per run status. Exported, see above. */
-export const FLOW_RUN_STATUS_KEY: Record<FlowRunStatus, string> = {
-  running: 'flowRuns.status.running',
-  completed: 'flowRuns.status.completed',
-  completed_with_warnings: 'flowRuns.status.completed_with_warnings',
-  pending_approval: 'flowRuns.status.pending_approval',
-  failed: 'flowRuns.status.failed',
-  cancelled: 'flowRuns.status.cancelled',
-};
-
 function formatTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -109,13 +69,13 @@ function formatTimestamp(value: string | null | undefined): string | null {
 
 /**
  * Live per-node status dot colour, keyed off the socket `flow:run_progress`
- * feed (Phase 3e). Mirrors the run-level {@link FLOW_RUN_STATUS_DOT} language:
- * ocean (running, pulsing), sage (success), coral (error). Falls back to the
+ * feed (Phase 3e). Mirrors the run-level status-dot language:
+ * primary (running, pulsing), sage (success), coral (error). Falls back to the
  * faint dot when the node has no live status yet (the poller stays the source
  * of truth for the durable step list).
  */
 const FLOW_STEP_LIVE_DOT: Record<string, string> = {
-  running: 'bg-ocean-500 animate-pulse',
+  running: 'bg-primary-500 animate-pulse',
   success: 'bg-sage-500',
   error: 'bg-coral-500',
   failed: 'bg-coral-500',
@@ -300,11 +260,12 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
   return (
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="flow-run-inspector-drawer">
       {/* Backdrop */}
-      <button
+      <Button
         type="button"
+        variant="tertiary"
         aria-label={t('conversations.subagent.close')}
         data-testid="flow-run-inspector-backdrop"
-        className="absolute inset-0 bg-stone-900/30 dark:bg-black/50"
+        className="absolute inset-0 h-auto w-auto rounded-none bg-surface-overlay/50 backdrop-blur-sm hover:bg-surface-overlay/50"
         onClick={onClose}
       />
       <aside className="relative flex h-full w-full max-w-md flex-col bg-surface shadow-xl">
@@ -318,7 +279,8 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
               {run && (
                 <span
                   data-testid="flow-run-status-dot"
-                  className={`h-2 w-2 shrink-0 rounded-full ${FLOW_RUN_STATUS_DOT[run.status]}`}
+                  data-status={run.status}
+                  className={`h-2 w-2 shrink-0 rounded-full ${flowRunStatusDotClass(run.status)}`}
                 />
               )}
             </div>
@@ -326,8 +288,9 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
               {run && (
                 <span
                   data-testid="flow-run-status-pill"
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${FLOW_RUN_STATUS_ACCENT[run.status]}`}>
-                  {t(FLOW_RUN_STATUS_KEY[run.status])}
+                  data-status={run.status}
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${flowRunStatusAccentClass(run.status)}`}>
+                  {flowRunStatusLabel(run.status, t)}
                 </span>
               )}
               {/* Internal ids are dev/debug info, not primary-view content (issue
@@ -345,33 +308,32 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
               )}
             </div>
           </div>
-          <button
+          <Button
             type="button"
+            variant="tertiary"
+            size="xs"
+            iconOnly
             data-testid="flow-run-inspector-close"
             onClick={onClose}
             aria-label={t('conversations.subagent.close')}
-            className="shrink-0 rounded-full p-1.5 text-content-faint hover:bg-surface-hover hover:text-content-secondary">
+            className="shrink-0 rounded-full">
             ✕
-          </button>
+          </Button>
         </header>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
           {loading && !run && (
-            <div
-              className="flex items-center gap-2 py-8 text-content-faint"
-              data-testid="flow-run-inspector-loading">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-ocean-500 border-t-transparent" />
-              <span className="text-sm">{t('flowRuns.inspector.loading')}</span>
+            <div data-testid="flow-run-inspector-loading">
+              <CenteredLoadingState label={t('flowRuns.inspector.loading')} />
             </div>
           )}
 
           {error && (
-            <div
-              role="alert"
-              data-testid="flow-run-inspector-error"
-              className="rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-              {t('flowRuns.inspector.loadError')}: {error}
-            </div>
+            <Alert variant="destructive" density="compact" data-testid="flow-run-inspector-error">
+              <AlertDescription>
+                {t('flowRuns.inspector.loadError')}: {error}
+              </AlertDescription>
+            </Alert>
           )}
 
           {run && (
@@ -394,12 +356,11 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
 
               {/* Error banner */}
               {run.error && (
-                <div
-                  role="alert"
-                  data-testid="flow-run-error-banner"
-                  className="rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-                  {t('flowRuns.inspector.error')}: {run.error}
-                </div>
+                <Alert variant="destructive" density="compact" data-testid="flow-run-error-banner">
+                  <AlertDescription>
+                    {t('flowRuns.inspector.error')}: {run.error}
+                  </AlertDescription>
+                </Alert>
               )}
 
               {/* Repair entry point (Phase 5c): open the canvas copilot preloaded
@@ -477,5 +438,3 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
     </div>
   );
 }
-
-export default FlowRunInspectorDrawer;

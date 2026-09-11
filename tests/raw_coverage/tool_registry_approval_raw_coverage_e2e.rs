@@ -18,11 +18,11 @@ use tempfile::{tempdir, TempDir};
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
 use openhuman_core::core::jsonrpc::build_core_http_router;
 use openhuman_core::openhuman::agent::turn_origin::{self, AgentTurnOrigin};
-use openhuman_core::openhuman::approval::gate::{
+use openhuman_core::openhuman::security::approval::gate::{
     parse_approval_reply, ApprovalChatContext, ApprovalGate, APPROVAL_CHAT_CONTEXT,
 };
-use openhuman_core::openhuman::approval::store as approval_store;
-use openhuman_core::openhuman::approval::{
+use openhuman_core::openhuman::security::approval::store as approval_store;
+use openhuman_core::openhuman::security::approval::{
     all_approval_controller_schemas, all_approval_registered_controllers, redact_args,
     summarize_action, ApprovalDecision, ExecutionOutcome, GateOutcome, PendingApproval,
 };
@@ -30,14 +30,14 @@ use openhuman_core::openhuman::config::schema::{
     CapabilityProviderConfig, CapabilityProviderTrustState,
 };
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::mcp_registry::connections;
-use openhuman_core::openhuman::mcp_registry::types::{CommandKind, InstalledServer, Transport};
+use openhuman_core::openhuman::mcp::registry::connections;
+use openhuman_core::openhuman::mcp::registry::types::{CommandKind, InstalledServer, Transport};
 use openhuman_core::openhuman::security::{live_policy, SecurityPolicy};
-use openhuman_core::openhuman::tool_registry::{
+use openhuman_core::openhuman::tools::registry::{
     all_tool_registry_controller_schemas, all_tool_registry_registered_controllers,
     capability_provider_by_id, capability_provider_diagnostics, capability_provider_registry,
     denials, get_tool, is_capability_provider_trusted_enabled, list_capability_providers,
-    list_tools, normalize_capability_provider_id, registry_entries,
+    list_tools, normalize_capability_provider_id, registry_entries, registry_entries_for_config,
     CapabilityProviderRegistryError,
 };
 
@@ -100,6 +100,20 @@ fn ensure_rpc_auth() {
         let token_dir = std::env::temp_dir().join("openhuman-tool-registry-approval-e2e-auth");
         init_rpc_token(&token_dir).expect("init rpc auth token");
     });
+}
+
+/// The bearer this process actually validates.
+///
+/// `core::auth::RPC_TOKEN` is a process-global `OnceLock` and `init_rpc_token`
+/// returns early once it is set — deliberately, so a second call cannot 401 live
+/// clients. Since `tests/raw_coverage/` is one aggregated binary, only the first
+/// suite to reach `ensure_rpc_auth` pins its own `TEST_RPC_TOKEN`; every other
+/// suite sending its literal gets a 401 and trips its own `assert_eq!` (#6112).
+/// Ask the auth module what it settled on instead of assuming we won the race.
+fn rpc_bearer() -> &'static str {
+    ensure_rpc_auth();
+    openhuman_core::core::auth::get_rpc_token()
+        .expect("ensure_rpc_auth initialises the token subsystem on the line above")
 }
 
 async fn serve_rpc() -> (
@@ -199,7 +213,7 @@ async fn rpc(rpc_base: &str, id: i64, method: &str, params: Value) -> Value {
     let url = format!("{}/rpc", rpc_base.trim_end_matches('/'));
     let response = client
         .post(&url)
-        .header(AUTHORIZATION, format!("Bearer {TEST_RPC_TOKEN}"))
+        .header(AUTHORIZATION, format!("Bearer {}", rpc_bearer()))
         .json(&json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -595,7 +609,7 @@ fn tool_registry_diagnostics_for_config_reports_audit_success_and_policy_shape()
     };
 
     let diagnostics =
-        openhuman_core::openhuman::tool_registry::ops::diagnostics_for_config(&config)
+        openhuman_core::openhuman::tools::registry::ops::diagnostics_for_config(&config)
             .into_cli_compatible_json()
             .expect("diagnostics json");
     assert!(diagnostics
@@ -654,7 +668,26 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
         .expect("connect test mcp server");
     assert_eq!(tools.first().map(|tool| tool.name.as_str()), Some("echo"));
 
-    let entries = registry_entries();
+    // A second workspace, so that scoping is what the assertions below actually
+    // test. With one workspace open, `registry_entries()` and the config-scoped
+    // form agree, and this case would keep passing if the forwarding regressed.
+    let other_tmp = tempdir().expect("second tempdir");
+    let other_config = Config {
+        workspace_dir: other_tmp.path().to_path_buf(),
+        ..Config::default()
+    };
+    let other_server = test_mcp_server();
+    connections::connect(&other_config, &other_server)
+        .await
+        .expect("connect second test mcp server");
+
+    // Config-scoped, not ambient: this case connects through
+    // `host::for_config(&config)`, keyed by its own tempdir. `registry_entries()`
+    // resolves through the process default instead, which returns a lone host
+    // but `None` once another case in this binary has opened a second one — so
+    // the ambient form reports nothing connected here purely because of who
+    // else ran first.
+    let entries = registry_entries_for_config(&config);
     let client_entry = entries
         .iter()
         .find(|entry| entry.tool_id == format!("mcp-client::{}::echo", server.server_id))
@@ -664,7 +697,29 @@ async fn tool_registry_entries_include_connected_mcp_client_tools() {
     assert_eq!(client_entry.route["server_id"], json!(server.server_id));
     assert!(client_entry.tags.iter().any(|tag| tag == "mcp_client"));
 
-    assert!(connections::disconnect(&server.server_id).await);
+    // The other workspace's server must NOT leak in. This is the assertion that
+    // fails if a config-scoped lookup falls back to the process default.
+    assert!(
+        !entries.iter().any(
+            |entry| entry.tool_id == format!("mcp-client::{}::echo", other_server.server_id)
+        ),
+        "entries for one workspace must not include another workspace's server"
+    );
+
+    // Symmetrically, from the second workspace's side.
+    let other_entries = registry_entries_for_config(&other_config);
+    assert!(other_entries
+        .iter()
+        .any(|entry| entry.tool_id == format!("mcp-client::{}::echo", other_server.server_id)));
+    assert!(!other_entries
+        .iter()
+        .any(|entry| entry.tool_id == format!("mcp-client::{}::echo", server.server_id)));
+
+    // Config-scoped for the same reason as the lookup above: this connection
+    // lives in the host keyed by `config`'s workspace, and the by-id form
+    // resolves through the process default.
+    assert!(connections::disconnect_for_config(&config, &server.server_id).await);
+    assert!(connections::disconnect_for_config(&other_config, &other_server.server_id).await);
 }
 
 #[tokio::test]
@@ -750,7 +805,7 @@ async fn tool_registry_diagnostics_reports_config_and_audit_store_failures() {
     std::fs::write(&workspace_file, "not a directory").expect("workspace sentinel");
     let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace_file);
 
-    let err = openhuman_core::openhuman::tool_registry::ops::diagnostics()
+    let err = openhuman_core::openhuman::tools::registry::ops::diagnostics()
         .await
         .expect_err("workspace file should prevent config load");
     assert!(err.contains("failed to load config for tool registry diagnostics"));
@@ -760,7 +815,7 @@ async fn tool_registry_diagnostics_reports_config_and_audit_store_failures() {
         ..Config::default()
     };
     let diagnostics =
-        openhuman_core::openhuman::tool_registry::ops::diagnostics_for_config(&broken_audit_config);
+        openhuman_core::openhuman::tools::registry::ops::diagnostics_for_config(&broken_audit_config);
     assert!(diagnostics.value.mcp_write_audit.enabled);
     assert_eq!(diagnostics.value.mcp_write_audit.recent_rows, None);
     assert!(diagnostics
@@ -1062,10 +1117,11 @@ async fn approval_schema_handlers_validate_params_and_surface_empty_gate_state()
             "list_pending",
             "list_recent_decisions",
             "decide",
-            "get_gate_state"
+            "get_gate_state",
+            "preauthorize_flow"
         ]
     );
-    let unknown = openhuman_core::openhuman::approval::schemas::schemas("missing");
+    let unknown = openhuman_core::openhuman::security::approval::schemas::schemas("missing");
     assert_eq!(unknown.namespace, "approval");
     assert_eq!(unknown.function, "unknown");
     assert_eq!(unknown.outputs[0].name, "error");
@@ -1165,6 +1221,40 @@ async fn approval_schema_handlers_validate_params_and_surface_empty_gate_state()
         .await
         .expect_err("invalid decision")
         .contains("approve_once|approve_always_for_tool|approve_always_for_flow|deny"));
+
+    let preauthorize_handler = controllers
+        .iter()
+        .find(|controller| controller.schema.function == "preauthorize_flow")
+        .expect("preauthorize flow controller")
+        .handler;
+    assert!(preauthorize_handler(Map::new())
+        .await
+        .expect_err("missing flow id")
+        .contains("missing required param 'flow_id'"));
+    let mut missing_tools = Map::new();
+    missing_tools.insert("flow_id".to_string(), json!("flow-1"));
+    assert!(preauthorize_handler(missing_tools)
+        .await
+        .expect_err("missing tool names")
+        .contains("missing required param 'tool_names'"));
+    let mut non_array_tools = Map::new();
+    non_array_tools.insert("flow_id".to_string(), json!("flow-1"));
+    non_array_tools.insert("tool_names".to_string(), json!("slack_post"));
+    assert!(preauthorize_handler(non_array_tools)
+        .await
+        .expect_err("non-array tool names")
+        .contains("expected array of strings"));
+    let mut mixed_tools = Map::new();
+    mixed_tools.insert("flow_id".to_string(), json!("flow-1"));
+    mixed_tools.insert("tool_names".to_string(), json!(["ok", 42]));
+    assert!(preauthorize_handler(mixed_tools)
+        .await
+        .expect_err("non-string tool name entry")
+        .contains("expected string"));
+    // Success-path behavior (gate-absent tolerance, idempotent grants, audit
+    // rows) is pinned by the unit tests in `approval::rpc`/`approval::store`;
+    // asserting it here would be order-dependent on whether a sibling test
+    // already installed the process-global gate.
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1269,7 +1359,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     let (outcome, approved_id) = approval_task.await.expect("approval task");
     assert!(matches!(
         outcome,
-        openhuman_core::openhuman::approval::GateOutcome::Allow
+        openhuman_core::openhuman::security::approval::GateOutcome::Allow
     ));
     assert_eq!(approved_id.as_deref(), Some(request_id.as_str()));
     gate.record_execution(
@@ -1334,9 +1424,9 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
         )
         .await;
     match &no_chat.0 {
-        openhuman_core::openhuman::approval::GateOutcome::Deny { reason } => {
+        openhuman_core::openhuman::security::approval::GateOutcome::Deny { reason } => {
             assert!(
-                reason.contains("no origin label"),
+                reason.contains("origin label"),
                 "unlabelled call should be denied for missing origin: {reason}"
             );
         }
@@ -1385,7 +1475,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     .await;
     assert!(matches!(
         auto_approved.0,
-        openhuman_core::openhuman::approval::GateOutcome::Allow
+        openhuman_core::openhuman::security::approval::GateOutcome::Allow
     ));
     assert_eq!(
         auto_approved.1, None,
@@ -1490,7 +1580,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     );
     let (deny_outcome, deny_approved_id) = deny_task.await.expect("deny task");
     match deny_outcome {
-        openhuman_core::openhuman::approval::GateOutcome::Deny { reason } => {
+        openhuman_core::openhuman::security::approval::GateOutcome::Deny { reason } => {
             assert!(reason.contains("User denied"));
         }
         other => panic!("expected deny outcome, got {other:?}"),

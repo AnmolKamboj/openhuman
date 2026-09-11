@@ -1,0 +1,28 @@
+id = "video_agent"
+display_name = "Video Creator"
+delegate_name = "create_video"
+when_to_use = "Video-generation specialist: short clips from a prompt, or animate a supplied image. Route make/generate-a-video and animate-this-image requests here. Takes a few minutes, then saves the clip and returns the local path."
+temperature = 0.6
+max_iterations = 8
+agent_tier = "worker"
+omit_identity = true
+omit_memory_context = true
+omit_safety_preamble = false
+omit_profile = true
+omit_memory_md = true
+
+# Multimodal tier so the agent can inspect a reference/first-frame image or the
+# returned thumbnail when shaping an image-to-video request.
+[model]
+hint = "vision"
+
+[tools]
+# media_generate_video submits the generation and returns a saved local path;
+# media_list_models surfaces the catalog; image_info / file_read let it inspect
+# a reference image before animating it.
+named = [
+    "media_generate_video",
+    "media_list_models",
+    "image_info",
+    "file_read",
+]

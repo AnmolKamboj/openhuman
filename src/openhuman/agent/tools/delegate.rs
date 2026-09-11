@@ -1,18 +1,18 @@
 use crate::openhuman::config::DelegateAgentConfig;
 use crate::openhuman::inference::provider::{
-    OpenHumanBackendModel, OpenHumanBackendProvider, ProviderRuntimeOptions, INFERENCE_BACKEND_ID,
+    OpenHumanBackendModel, ProviderRuntimeOptions, INFERENCE_BACKEND_ID,
 };
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
-use crate::openhuman::tool_timeout::tool_execution_timeout_secs;
+use crate::openhuman::tools::timeout::tool_execution_timeout_secs;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tinyagents::harness::message::Message;
-use tinyagents::harness::model::{ChatModel, ModelRequest};
+use tinyinference::message::Message;
+use tinyinference::model::{ChatModel, ModelRequest};
 
 /// Tool that delegates a subtask to a named agent with a different
 /// provider/model configuration. Enables multi-agent workflows where
@@ -180,7 +180,8 @@ impl Tool for DelegateTool {
         }
 
         let model = OpenHumanBackendModel::new(
-            OpenHumanBackendProvider::new(None, &self.provider_runtime_options),
+            None,
+            &self.provider_runtime_options,
             agent_config.model.clone(),
         );
 

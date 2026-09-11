@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import { agentMessageText } from '../helpers/chat-locators';
 import {
   bootAuthenticatedPage,
   dismissWalkthroughIfPresent,
@@ -42,7 +43,7 @@ async function openChat(page: Page): Promise<void> {
   await page.goto('/#/chat');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  await expect(page.getByTestId('send-message-button')).toBeVisible();
+  await expect(page.getByTestId('chat-message-input')).toBeVisible();
 }
 
 async function selectedThreadId(page: Page): Promise<string | null> {
@@ -110,7 +111,7 @@ async function waitForSocketConnected(page: Page): Promise<void> {
 async function sendMessage(page: Page, prompt: string): Promise<void> {
   await waitForSocketConnected(page);
   await dismissWalkthroughIfPresent(page);
-  await page.getByPlaceholder('How can I help you today?').fill(prompt);
+  await page.getByTestId('chat-message-input').fill(prompt);
   await dismissWalkthroughIfPresent(page);
   await expect(page.getByTestId('send-message-button')).toBeEnabled();
   await page.getByTestId('send-message-button').click();
@@ -154,8 +155,8 @@ test.describe('Harness - Search tool-flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'what did we discuss about project Atlas');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/Based on my memory search/i)).toBeVisible();
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, /Based on my memory search/i)).toBeVisible();
 
     const log = await requests();
     const llmHits = log.filter(
@@ -186,9 +187,9 @@ test.describe('Harness - Search tool-flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'search for Rust async best practices');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
     await expect(
-      page.getByText(/Here are the top results for Rust async best practices/i)
+      agentMessageText(page, /Here are the top results for Rust async best practices/i)
     ).toBeVisible();
 
     const log = await requests();
@@ -219,8 +220,8 @@ test.describe('Harness - Search tool-flow', () => {
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await sendMessage(page, 'read the README');
-    await expect(page.getByText(CANARY).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText(/OpenHuman is an AI assistant/i).first()).toBeVisible();
+    await expect(agentMessageText(page, CANARY)).toBeVisible({ timeout: 60_000 });
+    await expect(agentMessageText(page, /OpenHuman is an AI assistant/i)).toBeVisible();
 
     const log = await requests();
     const llmHits = log.filter(

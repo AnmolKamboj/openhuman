@@ -1,5 +1,7 @@
+worktrees/*
+!worktrees/.gitkeep
+
 # Workflow docs (local only)
-workflow
 create_issue
 review_pr
 sentry_bugs
@@ -38,9 +40,6 @@ dist-web
 
 # sccache local compiler cache (used by CI and act)
 .sccache/
-
-# E2E test artifacts (screenshots, logs, traces — never checked in)
-app/test/e2e/artifacts/
 
 my_docs
 
@@ -86,9 +85,6 @@ coverage/
 app/public/generated/remotion/
 app/test/e2e/artifacts/
 
-# Local pnpm store (created when network-restricted hosts cache the store inside the repo)
-.pnpm-store/
-
 tauri.key
 tauri.key.pub
 /target/
@@ -112,10 +108,14 @@ app/test/e2e/.cache/
 test-map.md
 .test-gap-analysis.md
 
-# AI assistant progress tracking
+# Local AI assistant state and scratch files
 .kimi/
 .specify/
 .claude/skills/
+.claude/memory.md
+.claude/projects/
+.claude/scratch/
+/SCRATCH/
 .codex-tmp
 *.enc
 
@@ -130,3 +130,12 @@ distribution.cer
 CHANGELOG.preview.md
 *.profraw
 *.diff
+
+.claude/worktrees/
+
+# Python bytecode from scripts/dep-sim.py
+__pycache__/
+
+# Coverage/diff-cover artifacts (generated locally, never shipped)
+lcov*.info
+diff-coverage.md

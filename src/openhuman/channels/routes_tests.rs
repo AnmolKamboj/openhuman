@@ -1,32 +1,18 @@
 use super::*;
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::channels::context::{
-    ChannelRuntimeContext, ProviderCacheMap, RouteSelectionMap,
+    ChannelRuntimeContext, RouteSelectionMap, TurnModelSourceCacheMap,
 };
 use crate::openhuman::channels::telegram::{TelegramRemoteCommand, TelegramRemoteSubscriber};
 use crate::openhuman::channels::traits::ChannelMessage;
-use crate::openhuman::inference::provider::{ChatMessage, Provider};
 use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry};
 use crate::openhuman::tools::{Tool, ToolResult};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-
-struct DummyProvider;
-
-#[async_trait]
-impl Provider for DummyProvider {
-    async fn chat_with_system(
-        &self,
-        _system_prompt: Option<&str>,
-        _message: &str,
-        _model: &str,
-        _temperature: f64,
-    ) -> anyhow::Result<String> {
-        Ok("ok".into())
-    }
-}
+use tinybus::EventHandler;
 
 struct DummyMemory;
 
@@ -131,20 +117,26 @@ impl Channel for RecordingChannel {
 }
 
 fn runtime_context(workspace_dir: PathBuf) -> ChannelRuntimeContext {
+    let model: Arc<dyn tinyinference::model::ChatModel<()>> =
+        Arc::new(tinyagents_harness::testkit::ScriptedModel::replies(vec![
+            "ok",
+        ]));
     ChannelRuntimeContext {
         channels_by_name: Arc::new(HashMap::new()),
-        provider: Some(Arc::new(DummyProvider)),
+        turn_model_source: Some(
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
+        ),
         default_provider: Arc::new("openai".into()),
-        memory: Arc::new(DummyMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),
-        system_prompt: Arc::new("prompt".into()),
+        system_prompt: crate::openhuman::channels::ChannelSystemPrompt::fixed("prompt"),
         model: Arc::new("reasoning-v1".into()),
         temperature: 0.0,
         auto_save_memory: false,
         max_tool_iterations: 1,
         min_relevance_score: 0.4,
         conversation_histories: Arc::new(Mutex::new(HashMap::new())),
-        provider_cache: ProviderCacheMap::default(),
+        turn_model_source_cache: TurnModelSourceCacheMap::default(),
         route_overrides: RouteSelectionMap::default(),
         api_url: None,
         inference_url: None,

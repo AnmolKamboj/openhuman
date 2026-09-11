@@ -38,6 +38,22 @@ impl SecurityPolicy {
         let expanded = self.expand_tilde(path);
         let expanded_path = Path::new(&expanded);
 
+        // Core-sensitive single-file names remain reserved even when a
+        // relative request resolves under the separate action root. Directory
+        // names are root-sensitive (a project may legitimately have
+        // `personalities/`), but `.env`/SOUL.md/etc. retain the existing
+        // top-level deny contract.
+        if !expanded_path.is_absolute()
+            && expanded_path.components().count() == 1
+            && WORKSPACE_INTERNAL_FILES.iter().any(|name| {
+                expanded_path
+                    .file_name()
+                    .is_some_and(|requested| requested == std::ffi::OsStr::new(name))
+            })
+        {
+            return false;
+        }
+
         // Credential stores are never reachable, even via a trusted-root grant.
         if Self::is_always_forbidden(expanded_path) {
             return false;
@@ -48,22 +64,25 @@ impl SecurityPolicy {
         // operation-specific validators (validate_path / validate_parent_path).
         let in_trusted_root = self.is_within_trusted_root(expanded_path, false);
 
-        // Block agent access to internal state paths under workspace_dir
-        // (unless the path falls under an explicitly granted trusted root).
-        if !in_trusted_root {
-            let check = if expanded_path.is_absolute() {
-                expanded_path.to_path_buf()
-            } else {
-                self.workspace_dir.join(expanded_path)
-            };
-            if self.is_workspace_internal_path(&check) {
-                log::trace!(
-                    "[security:policy] path blocked: agent access to workspace-internal state (requested={}, resolved={})",
-                    path,
-                    check.display()
-                );
-                return false;
-            }
+        // Workspace-internal application state is never agent-accessible. A
+        // trusted-root grant cannot weaken this invariant, even when it points
+        // at workspace_dir or one of its parents.
+        let check = if expanded_path.is_absolute() {
+            expanded_path.to_path_buf()
+        } else {
+            // File tools resolve relative paths from action_dir, not the
+            // core-state workspace. Joining workspace_dir here accidentally
+            // reserves internal directory names (for example
+            // `personalities/alice.md`) in an otherwise legitimate project.
+            self.action_dir.join(expanded_path)
+        };
+        if self.is_workspace_internal_path(&check) {
+            log::trace!(
+                "[security:policy] path blocked: agent access to workspace-internal state (requested={}, resolved={})",
+                path,
+                check.display()
+            );
+            return false;
         }
 
         // Block absolute paths when workspace_only is set (unless trusted-rooted).
@@ -91,10 +110,7 @@ impl SecurityPolicy {
             if Self::is_always_forbidden(&canonical) {
                 return false;
             }
-            let workspace_root = self
-                .workspace_dir
-                .canonicalize()
-                .unwrap_or_else(|_| self.workspace_dir.clone());
+            let workspace_root = self.workspace_root_sync();
             let canonical_in_trusted = self.is_within_trusted_root(&canonical, false);
             if self.workspace_only
                 && !canonical.starts_with(&workspace_root)
@@ -197,6 +213,55 @@ impl SecurityPolicy {
             .clone()
     }
 
+    /// Synchronous counterpart to [`workspace_root`], hydrating the **same**
+    /// `canonical_workspace` cache via `OnceCell`'s sync `get`/`set`.
+    ///
+    /// The sync path validators (`is_path_string_allowed`,
+    /// `is_resolved_path_allowed_for`) run on every file tool call and each
+    /// previously re-invoked `self.workspace_dir.canonicalize()` — one
+    /// `stat(2)` + symlink walk on the same immutable input per call. They
+    /// cannot `.await` [`workspace_root`], so they reach the cache through this
+    /// helper.
+    ///
+    /// # Why one cell can serve both, and why a lost `set` is safe
+    ///
+    /// This is the load-bearing claim, so it is stated here rather than left to
+    /// a commit message. Sharing a cache between two producers is only sound if
+    /// they cannot disagree, and here they *cannot*: `tokio::fs::canonicalize`
+    /// is not a reimplementation, it is
+    /// `asyncify(move || std::fs::canonicalize(path)).await` — literally the
+    /// same `std` call, moved to a blocking thread. The async path and this one
+    /// therefore run identical code over an input that is immutable for the
+    /// life of a policy (`live_policy` rebuilds a fresh policy on reload, and
+    /// `security_for_tool_context` overrides only `action_dir`/`trusted_roots`).
+    ///
+    /// The consequence is that the `get`/`set` race below needs no lock and no
+    /// retry. If the async initializer wins between our `get` and our `set`,
+    /// `set` fails and we return the value we just computed — which is the
+    /// value the winner stored, because both are `std::fs::canonicalize` of the
+    /// same path. A lost race costs one redundant `stat(2)` walk, never a
+    /// divergent workspace root. Were that equivalence ever to break, this
+    /// helper would need `get_or_init`, not a comment.
+    ///
+    /// Fallback to the raw `workspace_dir` on canonicalize failure matches the
+    /// inline behavior these callers used before, and the async
+    /// [`workspace_root`] — including under the race, since the fallback is the
+    /// same immutable `workspace_dir` on both sides.
+    pub(super) fn workspace_root_sync(&self) -> PathBuf {
+        if let Some(cached) = self.canonical_workspace.get() {
+            return cached.clone();
+        }
+        let canonical = self
+            .workspace_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.workspace_dir.clone());
+        // Deliberately ignoring the result: a failed `set` means the async
+        // initializer won the race, and what it stored equals `canonical` —
+        // see the equivalence argument above.
+        let _ = self.canonical_workspace.set(canonical.clone());
+        canonical
+    }
+
     /// Validate a path for file I/O: string checks, canonicalize, workspace containment,
     /// and forbidden-path check on the resolved path.
     /// Returns the canonical `PathBuf` on success.
@@ -224,6 +289,7 @@ impl SecurityPolicy {
         }
         let workspace_root = self.workspace_root().await;
         self.check_resolved_against_forbidden(&resolved, &workspace_root)?;
+        self.check_cross_profile(&resolved)?;
         log::debug!(
             "[security] validate_path: '{}' resolved to '{}'",
             path,
@@ -292,6 +358,7 @@ impl SecurityPolicy {
         let workspace_root = self.workspace_root().await;
         self.check_resolved_against_forbidden(&canonical_ancestor, &workspace_root)?;
         self.check_resolved_against_forbidden(&result, &workspace_root)?;
+        self.check_cross_profile(&result)?;
 
         log::debug!(
             "[security] validate_parent_path: '{}' resolved parent to '{}'",
@@ -299,6 +366,50 @@ impl SecurityPolicy {
             resolved_parent.display()
         );
         Ok(result)
+    }
+
+    /// Cross-profile write guard (1b). A no-op unless the session runs under an
+    /// active profile (`active_profile` armed via
+    /// [`SecurityPolicy::with_active_profile`]). When armed, a resolved target
+    /// that lands inside a *sibling* profile's workspace
+    /// (`<action_dir>/profiles/<Q>/`, `Q != active`) is refused with the
+    /// permanent `[policy-blocked]` marker so the harness halts instead of
+    /// retrying. This only ever tightens: `None` leaves every path check
+    /// byte-identical, and it never loosens `is_workspace_internal_path` or any
+    /// other `SecurityPolicy` check.
+    pub(super) fn check_cross_profile(&self, resolved: &Path) -> Result<(), String> {
+        let Some(guard) = self.active_profile.as_ref() else {
+            return Ok(());
+        };
+        if let crate::openhuman::agent::profiles::CrossProfileDecision::Block { other_id } =
+            crate::openhuman::agent::profiles::classify_cross_profile_target(
+                &guard.action_dir,
+                &guard.profile_id,
+                resolved,
+            )
+        {
+            tracing::warn!(
+                active_profile = %guard.profile_id,
+                other_profile = %other_id,
+                target = %resolved.display(),
+                "[profiles] cross-profile write blocked"
+            );
+            if other_id == crate::openhuman::agent::profiles::PROFILES_ROOT_SENTINEL {
+                return Err(format!(
+                    "{POLICY_BLOCKED_MARKER} Cross-profile access blocked: profile '{}' may not \
+                     write to the shared profiles root. Stay within your own profile directory; \
+                     do not retry this path.",
+                    guard.profile_id
+                ));
+            }
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} Cross-profile access blocked: profile '{}' may not write \
+                 into profile '{}'s workspace. Stay within your own profile directory; do not \
+                 retry this path.",
+                guard.profile_id, other_id
+            ));
+        }
+        Ok(())
     }
 
     /// Returns `true` if `path` falls under one of the internal-state
@@ -326,9 +437,15 @@ impl SecurityPolicy {
             Some(std::path::Component::Normal(s)) => s.to_string_lossy(),
             _ => return false,
         };
-        if WORKSPACE_INTERNAL_DIRS
-            .iter()
-            .any(|d| *d == first_component.as_ref())
+        let component = first_component.as_ref();
+        if WORKSPACE_INTERNAL_DIRS.contains(&component)
+            || ["memory-", "memory_tree-", "session_raw-"]
+                .iter()
+                .any(|prefix| {
+                    component
+                        .strip_prefix(prefix)
+                        .is_some_and(|s| !s.is_empty())
+                })
         {
             return true;
         }
@@ -406,6 +523,21 @@ impl SecurityPolicy {
         if Self::is_always_forbidden(path) {
             return false;
         }
+        // Per-turn grant (see `agent::turn_workspace`): an embedder that scoped
+        // a workspace root for this turn — a workflow run's checkout — trusts
+        // it read/write for the turn's duration. Checked alongside the
+        // configured roots rather than instead of them, and *after*
+        // `is_always_forbidden` above, so a per-turn grant is exactly as strong
+        // as a user-configured `TrustedRoot` and no stronger: credential stores
+        // and workspace-internal state stay unreachable through it.
+        if let Some(turn_root) = crate::openhuman::agent::turn_workspace::current() {
+            let canonical_turn_root = turn_root
+                .canonicalize()
+                .unwrap_or_else(|_| turn_root.clone());
+            if path.starts_with(&turn_root) || path.starts_with(&canonical_turn_root) {
+                return true;
+            }
+        }
         self.trusted_roots.iter().any(|root| {
             if require_write && root.access != TrustedAccess::ReadWrite {
                 return false;
@@ -431,10 +563,7 @@ impl SecurityPolicy {
         if Self::is_always_forbidden(resolved) {
             return false;
         }
-        let workspace_root = self
-            .workspace_dir
-            .canonicalize()
-            .unwrap_or_else(|_| self.workspace_dir.clone());
+        let workspace_root = self.workspace_root_sync();
         resolved.starts_with(&workspace_root)
             || self.is_within_trusted_root(resolved, require_write)
     }
@@ -451,6 +580,14 @@ impl SecurityPolicy {
         if Self::is_always_forbidden(resolved) {
             return Err(format!(
                 "{POLICY_BLOCKED_MARKER} Resolved path is a protected credential store: {}",
+                resolved.display()
+            ));
+        }
+        // Trusted roots may override user-configured forbidden paths, but never
+        // the core-managed workspace-state boundary.
+        if self.is_workspace_internal_path(resolved) {
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} Resolved path is workspace-internal application state: {}",
                 resolved.display()
             ));
         }

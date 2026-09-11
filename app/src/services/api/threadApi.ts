@@ -1,6 +1,10 @@
 import debug from 'debug';
 
 import type {
+  DerivedTranscriptGetOptions,
+  DerivedTranscriptPage,
+} from '../../types/derivedTranscript';
+import type {
   PurgeResultData,
   Thread,
   ThreadDeleteData,
@@ -42,6 +46,18 @@ function unwrapEnvelope<T>(response: Envelope<T> | T): T {
 
 const generateTitleLog = debug('threadApi.generateTitleIfNeeded');
 
+/**
+ * The core's `sender` vocabulary is `user` | `agent`, but some core writers
+ * stored the assistant side as `assistant` (autonomous task sessions before
+ * #5933, channel-session mirrors). Fold that alias onto `agent` at the transport
+ * boundary so every `sender === 'agent'` check in the renderers — and the
+ * assistant-ui role mapping — treats such a row as the assistant instead of
+ * painting it as a user turn.
+ */
+function normalizeThreadMessage(message: ThreadMessage): ThreadMessage {
+  return (message.sender as string) === 'assistant' ? { ...message, sender: 'agent' } : message;
+}
+
 export const threadApi = {
   createNewThread: async (labels?: string[]): Promise<Thread> => {
     const response = await callCoreRpc<Envelope<Thread>>({
@@ -63,7 +79,8 @@ export const threadApi = {
       method: 'openhuman.threads_messages_list',
       params: { thread_id: threadId },
     });
-    return unwrapEnvelope(response);
+    const data = unwrapEnvelope(response);
+    return { ...data, messages: data.messages.map(normalizeThreadMessage) };
   },
 
   appendMessage: async (threadId: string, message: ThreadMessage): Promise<ThreadMessage> => {
@@ -71,7 +88,7 @@ export const threadApi = {
       method: 'openhuman.threads_message_append',
       params: { thread_id: threadId, message },
     });
-    return unwrapEnvelope(response);
+    return normalizeThreadMessage(unwrapEnvelope(response));
   },
 
   generateTitleIfNeeded: async (threadId: string, assistantMessage?: string): Promise<Thread> => {
@@ -104,7 +121,7 @@ export const threadApi = {
       method: 'openhuman.threads_message_update',
       params: { thread_id: threadId, message_id: messageId, extra_metadata: extraMetadata },
     });
-    return unwrapEnvelope(response);
+    return normalizeThreadMessage(unwrapEnvelope(response));
   },
 
   deleteThread: async (threadId: string): Promise<ThreadDeleteData> => {
@@ -268,6 +285,27 @@ export const threadApi = {
     const response = await callCoreRpc<Envelope<Thread>>({
       method: 'openhuman.threads_update_title',
       params: { thread_id: threadId, title },
+    });
+    return unwrapEnvelope(response);
+  },
+
+  /**
+   * Transcript-derived view (Phase B/C): project the thread's append-only
+   * `session_raw/*.jsonl` source of truth into typed display items for the
+   * settled-turn restore path. Newest-first paginated; `cursor` comes from a
+   * prior page's `nextCursor`, `limit` defaults to 50 (core-clamped to 500).
+   *
+   * A thread with no persisted transcript yet returns an empty page with
+   * `hasTranscript: false` (not an error) — the caller then falls back to the
+   * legacy `turn_state_history` hydration.
+   */
+  getDerivedTranscript: async (
+    threadId: string,
+    options?: DerivedTranscriptGetOptions
+  ): Promise<DerivedTranscriptPage> => {
+    const response = await callCoreRpc<Envelope<DerivedTranscriptPage>>({
+      method: 'openhuman.threads_transcript_get',
+      params: { thread_id: threadId, cursor: options?.cursor, limit: options?.limit },
     });
     return unwrapEnvelope(response);
   },

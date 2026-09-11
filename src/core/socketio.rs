@@ -1,8 +1,43 @@
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
+// `json!` + socketioxide are used only by the socketioxide event-transport
+// bodies below, all gated with the `http-server` feature (#5048). The inert
+// event payload types further down (`WebChannelEvent`, `TurnUsagePayload`,
+// `SubagentUsagePayload`, `SubagentProgressDetail`) stay compiled in every build
+// — ~10 always-on domains (web_chat, cron, channels, agent, …)
+// construct them — so `serde` stays ungated and only the transport surface is
+// gated (type carve-out; see AGENTS.md and this module's `pub mod` in
+// `core::mod`, which is intentionally NOT gated).
+#[cfg(feature = "http-server")]
 use serde_json::json;
-use socketioxide::extract::{Data, SocketRef, TryData};
+#[cfg(feature = "http-server")]
+use socketioxide::extract::{AckSender, Data, SocketRef, TryData};
+#[cfg(feature = "http-server")]
 use socketioxide::SocketIo;
+
+/// Shell-originated companion lifecycle events that still need to reach
+/// Socket.IO-only surfaces such as the native macOS notch WKWebView.
+static COMPANION_STATE_BUS: once_cell::sync::Lazy<tokio::sync::broadcast::Sender<Value>> =
+    once_cell::sync::Lazy::new(|| {
+        let (tx, _rx) = tokio::sync::broadcast::channel(64);
+        tx
+    });
+
+/// Publish a shell-side companion state payload for Socket.IO clients.
+///
+/// The companion implementation lives in the Tauri shell, but the notch
+/// WKWebView has no Tauri IPC bridge and connects directly to the embedded
+/// core's Socket.IO endpoint. Keeping this transport-only seam here avoids
+/// reintroducing the removed core companion domain.
+pub fn publish_companion_state_changed(payload: Value) -> usize {
+    COMPANION_STATE_BUS.send(payload).unwrap_or_default()
+}
+
+#[cfg(feature = "http-server")]
+fn subscribe_companion_state_changed() -> tokio::sync::broadcast::Receiver<Value> {
+    COMPANION_STATE_BUS.subscribe()
+}
 
 /// Marker stored in [`SocketRef::extensions`] once a connection has presented a
 /// bearer token that matches the active per-process RPC token.
@@ -11,6 +46,7 @@ use socketioxide::SocketIo;
 /// into the JSON-RPC dispatcher or the web-chat orchestrator: an unauthenticated
 /// socket that never picked up the marker is allowed to receive broadcast-style
 /// events (read-only) but cannot trigger executable work.
+#[cfg(feature = "http-server")]
 #[derive(Clone, Copy, Debug)]
 struct AuthedConnection;
 
@@ -20,6 +56,7 @@ struct AuthedConnection;
 /// headers, so the handshake `auth` map is the only header-equivalent slot
 /// available for our per-process bearer. The socket-IO Node/JS clients all
 /// surface `io(url, { auth: { token: "<hex>" } })` for this.
+#[cfg(feature = "http-server")]
 #[derive(Debug, Default, Deserialize)]
 struct HandshakeAuth {
     #[serde(default)]
@@ -47,6 +84,7 @@ struct HandshakeAuth {
 /// A missing `Origin` header is treated as a native (non-browser) client
 /// and accepted — only the cross-origin browser-page case is the targeted
 /// bad actor here.
+#[cfg(feature = "http-server")]
 pub(crate) fn origin_is_allowed(origin: Option<&str>) -> bool {
     let Some(origin) = origin else {
         return true; // native clients (CLI, Tauri shell) — no Origin header
@@ -73,6 +111,7 @@ pub(crate) fn origin_is_allowed(origin: Option<&str>) -> bool {
 }
 
 /// True when `socket` finished the handshake with a valid bearer token.
+#[cfg(feature = "http-server")]
 fn socket_is_authed(socket: &SocketRef) -> bool {
     socket.extensions.get::<AuthedConnection>().is_some()
 }
@@ -80,6 +119,7 @@ fn socket_is_authed(socket: &SocketRef) -> bool {
 /// Best-effort disconnect. Called when we discover an unauthenticated socket
 /// inside an event handler — the connect path already disconnects the bad
 /// origins / wrong tokens, so this is purely a defense-in-depth path.
+#[cfg(feature = "http-server")]
 fn drop_unauthed(socket: &SocketRef, reason: &'static str) {
     log::warn!(
         "[socketio] dropping unauthenticated socket id={} reason={}",
@@ -223,6 +263,15 @@ pub struct WebChannelEvent {
     /// for synthetic done events that never ran a real turn.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TurnUsagePayload>,
+    /// Additive per-request monotonic ordering key stamped by the web-channel
+    /// progress bridge on every event it emits (conversations-timeline-refactor,
+    /// Phase 4). Together with the always-present `request_id`, the frontend
+    /// dedups replayed vs live events by `(request_id, seq)` and orders them
+    /// identically to the persisted turn-state snapshot. `None` on events not
+    /// emitted through the stamping bridge and on older cores — older frontends
+    /// simply ignore it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
 }
 
 /// Token/cost/context totals for one completed turn, attached to `chat_done`.
@@ -334,6 +383,7 @@ pub struct SubagentProgressDetail {
     pub dirty_status: Option<bool>,
 }
 
+#[cfg(feature = "http-server")]
 #[derive(Debug, Deserialize)]
 struct SocketRpcRequest {
     id: serde_json::Value,
@@ -342,6 +392,7 @@ struct SocketRpcRequest {
     params: serde_json::Value,
 }
 
+#[cfg(feature = "http-server")]
 #[derive(Debug, Deserialize)]
 struct ChatStartPayload {
     thread_id: String,
@@ -360,6 +411,7 @@ struct ChatStartPayload {
     queue_mode: Option<String>,
 }
 
+#[cfg(feature = "http-server")]
 #[derive(Debug, Deserialize)]
 struct ChatCancelPayload {
     thread_id: String,
@@ -370,9 +422,17 @@ struct ChatCancelPayload {
     request_id: Option<String>,
 }
 
+#[cfg(feature = "http-server")]
 #[derive(Debug, Deserialize)]
 struct ThreadSubscribePayload {
     thread_id: String,
+}
+
+/// Reply to `thread:subscribe`, so a client can order a read after the join.
+#[cfg(feature = "http-server")]
+#[derive(Debug, Serialize)]
+struct ThreadSubscribeAck {
+    joined: bool,
 }
 
 /// Attaches the Socket.IO layer to the Axum router and sets up event handlers.
@@ -382,6 +442,7 @@ struct ThreadSubscribePayload {
 /// - `rpc:request`: Invoking JSON-RPC methods over WebSocket.
 /// - `chat:start`: Initiating a new chat turn.
 /// - `chat:cancel`: Aborting an active chat turn.
+#[cfg(feature = "http-server")]
 pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
     let (layer, io) = SocketIo::new_layer();
 
@@ -431,7 +492,7 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
 
             log::info!("[socketio] client connected id={client_id} (authenticated)");
             // Join a room named after the client ID for targeted event delivery.
-            join_room_logged(&socket, &client_id, &client_id);
+            let _ = join_room_logged(&socket, &client_id, &client_id);
             // Also auto-join the "system" room so every connected client
             // receives broadcast-style events that aren't tied to a
             // specific chat thread. Today this covers proactive messages
@@ -440,10 +501,50 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
             // emits with `client_id = "system"` — see `emit_web_channel_event`.
             // If this join fails the welcome message silently disappears,
             // so we log both success and failure for diagnosability.
-            join_room_logged(&socket, "system", &client_id);
+            let _ = join_room_logged(&socket, "system", &client_id);
             let ready_payload = json!({ "sid": client_id });
             log::debug!("[socketio] emit event=ready to_client={}", socket.id);
             let _ = socket.emit("ready", &ready_payload);
+
+            // Seed this client with the workspace that is current (#5966).
+            // The `workspace_changed` bridge in `spawn_web_channel_bridge`
+            // only fires on a switch, so a client that connects between
+            // switches — the common case, since the app connects at launch —
+            // would otherwise have no idea which workspace is active and
+            // could not scope anything.
+            //
+            // Spawned because this handler is synchronous and the resolve is
+            // not. Emitting to `socket` rather than broadcasting keeps a
+            // late-joining client from re-announcing a workspace every other
+            // client already knows about.
+            {
+                let socket = socket.clone();
+                let client_id = client_id.clone();
+                tokio::spawn(async move {
+                    match crate::openhuman::config::active_workspace_snapshot().await {
+                        Ok((dir, revision)) => {
+                            let handle = crate::openhuman::config::workspace_handle(&dir);
+                            // One snapshot, not two reads: resolved
+                            // separately, a switch between them would pair
+                            // this workspace with the *next* one's revision,
+                            // and the client would rank a stale seed above
+                            // the switch it lost to. This task and the switch
+                            // bridge are separate, so that race is real; the
+                            // client keeps the highest revision it has seen.
+                            log::debug!(
+                                "[socketio] emit event=workspace_changed to_client={client_id} workspace={handle} revision={revision}"
+                            );
+                            let payload =
+                                json!({ "workspace": handle, "revision": revision });
+                            let _ = socket.emit("workspace_changed", &payload);
+                            let _ = socket.emit("workspace:changed", &payload);
+                        }
+                        Err(error) => log::warn!(
+                            "[socketio] could not resolve the active workspace to seed client={client_id}: {error}"
+                        ),
+                    }
+                });
+            }
 
             // Handler for JSON-RPC over WebSocket.
             socket.on(
@@ -574,19 +675,43 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
             // frontend emits this on connect/reconnect for the active thread, so
             // the new socket re-joins the thread room and keeps receiving the
             // stream. Membership is dropped automatically on disconnect.
+            //
+            // The join is acknowledged so a client can *order* work against it.
+            // A reconnecting client re-reads the thread to pick up a reply that
+            // landed while it was away (#6034); firing that read before the join
+            // is processed leaves a window where the read misses the row and the
+            // turn's `chat_done` is emitted to a room this socket has not joined
+            // yet, so the reply stays invisible until a manual reload. The ack
+            // closes it. Clients that ignore the ack are unaffected — an unused
+            // acknowledgement is inert.
             socket.on(
                 "thread:subscribe",
-                |socket: SocketRef, Data(payload): Data<ThreadSubscribePayload>| async move {
+                |socket: SocketRef, Data(payload): Data<ThreadSubscribePayload>, ack: AckSender| async move {
                     if !socket_is_authed(&socket) {
                         drop_unauthed(&socket, "thread:subscribe from unauthenticated socket");
                         return;
                     }
                     let thread_id = payload.thread_id.trim();
                     if thread_id.is_empty() {
+                        // Still acknowledge: a client awaiting this must not be
+                        // left hanging on its own malformed payload.
+                        ack.send(&ThreadSubscribeAck { joined: false }).ok();
                         return;
                     }
                     let room = format!("thread:{thread_id}");
-                    join_room_logged(&socket, &room, &socket.id.to_string());
+                    // Report what actually happened. Acknowledging a join that
+                    // failed is worse than not acknowledging at all: the client
+                    // stops queueing the thread for retry and reads on the
+                    // strength of a room it is not in.
+                    let joined = join_room_logged(&socket, &room, &socket.id.to_string());
+                    // Hand this socket whatever the approval gate still has
+                    // parked on the thread, BEFORE acknowledging the join, so a
+                    // client that orders its recovery reads against the ack
+                    // already holds the card.
+                    if joined {
+                        replay_parked_approval(&socket, thread_id);
+                    }
+                    ack.send(&ThreadSubscribeAck { joined }).ok();
                 },
             );
         },
@@ -597,12 +722,13 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
 
 /// Spawns background bridges to forward various system events to Socket.IO clients.
 ///
-/// This function sets up five bridges:
+/// This function sets up event bridges:
 /// 1. **Web Channel Bridge**: Forwards chat-related events (messages, tool calls) to specific clients.
 /// 2. **Dictation Bridge**: Forwards hotkey events to all clients.
 /// 3. **Overlay Bridge**: Forwards attention bubble events to all clients.
 /// 4. **Core Notification Bridge**: Forwards core notification events to all clients.
 /// 5. **Transcription Bridge**: Forwards real-time speech-to-text results to all clients.
+#[cfg(feature = "http-server")]
 pub fn spawn_web_channel_bridge(io: SocketIo) {
     // 1. Web channel events → per-client rooms.
     let io_web = io.clone();
@@ -612,10 +738,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} web_channel events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} web channel events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -630,13 +753,11 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
     let io_notify = io.clone();
     let io_transcription = io.clone();
     let io_auth = io.clone();
-    let io_companion = io.clone();
     let io_mcp_setup = io.clone();
     let io_memory_sync = io.clone();
-    let io_agent_meetings = io.clone();
-    let io_tinyplace = io.clone();
     let io_channel_status = io.clone();
-    let io_orchestration = io.clone();
+    let io_companion = io.clone();
+    let io_workspace = io.clone();
 
     // 2. Dictation hotkey events → broadcast to all connected clients.
     tokio::spawn(async move {
@@ -645,7 +766,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!("[socketio] dropped {} dictation events due to lag", skipped);
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -664,17 +785,38 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
         log::debug!("[socketio] dictation bridge stopped");
     });
 
+    // Shell companion state → broadcast to all clients. The main renderer also
+    // receives a Tauri event directly; this path preserves the Socket.IO-only
+    // native notch surface.
+    tokio::spawn(async move {
+        let mut rx = subscribe_companion_state_changed();
+        loop {
+            let payload = match rx.recv().await {
+                Ok(payload) => payload,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    log::warn!(
+                        "[socketio] dropped {} companion state_changed events due to lag",
+                        skipped
+                    );
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            };
+            log::debug!("[socketio] broadcast companion:state_changed");
+            let _ = io_companion.emit("companion:state_changed", &payload);
+            let _ = io_companion.emit("companion_state_changed", &payload);
+        }
+        log::debug!("[socketio] companion state bridge stopped");
+    });
+
     // 3. Overlay attention events → broadcast to all clients.
     tokio::spawn(async move {
-        let mut rx = crate::openhuman::overlay::subscribe_attention_events();
+        let mut rx = crate::openhuman::desktop::overlay::subscribe_attention_events();
         loop {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} overlay attention events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -697,15 +839,12 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
     //    chat session is active. Pattern mirrors the overlay attention
     //    bridge above — fire-and-forget, no per-client routing.
     tokio::spawn(async move {
-        let mut rx = crate::openhuman::notifications::subscribe_core_notifications();
+        let mut rx = crate::openhuman::desktop::notifications::subscribe_core_notifications();
         loop {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} core_notification events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -722,30 +861,6 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             }
         }
         log::debug!("[socketio] core_notification bridge stopped");
-    });
-
-    // 5b. Orchestration chat activity → broadcast to all clients so the
-    //     TinyPlaceOrchestrationTab targeted-refetches the affected chat live
-    //     (stage 7). Mirrors the overlay/notification fire-and-forget pattern.
-    tokio::spawn(async move {
-        let mut rx = crate::openhuman::orchestration::subscribe_orchestration_socket();
-        loop {
-            let payload = match rx.recv().await {
-                Ok(payload) => payload,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} orchestration events due to lag",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            };
-            log::debug!("[socketio] broadcast orchestration:message");
-            let _ = io_orchestration.emit("orchestration:message", &payload);
-            let _ = io_orchestration.emit("orchestration_message", &payload);
-        }
-        log::debug!("[socketio] orchestration bridge stopped");
     });
 
     // 6. SessionExpired events → broadcast to all clients so the UI can
@@ -767,7 +882,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -781,20 +896,12 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (auth bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
-            if let crate::core::event_bus::DomainEvent::SessionExpired { source, reason } = event {
+            if let crate::core::events::DomainEvent::SessionExpired { source, reason } = event {
                 log::info!(
                     "[socketio] broadcast auth:session_expired source={} reason_len={}",
                     source,
@@ -811,6 +918,62 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
         log::debug!("[socketio] auth session_expired bridge stopped");
     });
 
+    // 6a. ActiveWorkspaceChanged → broadcast `workspace_changed` carrying the
+    //     new workspace's opaque handle (#5966).
+    //
+    //     `core_notification` is emitted to every connected client with no
+    //     per-client routing, and the publish-time gate that decides whether a
+    //     workspace-bound notification may be broadcast resolves the active
+    //     workspace and then sends — two steps, not one. A switch in between
+    //     still lets one through. Telling clients the handle of the workspace
+    //     that is current lets the receiver re-check on render instead of
+    //     trusting a boolean taken at an instant.
+    //
+    //     The handle, never `workspace_dir`: this reaches every connected
+    //     client and the path is under the user's home directory.
+    tokio::spawn(async move {
+        let bus = {
+            const RETRY_INTERVAL_MS: u64 = 250;
+            const MAX_WAIT_SECS: u64 = 30;
+            let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
+            let mut attempts: u64 = 0;
+            loop {
+                if let Some(bus) = crate::core::bus::BUS.get() {
+                    break bus;
+                }
+                attempts += 1;
+                if attempts > max_attempts {
+                    log::warn!(
+                        "[socketio] event_bus not initialised after {}s — workspace bridge giving up",
+                        MAX_WAIT_SECS
+                    );
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
+            }
+        };
+        let mut rx = bus.receiver();
+        loop {
+            let Some(event) = rx.recv().await else {
+                break;
+            };
+            if let crate::core::events::DomainEvent::ActiveWorkspaceChanged {
+                workspace_dir,
+                revision,
+            } = event
+            {
+                let handle = crate::openhuman::config::workspace_handle(&workspace_dir);
+                log::info!(
+                    "[socketio] broadcast workspace_changed workspace={handle} revision={revision}"
+                );
+                let payload = serde_json::json!({ "workspace": handle, "revision": revision });
+                let _ = io_workspace.emit("workspace_changed", &payload);
+                let _ = io_workspace.emit("workspace:changed", &payload);
+            }
+        }
+        log::debug!("[socketio] workspace_changed bridge stopped");
+    });
+
     // 6b. McpSetupSecretRequested → broadcast `mcp_setup:secret_requested`
     //     so the UI can render a native input dialog. Only the opaque
     //     ref + safe display fields are forwarded; raw secret values
@@ -822,7 +985,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -836,20 +999,12 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (mcp_setup bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
-            if let crate::core::event_bus::DomainEvent::McpSetupSecretRequested {
+            if let crate::core::events::DomainEvent::McpSetupSecretRequested {
                 ref_id,
                 key_name,
                 prompt,
@@ -898,38 +1053,6 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
         log::debug!("[socketio] transcription bridge stopped");
     });
 
-    // 7. Companion state change events → broadcast to all clients so the
-    //    overlay and settings panel can react to session lifecycle and
-    //    state transitions (Idle → Listening → Thinking → Speaking → …).
-    tokio::spawn(async move {
-        let mut rx = crate::openhuman::desktop_companion::bus::subscribe_state_changed();
-        loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} companion state_changed events due to lag",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            };
-
-            if let Ok(payload) = serde_json::to_value(&event) {
-                log::debug!(
-                    "[socketio] broadcast companion:state_changed session={} {} -> {}",
-                    event.session_id,
-                    event.previous_state,
-                    event.state,
-                );
-                let _ = io_companion.emit("companion:state_changed", &payload);
-                let _ = io_companion.emit("companion_state_changed", &payload);
-            }
-        }
-        log::debug!("[socketio] companion state bridge stopped");
-    });
-
     // 8. Memory sync stage + tree-build progress → broadcast to all clients
     //    so the UI can show real-time progress bars and refresh the graph.
     tokio::spawn(async move {
@@ -939,7 +1062,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -953,21 +1076,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (memory_sync bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             match event {
-                crate::core::event_bus::DomainEvent::MemorySyncStageChanged {
+                crate::core::events::DomainEvent::MemorySyncStageChanged {
                     trigger,
                     stage,
                     provider,
@@ -988,7 +1103,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:sync_stage", &payload);
                 }
-                crate::core::event_bus::DomainEvent::TreeSummarizerPropagated {
+                crate::core::events::DomainEvent::TreeSummarizerPropagated {
                     namespace,
                     node_id,
                     level,
@@ -1002,7 +1117,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:tree_progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::TreeSummarizerRebuildCompleted {
+                crate::core::events::DomainEvent::TreeSummarizerRebuildCompleted {
                     namespace,
                     total_nodes,
                 } => {
@@ -1012,7 +1127,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:tree_completed", &payload);
                 }
-                crate::core::event_bus::DomainEvent::MemoryTreeBuildProgress {
+                crate::core::events::DomainEvent::MemoryTreeBuildProgress {
                     phase,
                     step,
                     tree_scope,
@@ -1030,7 +1145,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:build_progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::HarnessInitProgress {
+                crate::core::events::DomainEvent::HarnessInitProgress {
                     step_id,
                     state,
                     message,
@@ -1044,7 +1159,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("init:progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::HarnessInitCompleted {
+                crate::core::events::DomainEvent::HarnessInitCompleted {
                     overall,
                     failed_required,
                 } => {
@@ -1059,7 +1174,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // truth and the Workflows UI keeps a 2s poller as fallback, so
                 // a dropped event here (broadcast lag) only delays the live
                 // update, never corrupts run history.
-                crate::core::event_bus::DomainEvent::FlowRunProgress {
+                crate::core::events::DomainEvent::FlowRunProgress {
                     run_id,
                     node_id,
                     status,
@@ -1078,12 +1193,56 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     let _ = io_memory_sync.emit("flow:run_progress", &payload);
                     let _ = io_memory_sync.emit("flow_run_progress", &payload);
                 }
+                // A `flow_runs` row was just persisted, before execution begins
+                // (issue B35, runs-rail live refresh). Broadcast so an open
+                // Workflows canvas/sidebar can show "Running" immediately
+                // instead of waiting for the blocking `flows_run` RPC to
+                // resolve or the first `FlowRunProgress` step. Best-effort,
+                // same rationale as `flow:run_progress` above.
+                crate::core::events::DomainEvent::FlowRunStarted { flow_id, run_id } => {
+                    let payload = serde_json::json!({
+                        "flow_id": flow_id,
+                        "run_id": run_id,
+                    });
+                    log::debug!(
+                        "[socketio] broadcast flow_run_started flow_id={} run_id={}",
+                        flow_id,
+                        run_id
+                    );
+                    let _ = io_memory_sync.emit("flow:run_started", &payload);
+                    let _ = io_memory_sync.emit("flow_run_started", &payload);
+                }
+                // The terminal companion to `FlowRunStarted` above (issue B35
+                // follow-up). Published once `flows::ops::finish_flow_run_row`
+                // persists the settled `flow_runs` row, so an open Workflows
+                // canvas/sidebar can flip a run to Completed/Failed live
+                // instead of relying on a poll to notice. Best-effort, same
+                // rationale as the other `flow:*` bridges.
+                crate::core::events::DomainEvent::FlowRunFinished {
+                    flow_id,
+                    run_id,
+                    status,
+                } => {
+                    let payload = serde_json::json!({
+                        "flow_id": flow_id,
+                        "run_id": run_id,
+                        "status": status,
+                    });
+                    log::debug!(
+                        "[socketio] broadcast flow_run_finished flow_id={} run_id={} status={}",
+                        flow_id,
+                        run_id,
+                        status
+                    );
+                    let _ = io_memory_sync.emit("flow:run_finished", &payload);
+                    let _ = io_memory_sync.emit("flow_run_finished", &payload);
+                }
                 // A saved flow's definition changed (create/update/delete/
                 // enable). Broadcast so an open Workflows list/canvas refetches
                 // — most importantly, so an agent `save_workflow` becomes
                 // visible in a canvas the user has open (audit F6). Best-effort;
                 // the UI's refetch-on-focus is the backstop.
-                crate::core::event_bus::DomainEvent::FlowChanged {
+                crate::core::events::DomainEvent::FlowChanged {
                     flow_id,
                     kind,
                     actor,
@@ -1108,7 +1267,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // bridge — because a flow run has no chat thread/client to
                 // target; the Workflows UI listens process-wide and filters
                 // by `flow_id`/`run_id` client-side.
-                crate::core::event_bus::DomainEvent::FlowApprovalRequested {
+                crate::core::events::DomainEvent::FlowApprovalRequested {
                     request_id,
                     flow_id,
                     run_id,
@@ -1137,221 +1296,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
         log::debug!("[socketio] memory_sync bridge stopped");
     });
 
-    // 9. Backend Meet bot events → broadcast to all connected frontend sockets.
-    tokio::spawn(async move {
-        let bus = {
-            const RETRY_INTERVAL_MS: u64 = 250;
-            const MAX_WAIT_SECS: u64 = 30;
-            let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
-            let mut attempts: u64 = 0;
-            loop {
-                if let Some(bus) = crate::core::event_bus::global() {
-                    break bus;
-                }
-                attempts += 1;
-                if attempts > max_attempts {
-                    log::warn!(
-                        "[socketio] event_bus not initialised after {}s — agent_meetings bridge giving up",
-                        MAX_WAIT_SECS
-                    );
-                    return;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
-            }
-        };
-        let mut rx = bus.raw_receiver();
-        loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (agent_meetings bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            };
-            match event {
-                crate::core::event_bus::DomainEvent::BackendMeetJoined {
-                    meet_url,
-                    correlation_id,
-                } => {
-                    let payload = serde_json::json!({ "meet_url": meet_url, "correlation_id": correlation_id });
-                    log::debug!("[socketio] broadcast agent_meetings:joined");
-                    let _ = io_agent_meetings.emit("agent_meetings:joined", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetLeft {
-                    reason,
-                    correlation_id,
-                } => {
-                    let payload =
-                        serde_json::json!({ "reason": reason, "correlation_id": correlation_id });
-                    log::debug!("[socketio] broadcast agent_meetings:left reason={}", reason);
-                    let _ = io_agent_meetings.emit("agent_meetings:left", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetReply {
-                    transcript,
-                    reply,
-                    emotion,
-                    correlation_id,
-                } => {
-                    let payload = serde_json::json!({
-                        "transcript": transcript,
-                        "reply": reply,
-                        "emotion": emotion,
-                        "correlation_id": correlation_id,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast agent_meetings:reply reply_len={}",
-                        reply.len()
-                    );
-                    let _ = io_agent_meetings.emit("agent_meetings:reply", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetHarness {
-                    transcript,
-                    instruction,
-                    emotion,
-                    correlation_id,
-                } => {
-                    let payload = serde_json::json!({
-                        "transcript": transcript,
-                        "instruction": instruction,
-                        "emotion": emotion,
-                        "correlation_id": correlation_id,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast agent_meetings:harness instruction_len={}",
-                        instruction.len()
-                    );
-                    let _ = io_agent_meetings.emit("agent_meetings:harness", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetTranscript {
-                    turns,
-                    duration_ms,
-                    correlation_id,
-                } => {
-                    let payload = serde_json::json!({
-                        "turns": turns,
-                        "duration_ms": duration_ms,
-                        "correlation_id": correlation_id,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast agent_meetings:transcript turns={} duration_ms={}",
-                        turns.len(),
-                        duration_ms
-                    );
-                    let _ = io_agent_meetings.emit("agent_meetings:transcript", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetTranscriptDelta {
-                    turn,
-                    index,
-                    is_partial,
-                    correlation_id,
-                } => {
-                    let payload = serde_json::json!({
-                        "turn": turn,
-                        "index": index,
-                        "is_partial": is_partial,
-                        "correlation_id": correlation_id,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast agent_meetings:transcript_delta index={} is_partial={}",
-                        index,
-                        is_partial
-                    );
-                    let _ = io_agent_meetings.emit("agent_meetings:transcript_delta", &payload);
-                }
-                crate::core::event_bus::DomainEvent::BackendMeetError {
-                    error,
-                    correlation_id,
-                } => {
-                    let payload =
-                        serde_json::json!({ "error": error, "correlation_id": correlation_id });
-                    log::debug!("[socketio] broadcast agent_meetings:error");
-                    let _ = io_agent_meetings.emit("agent_meetings:error", &payload);
-                }
-                _ => {}
-            }
-        }
-        log::debug!("[socketio] agent_meetings bridge stopped");
-    });
-
-    // 10. Tinyplace stream events → broadcast to all connected frontend sockets.
-    tokio::spawn(async move {
-        let bus = {
-            const RETRY_INTERVAL_MS: u64 = 250;
-            const MAX_WAIT_SECS: u64 = 30;
-            let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
-            let mut attempts: u64 = 0;
-            loop {
-                if let Some(bus) = crate::core::event_bus::global() {
-                    break bus;
-                }
-                attempts += 1;
-                if attempts > max_attempts {
-                    log::warn!(
-                        "[socketio] event_bus not initialised after {}s — tinyplace bridge giving up",
-                        MAX_WAIT_SECS
-                    );
-                    return;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
-            }
-        };
-        let mut rx = bus.raw_receiver();
-        loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (tinyplace bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-            };
-            match event {
-                crate::core::event_bus::DomainEvent::TinyPlaceStreamMessage {
-                    stream_id,
-                    kind,
-                    message,
-                } => {
-                    let payload = json!({
-                        "stream_id": stream_id,
-                        "kind": kind,
-                        "message": message,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast tinyplace:stream_message stream_id={} kind={}",
-                        stream_id,
-                        kind
-                    );
-                    let _ = io_tinyplace.emit("tinyplace:stream_message", &payload);
-                }
-                crate::core::event_bus::DomainEvent::TinyPlaceStreamStatusChanged {
-                    stream_id,
-                    status,
-                } => {
-                    let payload = json!({
-                        "stream_id": stream_id,
-                        "status": status,
-                    });
-                    log::debug!(
-                        "[socketio] broadcast tinyplace:stream_status stream_id={} status={}",
-                        stream_id,
-                        status
-                    );
-                    let _ = io_tinyplace.emit("tinyplace:stream_status", &payload);
-                }
-                _ => {}
-            }
-        }
-        log::debug!("[socketio] tinyplace stream bridge stopped");
-    });
-
-    // 11. Channel listener health → broadcast `channel:connection-updated` to
+    // 10. Channel listener health → broadcast `channel:connection-updated` to
     //     all clients so the Messaging tab reflects the *live* connection state
     //     instead of a stale, credential-presence-only "Connected" (issue
     //     #3712). The supervised listener publishes `ChannelConnected` when it
@@ -1367,7 +1312,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -1381,21 +1326,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (channel_status bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             let payload = match event {
-                crate::core::event_bus::DomainEvent::ChannelConnected { channel } => {
+                crate::core::events::DomainEvent::ChannelConnected { channel } => {
                     log::debug!(
                         "[socketio] broadcast channel:connection-updated {channel} -> connected"
                     );
@@ -1405,7 +1342,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                         None,
                     ))
                 }
-                crate::core::event_bus::DomainEvent::ChannelDisconnected { channel, reason } => {
+                crate::core::events::DomainEvent::ChannelDisconnected { channel, reason } => {
                     log::debug!(
                         "[socketio] broadcast channel:connection-updated {channel} -> error reason_len={}",
                         reason.len()
@@ -1434,6 +1371,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
 /// listener for telegram/discord); `last_error` carries the disconnect reason.
 /// Matches the shape consumed by the frontend
 /// `normalizeChannelConnectionUpdatePayload`.
+#[cfg(feature = "http-server")]
 pub(crate) fn channel_connection_update_payload(
     channel: &str,
     status: &str,
@@ -1458,13 +1396,27 @@ pub(crate) fn channel_connection_update_payload(
 /// so both the happy and error paths are logged with enough context
 /// (room name + client id) to diagnose missing welcome messages from
 /// logs alone.
-fn join_room_logged(socket: &SocketRef, room: &str, client_id: &str) {
+///
+/// Returns whether the socket is actually in the room. Callers that only log
+/// may ignore it; a caller that *tells the client* it joined must not — a
+/// client told it is in a room it never joined reads the thread, waits for
+/// events that will never be routed to it, and reproduces the invisible-reply
+/// bug this room exists to prevent (#6034).
+#[cfg(feature = "http-server")]
+fn join_room_logged(socket: &SocketRef, room: &str, client_id: &str) -> bool {
     match socket.join(room.to_string()) {
-        Ok(()) => log::debug!("[socketio] joined room '{room}' for client {client_id}"),
-        Err(e) => log::warn!("[socketio] failed to join room '{room}' for client {client_id}: {e}"),
+        Ok(()) => {
+            log::debug!("[socketio] joined room '{room}' for client {client_id}");
+            true
+        }
+        Err(e) => {
+            log::warn!("[socketio] failed to join room '{room}' for client {client_id}: {e}");
+            false
+        }
     }
 }
 
+#[cfg(feature = "http-server")]
 fn emit_web_channel_event(io: &SocketIo, event: WebChannelEvent) {
     let name = event.event.clone();
     // Deliver to the initiating client's own room AND the per-thread room. The
@@ -1527,8 +1479,10 @@ fn emit_web_channel_event(io: &SocketIo, event: WebChannelEvent) {
 /// is suppressed for exactly these. Enumerated explicitly rather than matched by
 /// a `*_delta` suffix, so a future *discrete* event whose name happens to end in
 /// `_delta` still gets its compat alias instead of being silently dropped.
+#[cfg(feature = "http-server")]
 const STREAMING_DELTA_EVENTS: &[&str] = &["text_delta", "thinking_delta", "tool_args_delta"];
 
+#[cfg(feature = "http-server")]
 fn event_alias(name: &str) -> Option<String> {
     // Match against the canonical underscore form after stripping a `subagent_`
     // prefix (subagent streaming mirrors the parent's deltas), so `text_delta`,
@@ -1548,6 +1502,53 @@ fn event_alias(name: &str) -> Option<String> {
     None
 }
 
+/// Re-send the approval parked on `thread_id`, if any, to the socket that just
+/// joined that thread's room.
+///
+/// An approval is durable server-side state — the gate holds the parked call
+/// and a `pending_approvals` row — but it reaches the UI as ONE fire-and-forget
+/// emit from [`emit_web_channel_event`]. That emit can miss with no error and
+/// no trace: `io.to(room).emit()` on a room whose only member has gone is a
+/// silent no-op, there is no disconnect handler here so the core never learns a
+/// client died, a socket that reconnects lands in the thread room only for
+/// events emitted *after* it joins, and the bridge drops frames wholesale on
+/// broadcast lag. Any one of those leaves the turn parked forever with no card
+/// on screen and no way for the user to act.
+///
+/// `thread:subscribe` is the one signal that says "this socket is now watching
+/// this thread", which makes it the place to reconcile the two. Replaying is
+/// safe to repeat: the client keys the card by `request_id` and a decided
+/// request is no longer parked, so a socket that already has the card just
+/// re-renders the same one.
+#[cfg(feature = "http-server")]
+fn replay_parked_approval(socket: &SocketRef, thread_id: &str) {
+    let Some(gate) = crate::openhuman::security::approval::ApprovalGate::try_global() else {
+        return;
+    };
+    let Some(row) = gate.parked_request_for_thread(thread_id) else {
+        return;
+    };
+    let client_id = socket.id.to_string();
+    let event = crate::openhuman::web_chat::approval_request_event(
+        &row.request_id,
+        &row.tool_name,
+        &row.action_summary,
+        &row.args_redacted,
+        thread_id,
+        &client_id,
+    );
+    let Ok(payload) = serde_json::to_value(&event) else {
+        return;
+    };
+    log::info!(
+        "[socketio] replaying parked approval_request to joining socket client_id={client_id} thread_id={thread_id} request_id={} tool={}",
+        row.request_id,
+        row.tool_name
+    );
+    emit_with_aliases(socket, "approval_request", &payload);
+}
+
+#[cfg(feature = "http-server")]
 fn emit_with_aliases(socket: &SocketRef, name: &str, payload: &serde_json::Value) {
     let _ = socket.emit(name, payload);
     if let Some(alias) = event_alias(name) {
@@ -1555,9 +1556,26 @@ fn emit_with_aliases(socket: &SocketRef, name: &str, payload: &serde_json::Value
     }
 }
 
-#[cfg(test)]
+// Every test here names a gated fn (`channel_connection_update_payload`,
+// `event_alias`, `origin_is_allowed`), so the module gates in lockstep (#5048).
+#[cfg(all(test, feature = "http-server"))]
 mod tests {
-    use super::{channel_connection_update_payload, event_alias, origin_is_allowed};
+    use super::{
+        channel_connection_update_payload, event_alias, origin_is_allowed,
+        publish_companion_state_changed, subscribe_companion_state_changed,
+    };
+
+    #[test]
+    fn companion_state_transport_delivers_payload_to_bridge() {
+        let mut rx = subscribe_companion_state_changed();
+        let payload = serde_json::json!({
+            "session_id": "session-1",
+            "state": "thinking",
+            "previous_state": "listening",
+        });
+        assert!(publish_companion_state_changed(payload.clone()) >= 1);
+        assert_eq!(rx.try_recv().expect("payload delivered"), payload);
+    }
 
     #[test]
     fn channel_connection_update_payload_connected_omits_error() {

@@ -11,9 +11,7 @@ export const CORE_RPC_METHODS = {
   configGetPrivacyMode: 'openhuman.config_get_privacy_mode',
   configGetSandboxSettings: 'openhuman.config_get_sandbox_settings',
   configGetSearchSettings: 'openhuman.config_get_search_settings',
-  configGetSuperContextEnabled: 'openhuman.config_get_super_context_enabled',
   configSetPrivacyMode: 'openhuman.config_set_privacy_mode',
-  configSetSuperContextEnabled: 'openhuman.config_set_super_context_enabled',
   configUpdateSearchSettings: 'openhuman.config_update_search_settings',
   configSetBrowserAllowAll: 'openhuman.config_set_browser_allow_all',
   configUpdateAgentPaths: 'openhuman.config_update_agent_paths',
@@ -28,7 +26,6 @@ export const CORE_RPC_METHODS = {
   configUpdateModelSettings: 'openhuman.config_update_model_settings',
   configUpdateRuntimeSettings: 'openhuman.config_update_runtime_settings',
   configUpdateSandboxSettings: 'openhuman.config_update_sandbox_settings',
-  configUpdateScreenIntelligenceSettings: 'openhuman.config_update_screen_intelligence_settings',
   configWorkspaceOnboardingFlagExists: 'openhuman.config_workspace_onboarding_flag_exists',
   configWorkspaceOnboardingFlagSet: 'openhuman.config_workspace_onboarding_flag_set',
   corePing: 'core.ping',
@@ -42,7 +39,6 @@ export const CORE_RPC_METHODS = {
   inferenceDownloadsProgress: 'openhuman.inference_downloads_progress',
   inferenceGetClientConfig: 'openhuman.inference_get_client_config',
   inferenceInstallPiper: 'openhuman.inference_install_piper',
-  inferenceInstallWhisper: 'openhuman.inference_install_whisper',
   inferenceListModels: 'openhuman.inference_list_models',
   inferencePiperInstallStatus: 'openhuman.inference_piper_install_status',
   inferencePresets: 'openhuman.inference_presets',
@@ -52,9 +48,7 @@ export const CORE_RPC_METHODS = {
   inferenceTts: 'openhuman.inference_tts',
   inferenceUpdateLocalSettings: 'openhuman.inference_update_local_settings',
   inferenceUpdateModelSettings: 'openhuman.inference_update_model_settings',
-  inferenceWhisperInstallStatus: 'openhuman.inference_whisper_install_status',
   providersListModels: 'openhuman.inference_list_models',
-  screenIntelligenceStatus: 'openhuman.screen_intelligence_status',
   embeddingsGetSettings: 'openhuman.embeddings_get_settings',
   embeddingsUpdateSettings: 'openhuman.embeddings_update_settings',
   embeddingsSetApiKey: 'openhuman.embeddings_set_api_key',
@@ -69,7 +63,7 @@ export const CORE_RPC_METHODS = {
   healthSystemInfo: 'openhuman.health_system_info',
 } as const;
 
-export type CoreRpcMethod = (typeof CORE_RPC_METHODS)[keyof typeof CORE_RPC_METHODS];
+type CoreRpcMethod = (typeof CORE_RPC_METHODS)[keyof typeof CORE_RPC_METHODS];
 
 export const LEGACY_METHOD_ALIASES: Record<string, CoreRpcMethod> = {
   // #3565: old desktop clients used dotted namespace/function channel calls.
@@ -104,8 +98,6 @@ export const LEGACY_METHOD_ALIASES: Record<string, CoreRpcMethod> = {
   'openhuman.update_memory_settings': CORE_RPC_METHODS.configUpdateMemorySettings,
   'openhuman.update_model_settings': CORE_RPC_METHODS.inferenceUpdateModelSettings,
   'openhuman.update_runtime_settings': CORE_RPC_METHODS.configUpdateRuntimeSettings,
-  'openhuman.update_screen_intelligence_settings':
-    CORE_RPC_METHODS.configUpdateScreenIntelligenceSettings,
   'openhuman.workspace_onboarding_flag_exists':
     CORE_RPC_METHODS.configWorkspaceOnboardingFlagExists,
   'openhuman.workspace_onboarding_flag_set': CORE_RPC_METHODS.configWorkspaceOnboardingFlagSet,
@@ -118,14 +110,12 @@ export const LEGACY_METHOD_ALIASES: Record<string, CoreRpcMethod> = {
   'openhuman.local_ai_download_asset': CORE_RPC_METHODS.inferenceDownloadAsset,
   'openhuman.local_ai_downloads_progress': CORE_RPC_METHODS.inferenceDownloadsProgress,
   'openhuman.local_ai_install_piper': CORE_RPC_METHODS.inferenceInstallPiper,
-  'openhuman.local_ai_install_whisper': CORE_RPC_METHODS.inferenceInstallWhisper,
   'openhuman.local_ai_piper_install_status': CORE_RPC_METHODS.inferencePiperInstallStatus,
   'openhuman.local_ai_presets': CORE_RPC_METHODS.inferencePresets,
   'openhuman.local_ai_test_connection': CORE_RPC_METHODS.inferenceTestConnection,
   'openhuman.local_ai_transcribe': CORE_RPC_METHODS.inferenceTranscribe,
   'openhuman.local_ai_transcribe_bytes': CORE_RPC_METHODS.inferenceTranscribeBytes,
   'openhuman.local_ai_tts': CORE_RPC_METHODS.inferenceTts,
-  'openhuman.local_ai_whisper_install_status': CORE_RPC_METHODS.inferenceWhisperInstallStatus,
   'openhuman.providers_list_models': CORE_RPC_METHODS.inferenceListModels,
   'openhuman.inference_embed': CORE_RPC_METHODS.embeddingsEmbed,
   health_snapshot: CORE_RPC_METHODS.healthSnapshot,
@@ -152,10 +142,6 @@ export function normalizeRpcMethod(method: string): string {
 
   if (normalized.startsWith('openhuman.auth.')) {
     return `openhuman.auth_${normalized.slice('openhuman.auth.'.length).split('.').join('_')}`;
-  }
-
-  if (normalized.startsWith('openhuman.accessibility_')) {
-    return normalized.replace('openhuman.accessibility_', 'openhuman.screen_intelligence_');
   }
 
   return normalized;

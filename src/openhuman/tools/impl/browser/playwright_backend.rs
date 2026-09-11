@@ -354,9 +354,6 @@ fn action_to_args(action: BrowserAction, url_policy: Option<BrowserUrlPolicy>) -
         }
         BrowserAction::GetTitle => json!({ "action": "get_title" }),
         BrowserAction::GetUrl => json!({ "action": "get_url" }),
-        BrowserAction::Screenshot { path, full_page } => {
-            json!({ "action": "screenshot", "path": path, "full_page": full_page })
-        }
         BrowserAction::Wait { selector, ms, text } => {
             json!({ "action": "wait", "selector": selector, "ms": ms, "text": text })
         }
@@ -385,23 +382,5 @@ fn action_to_args(action: BrowserAction, url_policy: Option<BrowserUrlPolicy>) -
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn action_to_args_preserves_find_shape() {
-        let args = action_to_args(
-            BrowserAction::Find {
-                by: "label".into(),
-                value: "Email".into(),
-                action: "fill".into(),
-                fill_value: Some("a@example.com".into()),
-            },
-            None,
-        );
-
-        assert_eq!(args["action"], "find");
-        assert_eq!(args["find_action"], "fill");
-        assert_eq!(args["fill_value"], "a@example.com");
-    }
-}
+#[path = "playwright_backend_tests.rs"]
+mod tests;

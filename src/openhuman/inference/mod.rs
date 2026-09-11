@@ -1,9 +1,9 @@
 //! Unified inference domain.
 //!
 //! This module is the canonical home for all inference concerns:
-//! - `local/`    — Ollama / LM Studio / Whisper / Piper runtime management
+//! - `local/`    — Ollama / LM Studio / Piper runtime management
 //!                 (was `src/openhuman/local_ai/`)
-//! - `provider/` — cloud + local provider trait, routing, reliability
+//! - `provider/` — native chat models, cloud/local routing, auth and errors
 //!                 (was `src/openhuman/providers/`)
 //! - `voice/`    — transcription (STT) and TTS inference implementations
 //!                 (moved from `src/openhuman/voice/`)
@@ -12,7 +12,17 @@
 //! The RPC surface is `inference.*`; old `local_ai_*` RPC names are resolved
 //! by the legacy alias layer for backwards compatibility.
 
+/// `true` when the crate was compiled with the `inference` feature (the
+/// default), i.e. the `cpal` audio-device stack is linked. Lets tests and
+/// callers distinguish a slim/headless build from the desktop build without
+/// naming gated symbols. When `false`, `cpal` is dropped from the dependency
+/// graph (verify with `cargo tree -i cpal`) and the microphone-permission probe
+/// reports `Unknown`.
+pub const INFERENCE_COMPILED_IN: bool = cfg!(feature = "inference");
+
+pub mod auth_error_registry;
 pub mod device;
+pub mod embeddings;
 pub mod http;
 pub mod local;
 pub mod model_context;
@@ -25,13 +35,16 @@ pub mod presets;
 pub mod provider;
 mod schemas;
 pub mod sentiment;
+pub mod temperature;
+pub mod tokenjuice;
 pub mod types;
+pub mod vision_models;
 pub mod voice;
 
 pub use ops as rpc;
 pub use schemas::{
     all_controller_schemas as all_inference_controller_schemas,
-    all_registered_controllers as all_inference_registered_controllers,
+    all_registered_controllers as all_inference_registered_controllers, INFERENCE_AGENT_CHAT,
 };
 
 // Re-export the types that external callers (voice, agent, etc.) import from inference

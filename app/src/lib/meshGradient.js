@@ -400,6 +400,21 @@ class Gradient {
       e(this, 'maxCssVarRetries', 200),
       e(this, 'angle', 0),
       e(this, 'isLoadedClass', !1),
+      /*
+       * Teardown bookkeeping (#5160). A Gradient owns three async chains that
+       * outlive the canvas: the `waitForCssVars` rAF retry loop (up to 200
+       * frames), the `animate` rAF loop, and the 3s `isLoaded` timeout. React
+       * unmounts `<MeshGradient />` on every theme switch / backdrop change, so
+       * those callbacks used to run against a canvas that was already detached
+       * and dereference `this.el.parentElement.classList` — the source of the
+       * "Cannot read properties of null (reading 'classList')" family. Every
+       * async entry point now records its handle here and bails on `destroyed`,
+       * and `disconnect()` cancels all of them.
+       */
+      e(this, 'destroyed', !1),
+      e(this, 'isLoadedTimeout', void 0),
+      e(this, 'cssVarsRaf', 0),
+      e(this, 'animateRaf', 0),
       e(this, 'isScrolling', !1),
       /*e(this, "isStatic", o.disableAmbientAnimations()),*/ e(this, 'scrollingTimeout', void 0),
       e(this, 'scrollingRefreshDelay', 200),
@@ -441,6 +456,10 @@ class Gradient {
         ((this.isScrolling = !1), this.isIntersecting && this.play());
       }),
       e(this, 'resize', () => {
+        if (this.destroyed || !this.minigl || !this.mesh) {
+          console.debug('[MeshGradient] resize ignored — gradient not live');
+          return;
+        }
         ((this.width = window.innerWidth),
           (this.height = window.innerHeight),
           this.minigl.setSize(this.width, this.height),
@@ -455,12 +474,17 @@ class Gradient {
         this.isGradientLegendVisible &&
           ((this.isMetaKey = e.metaKey),
           (this.isMouseDown = !0),
-          !1 === this.conf.playing && requestAnimationFrame(this.animate));
+          !1 === this.conf.playing && (this.animateRaf = requestAnimationFrame(this.animate)));
       }),
       e(this, 'handleMouseUp', () => {
         this.isMouseDown = !1;
       }),
       e(this, 'animate', e => {
+        this.animateRaf = 0;
+        if (this.destroyed) {
+          console.debug('[MeshGradient] animate frame dropped — gradient disconnected');
+          return;
+        }
         if (!this.shouldSkipFrame(e) || this.isMouseDown) {
           if (((this.t += Math.min(e - this.last, 1e3 / 15)), (this.last = e), this.isMouseDown)) {
             let e = 160;
@@ -470,21 +494,44 @@ class Gradient {
         }
         if (0 !== this.last && this.isStatic) return (this.minigl.render(), void this.disconnect());
         /*this.isIntersecting && */ (this.conf.playing || this.isMouseDown) &&
-          requestAnimationFrame(this.animate);
+          (this.animateRaf = requestAnimationFrame(this.animate));
       }),
       e(this, 'addIsLoadedClass', () => {
-        /*this.isIntersecting && */ !this.isLoadedClass &&
-          ((this.isLoadedClass = !0),
-          this.el.classList.add('isLoaded'),
-          setTimeout(() => {
-            this.el.parentElement.classList.add('isLoaded');
-          }, 3e3));
+        /*this.isIntersecting && */
+        if (this.destroyed || this.isLoadedClass) return;
+        ((this.isLoadedClass = !0),
+          this.el && this.el.classList.add('isLoaded'),
+          // Deferred so the canvas has faded in before the wrapper is marked
+          // loaded. The handle is retained because React can unmount the canvas
+          // well inside these 3s (#5160) — `disconnect()` clears it, and the
+          // detached-node checks below cover a teardown we did not observe.
+          (this.isLoadedTimeout = setTimeout(() => {
+            this.isLoadedTimeout = void 0;
+            const parent = this.destroyed ? null : this.el && this.el.parentElement;
+            if (!parent) {
+              console.debug('[MeshGradient] isLoaded skipped — canvas detached before timeout', {
+                destroyed: this.destroyed,
+                hasEl: Boolean(this.el),
+              });
+              return;
+            }
+            parent.classList.add('isLoaded');
+          }, 3e3)));
       }),
       e(this, 'pause', () => {
-        this.conf.playing = false;
+        // `conf` only exists once connect() ran, and the React wrapper calls
+        // pause() right after disconnect() on a gradient whose WebGL init may
+        // have bailed early — so never assume it is there.
+        (this.conf && (this.conf.playing = false),
+          this.animateRaf && cancelAnimationFrame(this.animateRaf),
+          (this.animateRaf = 0));
       }),
       e(this, 'play', () => {
-        (requestAnimationFrame(this.animate), (this.conf.playing = true));
+        if (this.destroyed) {
+          console.debug('[MeshGradient] play ignored — gradient disconnected');
+          return;
+        }
+        ((this.animateRaf = requestAnimationFrame(this.animate)), (this.conf.playing = true));
       }),
       e(this, 'initGradient', selector => {
         this.el = document.querySelector(selector);
@@ -501,7 +548,7 @@ class Gradient {
       vertex:
         'varying vec3 v_color;\n\nvoid main() {\n  float time = u_time * u_global.noiseSpeed;\n\n  vec2 noiseCoord = resolution * uvNorm * u_global.noiseFreq;\n\n  vec2 st = 1. - uvNorm.xy;\n\n  //\n  // Tilting the plane\n  //\n\n  // Front-to-back tilt\n  float tilt = resolution.y / 2.0 * uvNorm.y;\n\n  // Left-to-right angle\n  float incline = resolution.x * uvNorm.x / 2.0 * u_vertDeform.incline;\n\n  // Up-down shift to offset incline\n  float offset = resolution.x / 2.0 * u_vertDeform.incline * mix(u_vertDeform.offsetBottom, u_vertDeform.offsetTop, uv.y);\n\n  //\n  // Vertex noise\n  //\n\n  float noise = snoise(vec3(\n    noiseCoord.x * u_vertDeform.noiseFreq.x + time * u_vertDeform.noiseFlow,\n    noiseCoord.y * u_vertDeform.noiseFreq.y,\n    time * u_vertDeform.noiseSpeed + u_vertDeform.noiseSeed\n  )) * u_vertDeform.noiseAmp;\n\n  // Fade noise to zero at edges\n  noise *= 1.0 - pow(abs(uvNorm.y), 2.0);\n\n  // Clamp to 0\n  noise = max(0.0, noise);\n\n  vec3 pos = vec3(\n    position.x,\n    position.y + tilt + incline + noise - offset,\n    position.z\n  );\n\n  //\n  // Vertex color, to be passed to fragment shader\n  //\n\n  if (u_active_colors[0] == 1.) {\n    v_color = u_baseColor;\n  }\n\n  for (int i = 0; i < u_waveLayers_length; i++) {\n    if (u_active_colors[i + 1] == 1.) {\n      WaveLayers layer = u_waveLayers[i];\n\n      float noise = smoothstep(\n        layer.noiseFloor,\n        layer.noiseCeil,\n        snoise(vec3(\n          noiseCoord.x * layer.noiseFreq.x + time * layer.noiseFlow,\n          noiseCoord.y * layer.noiseFreq.y,\n          time * layer.noiseSpeed + layer.noiseSeed\n        )) / 2.0 + 0.5\n      );\n\n      v_color = blendNormal(v_color, layer.color, pow(noise, 4.));\n    }\n  }\n\n  //\n  // Finish\n  //\n\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);\n}',
       noise:
-        '//\n// Description : Array and textureless GLSL 2D/3D/4D simplex\n//               noise functions.\n//      Author : Ian McEwan, Ashima Arts.\n//  Maintainer : stegu\n//     Lastmod : 20110822 (ijm)\n//     License : Copyright (C) 2011 Ashima Arts. All rights reserved.\n//               Distributed under the MIT License. See LICENSE file.\n//               https://github.com/ashima/webgl-noise\n//               https://github.com/stegu/webgl-noise\n//\n\nvec3 mod289(vec3 x) {\n  return x - floor(x * (1.0 / 289.0)) * 289.0;\n}\n\nvec4 mod289(vec4 x) {\n  return x - floor(x * (1.0 / 289.0)) * 289.0;\n}\n\nvec4 permute(vec4 x) {\n    return mod289(((x*34.0)+1.0)*x);\n}\n\nvec4 taylorInvSqrt(vec4 r)\n{\n  return 1.79284291400159 - 0.85373472095314 * r;\n}\n\nfloat snoise(vec3 v)\n{\n  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;\n  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);\n\n// First corner\n  vec3 i  = floor(v + dot(v, C.yyy) );\n  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\n// Other corners\n  vec3 g = step(x0.yzx, x0.xyz);\n  vec3 l = 1.0 - g;\n  vec3 i1 = min( g.xyz, l.zxy );\n  vec3 i2 = max( g.xyz, l.zxy );\n\n  //   x0 = x0 - 0.0 + 0.0 * C.xxx;\n  //   x1 = x0 - i1  + 1.0 * C.xxx;\n  //   x2 = x0 - i2  + 2.0 * C.xxx;\n  //   x3 = x0 - 1.0 + 3.0 * C.xxx;\n  vec3 x1 = x0 - i1 + C.xxx;\n  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y\n  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y\n\n// Permutations\n  i = mod289(i);\n  vec4 p = permute( permute( permute(\n            i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n          + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))\n          + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\n// Gradients: 7x7 points over a square, mapped onto an octahedron.\n// The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)\n  float n_ = 0.142857142857; // 1.0/7.0\n  vec3  ns = n_ * D.wyz - D.xzx;\n\n  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)\n\n  vec4 x_ = floor(j * ns.z);\n  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\n  vec4 x = x_ *ns.x + ns.yyyy;\n  vec4 y = y_ *ns.x + ns.yyyy;\n  vec4 h = 1.0 - abs(x) - abs(y);\n\n  vec4 b0 = vec4( x.xy, y.xy );\n  vec4 b1 = vec4( x.zw, y.zw );\n\n  //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;\n  //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;\n  vec4 s0 = floor(b0)*2.0 + 1.0;\n  vec4 s1 = floor(b1)*2.0 + 1.0;\n  vec4 sh = -step(h, vec4(0.0));\n\n  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\n  vec3 p0 = vec3(a0.xy,h.x);\n  vec3 p1 = vec3(a0.zw,h.y);\n  vec3 p2 = vec3(a1.xy,h.z);\n  vec3 p3 = vec3(a1.zw,h.w);\n\n//Normalise gradients\n  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n  p0 *= norm.x;\n  p1 *= norm.y;\n  p2 *= norm.z;\n  p3 *= norm.w;\n\n// Mix final noise value\n  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n  m = m * m;\n  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),\n                                dot(p2,x2), dot(p3,x3) ) );\n}',
+        '//\n// Description : Array and textureless GLSL 2D/3D/4D simplex\n//               noise functions.\n//      Author : Ian McEwan, Ashima Arts.\n//  Maintainer : stegu\n//     Lastmod : 20110822 (ijm)\n//     License : Copyright (C) 2011 Ashima Arts. All rights reserved.\n//               Distributed under the MIT License. See LICENSE file.\n//               https://github.com/ashima/webgl-noise\n//               https://github.com/stegu/webgl-noise\n//\n\nvec3 mod289(vec3 x) {\n  return x - floor(x * (1.0 / 289.0)) * 289.0;\n}\n\nvec4 mod289(vec4 x) {\n  return x - floor(x * (1.0 / 289.0)) * 289.0;\n}\n\nvec4 permute(vec4 x) {\n    return mod289(((x*34.0)+1.0)*x);\n}\n\nvec4 taylorInvSqrt(vec4 r)\n{\n  return 1.79284291400159 - 0.85373472095314 * r;\n}\n\nfloat snoise(vec3 v)\n{\n  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;\n  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);\n\n// First corner\n  vec3 i  = floor(v + dot(v, C.yyy) );\n  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\n// Other corners\n  vec3 g = step(x0.yzx, x0.xyz);\n  vec3 l = 1.0 - g;\n  vec3 i1 = min( g.xyz, l.zxy );\n  vec3 i2 = max( g.xyz, l.zxy );\n\n  //   x0 = x0 - 0.0 + 0.0 * C.xxx;\n  //   x1 = x0 - i1  + 1.0 * C.xxx;\n  //   x2 = x0 - i2  + 2.0 * C.xxx;\n  //   x3 = x0 - 1.0 + 3.0 * C.xxx;\n  vec3 x1 = x0 - i1 + C.xxx;\n  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y\n  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y\n\n// Permutations\n  i = mod289(i);\n  vec4 p = permute( permute( permute(\n            i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n          + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))\n          + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\n// Gradients: 7x7 points over a square, mapped onto an octahedron.\n// The ring-3 size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)\n  float n_ = 0.142857142857; // 1.0/7.0\n  vec3  ns = n_ * D.wyz - D.xzx;\n\n  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)\n\n  vec4 x_ = floor(j * ns.z);\n  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\n  vec4 x = x_ *ns.x + ns.yyyy;\n  vec4 y = y_ *ns.x + ns.yyyy;\n  vec4 h = 1.0 - abs(x) - abs(y);\n\n  vec4 b0 = vec4( x.xy, y.xy );\n  vec4 b1 = vec4( x.zw, y.zw );\n\n  //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;\n  //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;\n  vec4 s0 = floor(b0)*2.0 + 1.0;\n  vec4 s1 = floor(b1)*2.0 + 1.0;\n  vec4 sh = -step(h, vec4(0.0));\n\n  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\n  vec3 p0 = vec3(a0.xy,h.x);\n  vec3 p1 = vec3(a0.zw,h.y);\n  vec3 p2 = vec3(a1.xy,h.z);\n  vec3 p3 = vec3(a1.zw,h.w);\n\n//Normalise gradients\n  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n  p0 *= norm.x;\n  p1 *= norm.y;\n  p2 *= norm.z;\n  p3 *= norm.w;\n\n// Mix final noise value\n  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n  m = m * m;\n  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),\n                                dot(p2,x2), dot(p3,x3) ) );\n}',
       blend:
         '//\n// https://github.com/jamieowen/glsl-blend\n//\n\n// Normal\n\nvec3 blendNormal(vec3 base, vec3 blend) {\n\treturn blend;\n}\n\nvec3 blendNormal(vec3 base, vec3 blend, float opacity) {\n\treturn (blendNormal(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Screen\n\nfloat blendScreen(float base, float blend) {\n\treturn 1.0-((1.0-base)*(1.0-blend));\n}\n\nvec3 blendScreen(vec3 base, vec3 blend) {\n\treturn vec3(blendScreen(base.r,blend.r),blendScreen(base.g,blend.g),blendScreen(base.b,blend.b));\n}\n\nvec3 blendScreen(vec3 base, vec3 blend, float opacity) {\n\treturn (blendScreen(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Multiply\n\nvec3 blendMultiply(vec3 base, vec3 blend) {\n\treturn base*blend;\n}\n\nvec3 blendMultiply(vec3 base, vec3 blend, float opacity) {\n\treturn (blendMultiply(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Overlay\n\nfloat blendOverlay(float base, float blend) {\n\treturn base<0.5?(2.0*base*blend):(1.0-2.0*(1.0-base)*(1.0-blend));\n}\n\nvec3 blendOverlay(vec3 base, vec3 blend) {\n\treturn vec3(blendOverlay(base.r,blend.r),blendOverlay(base.g,blend.g),blendOverlay(base.b,blend.b));\n}\n\nvec3 blendOverlay(vec3 base, vec3 blend, float opacity) {\n\treturn (blendOverlay(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Hard light\n\nvec3 blendHardLight(vec3 base, vec3 blend) {\n\treturn blendOverlay(blend,base);\n}\n\nvec3 blendHardLight(vec3 base, vec3 blend, float opacity) {\n\treturn (blendHardLight(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Soft light\n\nfloat blendSoftLight(float base, float blend) {\n\treturn (blend<0.5)?(2.0*base*blend+base*base*(1.0-2.0*blend)):(sqrt(base)*(2.0*blend-1.0)+2.0*base*(1.0-blend));\n}\n\nvec3 blendSoftLight(vec3 base, vec3 blend) {\n\treturn vec3(blendSoftLight(base.r,blend.r),blendSoftLight(base.g,blend.g),blendSoftLight(base.b,blend.b));\n}\n\nvec3 blendSoftLight(vec3 base, vec3 blend, float opacity) {\n\treturn (blendSoftLight(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Color dodge\n\nfloat blendColorDodge(float base, float blend) {\n\treturn (blend==1.0)?blend:min(base/(1.0-blend),1.0);\n}\n\nvec3 blendColorDodge(vec3 base, vec3 blend) {\n\treturn vec3(blendColorDodge(base.r,blend.r),blendColorDodge(base.g,blend.g),blendColorDodge(base.b,blend.b));\n}\n\nvec3 blendColorDodge(vec3 base, vec3 blend, float opacity) {\n\treturn (blendColorDodge(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Color burn\n\nfloat blendColorBurn(float base, float blend) {\n\treturn (blend==0.0)?blend:max((1.0-((1.0-base)/blend)),0.0);\n}\n\nvec3 blendColorBurn(vec3 base, vec3 blend) {\n\treturn vec3(blendColorBurn(base.r,blend.r),blendColorBurn(base.g,blend.g),blendColorBurn(base.b,blend.b));\n}\n\nvec3 blendColorBurn(vec3 base, vec3 blend, float opacity) {\n\treturn (blendColorBurn(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Vivid Light\n\nfloat blendVividLight(float base, float blend) {\n\treturn (blend<0.5)?blendColorBurn(base,(2.0*blend)):blendColorDodge(base,(2.0*(blend-0.5)));\n}\n\nvec3 blendVividLight(vec3 base, vec3 blend) {\n\treturn vec3(blendVividLight(base.r,blend.r),blendVividLight(base.g,blend.g),blendVividLight(base.b,blend.b));\n}\n\nvec3 blendVividLight(vec3 base, vec3 blend, float opacity) {\n\treturn (blendVividLight(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Lighten\n\nfloat blendLighten(float base, float blend) {\n\treturn max(blend,base);\n}\n\nvec3 blendLighten(vec3 base, vec3 blend) {\n\treturn vec3(blendLighten(base.r,blend.r),blendLighten(base.g,blend.g),blendLighten(base.b,blend.b));\n}\n\nvec3 blendLighten(vec3 base, vec3 blend, float opacity) {\n\treturn (blendLighten(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Linear burn\n\nfloat blendLinearBurn(float base, float blend) {\n\t// Note : Same implementation as BlendSubtractf\n\treturn max(base+blend-1.0,0.0);\n}\n\nvec3 blendLinearBurn(vec3 base, vec3 blend) {\n\t// Note : Same implementation as BlendSubtract\n\treturn max(base+blend-vec3(1.0),vec3(0.0));\n}\n\nvec3 blendLinearBurn(vec3 base, vec3 blend, float opacity) {\n\treturn (blendLinearBurn(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Linear dodge\n\nfloat blendLinearDodge(float base, float blend) {\n\t// Note : Same implementation as BlendAddf\n\treturn min(base+blend,1.0);\n}\n\nvec3 blendLinearDodge(vec3 base, vec3 blend) {\n\t// Note : Same implementation as BlendAdd\n\treturn min(base+blend,vec3(1.0));\n}\n\nvec3 blendLinearDodge(vec3 base, vec3 blend, float opacity) {\n\treturn (blendLinearDodge(base, blend) * opacity + base * (1.0 - opacity));\n}\n\n// Linear light\n\nfloat blendLinearLight(float base, float blend) {\n\treturn blend<0.5?blendLinearBurn(base,(2.0*blend)):blendLinearDodge(base,(2.0*(blend-0.5)));\n}\n\nvec3 blendLinearLight(vec3 base, vec3 blend) {\n\treturn vec3(blendLinearLight(base.r,blend.r),blendLinearLight(base.g,blend.g),blendLinearLight(base.b,blend.b));\n}\n\nvec3 blendLinearLight(vec3 base, vec3 blend, float opacity) {\n\treturn (blendLinearLight(base, blend) * opacity + base * (1.0 - opacity));\n}',
       fragment:
@@ -519,10 +566,13 @@ class Gradient {
         ? console.log('DID NOT LOAD HERO STRIPE CANVAS')
         : ((this.minigl = new MiniGl(this.el, null, null, !0)),
           this.minigl.gl
-            ? requestAnimationFrame(() => {
-                this.el &&
-                  ((this.computedCanvasStyle = getComputedStyle(this.el)), this.waitForCssVars());
-              })
+            ? (this.cssVarsRaf = requestAnimationFrame(() => {
+                ((this.cssVarsRaf = 0),
+                  !this.destroyed &&
+                    this.el &&
+                    ((this.computedCanvasStyle = getComputedStyle(this.el)),
+                    this.waitForCssVars()));
+              }))
             : console.warn('[MeshGradient] MiniGl has no GL context — gradient disabled')));
     /*
         this.scrollObserver = await s.create(.1, !1),
@@ -534,7 +584,32 @@ class Gradient {
             window.addEventListener("scroll", this.handleScroll), window.addEventListener("mousedown", this.handleMouseDown), window.addEventListener("mouseup", this.handleMouseUp), window.addEventListener("keydown", this.handleKeyDown), this.isIntersecting = !0, this.addIsLoadedClass(), this.play()
         })*/
   }
+  /*
+   * Tears the gradient down for good. Cancels every pending async chain
+   * (`waitForCssVars` retries, the animation loop, the deferred `isLoaded`
+   * class, the scroll-end debounce) and latches `destroyed` so anything already
+   * queued in the current frame/task bails instead of touching a canvas React
+   * has removed from the document (#5160). Safe to call more than once.
+   */
   disconnect() {
+    this.destroyed = !0;
+    if (this.conf) this.conf.playing = !1;
+    if (this.isLoadedTimeout) {
+      clearTimeout(this.isLoadedTimeout);
+      this.isLoadedTimeout = void 0;
+    }
+    if (this.scrollingTimeout) {
+      clearTimeout(this.scrollingTimeout);
+      this.scrollingTimeout = void 0;
+    }
+    if (this.cssVarsRaf) {
+      cancelAnimationFrame(this.cssVarsRaf);
+      this.cssVarsRaf = 0;
+    }
+    if (this.animateRaf) {
+      cancelAnimationFrame(this.animateRaf);
+      this.animateRaf = 0;
+    }
     (this.scrollObserver &&
       (window.removeEventListener('scroll', this.handleScroll),
       window.removeEventListener('mousedown', this.handleMouseDown),
@@ -542,6 +617,7 @@ class Gradient {
       window.removeEventListener('keydown', this.handleKeyDown),
       this.scrollObserver.disconnect()),
       window.removeEventListener('resize', this.resize));
+    console.debug('[MeshGradient] disconnected — pending frames and timers cancelled');
   }
   initMaterial() {
     this.uniforms = {
@@ -623,18 +699,26 @@ class Gradient {
   }
   showGradientLegend() {
     this.width > this.minWidth &&
-      ((this.isGradientLegendVisible = !0), document.body.classList.add('isGradientLegendVisible'));
+      ((this.isGradientLegendVisible = !0),
+      document.body && document.body.classList.add('isGradientLegendVisible'));
   }
   hideGradientLegend() {
     ((this.isGradientLegendVisible = !1),
-      document.body.classList.remove('isGradientLegendVisible'));
+      document.body && document.body.classList.remove('isGradientLegendVisible'));
   }
   init() {
+    if (this.destroyed) {
+      console.debug('[MeshGradient] init skipped — gradient already disconnected');
+      return;
+    }
     try {
       (this.initGradientColors(),
         this.initMesh(),
         this.resize(),
-        requestAnimationFrame(this.animate),
+        // Track this first frame like every other one: `disconnect()` only
+        // cancels `animateRaf`, so leaving this handle unstored let the opening
+        // frame outlive teardown — the exact leak this change set closes.
+        (this.animateRaf = requestAnimationFrame(this.animate)),
         window.addEventListener('resize', this.resize));
     } catch (err) {
       console.warn('[MeshGradient] init failed, gradient disabled:', err);
@@ -645,6 +729,10 @@ class Gradient {
    * Using default colors assigned below if no variables have been found after maxCssVarRetries
    */
   waitForCssVars() {
+    if (this.destroyed) {
+      console.debug('[MeshGradient] waitForCssVars stopped — gradient disconnected');
+      return;
+    }
     if (
       this.computedCanvasStyle &&
       -1 !== this.computedCanvasStyle.getPropertyValue('--gradient-color-1').indexOf('#')
@@ -657,7 +745,9 @@ class Gradient {
           void this.init()
         );
       }
-      requestAnimationFrame(() => this.waitForCssVars());
+      this.cssVarsRaf = requestAnimationFrame(() => {
+        ((this.cssVarsRaf = 0), this.waitForCssVars());
+      });
     }
   }
   /*

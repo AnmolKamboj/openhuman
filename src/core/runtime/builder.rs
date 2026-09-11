@@ -57,6 +57,10 @@ pub struct ServiceSet {
     pub skill_catalog_refresh: bool,
     /// Boot installed MCP servers and supervise reconnects during runtime bootstrap.
     pub mcp_boot: bool,
+    /// Composio integration sync: periodic connection sync + one-shot memory-source reconcile.
+    pub integrations: bool,
+    /// Workspace memory-source periodic sync — repos, folders, RSS, web pages.
+    pub memory_sync: bool,
 }
 
 impl ServiceSet {
@@ -73,6 +77,8 @@ impl ServiceSet {
             harness_init: true,
             skill_catalog_refresh: true,
             mcp_boot: true,
+            integrations: true,
+            memory_sync: true,
         }
     }
 
@@ -90,6 +96,8 @@ impl ServiceSet {
             harness_init: false,
             skill_catalog_refresh: false,
             mcp_boot: false,
+            integrations: false,
+            memory_sync: false,
         }
     }
 
@@ -107,6 +115,37 @@ impl ServiceSet {
             harness_init: false,
             skill_catalog_refresh: false,
             mcp_boot: false,
+            integrations: false,
+            memory_sync: false,
+        }
+    }
+
+    /// A long-lived embedded host: no transport, but the background work such
+    /// a session expects.
+    ///
+    /// Named for the shape, not a consumer — see [`DomainSet::embedded`].
+    ///
+    /// `rpc_http: false` is the payoff of embedding through the typed facade
+    /// rather than HTTP — no port bound, no bearer-token handshake, no
+    /// loopback listener. Flip it on only if the host also needs to serve external clients.
+    ///
+    /// `socketio` stays off because an embedded host reads state through the
+    /// facade and the core event bus in-process; `channels` stays off because
+    /// such a host owns its own harness and networking transports.
+    pub fn embedded() -> Self {
+        Self {
+            rpc_http: false,
+            socketio: false,
+            cron: true,
+            channels: false,
+            heartbeat: true,
+            update_scheduler: false,
+            memory_queue: true,
+            harness_init: true,
+            skill_catalog_refresh: true,
+            mcp_boot: false,
+            integrations: false,
+            memory_sync: true,
         }
     }
 }
@@ -145,8 +184,6 @@ pub struct DomainSet {
     pub skills: bool,
     /// MCP client subsystem (Smithery registry, local servers, audit).
     pub mcp: bool,
-    /// Google Meet join, agent meetings, live meet-agent loop.
-    pub meet: bool,
     /// Messaging channels + webview bridges (web channel, whatsapp data, …).
     pub channels: bool,
     /// Wallet, high-level web3 surface, x402 machine payments.
@@ -160,6 +197,23 @@ pub struct DomainSet {
     /// future backing controller would stay live. Fold the media-generation
     /// controller into this group when it lands.
     pub media: bool,
+    /// Medulla integration: cloud client, session runtime, chat store, and
+    /// authored harness workflows.
+    pub medulla: bool,
+    /// Model inference: providers, routing, local engines, embeddings.
+    pub inference: bool,
+    /// External connectors (Composio, calendar, file storage, task sources).
+    pub integrations: bool,
+    /// Background initiative: cron + the subconscious tick loop.
+    pub automation: bool,
+    /// Code-execution substrate: Node/Python runtimes, pool, sandbox.
+    pub runtimes: bool,
+    /// Desktop-shell-facing surfaces.
+    pub desktop: bool,
+    /// Clients of the hosted TinyHumans backend.
+    pub hosted: bool,
+    /// Loadable native modules: the module host, registry and `modules` RPC.
+    pub modules: bool,
     /// Everything not in a named family — always on in `full()`.
     pub platform: bool,
 }
@@ -177,11 +231,18 @@ impl DomainSet {
             flows: true,
             skills: true,
             mcp: true,
-            meet: true,
             channels: true,
             web3: true,
             voice: true,
             media: true,
+            medulla: true,
+            inference: true,
+            integrations: true,
+            automation: true,
+            runtimes: true,
+            desktop: true,
+            hosted: true,
+            modules: true,
             platform: true,
         }
     }
@@ -199,11 +260,99 @@ impl DomainSet {
             flows: false,
             skills: false,
             mcp: false,
-            meet: false,
             channels: false,
             web3: false,
             voice: false,
             media: false,
+            medulla: false,
+            inference: false,
+            integrations: false,
+            automation: false,
+            runtimes: false,
+            desktop: false,
+            hosted: false,
+            modules: false,
+            platform: false,
+        }
+    }
+
+    /// A long-lived embedded host: the harness core plus the Medulla
+    /// integration and the workflow engine it runs on, and the supporting
+    /// runtime, automation, integration, and platform surfaces it needs.
+    ///
+    /// Named for the *shape* rather than any downstream consumer — the core
+    /// does not know which host embeds it, and a preset naming one would invert
+    /// that. Suits any process that drives the core in-process through the
+    /// typed facade and owns its own presentation layer.
+    ///
+    /// Deliberately NOT built on [`DomainSet::harness`]: that preset sets
+    /// `platform: false`, which drops credentials, config, cron, task_sources
+    /// and todos, and leaves `channels` off — but `channel.web_chat` is tagged
+    /// `DomainGroup::Channels` and an embedded host drives chat turns through it.
+    ///
+    /// `flows: true` is load-bearing, not incidental: `medulla_workflows` runs
+    /// on the tinyflows engine and boot reconciliation keys off
+    /// `ctx.domains().flows` rather than a `ServiceSet` flag.
+    ///
+    /// An embedded host supplies its own harness wrappers, networking and
+    /// routing, so `web3` / `voice` / `media` / `mcp` stay off.
+    pub fn embedded() -> Self {
+        Self {
+            agent: true,
+            memory: true,
+            threads: true,
+            config: true,
+            security: true,
+            flows: true,
+            skills: true,
+            mcp: false,
+            channels: true,
+            web3: false,
+            voice: false,
+            media: false,
+            medulla: true,
+            inference: true,
+            integrations: true,
+            automation: true,
+            runtimes: true,
+            desktop: false,
+            hosted: false,
+            modules: false,
+            platform: true,
+        }
+    }
+
+    /// The kernel floor: threads, config, security — and nothing else.
+    ///
+    /// Distinct from [`DomainSet::none`], which is "no domains at all". This is
+    /// "the minimum a host needs before opting a subsystem back in", so an
+    /// embedder can request kernel + exactly one family. `agent` and `memory`
+    /// are OFF on purpose: they are the two largest subsystems and the ones an
+    /// alternative driver would replace, so a host that wants them says so.
+    ///
+    /// See `examples/embed_kernel.rs`.
+    pub fn kernel() -> Self {
+        Self {
+            agent: false,
+            memory: false,
+            threads: true,
+            config: true,
+            security: true,
+            flows: false,
+            skills: false,
+            mcp: false,
+            channels: false,
+            web3: false,
+            voice: false,
+            media: false,
+            medulla: false,
+            inference: false,
+            integrations: false,
+            automation: false,
+            runtimes: false,
+            desktop: false,
+            hosted: false,
+            modules: false,
             platform: false,
         }
     }
@@ -219,11 +368,18 @@ impl DomainSet {
             flows: false,
             skills: false,
             mcp: false,
-            meet: false,
             channels: false,
             web3: false,
             voice: false,
             media: false,
+            medulla: false,
+            inference: false,
+            integrations: false,
+            automation: false,
+            runtimes: false,
+            desktop: false,
+            hosted: false,
+            modules: false,
             platform: false,
         }
     }
@@ -239,11 +395,18 @@ impl DomainSet {
             DomainGroup::Flows => self.flows,
             DomainGroup::Skills => self.skills,
             DomainGroup::Mcp => self.mcp,
-            DomainGroup::Meet => self.meet,
             DomainGroup::Channels => self.channels,
             DomainGroup::Web3 => self.web3,
             DomainGroup::Voice => self.voice,
             DomainGroup::Media => self.media,
+            DomainGroup::Medulla => self.medulla,
+            DomainGroup::Inference => self.inference,
+            DomainGroup::Integrations => self.integrations,
+            DomainGroup::Automation => self.automation,
+            DomainGroup::Runtimes => self.runtimes,
+            DomainGroup::Desktop => self.desktop,
+            DomainGroup::Hosted => self.hosted,
+            DomainGroup::Modules => self.modules,
             DomainGroup::Platform => self.platform,
         }
     }
@@ -269,8 +432,10 @@ pub struct CoreBuilder {
     token: TokenSource,
     services: ServiceSet,
     domains: DomainSet,
+    tool_groups: crate::openhuman::tools::toolpacks::ToolGroups,
     host: Option<String>,
     port: Option<u16>,
+    config: Option<crate::openhuman::config::Config>,
 }
 
 impl CoreBuilder {
@@ -282,8 +447,10 @@ impl CoreBuilder {
             token: TokenSource::EnvOrFile,
             services: ServiceSet::desktop(),
             domains: DomainSet::full(),
+            tool_groups: Default::default(),
             host: None,
             port: None,
+            config: None,
         }
     }
 
@@ -298,6 +465,37 @@ impl CoreBuilder {
     /// domain family while retaining transport built-ins and core infrastructure.
     pub fn domains(mut self, domains: DomainSet) -> Self {
         self.domains = domains;
+        self
+    }
+
+    /// Choose how each tool group reaches the model (default: every group
+    /// withheld behind `use_skill`, the desktop app's shape).
+    ///
+    /// The third narrowing axis, independent of both `services` and `domains`:
+    /// `ServiceSet` picks the background services, `DomainSet` picks which
+    /// families exist, and this picks how the tools of the families that do
+    /// exist are disclosed — advertised on the wire, withheld behind the pack
+    /// proxy, or not registered at all.
+    ///
+    /// ```no_run
+    /// # use openhuman_core::core::runtime::CoreBuilder;
+    /// # use openhuman_core::openhuman::tools::toolpacks::{GroupMode, ToolGroups};
+    /// # fn f(b: CoreBuilder) -> CoreBuilder {
+    /// b.tool_groups(
+    ///     ToolGroups::none()
+    ///         .with("documents", GroupMode::Advertised)
+    ///         .with("workflows", GroupMode::Withheld),
+    /// )
+    /// # }
+    /// ```
+    ///
+    /// Narrowing only: a group set to `Advertised` whose tools are compiled
+    /// out, or whose `DomainGroup` is off under `domains`, stays absent.
+    pub fn tool_groups(
+        mut self,
+        tool_groups: crate::openhuman::tools::toolpacks::ToolGroups,
+    ) -> Self {
+        self.tool_groups = tool_groups;
         self
     }
 
@@ -319,6 +517,75 @@ impl CoreBuilder {
         self
     }
 
+    /// Supply the [`Config`](crate::openhuman::config::Config) outright instead
+    /// of letting `build()` discover one from `config.toml` and the environment.
+    ///
+    /// Without this an embedder can only configure the core by setting
+    /// environment variables before `build()` — process-global, order-dependent
+    /// relative to a call it does not appear in, and silently wrong if a later
+    /// caller in the same process wants different values. With it, every knob
+    /// the core reads from config (workspace, action dir, autonomy tier, MCP
+    /// servers, provider routes) is an ordinary struct field.
+    ///
+    /// The config is used **verbatim**: no `config.toml` read and no env
+    /// overlay. Call
+    /// [`apply_env_overrides`](crate::openhuman::config::Config::apply_env_overrides)
+    /// yourself first if you want the environment to participate.
+    pub fn config(mut self, config: crate::openhuman::config::Config) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    /// Root the core's state at `dir` — sessions, memory, attachments, skills.
+    ///
+    /// Sugar over [`config`](Self::config) for the common case of "same
+    /// configuration, different workspace"; starts from the config already
+    /// supplied, or [`Config::default`](Default::default) when none is.
+    pub fn workspace(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        let dir = dir.into();
+        let mut config = self.config.take().unwrap_or_default();
+        config.workspace_dir = dir.clone();
+        // Credential profiles and the file-backed keyring resolve from
+        // `config_path`'s parent, not from `workspace_dir`. Rooting only the
+        // workspace while leaving the default config path would keep sessions
+        // and credentials in the previous config root even though this method
+        // documents `dir` as rooting "core state" — so set a deterministic
+        // config path beside the workspace, mirroring the harness's `Dir`
+        // layout (`<root>/config.toml` next to `<root>/workspace`).
+        config.config_path = dir.join("config.toml");
+        self.config = Some(config);
+        self
+    }
+
+    /// Set the agent's read/write root for acting tools (`action_dir`).
+    ///
+    /// Sugar over [`config`](Self::config), like [`workspace`](Self::workspace).
+    /// Distinct from the workspace on purpose: the workspace holds internal
+    /// state the agent must never write to, and `is_workspace_internal_path`
+    /// enforces that separation fail-closed.
+    pub fn action_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        let mut config = self.config.take().unwrap_or_default();
+        config.action_dir = dir.into();
+        self.config = Some(config);
+        self
+    }
+
+    /// Point the core's backend calls at `url` (`Config::api_url`).
+    ///
+    /// Sugar over [`config`](Self::config), like [`workspace`](Self::workspace).
+    /// Worth having as its own method because the value reaches more than the
+    /// obvious client: `/auth/me` session validation, the hosted-backend
+    /// surfaces, and — with no `OPENHUMAN_MEDULLA_BASE_URL` override — the
+    /// Medulla client all resolve through it. A host that sets only one of
+    /// those has the other two pointing at a different deployment, which fails
+    /// as "backend rejected session token" rather than as a mismatch.
+    pub fn backend_url(mut self, url: impl Into<String>) -> Self {
+        let mut config = self.config.take().unwrap_or_default();
+        config.api_url = Some(url.into());
+        self.config = Some(config);
+        self
+    }
+
     /// Initialize the core: register controllers, load the master key, seed the
     /// RPC bearer, initialize workspace-bound stores, and run
     /// [`bootstrap_core_runtime`]. Binds no port and starts no transport.
@@ -326,8 +593,28 @@ impl CoreBuilder {
     /// The init sequence itself is owned by [`CoreContext::init`] (Phase 2,
     /// Stage A).
     pub async fn build(self) -> anyhow::Result<CoreRuntime> {
-        let (ctx, has_operator_token, config) =
-            CoreContext::init(self.host_kind, &self.token, self.domains).await?;
+        let (ctx, has_operator_token, config) = CoreContext::init_with_config(
+            self.host_kind,
+            &self.token,
+            self.domains,
+            self.tool_groups.clone(),
+            self.config,
+        )
+        .await?;
+
+        // Reap agent runs orphaned by a previous process (crash / restart /
+        // deploy). Here, and not with the other boot-once jobs, because those
+        // run from `serve()`: an embedder that only calls `build()` and then
+        // `invoke()` never reaches them, and `openhuman.agent_runs_active` is
+        // dispatchable the moment this returns. The core is a single in-process
+        // runtime, so a run left Pending/Running/Interrupted in the durable
+        // status store has no executor to advance it and would be listed as
+        // active forever. Best-effort — a store that cannot be read logs and
+        // reaps nothing rather than failing the build.
+        if let Some(cfg) = config.as_ref() {
+            crate::openhuman::agent::tinyagents::reaper::reap_orphaned_runs(&cfg.workspace_dir)
+                .await;
+        }
 
         Ok(CoreRuntime {
             ctx,
@@ -382,6 +669,12 @@ impl CoreRuntime {
     /// When `rpc_http` is not selected this returns immediately (a harness-only
     /// embedder has no transport to run); background services selected in the
     /// [`ServiceSet`] are still spawned.
+    ///
+    /// In a slim build compiled without the `http-server` feature an `rpc_http`
+    /// request cannot be honoured — the axum / Socket.IO transport is compiled
+    /// out — so `serve` returns a build-feature `Err` rather than binding no
+    /// listener and reporting success. The no-transport (`!rpc_http`) path above
+    /// is unaffected and still returns `Ok(())`.
     pub async fn serve(
         &self,
         ready_tx: Option<tokio::sync::oneshot::Sender<EmbeddedReadySignal>>,
@@ -390,10 +683,59 @@ impl CoreRuntime {
         if !self.services.rpc_http {
             // No transport: just spawn the selected background services and
             // return. The caller owns the process lifetime.
-            self.start_selected_services();
+            self.start_selected_services().await;
             return Ok(());
         }
 
+        // Transport compiled out (#5048): run the selected background services
+        // and return without binding an HTTP/Socket.IO listener — same shape as
+        // the no-`rpc_http` guard above. The desktop shell always ships
+        // `http-server`; this keeps slim / headless-embedding builds linkable.
+        #[cfg(not(feature = "http-server"))]
+        {
+            // `rpc_http` was requested (we passed the guard above) but the HTTP +
+            // Socket.IO transport is compiled out of this slim build. Fail loudly
+            // rather than returning Ok with no listener bound — a supervisor / CLI
+            // (`openhuman run`, `serve`, `--headless-api`) would otherwise observe
+            // a clean start while the requested API is unavailable. Embedders that
+            // genuinely want no transport leave `ServiceSet::rpc_http` unset, which
+            // is handled by the early return above.
+            //
+            // The bind inputs are only read by the compiled-out `serve_http`; touch
+            // them so they don't read as dead fields in the slim build.
+            let _ = (
+                ready_tx,
+                shutdown_token,
+                self.has_operator_token,
+                self.host.as_ref(),
+                self.port,
+            );
+            anyhow::bail!(
+                "rpc_http transport was requested but this build was compiled \
+                 without the `http-server` feature; rebuild with the default \
+                 `http-server` feature, or use an embedding that does not set \
+                 `ServiceSet::rpc_http`"
+            );
+        }
+
+        #[cfg(feature = "http-server")]
+        {
+            self.serve_http(ready_tx, shutdown_token).await
+        }
+    }
+
+    /// HTTP + Socket.IO transport body of [`Self::serve`].
+    ///
+    /// Compiled only under the `http-server` feature (#5048): builds the axum
+    /// router, binds the listener, starts the selected background services, and
+    /// serves until shutdown. With the feature off, [`serve`](Self::serve) runs
+    /// background services and returns without binding (see the arms above).
+    #[cfg(feature = "http-server")]
+    async fn serve_http(
+        &self,
+        ready_tx: Option<tokio::sync::oneshot::Sender<EmbeddedReadySignal>>,
+        shutdown_token: Option<CancellationToken>,
+    ) -> anyhow::Result<()> {
         // --- Host / port resolution ---
         let (resolved_port, port_source) = match self.port {
             Some(p) => (p, "builder port"),
@@ -458,7 +800,7 @@ impl CoreRuntime {
 
         let preferred_port = resolved_port;
         let host = resolved_host;
-        let pick = crate::openhuman::connectivity::rpc::pick_listen_port_for_host(
+        let pick = crate::openhuman::platform::connectivity::rpc::pick_listen_port_for_host(
             host.as_str(),
             preferred_port,
         )
@@ -491,6 +833,10 @@ impl CoreRuntime {
             ),
         );
 
+        // Await startup migrations before publishing readiness or allowing
+        // background writers to touch their crate-backed stores.
+        self.start_selected_services().await;
+
         log::info!(
             "[core] OpenHuman core is ready — listening on http://{bind_addr} (version {})",
             env!("CARGO_PKG_VERSION")
@@ -509,10 +855,16 @@ impl CoreRuntime {
             });
         }
 
-        // Background services — gated by the ServiceSet.
-        self.start_selected_services();
+        // Arms memory's exit gate for the eventual exit (and clears one a
+        // previous server in this process may have left): from here on a
+        // memory binding built during exit is refused rather than missed.
+        crate::openhuman::memory::exit::server_starting();
 
-        if let Some(shutdown_token) = shutdown_token {
+        // The serve result is held, not propagated, until the exit work below
+        // has run. A `?` here on a server error would skip the memory teardown
+        // on exactly the exits where a wedged store is likeliest, and the
+        // callers only forward the error — nobody else runs the cleanup.
+        let served = if let Some(shutdown_token) = shutdown_token {
             log::info!(
                 "[core] embedded server waiting on cancellation token for graceful shutdown"
             );
@@ -520,12 +872,25 @@ impl CoreRuntime {
                 .with_graceful_shutdown(async move {
                     shutdown_token.cancelled().await;
                 })
-                .await?;
+                .await
         } else {
             axum::serve(listener, app)
                 .with_graceful_shutdown(crate::core::shutdown::signal())
-                .await?;
+                .await
+        };
+        if let Err(error) = &served {
+            log::warn!(
+                "[core] embedded server ended with an error; running exit cleanup before \
+                 reporting it: {error}"
+            );
         }
+
+        // Memory first. The engine's queue worker holds leases on in-flight
+        // jobs, and releasing them is a write to the store, so it has to happen
+        // while the store is still open and before anything else on the way
+        // out (tinymemory#133). Bounded inside, on one shared deadline: a
+        // wedged store costs at most that budget, never the exit.
+        crate::openhuman::memory::exit::shutdown_for_exit().await;
 
         // Server has stopped accepting and in-flight requests drained. Kill any
         // `ollama serve` openhuman itself spawned (no-op when externally
@@ -547,14 +912,20 @@ impl CoreRuntime {
             }
         }
 
+        served?;
         Ok(())
     }
 
     /// Spawn each selected background service. Selection is by [`ServiceSet`];
     /// each service keeps its own runtime config gate.
-    fn start_selected_services(&self) {
+    async fn start_selected_services(&self) {
         use crate::core::runtime::services;
-        jsonrpc::start_core_runtime_services(self.services, self.config.as_ref());
+        jsonrpc::start_core_runtime_services(
+            self.services,
+            self.config.as_ref(),
+            self.ctx.domains().flows,
+        )
+        .await;
 
         if self.services.heartbeat {
             services::spawn_login_gated_services(self.ctx.host_kind().is_desktop_shell());
@@ -564,6 +935,12 @@ impl CoreRuntime {
         }
         if self.services.cron {
             services::spawn_cron_service();
+        }
+        // Flow-run boot reconciliation is selected by the flows *domain*, not by
+        // a background service — runs can be started without cron in the
+        // ServiceSet, so their orphans must be reconcilable without it too.
+        if self.ctx.domains().flows {
+            services::spawn_flows_boot_reconcile();
         }
         if self.services.channels {
             services::spawn_channels_service();
@@ -589,11 +966,12 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
             DomainGroup::Media,
+            DomainGroup::Medulla,
+            DomainGroup::Integrations,
             DomainGroup::Platform,
         ] {
             assert!(full.allows(group), "full() must allow {group:?}");
@@ -615,11 +993,11 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
             DomainGroup::Media,
+            DomainGroup::Medulla,
             DomainGroup::Platform,
         ] {
             assert!(!harness.allows(off), "harness() must NOT allow {off:?}");
@@ -636,11 +1014,11 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
             DomainGroup::Media,
+            DomainGroup::Medulla,
             DomainGroup::Platform,
         ] {
             assert!(!none.allows(group), "none() must NOT allow {group:?}");
@@ -649,6 +1027,81 @@ mod tests {
         // Spot-check the field/group wiring is not transposed.
         assert!(DomainSet::harness().allows(DomainGroup::Memory));
         assert!(!DomainSet::harness().allows(DomainGroup::Web3));
+    }
+
+    #[test]
+    fn embedded_domain_set_enables_the_host_families() {
+        let set = DomainSet::embedded();
+
+        for on in [
+            DomainGroup::Agent,
+            DomainGroup::Memory,
+            DomainGroup::Threads,
+            DomainGroup::Config,
+            DomainGroup::Security,
+            DomainGroup::Medulla,
+            DomainGroup::Platform,
+        ] {
+            assert!(set.allows(on), "embedded() must allow {on:?}");
+        }
+
+        for off in [
+            DomainGroup::Mcp,
+            DomainGroup::Web3,
+            DomainGroup::Voice,
+            DomainGroup::Media,
+        ] {
+            assert!(!set.allows(off), "embedded() must NOT allow {off:?}");
+        }
+    }
+
+    #[test]
+    fn embedded_keeps_flows_on_for_workflow_boot_reconcile() {
+        // Not incidental: `medulla_workflows` runs on the tinyflows engine and
+        // boot reconciliation keys off `ctx.domains().flows`, not a ServiceSet
+        // flag. Turning this off silently strands orphaned runs.
+        assert!(DomainSet::embedded().allows(DomainGroup::Flows));
+    }
+
+    #[test]
+    fn embedded_keeps_channels_on_for_web_chat() {
+        // `channel.web_chat` is tagged DomainGroup::Channels and the TUI drives
+        // chat turns through it. This is precisely why embedded() is not
+        // built on harness(), which leaves channels off.
+        assert!(DomainSet::embedded().allows(DomainGroup::Channels));
+    }
+
+    #[test]
+    fn embedded_is_not_harness_plus_medulla() {
+        // Guards the most tempting future "simplification": deriving this
+        // preset from harness(), which leaves the supporting Platform,
+        // Channels, and Integrations families off.
+        let harness = DomainSet::harness();
+        let tui = DomainSet::embedded();
+
+        assert!(!harness.allows(DomainGroup::Platform));
+        assert!(tui.allows(DomainGroup::Platform));
+        assert!(!harness.allows(DomainGroup::Channels));
+        assert!(tui.allows(DomainGroup::Channels));
+        assert!(!harness.allows(DomainGroup::Integrations));
+        assert!(tui.allows(DomainGroup::Integrations));
+    }
+
+    #[test]
+    fn embedded_service_set_binds_no_transport() {
+        // The whole point of the typed facade: the host talks to the core
+        // in-process, so no port, no bearer handshake, no loopback listener.
+        let services = ServiceSet::embedded();
+
+        assert!(!services.rpc_http, "embedded() must not bind HTTP");
+        assert!(!services.socketio, "embedded() must not mount Socket.IO");
+
+        // But a long-lived operator session still wants background work.
+        assert!(services.cron);
+        assert!(services.heartbeat);
+        assert!(services.memory_queue);
+        assert!(services.harness_init);
+        assert!(services.memory_sync);
     }
 
     #[test]
@@ -661,11 +1114,20 @@ mod tests {
         assert!(!custom.harness_init);
         assert!(!custom.skill_catalog_refresh);
         assert!(!custom.mcp_boot);
+        assert!(!custom.integrations);
+        assert!(!custom.memory_sync);
 
         let desktop = ServiceSet::desktop();
         assert!(desktop.memory_queue);
         assert!(desktop.harness_init);
         assert!(desktop.skill_catalog_refresh);
         assert!(desktop.mcp_boot);
+        assert!(desktop.integrations);
+        assert!(desktop.memory_sync);
+
+        // headless_api() runs no bootstrap jobs either.
+        let headless = ServiceSet::headless_api();
+        assert!(!headless.integrations);
+        assert!(!headless.memory_sync);
     }
 }

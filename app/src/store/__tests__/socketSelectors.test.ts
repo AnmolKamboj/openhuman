@@ -21,7 +21,6 @@ function makeCoreState(token: string | null, userId: string | null = null): Core
       onboardingCompleted: false,
       chatOnboardingCompleted: false,
       analyticsEnabled: false,
-      meetAutoOrchestratorHandoff: false,
       localState: { encryptionKey: null, onboardingTasks: null, keyringConsent: null },
       keyringStatus: {
         available: true,
@@ -29,7 +28,7 @@ function makeCoreState(token: string | null, userId: string | null = null): Core
         activeMode: 'os_keyring',
         backendName: 'os',
       },
-      runtime: { screenIntelligence: null, localAi: null, autocomplete: null, service: null },
+      runtime: { localAi: null, service: null },
     },
     teams: [],
     teamMembersById: {},

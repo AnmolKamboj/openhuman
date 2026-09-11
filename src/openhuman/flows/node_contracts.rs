@@ -42,6 +42,14 @@ fn apply_host_overlay(contract: NodeKindContract) -> NodeKindContract {
                  woven into the prose. A prompt written as a =expression built from prose silently \
                  resolves to null and hands the agent an EMPTY prompt (rejected by the \
                  binding-resolvability gate).",
+            )
+            .with_note(
+                "execution=per_item runs a FULL harness agent (own model context, own tool loop) \
+                 per input item, so it is far more expensive than a per_item tool_call — fan out \
+                 over a list you have already narrowed, not a raw fetch. In THIS host \
+                 simultaneous harness turns are additionally capped process-wide (8 by default, \
+                 OPENHUMAN_FLOWS_MAX_PARALLEL_AGENTS): a higher config.concurrency is throttled \
+                 to that ceiling, never rejected, so the run still completes.",
             ),
         "tool_call" => contract
             .with_note(
@@ -73,11 +81,79 @@ fn apply_host_overlay(contract: NodeKindContract) -> NodeKindContract {
              default the path to \"json.data\" (that targets the whole payload container and \
              yields one item) — probe the real array path with get_tool_output_sample instead.",
         ),
+        "memory" => contract.with_note(
+            "scope: \"flow\" reads/writes the SAME per-flow memory namespace the \
+             flow_memory_recall / flow_memory_remember agent tools use — a memory[remember] \
+             node and a flow_memory_remember tool call inside an agent node on the same flow \
+             see each other's writes. For exact \"process each item once\" dedup, use a dedup \
+             node instead — semantic recall is similarity-ranked, not an exact membership check, \
+             so a recall→condition graph cannot safely express it.",
+        ),
+        "dedup" => contract
+            .with_note(
+                "Commit is run-LEVEL, not node-level: the host settles every dedup node in the \
+                 flow off the run's single terminal FlowRunFinished status. Only \
+                 completed/completed_with_warnings unions this run's tentative keys into \
+                 committed for EVERY dedup node that ran; EVERY other status — \
+                 failed/cancelled/interrupted, unknown, or any status this host doesn't \
+                 recognize yet — releases tentative for ALL of them (untouched committed), so \
+                 the whole run's items retry next time — one node failing mid-run releases every \
+                 dedup node's tentative in that run, not just the failing one's.",
+            )
+            .with_note(
+                "Canonical placement: split_out → dedup [key=\"=item.id\"] → …action…, i.e. one \
+                 dedup node right after the items are produced, keyed on a stable id that exists \
+                 at that point (issue number, message id, url), placed BEFORE the action. It \
+                 already marks a key seen only after the run succeeds, so don't also wire a \
+                 separate memory remember/condition dedupe graph alongside it.",
+            ),
+        "loop" => contract
+            .with_note(
+                "Every pass through the body costs what the body costs. A loop whose body \
+                 contains an agent node runs a full agent turn per iteration, so max_iterations \
+                 is a spend bound as much as a correctness one — prefer the smallest cap that \
+                 can finish the job, and an `=`-expression `condition` so the loop stops as soon \
+                 as the work is done rather than always running to the cap.",
+            )
+            .with_note(
+                "A sub_workflow node is the other way to repeat work, and the two bound \
+                 differently: this node's max_iterations counts passes within one run (default \
+                 25), while nested sub_workflow runs are bounded by max_sub_workflow_depth on \
+                 the ROOT graph's trigger (default 8). Reach for a loop to repeat a section, \
+                 and for sub_workflow to reuse a whole flow.",
+            ),
+        "spawn" => contract
+            .with_note(
+                "config.slug for target=tool follows the SAME rule as a tool_call: a real \
+                 Composio action slug (with config.connection_ref for the account) or \
+                 oh:<tool_name> for a native OpenHuman tool. Call get_tool_contract first and \
+                 wire every required_arg into config.args.",
+            )
+            .with_note(
+                "THIS host wires a TaskRunner, so spawned work genuinely overlaps. It is \
+                 in-process only: tickets do not survive a core restart, so a spawn whose gate \
+                 would only be reached after one is a spawn whose result is lost — keep the \
+                 spawn and its gate inside the same run.",
+            ),
+        "gate" => contract.with_note(
+            "wait_mode=\"suspend\" interrupts the run, and in THIS host an interrupted flow run \
+             is resumed through flows_resume against the durable checkpointer — so a suspended \
+             gate survives a restart where a polling one does not. Prefer it for anything \
+             waiting longer than seconds.",
+        ),
+        "scatter" => contract.with_note(
+            "Lanes multiply everything inside the region, including COST: a lane body \
+             containing an agent node runs a full harness turn per lane. This host additionally \
+             caps simultaneous harness turns process-wide (8 by default, \
+             OPENHUMAN_FLOWS_MAX_PARALLEL_AGENTS), so a 200-lane scatter over an agent node \
+             queues rather than running 200 wide — correct, but not the throughput the lane \
+             count suggests. Use config.lanes to chunk deliberately.",
+        ),
         _ => contract,
     }
 }
 
-/// All 12 node-kind contracts with this host's overlay applied, in
+/// Every node-kind contract with this host's overlay applied, in
 /// [`NODE_KINDS`] order.
 pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
     tinyflows::catalog::all_contracts()
@@ -86,8 +162,8 @@ pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
         .collect()
 }
 
-/// The overlaid contract for one node kind, or `None` if `kind` is not one of
-/// the 12.
+/// The overlaid contract for one node kind, or `None` when `kind` is not one
+/// of [`NODE_KINDS`].
 pub fn node_kind_contract(kind: &str) -> Option<NodeKindContract> {
     tinyflows::catalog::contract_for(kind).map(apply_host_overlay)
 }
@@ -133,67 +209,5 @@ pub fn render_node_kinds_line() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn overlay_preserves_all_12_kinds() {
-        assert_eq!(all_node_kind_contracts().len(), 12);
-        for kind in NODE_KINDS {
-            assert!(node_kind_contract(kind).is_some(), "missing {kind}");
-        }
-        assert!(node_kind_contract("not_a_kind").is_none());
-    }
-
-    #[test]
-    fn tool_call_overlay_adds_host_composio_facts() {
-        let c = node_kind_contract("tool_call").unwrap();
-        let notes = c.notes.join("\n");
-        // Host facts that must NOT live in the portable crate.
-        assert!(notes.contains("Composio"), "{notes}");
-        assert!(notes.contains("oh:"), "{notes}");
-        assert!(notes.contains("data"), "{notes}");
-        assert!(notes.contains("get_tool_contract"), "{notes}");
-    }
-
-    #[test]
-    fn agent_overlay_adds_input_context_guidance() {
-        let c = node_kind_contract("agent").unwrap();
-        assert!(c.notes.iter().any(|n| n.contains("input_context")));
-    }
-
-    #[test]
-    fn trigger_overlay_names_the_host_dispatch_set() {
-        let c = node_kind_contract("trigger").unwrap();
-        assert!(c.notes.iter().any(|n| n.contains("app_event")));
-    }
-
-    #[test]
-    fn merge_has_no_overlay_and_stays_portable() {
-        // A kind with no host facts is byte-identical to the portable contract.
-        assert_eq!(
-            node_kind_contract("merge").unwrap(),
-            tinyflows::catalog::contract_for("merge").unwrap()
-        );
-    }
-
-    #[test]
-    fn rendered_line_covers_every_kind_and_required_field() {
-        let line = render_node_kinds_line();
-        for c in all_node_kind_contracts() {
-            assert!(
-                line.contains(&c.kind),
-                "rendered line missing kind {}",
-                c.kind
-            );
-            for f in c.config_fields.iter().filter(|f| f.required) {
-                assert!(
-                    line.contains(&format!("config.{}", f.name)),
-                    "rendered line missing required field config.{} for {}",
-                    f.name,
-                    c.kind
-                );
-            }
-        }
-    }
-}
+#[path = "node_contracts_tests.rs"]
+mod tests;

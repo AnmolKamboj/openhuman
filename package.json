@@ -3,18 +3,19 @@
   "private": true,
   "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39",
   "resolutions": {
-    "@tauri-apps/api": "2.10.1"
+    "@tauri-apps/api": "2.11.1"
   },
   "scripts": {
     "build": "pnpm --filter openhuman-app build",
     "docs:generate": "node scripts/generate-architecture-docs.mjs",
     "docs:check": "node scripts/generate-architecture-docs.mjs --check",
     "docs:test": "node --test scripts/__tests__/generate-architecture-docs.test.mjs",
-    "test:scripts": "node --test scripts/__tests__/*.test.mjs scripts/mock-api/*.test.mjs scripts/mock-api/routes/__tests__/*.test.mjs",
+    "test:scripts": "node --test scripts/__tests__/*.test.mjs scripts/mock-api/*.test.mjs scripts/mock-api/routes/__tests__/*.test.mjs scripts/bench/*.test.mjs",
     "test:inventory": "node scripts/generate-test-inventory.mjs",
     "compile": "pnpm --filter openhuman-app compile",
     "dev": "pnpm --filter openhuman-app dev",
     "dev:app": "pnpm --filter openhuman-app dev:app",
+    "dev:app:web": "bash scripts/run-dev-web.sh",
     "dev:app:win": "pnpm --filter openhuman-app dev:app:win",
     "dev:staging": "bash scripts/dev-staging.sh",
     "dev:cef": "pnpm --filter openhuman-app dev:cef",
@@ -38,7 +39,6 @@
     "mascot:render": "pnpm --dir remotion render:runtime-assets",
     "merge-pr": "bash scripts/shortcuts/review/merge.sh",
     "mock:api": "node scripts/mock-api-server.mjs",
-    "council:seed": "node scripts/seed-councils.mjs",
     "pr:checklist": "node scripts/check-pr-checklist.mjs",
     "pr:sync-main": "node scripts/merge-main-into-open-prs.mjs",
     "release:notes": "node scripts/release/generate-release-notes.mjs",
@@ -51,9 +51,11 @@
     "agent-batch": "node scripts/agent-batch/cli.mjs",
     "agent-batch:test": "node --test scripts/agent-batch/__tests__/lib.test.mjs scripts/agent-batch/__tests__/cli.test.mjs",
     "debug": "bash scripts/debug/cli.sh",
+    "profile:tauri": "cargo run --manifest-path app/src-tauri/profiling/Cargo.toml --",
     "test:install-ps1": "pwsh -NoProfile -File scripts/tests/OpenHumanWindowsInstall.Tests.ps1",
     "rust:check": "pnpm --filter openhuman-app rust:check",
     "rust:clippy": "cargo clippy -p openhuman -- -D warnings && pnpm --filter openhuman-app rust:clippy",
+    "rust:layout": "node scripts/ci/check-openhuman-rust-layout.mjs",
     "typecheck": "pnpm --filter openhuman-app compile",
     "tauri:ios:init": "bash scripts/ios-init.sh",
     "tauri:ios:dev": "pnpm --filter openhuman-app tauri:ios:dev",
@@ -73,7 +75,11 @@
     "ws": "^8.20.0"
   },
   "dependencies": {
-    "@rive-app/react-canvas": "^4.28.6",
-    "@tauri-apps/api": "2.10.1"
+    "@tauri-apps/api": "2.11.1"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@assistant-ui/react-lexical@0.2.10": "app/patches/@assistant-ui__react-lexical@0.2.10.patch"
+    }
   }
 }

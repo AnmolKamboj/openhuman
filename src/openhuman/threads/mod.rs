@@ -5,10 +5,12 @@
 //! module owns the RPC surface and controller registry.
 
 pub mod error;
+pub mod goals;
 pub mod ops;
 pub mod schemas;
 pub mod title;
-pub mod tools;
+pub mod todos;
+pub mod transcript_view;
 pub mod turn_state;
 pub mod welcome_migration;
 

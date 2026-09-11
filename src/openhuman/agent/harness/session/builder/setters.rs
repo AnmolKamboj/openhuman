@@ -1,18 +1,11 @@
-//! `AgentBuilder` fluent setters and the `build()` validator.
-//!
-//! All setter methods return `Self` for chaining. `build()` validates that
-//! required fields are present and assembles the final [`Agent`].
+//! `AgentBuilder` fluent setters. See `builder_build.rs` for the `build()`
+//! validator that assembles the final `Agent`.
 
-use super::{dedup_visible_tool_specs, visible_tool_specs_for_policy};
-use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
+use crate::openhuman::agent::harness::session::types::AgentBuilder;
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
-use crate::openhuman::agent_memory::memory_loader::DefaultMemoryLoader;
-use crate::openhuman::agent_tool_policy::ToolPolicyEngine;
 use crate::openhuman::config::ContextConfig;
-use crate::openhuman::context::ContextManager;
 use crate::openhuman::memory::Memory;
-use crate::openhuman::tools::{Tool, ToolSpec};
-use anyhow::Result;
+use crate::openhuman::tools::Tool;
 use std::sync::Arc;
 
 impl AgentBuilder {
@@ -21,11 +14,14 @@ impl AgentBuilder {
         Self {
             turn_model_source: None,
             tools: None,
+            synthesized_tools: None,
             visible_tool_names: None,
+            subagent_tool_ceiling_names: None,
             memory: None,
+            shared_experience_memory: None,
+            auto_recall: None,
             prompt_builder: None,
             tool_dispatcher: None,
-            memory_loader: None,
             config: None,
             context_config: None,
             model_name: None,
@@ -33,6 +29,7 @@ impl AgentBuilder {
             temperature: None,
             workspace_dir: None,
             action_dir: None,
+            workspace_descriptor: None,
             workflows: None,
             auto_save: None,
             post_turn_hooks: Vec::new(),
@@ -41,47 +38,37 @@ impl AgentBuilder {
             event_session_id: None,
             event_channel: None,
             agent_definition_name: None,
+            active_profile_id: None,
+            personality_soul_md: None,
+            personality_memory_md: None,
+            memory_subdir: None,
+            session_raw_subdir: None,
             session_parent_prefix: None,
+            session_history_locator: None,
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
             trigger_memory_agent: None,
-            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Full,
+            tokenjuice_compression:
+                crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression::Full,
             tool_policy: None,
             archivist_hook: None,
         }
     }
 
-    /// Sets the AI provider for the agent.
-    ///
-    /// Accepts a `Box<dyn Provider>` for backward compatibility but wraps it in
-    /// the seam [`TurnModelSource`](crate::openhuman::tinyagents::TurnModelSource)
-    /// internally (issue #4249, Phase 3 / Motion A) so the agent + sub-agents
-    /// spawned from it share the same source.
-    pub fn provider(
-        mut self,
-        provider: Box<dyn crate::openhuman::inference::provider::Provider>,
-    ) -> Self {
-        self.turn_model_source = Some(crate::openhuman::tinyagents::TurnModelSource::new(
-            Arc::from(provider),
-        ));
-        self
-    }
-
-    /// Sets the AI provider from an existing `Arc`. Use this when sharing
-    /// a provider instance across multiple agents.
-    pub fn provider_arc(
-        mut self,
-        provider: Arc<dyn crate::openhuman::inference::provider::Provider>,
-    ) -> Self {
-        self.turn_model_source = Some(crate::openhuman::tinyagents::TurnModelSource::new(provider));
+    /// Sets an already-constructed TinyAgents chat model. This is the native
+    /// injection seam for tests and embedders; no legacy `Provider` adapter is
+    /// constructed.
+    pub fn chat_model(mut self, model: Arc<dyn tinyinference::model::ChatModel<()>>) -> Self {
+        self.turn_model_source =
+            Some(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model));
         self
     }
 
     /// Sets the AI provider as a **crate-native** turn-model source (Phase 3 P3-B):
     /// `build`/`build_summarizer` construct crate `ChatModel`s from `(role, config)`
     /// via `create_turn_chat_model` (managed → `OpenHumanBackendModel`, local/cloud →
-    /// crate `OpenAiModel`) instead of wrapping `provider` in `ProviderModel`s.
+    /// crate `OpenAiModel`) instead of wrapping `provider` in `native model adapters.
     /// Used by the production session factory; the plain
     /// [`provider`](Self::provider) setter (Provider path) stays for tests that
     /// inject a mock they observe.
@@ -90,14 +77,23 @@ impl AgentBuilder {
         role: impl Into<String>,
         config: Arc<crate::openhuman::config::Config>,
     ) -> Self {
-        self.turn_model_source =
-            Some(crate::openhuman::tinyagents::TurnModelSource::new_crate_native(role, config));
+        self.turn_model_source = Some(
+            crate::openhuman::agent::tinyagents::TurnModelSource::new_crate_native(role, config),
+        );
         self
     }
 
     /// Sets the available tools for the agent.
     pub fn tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    /// Sets the delegation tools synthesised for the session's initial
+    /// connection set — see [`Agent::synthesized_tools`]. A name a durable
+    /// tool already owns is dropped in [`Self::build`]. Defaults to none.
+    pub fn synthesized_tools(mut self, tools: Vec<Box<dyn Tool>>) -> Self {
+        self.synthesized_tools = Some(tools);
         self
     }
 
@@ -109,16 +105,41 @@ impl AgentBuilder {
         self
     }
 
+    /// Restrict the tool names that delegated agents may inherit from the full
+    /// registry. Empty/`None` keeps delegation governed by each child
+    /// definition unless the channel policy adds a ceiling.
+    pub fn subagent_tool_ceiling_names(mut self, names: std::collections::HashSet<String>) -> Self {
+        self.subagent_tool_ceiling_names = Some(names);
+        self
+    }
+
     /// Sets the memory system for the agent.
     pub fn memory(mut self, memory: Arc<dyn Memory>) -> Self {
         self.memory = Some(memory);
         self
     }
 
+    /// Retains the shared store for experience recall when `memory` is a
+    /// dedicated profile subtree.
+    pub fn shared_experience_memory(mut self, memory: Option<Arc<dyn Memory>>) -> Self {
+        self.shared_experience_memory = memory;
+        self
+    }
+
+    /// Binds Lane C, the gated pre-turn auto-recall of facts about the user
+    /// (#6040). `None` leaves the lane out of the turn entirely.
+    pub fn auto_recall(
+        mut self,
+        auto_recall: Option<Arc<crate::openhuman::memory::auto_recall::AutoRecall>>,
+    ) -> Self {
+        self.auto_recall = auto_recall;
+        self
+    }
+
     /// Sets the system prompt builder for the agent.
     pub fn prompt_builder(
         mut self,
-        prompt_builder: crate::openhuman::context::prompt::SystemPromptBuilder,
+        prompt_builder: crate::openhuman::agent::context::prompt::SystemPromptBuilder,
     ) -> Self {
         self.prompt_builder = Some(prompt_builder);
         self
@@ -130,15 +151,6 @@ impl AgentBuilder {
         tool_dispatcher: Box<dyn crate::openhuman::agent::dispatcher::ToolDispatcher>,
     ) -> Self {
         self.tool_dispatcher = Some(tool_dispatcher);
-        self
-    }
-
-    /// Sets the memory loader for the agent.
-    pub fn memory_loader(
-        mut self,
-        memory_loader: Box<dyn crate::openhuman::agent_memory::memory_loader::MemoryLoader>,
-    ) -> Self {
-        self.memory_loader = Some(memory_loader);
         self
     }
 
@@ -185,6 +197,52 @@ impl AgentBuilder {
 
     pub fn action_dir(mut self, action_dir: std::path::PathBuf) -> Self {
         self.action_dir = Some(action_dir);
+        self
+    }
+
+    /// Sets the per-profile workspace descriptor (section D of agent-profile
+    /// homes). When set, the top-level chat turn threads it through so acting
+    /// tools resolve their default cwd to the profile's dedicated workspace.
+    pub fn workspace_descriptor(
+        mut self,
+        descriptor: Option<tinyagents_harness::workspace::WorkspaceDescriptor>,
+    ) -> Self {
+        self.workspace_descriptor = descriptor;
+        self
+    }
+
+    /// Sets the active agent-profile id for this session (1a plumbing).
+    ///
+    /// `None` (default) is the profile-less session. When set, the id is
+    /// carried on the built [`Agent`] and threaded into the post-turn
+    /// [`TurnContext`](crate::openhuman::agent::hooks::TurnContext) so
+    /// profile-scoped hooks (agent-experience capture) can stamp records with
+    /// it. A `None` here keeps every downstream consumer on its legacy path.
+    pub fn active_profile_id(mut self, profile_id: Option<String>) -> Self {
+        self.active_profile_id = profile_id;
+        self
+    }
+
+    /// Binds the active profile's SOUL.md as the session identity override.
+    pub fn personality_soul_md(mut self, soul_md: Option<String>) -> Self {
+        self.personality_soul_md = soul_md;
+        self
+    }
+
+    /// Binds the active profile's curated MEMORY.md to the frozen session
+    /// prompt. `None` keeps the legacy workspace-root fallback.
+    pub fn personality_memory_md(mut self, memory_md: Option<String>) -> Self {
+        self.personality_memory_md = memory_md;
+        self
+    }
+
+    pub fn profile_memory_storage(
+        mut self,
+        memory_subdir: String,
+        session_raw_subdir: String,
+    ) -> Self {
+        self.memory_subdir = Some(memory_subdir);
+        self.session_raw_subdir = Some(session_raw_subdir);
         self
     }
 
@@ -300,6 +358,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Substitute the transcript backing store for this session.
+    ///
+    /// The one injection point for the S4 seam: the locator resolves both
+    /// resume reads (`latest_for_agent` / `root_for_thread`) **and** binds the
+    /// session's write handle (`open_stem`), so a fake supplied here takes the
+    /// whole turn path off the filesystem. Leave unset in production — `None`
+    /// resolves lazily to a
+    /// [`FileTranscriptLocator`][super::super::transcript_history::FileTranscriptLocator]
+    /// over the agent's current workspace, which is behaviourally identical to
+    /// the pre-S4 free-function calls.
+    pub(crate) fn with_session_history_locator(
+        mut self,
+        locator: std::sync::Arc<dyn super::super::transcript_history::SessionHistoryLocator>,
+    ) -> Self {
+        self.session_history_locator = Some(locator);
+        self
+    }
+
     /// Forward the target agent definition's `omit_profile` flag so
     /// [`Agent::build_system_prompt`] can decide whether to inject
     /// `PROFILE.md`. Only opt-in agents (welcome, orchestrator, the
@@ -319,13 +395,15 @@ impl AgentBuilder {
 
     /// Wire an oversized-tool-result summarizer into the agent. The live
     /// TinyAgents turn path passes it to `ToolOutputMiddleware`, which calls
-    /// [`crate::openhuman::tinyagents::payload_summarizer::PayloadSummarizer::maybe_summarize_in_parent`]
+    /// [`crate::openhuman::agent::tinyagents::payload_summarizer::PayloadSummarizer::maybe_summarize_in_parent`]
     /// on successful tool output and replaces the raw payload with the
     /// compressed summary on success. Currently set only for the orchestrator
     /// session by [`Agent::build_session_agent_inner`].
     pub fn payload_summarizer(
         mut self,
-        summarizer: Arc<dyn crate::openhuman::tinyagents::payload_summarizer::PayloadSummarizer>,
+        summarizer: Arc<
+            dyn crate::openhuman::agent::tinyagents::payload_summarizer::PayloadSummarizer,
+        >,
     ) -> Self {
         self.payload_summarizer = Some(summarizer);
         self
@@ -370,196 +448,9 @@ impl AgentBuilder {
     /// Set the per-agent TokenJuice tool-output compression profile.
     pub fn tokenjuice_compression(
         mut self,
-        profile: crate::openhuman::tokenjuice::AgentTokenjuiceCompression,
+        profile: crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression,
     ) -> Self {
         self.tokenjuice_compression = profile;
         self
-    }
-
-    /// Validates the configuration and constructs a new `Agent` instance.
-    ///
-    /// This method is responsible for wiring together the provided components,
-    /// setting up the context manager, and initializing the conversation history.
-    /// It ensures that all required fields (provider, tools, memory, etc.) are present.
-    pub fn build(self) -> Result<Agent> {
-        let tools = self
-            .tools
-            .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
-        let tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
-
-        let visible_names = self.visible_tool_names.unwrap_or_default();
-        let config = self.config.clone().unwrap_or_default();
-        let event_session_id = self
-            .event_session_id
-            .clone()
-            .unwrap_or_else(|| "standalone".to_string());
-        let event_channel = self
-            .event_channel
-            .clone()
-            .unwrap_or_else(|| "internal".to_string());
-        let agent_definition_name = self
-            .agent_definition_name
-            .clone()
-            .unwrap_or_else(|| "main".to_string());
-        let tool_policy_session = ToolPolicyEngine::build_session(
-            &agent_definition_name,
-            &event_channel,
-            "session",
-            &config.channel_permissions,
-            &tools,
-            &visible_names,
-        );
-
-        // Build the filtered spec list that the main agent sends to the
-        // provider. The explicit visible-tool allowlist and the resolved
-        // channel permission policy must stay aligned so prompt-visible
-        // tools cannot exceed the runtime execution boundary.
-        let visible_tool_specs_unfiltered =
-            visible_tool_specs_for_policy(&tool_specs, &visible_names, &tool_policy_session);
-
-        // Dedupe by tool name. Anthropic (and other strict providers)
-        // rejects a chat/completions request that lists two tools with
-        // the same name — OpenHuman's own backend and OpenAI silently
-        // accept duplicates, which hid this bug until #1710's per-role
-        // routing started sending the same tool list to Anthropic.
-        let visible_tool_specs: Vec<ToolSpec> =
-            dedup_visible_tool_specs(visible_tool_specs_unfiltered);
-
-        let visible_names_list: Vec<&str> =
-            visible_tool_specs.iter().map(|s| s.name.as_str()).collect();
-        log::info!(
-            "[agent] tool spec filter: total={} visible={} (filter_active={} policy_restricted={}) names=[{}]",
-            tool_specs.len(),
-            visible_tool_specs.len(),
-            !visible_names.is_empty(),
-            tool_policy_session.has_restrictions(),
-            visible_names_list.join(", ")
-        );
-
-        // Pull the model source out of the builder once; the Agent holds it and
-        // builds a fresh tiered crate `ChatModel` set from it per turn.
-        let turn_model_source = self
-            .turn_model_source
-            .ok_or_else(|| anyhow::anyhow!("provider is required"))?;
-
-        let prompt_builder = self
-            .prompt_builder
-            .unwrap_or_else(crate::openhuman::context::prompt::SystemPromptBuilder::with_defaults);
-
-        let model_name = self
-            .model_name
-            .unwrap_or_else(|| crate::openhuman::config::DEFAULT_MODEL.into());
-
-        // Assemble the per-session ContextManager. The manager owns
-        // the prompt builder, the reduction pipeline, and the
-        // summarizer — every concern that touches "what's in the
-        // model's context window" routes through this single handle.
-        let context_config = self.context_config.unwrap_or_default();
-
-        // Live history reduction moved to the tinyagents graph
-        // (`ContextCompressionMiddleware` + `MessageTrimMiddleware`, issue
-        // #4249), so the session no longer constructs an in-turn summarizer
-        // here. The archivist hook still drives durable segment recaps on its
-        // own post-turn path; it is no longer coupled to context compaction.
-        let context = ContextManager::new(&context_config, prompt_builder);
-
-        let workspace_dir = self
-            .workspace_dir
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
-        let action_dir = self.action_dir.unwrap_or_else(|| workspace_dir.clone());
-
-        Ok(Agent {
-            turn_model_source,
-            tools: Arc::new(tools),
-            tool_specs: Arc::new(tool_specs),
-            visible_tool_specs: Arc::new(visible_tool_specs),
-            visible_tool_names: visible_names,
-            tool_policy_session,
-            memory: self
-                .memory
-                .ok_or_else(|| anyhow::anyhow!("memory is required"))?,
-            tool_dispatcher: std::sync::Arc::from(
-                self.tool_dispatcher
-                    .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
-            ),
-            memory_loader: self
-                .memory_loader
-                .unwrap_or_else(|| Box::new(DefaultMemoryLoader::default())),
-            config,
-            model_name,
-            model_vision: self.model_vision.unwrap_or(false),
-            temperature: self.temperature.unwrap_or(0.7),
-            workspace_dir,
-            action_dir,
-            workflows: self.workflows.unwrap_or_default(),
-            auto_save: self.auto_save.unwrap_or(false),
-            last_memory_context: None,
-            last_turn_citations: Vec::new(),
-            last_turn_usage_totals: None,
-            last_turn_hit_cap: false,
-            history: Vec::new(),
-            post_turn_hooks: self.post_turn_hooks,
-            learning_enabled: self.learning_enabled,
-            explicit_preferences_enabled: self.explicit_preferences_enabled,
-            event_session_id,
-            event_channel,
-            agent_definition_name: agent_definition_name.clone(),
-            // Canonical registry id — captured here at build time
-            // before any caller can call `set_agent_definition_name`
-            // and clobber the transcript-facing name. Used by
-            // `refresh_delegation_tools` to re-resolve the agent's
-            // `subagents` declaration against the global registry.
-            agent_definition_id: agent_definition_name.clone(),
-            session_transcript_path: None,
-            session_key: {
-                let unix_ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let sanitized: String = agent_definition_name
-                    .chars()
-                    .map(|c| {
-                        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                            c
-                        } else {
-                            '_'
-                        }
-                    })
-                    .collect();
-                format!("{unix_ts}_{sanitized}")
-            },
-            session_parent_prefix: self.session_parent_prefix,
-            cached_transcript_messages: None,
-            context,
-            on_progress: None,
-            run_queue: None,
-            connected_integrations: Vec::new(),
-            connected_integrations_initialized: false,
-            integration_runtime_config: None,
-            // Default to `true` (omit) so legacy / custom agents built
-            // without a definition stay lean. Opt-in agents thread their
-            // `omit_profile = false` through the builder.
-            omit_profile: self.omit_profile.unwrap_or(true),
-            omit_memory_md: self.omit_memory_md.unwrap_or(true),
-            payload_summarizer: self.payload_summarizer,
-            trigger_memory_agent: self.trigger_memory_agent.unwrap_or_default(),
-            tokenjuice_compression: self.tokenjuice_compression,
-            tool_policy: self.tool_policy.unwrap_or_else(|| {
-                Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy)
-            }),
-            last_seen_integrations_hash: 0,
-            composio_integrations_rx: None,
-            skill_events_rx: None,
-            announced_integrations: std::collections::HashSet::new(),
-            pending_integration_announcement: Vec::new(),
-            announced_mcp_servers: std::collections::HashSet::new(),
-            pending_mcp_announcement: Vec::new(),
-            announced_skills: std::collections::HashSet::new(),
-            pending_skill_announcement: Vec::new(),
-            pending_skill_retraction: Vec::new(),
-            archivist_hook: self.archivist_hook,
-            synthesized_tool_names: std::collections::HashSet::new(),
-            pending_synthesized_tools_mask: std::collections::HashSet::new(),
-        })
     }
 }

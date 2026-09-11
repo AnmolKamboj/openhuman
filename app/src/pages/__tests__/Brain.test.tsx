@@ -8,8 +8,6 @@ const graphExportMock = vi.hoisted(() => vi.fn());
 // Controllable authenticated identity so we can simulate a logout→login cycle
 // (userId null → set) and assert the graph reloads (#4149).
 const coreAuthRef = vi.hoisted(() => ({ current: 'user-A' as string | null }));
-// Captures navigate() calls so we can assert the legacy TinyPlace-orchestration
-// deep link bounces to the promoted top-level /orchestration tab.
 const navigateSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router-dom', async importOriginal => {
@@ -40,20 +38,6 @@ vi.mock('../../components/intelligence/MemoryGraph', async () => {
 
 vi.mock('../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 
-vi.mock('../../hooks/useSubconscious', () => ({
-  useSubconscious: () => ({
-    status: null,
-    mode: 'off',
-    refresh: vi.fn(),
-    triggerTick: vi.fn(),
-    setMode: vi.fn(),
-  }),
-}));
-
-vi.mock('../../components/intelligence/IntelligenceSubconsciousTab', async () => {
-  const React = await import('react');
-  return { default: () => React.createElement('div', { 'data-testid': 'brain-subconscious' }) };
-});
 vi.mock('../../components/layout/ChipTabs', async () => {
   const React = await import('react');
   return {
@@ -62,7 +46,6 @@ vi.mock('../../components/layout/ChipTabs', async () => {
   };
 });
 vi.mock('../../components/ui/BetaBanner', () => ({ default: () => null }));
-
 vi.mock('../../components/intelligence/MemoryControls', () => ({ MemoryControls: () => null }));
 vi.mock('../../components/intelligence/MemoryTreeStatusPanel', async () => {
   const React = await import('react');
@@ -159,7 +142,6 @@ describe('Brain page', () => {
   it.each([
     ['sources', 'brain-sources'],
     ['sync', 'brain-sync'],
-    ['subconscious', 'brain-subconscious'],
   ])('renders the %s tab', async (tab, testId) => {
     graphExportMock.mockResolvedValue(makeGraph(0));
     await act(async () => {
@@ -178,16 +160,6 @@ describe('Brain page', () => {
     await waitFor(() => {
       expect(screen.getByTestId('brain-sync-history')).toBeInTheDocument();
       expect(screen.getByTestId('brain-sync-audit')).toBeInTheDocument();
-    });
-  });
-
-  it('redirects the legacy tinyplace-orchestration deep link to /orchestration', async () => {
-    graphExportMock.mockResolvedValue(makeGraph(0));
-    await act(async () => {
-      renderWithProviders(<Brain />, { initialEntries: ['/?tab=tinyplace-orchestration'] });
-    });
-    await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith('/orchestration', { replace: true });
     });
   });
 });

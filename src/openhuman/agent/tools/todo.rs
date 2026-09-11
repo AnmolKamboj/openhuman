@@ -3,13 +3,13 @@
 //! Dispatches on the `op` field so a single tool exposes
 //! `add` / `edit` / `update_status` / `remove` / `replace` / `clear` /
 //! `list`. The board is persisted to the active thread (when there is
-//! one) via [`crate::openhuman::todos::ops`]; without a thread context the
+//! one) via [`crate::openhuman::threads::todos::ops`]; without a thread context the
 //! tool falls back to a process-global scratch list. Returns a markdown
 //! rendering so transcripts read cleanly.
 
 use crate::openhuman::agent::task_board::{TaskApprovalMode, TaskBoardCard, TaskCardStatus};
-use crate::openhuman::inference::provider::thread_context;
-use crate::openhuman::todos::ops::{self, BoardLocation, CardPatch};
+use crate::openhuman::agent::tinyagents::thread_context;
+use crate::openhuman::threads::todos::ops::{self, BoardLocation, CardPatch};
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
@@ -35,27 +35,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Maintain a visible plan for THIS conversation thread (the cards render \
-         above the user's composer and survive across turns). \
-         Use it for any request with 3+ steps or several distinct tasks: at the \
-         start, `add` one card per step up front; keep exactly ONE card \
-         `in_progress` at a time; mark a card `done` the moment it is finished \
-         (do not batch completions); if a step fails or is abandoned, set it \
-         `blocked` with a `blocker`, or revise it. `list` to re-read the current \
-         plan when resuming. Skip this tool for trivial single-step requests. \
-         The board is bound automatically to the current thread — do not pass a \
-         thread id. \
-         Dispatch via the `op` field: \
-         `add` (content, status?, objective?, plan?, assignedAgent?, allowedTools?, \
-         approvalMode?, acceptanceCriteria?, evidence?, notes?, blocker?), \
-         `edit` (id, content?, status?, objective?, plan?, assignedAgent?, allowedTools?, \
-         approvalMode?, acceptanceCriteria?, evidence?, notes?, blocker?), \
-         `update_status` (id, status), \
-         `remove` (id), \
-         `replace` (cards: full list — wholesale replace), \
-         `clear`, or `list`. \
-         `status` is one of `todo` / `in_progress` / `blocked` / `done`. \
-         Returns the updated list as cards plus a markdown rendering."
+        "Maintain the visible plan for this thread; cards persist across turns. Use for requests with 3+ steps. Keep one `in_progress`; mark finished cards `done` immediately and blocked cards with a `blocker`. The board binds automatically; do not pass a thread id. Orchestrator calls use the shared board."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -132,23 +112,23 @@ impl Tool for TodoTool {
                 if patch.approval_mode.is_none() {
                     patch.approval_mode = Some(default_task_approval_mode().await);
                 }
-                ops::add(&location, &content, patch)
+                ops::add(&location, &content, patch).await
             }
             "edit" => {
                 let id = required_string(&args, "id")?;
                 let mut patch = patch_from_args(&args)?;
                 patch.content = optional_string(&args, "content");
-                ops::edit(&location, &id, patch)
+                ops::edit(&location, &id, patch).await
             }
             "update_status" => {
                 let id = required_string(&args, "id")?;
                 let status = required_string(&args, "status")?;
                 let status = ops::parse_status(&status).map_err(anyhow::Error::msg)?;
-                ops::update_status(&location, &id, status)
+                ops::update_status(&location, &id, status).await
             }
             "remove" => {
                 let id = required_string(&args, "id")?;
-                ops::remove(&location, &id)
+                ops::remove(&location, &id).await
             }
             "replace" => {
                 let cards = args
@@ -156,10 +136,10 @@ impl Tool for TodoTool {
                     .ok_or_else(|| anyhow::anyhow!("missing `cards` for op=replace"))?;
                 let cards: Vec<TaskBoardCard> = serde_json::from_value(cards.clone())
                     .map_err(|e| anyhow::anyhow!("invalid `cards`: {e}"))?;
-                ops::replace(&location, cards)
+                ops::replace(&location, cards).await
             }
-            "clear" => ops::clear(&location),
-            "list" => ops::list(&location),
+            "clear" => ops::clear(&location).await,
+            "list" => ops::list(&location).await,
             other => {
                 return Ok(ToolResult::error(format!(
                 "unknown op '{other}' (expected add|edit|update_status|remove|replace|clear|list)"
@@ -305,136 +285,5 @@ fn optional_string_array(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::openhuman::todos::global_scratch_store;
-    use serde_json::Value;
-
-    /// Serialize tests that share the process-global scratch store with
-    /// `todos::ops` tests. Same lock — otherwise the two test modules race
-    /// under `cargo test`'s thread pool.
-    fn scratch_lock() -> std::sync::MutexGuard<'static, ()> {
-        crate::openhuman::todos::ops::scratch_test_lock()
-    }
-
-    fn reset_scratch() {
-        global_scratch_store().replace(Vec::new());
-    }
-
-    #[tokio::test]
-    async fn add_then_list_round_trips_via_scratch() {
-        let _guard = scratch_lock();
-        reset_scratch();
-        let tool = TodoTool::new();
-        let added = tool
-            .execute(json!({ "op": "add", "content": "Write tests" }))
-            .await
-            .unwrap();
-        assert!(!added.is_error, "{}", added.output());
-        let payload: Value = serde_json::from_str(&added.output()).unwrap();
-        let cards = payload["cards"].as_array().unwrap();
-        assert_eq!(cards.len(), 1);
-        let id = cards[0]["id"].as_str().unwrap().to_string();
-        assert!(payload["markdown"]
-            .as_str()
-            .unwrap()
-            .contains("[ ] Write tests"));
-
-        let listed = tool.execute(json!({ "op": "list" })).await.unwrap();
-        let listed_payload: Value = serde_json::from_str(&listed.output()).unwrap();
-        assert_eq!(listed_payload["cards"].as_array().unwrap().len(), 1);
-
-        let done = tool
-            .execute(json!({ "op": "update_status", "id": id, "status": "done" }))
-            .await
-            .unwrap();
-        let done_payload: Value = serde_json::from_str(&done.output()).unwrap();
-        assert!(done_payload["markdown"]
-            .as_str()
-            .unwrap()
-            .contains("[x] Write tests"));
-        reset_scratch();
-    }
-
-    #[tokio::test]
-    async fn unknown_op_returns_error() {
-        let tool = TodoTool::new();
-        let result = tool.execute(json!({ "op": "frobnicate" })).await.unwrap();
-        assert!(result.is_error);
-        assert!(result.output().contains("unknown op"));
-    }
-
-    #[tokio::test]
-    async fn add_requires_content() {
-        let tool = TodoTool::new();
-        let err = tool.execute(json!({ "op": "add" })).await.unwrap_err();
-        assert!(err.to_string().contains("content"));
-    }
-
-    #[test]
-    fn description_carries_planning_guidance() {
-        // The `todo` tool steers the live orchestrator purely through its static
-        // (prompt-cache-stable) schema description — there is no per-thread prompt
-        // injection. Lock in the behavioural contract so the guidance can't be
-        // silently dropped: when-to-use, single-in_progress discipline, and the
-        // "bound to the current thread, don't pass a thread id" rule.
-        let tool = TodoTool::new();
-        let desc = tool.description();
-        assert!(desc.contains("3+ steps"), "missing when-to-use guidance");
-        assert!(
-            desc.contains("ONE card `in_progress`"),
-            "missing single-in_progress discipline"
-        );
-        assert!(
-            desc.contains("do not pass a thread id"),
-            "missing explicit 'do not pass a thread id' note"
-        );
-    }
-
-    #[tokio::test]
-    async fn edit_rejects_unknown_id() {
-        let _guard = scratch_lock();
-        reset_scratch();
-        let tool = TodoTool::new();
-        let result = tool
-            .execute(json!({ "op": "edit", "id": "task-missing", "content": "x" }))
-            .await
-            .unwrap();
-        assert!(result.is_error);
-        assert!(result.output().contains("not found"));
-        reset_scratch();
-    }
-
-    #[tokio::test]
-    async fn replace_accepts_full_card_list() {
-        let _guard = scratch_lock();
-        reset_scratch();
-        let tool = TodoTool::new();
-        let result = tool
-            .execute(json!({
-                "op": "replace",
-                "cards": [
-                    {
-                        "id": "",
-                        "title": "Alpha",
-                        "status": "todo",
-                        "order": 0,
-                        "updated_at": ""
-                    },
-                    {
-                        "id": "",
-                        "title": "Beta",
-                        "status": "in_progress",
-                        "order": 1,
-                        "updated_at": ""
-                    }
-                ]
-            }))
-            .await
-            .unwrap();
-        assert!(!result.is_error, "{}", result.output());
-        let payload: Value = serde_json::from_str(&result.output()).unwrap();
-        assert_eq!(payload["cards"].as_array().unwrap().len(), 2);
-        reset_scratch();
-    }
-}
+#[path = "todo_tests.rs"]
+mod tests;

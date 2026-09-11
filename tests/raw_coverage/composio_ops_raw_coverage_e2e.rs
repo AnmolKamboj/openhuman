@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tempfile::tempdir;
 
 use openhuman_core::core::all::RegisteredController;
-use openhuman_core::openhuman::composio::ops::{
+use openhuman_core::openhuman::integrations::composio::ops::{
     cached_active_integrations, composio_authorize, composio_create_trigger,
     composio_delete_connection, composio_disable_trigger, composio_enable_trigger,
     composio_execute, composio_get_mode, composio_list_agent_ready_toolkits,
@@ -27,12 +27,12 @@ use openhuman_core::openhuman::composio::ops::{
     fetch_connected_integrations, fetch_connected_integrations_status,
     invalidate_connected_integrations_cache, FetchConnectedIntegrationsStatus,
 };
-use openhuman_core::openhuman::composio::{
+use openhuman_core::openhuman::integrations::composio::{
     all_composio_controller_schemas, all_composio_registered_controllers,
 };
-use openhuman_core::openhuman::composio::{init_composio_trigger_history, ComposioActionTool};
+use openhuman_core::openhuman::integrations::composio::{init_composio_trigger_history, ComposioActionTool};
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::credentials::{
+use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use openhuman_core::openhuman::tools::{ComposioExecuteTool, Tool};
@@ -303,37 +303,26 @@ async fn composio_ops_use_loopback_backend_for_happy_and_error_paths() {
     assert_eq!(deleted.pointer("/result/deleted"), Some(&json!(true)));
     assert!(cached_active_integrations(&config).is_some());
 
-    let missing_provider = composio_sync(&config, "conn-slack", Some("manual".into()))
+    // Sync ownership moved into the Composio module. Slack is now accepted
+    // even though the retired host-side native-provider matrix has no row for
+    // it; the module starts the background sync using its own capabilities.
+    let slack_sync = composio_sync(&config, "conn-slack", Some("manual".into()))
         .await
-        .expect_err("slack has no native provider in this test path");
-    assert!(missing_provider.contains("no native provider"));
+        .expect("module-owned Slack sync starts");
+    assert_eq!(slack_sync.value.toolkit, "slack");
+    assert_eq!(slack_sync.value.details["status"], "started");
     let bad_reason = composio_sync(&config, "conn-gmail", Some("typo".into()))
         .await
         .expect_err("bad sync reason validates before network");
     assert!(bad_reason.contains("unrecognized sync reason"));
 
-    init_composio_trigger_history(config.workspace_dir.clone())
-        .expect("init trigger history store");
-    let store = openhuman_core::openhuman::composio::global_composio_trigger_history()
-        .expect("global trigger history");
-    store
-        .record_trigger(
-            "gmail",
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            "metadata-round14",
-            "uuid-round14",
-            &json!({ "subject": "coverage" }),
-        )
-        .expect("record trigger history");
-    let history = composio_list_trigger_history(&config, Some(5000))
+    // Trigger-history storage is module-owned. This host's retired global
+    // store is not its data source, and an absent module archive is surfaced
+    // as a precise, user-actionable error.
+    let history_error = composio_list_trigger_history(&config, Some(5000))
         .await
-        .expect("list trigger history")
-        .into_cli_compatible_json()
-        .expect("history json");
-    assert_eq!(
-        history.pointer("/result/entries/0/metadata_id"),
-        Some(&json!("metadata-round14"))
-    );
+        .expect_err("module archive is absent in this loopback path");
+    assert!(history_error.contains("trigger archive"), "{history_error}");
 
     let requests = state.requests.lock().expect("requests").clone();
     assert!(requests.iter().any(|req| {
@@ -473,13 +462,13 @@ async fn composio_controller_registry_validates_params_without_backend_network()
         ("set_api_key", 2),
         ("clear_api_key", 0),
     ] {
-        let schema = openhuman_core::openhuman::composio::schemas::schemas(function);
+        let schema = openhuman_core::openhuman::integrations::composio::schemas::schemas(function);
         assert_eq!(schema.namespace, "composio");
         assert_eq!(schema.function, function);
         assert_eq!(schema.inputs.len(), input_count, "{function}");
         assert!(!schema.description.is_empty(), "{function}");
     }
-    let unknown = openhuman_core::openhuman::composio::schemas::schemas("missing");
+    let unknown = openhuman_core::openhuman::integrations::composio::schemas::schemas("missing");
     assert_eq!(unknown.function, "unknown");
 
     let authorize_missing = composio_call(controller(&controllers, "authorize"), json!({}))

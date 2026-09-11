@@ -1,3 +1,7 @@
+// Host-condition policy for scheduled work (battery / AC / thermal). Lives
+// with cron because it exists to answer "may this scheduled job run now?".
+pub mod scheduler_gate;
+
 pub mod bus;
 pub mod ops;
 mod schedule;
@@ -13,7 +17,8 @@ pub use ops as rpc;
 pub use ops::{add_once, add_once_at, parse_human_delay, pause_job, resume_job, update_cron_job};
 #[allow(unused_imports)]
 pub use schedule::{
-    next_run_for_schedule, normalize_expression, schedule_cron_expression, validate_schedule,
+    next_run_for_schedule, normalize_expression, runs_closer_than, schedule_cron_expression,
+    validate_agent_schedule, validate_schedule, TooFrequent, MIN_AGENT_JOB_INTERVAL,
 };
 pub use schemas::{
     all_controller_schemas as all_cron_controller_schemas,

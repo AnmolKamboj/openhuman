@@ -140,34 +140,10 @@ pub enum ExpectedErrorKind {
     /// reset window elapses and a subsequent init succeeds.
     ///
     MemoryStoreBreakerOpen,
-    /// WhatsApp structured-ingest write hit a transient SQLite file lock
-    /// (`SQLITE_BUSY` / `SQLITE_LOCKED`) after exhausting the local retry
-    /// budget. This is an expected local-contention condition (typically on
-    /// Windows when another process briefly holds a file lock) and the
-    /// scanner retries on the next tick, so Sentry has no immediate
-    /// remediation path.
-    ///
-    /// Anchored narrowly to the whatsapp ingest failure envelope plus the
-    /// SQLite lock text, so unrelated DB lock errors in other domains still
-    /// reach Sentry.
-    WhatsAppDataSqliteBusy,
-    /// WhatsApp structured-ingest write hit a `SQLITE_CORRUPT` malformed on-disk
-    /// image ("database disk image is malformed" / "file is not a database").
-    ///
-    /// This is **defense-in-depth after** the store's own quarantine + rebuild
-    /// recovery (`whatsapp_data::store::WhatsAppDataStore::recover_corrupt_db`),
-    /// never instead of it: the store detects the corrupt image, reports it to
-    /// Sentry exactly once (process-wide latch), quarantines the damaged file,
-    /// and rebuilds an empty schema so ingest resumes. This classifier only
-    /// demotes the residual noise that can leak in the narrow window between
-    /// detection and a successful rebuild, or when a rebuild keeps failing on a
-    /// wedged host filesystem the app can't fix. Without both, one corrupt file
-    /// re-pages on every 2–30s scan tick (Sentry TAURI-RUST-KNH: 1,813
-    /// escalating events from a single host).
-    ///
-    /// Anchored to the whatsapp ingest failure envelope plus the malformed-image
-    /// text, so unrelated corruption in other domains still reaches Sentry.
-    WhatsAppDataSqliteCorrupt,
+    // (WhatsApp structured-ingest SQLite busy/corrupt classifiers were removed
+    // when that store moved to the Tauri shell; the store itself is gone now —
+    // its only writer was the CDP scanner deleted in #5478 — so no build
+    // produces the envelope these matched.)
     /// Host disk is full — the filesystem returned `ENOSPC` to a write,
     /// `mkdir`, or `open` syscall. The user cannot recover from this without
     /// freeing space on their machine, and Sentry has no remediation path
@@ -252,6 +228,20 @@ pub enum ExpectedErrorKind {
     /// (`inference_downloads_progress` re-reads config every poll → 36k events /
     /// 1 Windows user).
     ConfigReadIoFailure,
+    /// Windows `ERROR_FILE_SYSTEM_LIMITATION` (os error 665) — the NTFS file
+    /// system cannot complete the operation because the filesystem is too
+    /// fragmented, the USN journal has overflowed, or a filesystem filter
+    /// driver has hit its resource cap. This is a persistent host-filesystem
+    /// condition that the user must resolve by restarting, running a defrag,
+    /// or freeing space — Sentry has no remediation path.
+    ///
+    /// Also covers `ERROR_DISK_FULL` (112) / `ERROR_HANDLE_DISK_FULL` (39),
+    /// although those are more reliably caught by the `DiskFull` arm above.
+    ///
+    /// Matched on the locale-stable `(os error 665)` suffix (the Italian
+    /// locale rendering observed in Sentry TAURI-RUST-QT0 — 6,050 events from
+    /// 1 Windows user — is `".. (os error 665)"`, matching any locale).
+    WindowsFileSystemLimitation,
     /// The subconscious engine's SQLite schema init couldn't open its database
     /// file at all — a host-filesystem condition, not a code bug. Two canonical
     /// renderings, both bound to the user's local FS:
@@ -332,12 +322,11 @@ pub enum ExpectedErrorKind {
     /// openhuman@0.57.53, `Cohere embed API error (403 Forbidden):
     /// <!doctype html>…<title>403</title>…`).
     UpstreamEdgeBlock,
-    /// `approval_decide` (`src/openhuman/approval/rpc.rs`) resolved a request_id
+    /// `approval_decide` (`src/openhuman/security/approval/rpc.rs`) resolved a request_id
     /// whose pending row was **already decided, lazily expired, or superseded**
     /// — `store::decide` updated 0 rows because `decided_at` was already set,
     /// and `store::get_decision` confirms a persisted decision exists. The
     /// inline-approvals design spec
-    /// (`docs/superpowers/specs/2026-05-23-telegram-inline-approvals-design.md`)
     /// classifies "no pending approval found" as a **benign** outcome: the
     /// frontend `ApprovalRequestCard.decide` and the Telegram callback both call
     /// `approval_decide` without server-confirmed dedupe, so double-taps, two
@@ -352,9 +341,9 @@ pub enum ExpectedErrorKind {
     ApprovalNoPendingRace,
     /// A remote MCP server answered the connect handshake with HTTP 401 — it
     /// needs OAuth sign-in, not a code fix. `McpHttpClient::read_response`
-    /// (`src/openhuman/mcp_client/client.rs`) raises the typed
-    /// [`crate::openhuman::mcp_client::McpUnauthorizedError`], and
-    /// `mcp_registry::connections::connect` already classifies it and stores a
+    /// (`src/openhuman/mcp/http_client/client.rs`) raises the typed
+    /// `tinymcp::Error::Unauthorized`, and
+    /// `mcp::registry::connections::connect` already classifies it and stores a
     /// `needs_auth` flag so the UI prompts the user to authenticate (the
     /// `needs_auth` UX shipped in #3733 / #3719). But `mcp_clients_connect`
     /// still returns `Err(e.to_string())`, which propagates to the RPC
@@ -367,6 +356,59 @@ pub enum ExpectedErrorKind {
     /// (`"MCP unauthorized for "` + `"(HTTP 401"`) so an unrelated MCP transport
     /// failure still reaches Sentry.
     McpServerNeedsAuth,
+    /// The wallet has not been set up yet, and something that needs a
+    /// wallet-derived key said so.
+    ///
+    /// A wallet is an **optional** feature. Not having one is the default
+    /// state for every user who has not opted in, the UI already renders a
+    /// "set up wallet" prompt, and there is no local lever that makes the call
+    /// succeed until the user creates one — so this is user-state, not a
+    /// defect.
+    ///
+    /// `jsonrpc.rs` already demoted the *bare* message via
+    /// `is_wallet_not_configured_error`, but that predicate is exact equality,
+    /// so it stops matching the moment any caller adds context — and callers
+    /// do: `format!("{context}: {e}")` appears ~800 times in `src/`. One such
+    /// wrap (`self_identity key_status: {e}`) was enough to route an
+    /// expected state to Sentry 55 times in 72 minutes on an ordinary local
+    /// session, while a genuine turn-killing failure in the same session
+    /// emitted nothing (#5805 / #5804).
+    ///
+    /// Classifying it **here** rather than at the wrap site is deliberate:
+    /// this classifier is substring-based, so it holds for any wrapper, at any
+    /// nesting depth, on any reporting path that goes through
+    /// [`report_error_or_expected`] — not just the RPC boundary, and not just
+    /// the one method that happened to be observed. Matched against the shared
+    /// [`crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE`]
+    /// constant so producer and classifier cannot drift.
+    WalletNotConfigured,
+    /// The memory store refused a write because the caller-supplied
+    /// **namespace / key** failed a boundary check — it carries secret-shaped
+    /// text, or it trimmed to empty. The rejection is deterministic in the
+    /// caller's own input (`memory_store::namespace_store::documents`,
+    /// `namespace_store::fts5`, the tinycortex KV store): the same call retried
+    /// with the same identifier fails identically, so every retry produced
+    /// another `report_error_or_expected` capture through the RPC dispatcher.
+    /// That is how the PII variant of this family reached 3,055 events from a
+    /// single user in one day (TAURI-RUST-QWW, #5164) — the flood was retry
+    /// volume, not 3,055 distinct defects.
+    ///
+    /// The PII half of the family no longer rejects at all: those identifiers
+    /// are canonicalized on write and on read (see
+    /// [`tinymemory_core::store::safety::canonical_identifier`]). This
+    /// arm covers the rejections that remain deliberate — a secret must never
+    /// be persisted as a storage address (#4947), and an empty key has no row
+    /// to address — and keeps their retry volume out of the error stream.
+    /// Sentry has no remediation path either way: the fix is the caller passing
+    /// a stable opaque identifier, which is a code change in the calling sync
+    /// provider, not a signal that repeats per attempt.
+    ///
+    /// Anchored on the store's own rejection wording (`"cannot contain
+    /// secrets"` / `"document key cannot be empty"` scoped to a
+    /// document/kv/episodic subject) so unrelated failures on the same write
+    /// path — SQLite errors, embedding failures, sidecar IO — still reach
+    /// Sentry as errors.
+    MemoryIdentifierRejected,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -429,6 +471,24 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     // with the generic matchers below. See `is_mcp_server_needs_auth_message`.
     if is_mcp_server_needs_auth_message(&lower) {
         return Some(ExpectedErrorKind::McpServerNeedsAuth);
+    }
+    // #5805 — a wallet-derived key was needed and the user has no wallet. An
+    // optional feature nobody enabled is not a defect. Placed beside the other
+    // highly-specific anchors: the needle is a full sentence produced by one
+    // constant, so it cannot collide with the generic matchers below, and
+    // ordering here is for clarity rather than precedence.
+    if is_wallet_not_configured_message(&lower) {
+        return Some(ExpectedErrorKind::WalletNotConfigured);
+    }
+    // TAURI-RUST-QWW (#5164) — the memory store rejected a write because the
+    // caller's namespace/key failed a boundary check. Deterministic in the
+    // caller's input, so the same call retried fails identically and each retry
+    // captured another event (3,055 events / 1 user / 1 day). Highly specific
+    // anchors, checked before the generic matchers; see
+    // `is_memory_identifier_rejection_message` and
+    // `ExpectedErrorKind::MemoryIdentifierRejected`.
+    if is_memory_identifier_rejection_message(&lower) {
+        return Some(ExpectedErrorKind::MemoryIdentifierRejected);
     }
     if lower.contains("local ai is disabled") {
         return Some(ExpectedErrorKind::LocalAiDisabled);
@@ -605,20 +665,14 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_memory_store_breaker_open(&lower) {
         return Some(ExpectedErrorKind::MemoryStoreBreakerOpen);
     }
-    // Corruption is checked before the busy matcher: the two envelopes are
-    // mutually exclusive by their SQLite text (malformed-image vs locked), but
-    // ordering keeps the more-specific on-disk-damage signal unambiguous.
-    if is_whatsapp_data_sqlite_corrupt_message(&lower) {
-        return Some(ExpectedErrorKind::WhatsAppDataSqliteCorrupt);
-    }
-    if is_whatsapp_data_sqlite_busy_message(&lower) {
-        return Some(ExpectedErrorKind::WhatsAppDataSqliteBusy);
-    }
     if is_subconscious_schema_unavailable_message(&lower) {
         return Some(ExpectedErrorKind::SubconsciousSchemaUnavailable);
     }
     if is_disk_full_message(&lower) {
         return Some(ExpectedErrorKind::DiskFull);
+    }
+    if is_windows_file_system_limitation_message(&lower) {
+        return Some(ExpectedErrorKind::WindowsFileSystemLimitation);
     }
     if is_config_load_timed_out_message(&lower) {
         return Some(ExpectedErrorKind::ConfigLoadTimedOut);
@@ -674,7 +728,7 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
 /// disk-full condition during its own page bookkeeping (journal/WAL extension)
 /// before the next syscall surfaces an errno, rusqlite renders the `SQLITE_FULL`
 /// result code as `"database or disk is full"` (Sentry TAURI-RUST-B6N, hit at
-/// `memory_store::unified::documents::tx.commit()` during
+/// `memory_store::namespace_store::documents::tx.commit()` during
 /// `openhuman.memory_doc_ingest`). `SQLITE_FULL` has only two causes:
 /// genuine ENOSPC/ERROR_DISK_FULL (always the case in practice — the same
 /// burst always produces an os-error-28/112 sibling event) or a
@@ -683,7 +737,7 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
 /// rusqlite renders `SQLITE_FULL` in one of two shapes. The **bare** shape is
 /// the five words `"database or disk is full"` — Our local memory-store write
 /// call-sites wrap it with `format!("<verb>: {e}")` (e.g. `"commit tx: ..."` /
-/// `"clear_namespace commit tx: ..."` in `memory_store::unified::documents`),
+/// `"clear_namespace commit tx: ..."` in `memory_store::namespace_store::documents`),
 /// so the phrase lands as the **suffix** of the local emit. The **extended**
 /// shape carries the full error-code envelope, `"database or disk is full:
 /// Error code 13: Insertion failed because database is full"` (Sentry
@@ -740,6 +794,25 @@ fn is_disk_full_message(lower: &str) -> bool {
     (bare_suffix || extended_local) && !lower.contains("backend returned ")
 }
 
+/// Detect Windows `ERROR_FILE_SYSTEM_LIMITATION` (os error 665) —
+/// a host-filesystem condition (fragmentation, USN journal overflow,
+/// filter-driver resource cap) that is persistent, locale-independent
+/// in the `(os error N)` suffix, and unrecoverable by the app.
+///
+/// Anchor on the locale-stable `(os error 665)` suffix. The Italian
+/// locale rendering is `"Impossibile completare l'operazione a causa
+/// di un limite del file system (os error 665)"` (Sentry
+/// TAURI-RUST-QT0, 6,050 events / 1 user). The `(os error 665)` suffix
+/// is the same across every locale, so no locale-detection is needed.
+///
+/// Polarity contract — only match when `(os error 665)` appears in
+/// the message body. This is a standard `std::io::Error` Display
+/// rendering, so it will never appear in a remote backend body
+/// accidentally.
+fn is_windows_file_system_limitation_message(lower: &str) -> bool {
+    lower.contains("(os error 665)") && !lower.contains("backend returned ")
+}
+
 /// Detect the literal `"Config loading timed out"` string produced by
 /// [`crate::openhuman::config::ops::load_config_with_timeout`] /
 /// [`crate::openhuman::config::ops::reload_config_snapshot_with_timeout`]
@@ -790,6 +863,21 @@ fn is_config_read_io_failure_message(lower: &str) -> bool {
     if lower.contains("is a directory") || lower.contains("not a file") {
         return false;
     }
+    // The file is owned by a uid other than the one reading it. That is an
+    // OpenHuman defect, not user-environment state: *we* pick the runtime uid
+    // (Dockerfile) and *we* write the config at 0600 (`impl_load.rs`), and the
+    // container entrypoint chowns only the workspace directory — so a
+    // stale-uid `config.toml` inside a reused volume denies every config RPC
+    // (including the sign-in `auth_store_session`) while `/health` stays green.
+    // There IS a local lever here, so it must keep paging. Genuine ACL /
+    // antivirus / OneDrive denials carry no marker and stay demoted.
+    //
+    // Referencing the loader's constant (rather than a copied literal) makes
+    // the producer/consumer coupling a compile-time one: the marker is already
+    // lowercase, so it matches `lower` verbatim.
+    if lower.contains(crate::openhuman::config::schema::CONFIG_OWNER_MISMATCH_MARKER) {
+        return false;
+    }
     lower.contains("access is denied")
         || lower.contains("permission denied")
         || lower.contains("being used by another process")
@@ -798,54 +886,9 @@ fn is_config_read_io_failure_message(lower: &str) -> bool {
         || lower.contains("(os error 32)")
 }
 
-/// Match whatsapp structured-ingest failures caused by transient SQLite lock
-/// contention. Keep this matcher scoped to the whatsapp ingest envelope so we
-/// don't demote unrelated database failures in other domains.
-fn is_whatsapp_data_sqlite_busy_message(lower: &str) -> bool {
-    if !lower.contains("[whatsapp_data] ingest failed:") {
-        return false;
-    }
-    if !lower.contains("upsert wa_message") {
-        return false;
-    }
-    lower.contains("database is locked")
-        || lower.contains("database table is locked")
-        || lower.contains("database file is locked")
-        || lower.contains("error code 5")
-}
-
-/// Match whatsapp structured-ingest failures caused by a `SQLITE_CORRUPT`
-/// malformed on-disk image. Scoped to the whatsapp ingest envelope plus an
-/// upsert write frame, so unrelated malformed-image errors in other domains
-/// still reach Sentry.
-///
-/// This is defense-in-depth **after** the store's quarantine + rebuild recovery
-/// (see [`ExpectedErrorKind::WhatsAppDataSqliteCorrupt`]) — the store already
-/// reports the first hit once and rebuilds the DB; this only demotes residual
-/// noise. The `upsert wa_chat` / `upsert wa_message` frames are matched because
-/// the observed Sentry symptom (TAURI-RUST-KNH) fired on the
-/// `upsert wa_chat <jid>@lid` path; the `prune` frame is matched because the
-/// same ingest RPC also runs the 90-day auto-prune under the same corrupt-DB
-/// recovery wrapper, and a malformed image surfaced from the prune step (its
-/// error context carries the word `prune`, e.g. `prune old wa_messages`) would
-/// otherwise reach Sentry unfiltered. All three still require the
-/// `[whatsapp_data] ingest failed:` envelope so unrelated malformed-image
-/// errors in other domains keep paging.
-fn is_whatsapp_data_sqlite_corrupt_message(lower: &str) -> bool {
-    if !lower.contains("[whatsapp_data] ingest failed:") {
-        return false;
-    }
-    let has_write_frame = lower.contains("upsert wa_message")
-        || lower.contains("upsert wa_chat")
-        || lower.contains("prune");
-    if !has_write_frame {
-        return false;
-    }
-    lower.contains("disk image is malformed")
-        || lower.contains("file is not a database")
-        || lower.contains("error code 11")
-        || lower.contains("error code 26")
-}
+// (The whatsapp_data SQLite busy/corrupt matchers were removed with the
+// store's move to the Tauri shell — the core no longer produces the
+// `[whatsapp_data] ingest failed:` envelope they anchored on.)
 
 /// Match subconscious-engine SQLite schema-init failures caused by the host
 /// filesystem being unable to open the DB file (`SQLITE_CANTOPEN` /
@@ -876,7 +919,7 @@ fn is_embedding_backend_auth_failure(lower: &str) -> bool {
 /// Detect a custom embeddings endpoint that exposes **no embeddings API** —
 /// the `OpenAiEmbedding` client POSTed `/embeddings` and the host answered
 /// `404 Not Found` (route absent) or `405 Method Not Allowed`. Canonical wire
-/// shape from `src/openhuman/embeddings/openai.rs`:
+/// shape from `src/openhuman/inference/embeddings/openai.rs`:
 ///
 /// ```text
 /// Embedding API error (404 Not Found): <body>
@@ -904,7 +947,7 @@ pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
 /// Detect a custom/cloud embeddings endpoint that IS an embeddings API but
 /// **rejected the configured model id** — the user pasted a non-embedding
 /// (chat/reasoning) model into the embeddings model field. Canonical wire shape
-/// from `src/openhuman/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
+/// from `src/openhuman/inference/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
 ///
 /// ```text
 /// Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}
@@ -990,7 +1033,7 @@ fn is_memory_store_breaker_open(lower: &str) -> bool {
 /// - `"Embedding API error (401 Unauthorized): {…\"error\":\"Invalid token\"…}"`
 ///   — TAURI-RUST-4K5 (~118 events, escalating on 0.56.0). Same OpenHuman
 ///   backend session-expired envelope as 4P0, but the embedding client at
-///   `src/openhuman/embeddings/openai.rs:139` wraps it with the
+///   `src/openhuman/inference/embeddings/openai.rs:139` wraps it with the
 ///   `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
 ///   Uses the same conjunctive-anchor pattern so BYO-key embedding 401s
 ///   from third-party providers (OpenAI / Voyage / Cohere) still escalate
@@ -1033,7 +1076,7 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || (msg.contains("OpenHuman API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
         // TAURI-RUST-4K5 — same OpenHuman backend "Invalid token" envelope
-        // wrapped by `src/openhuman/embeddings/openai.rs:139` with the
+        // wrapped by `src/openhuman/inference/embeddings/openai.rs:139` with the
         // `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
         // Same conjunctive-anchor pattern as 4P0: the embedding-scoped
         // prefix gates the match so a third-party BYO-key embedding 401
@@ -1055,11 +1098,25 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         // `does_not_classify_streaming_byo_key_401_as_session_expired`.
         || (msg.contains("OpenHuman streaming API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-N — same OpenHuman backend "Invalid token" envelope
+        // wrapped by the tinyagents `ProviderError::Display` format
+        // (`TinyAgentsError::Provider(Box<ProviderError>)`). The crate-native
+        // path (`OpenHumanBackendModel`) delegates to tinyagents' `OpenAiModel`
+        // which formats errors as `"{provider} returned HTTP {status}: {body}"`,
+        // producing `"OpenHuman returned HTTP 401: ..."` — different from the
+        // `"OpenHuman API error (401"` prefix the classic `api_error` path emits.
+        // Same conjunctive-anchor pattern: scoped to `"OpenHuman returned HTTP
+        // {status}"` (so a third-party BYO-key 401 from a provider whose label
+        // contains "OpenHuman" cannot match) AND the envelope-shaped
+        // `"\"error\":\"Invalid token\""` (so bare prose mentions of "invalid
+        // token" stay actionable).
+        || (msg.contains("OpenHuman returned HTTP 401")
+            && msg.contains("\"error\":\"Invalid token\""))
 }
 
 /// Detect a remote MCP server's connect-time 401 — the user must sign in to
 /// that server (OAuth), not a code defect. Anchored on the canonical
-/// [`crate::openhuman::mcp_client::McpUnauthorizedError`] `Display`
+/// `tinymcp::Error::Unauthorized` `Display`
 /// body, which renders as `"MCP unauthorized for \`<endpoint>\` (HTTP 401…)"`.
 ///
 /// Conjunctive match — both anchors must hit (input already lower-cased):
@@ -1076,6 +1133,54 @@ pub fn is_session_expired_message(msg: &str) -> bool {
 /// [`ExpectedErrorKind::McpServerNeedsAuth`].
 fn is_mcp_server_needs_auth_message(lower: &str) -> bool {
     lower.contains("mcp unauthorized for ") && lower.contains("(http 401")
+}
+
+/// Detect the wallet's "not set up yet" sentinel, anywhere in the message.
+///
+/// Substring rather than equality **on purpose**: the same condition arrives
+/// bare from a direct RPC and context-wrapped from any caller that does
+/// `format!("{context}: {e}")`. Both are the same user-state and both must be
+/// demoted, so the predicate must not care how many layers wrapped it.
+///
+/// The needle is the shared producer constant, not a copy, so a wording change
+/// moves both sides at once. `wallet_not_configured_sentinel_is_ascii_lowercase`
+/// pins the remaining assumption — that the constant is already lowercase, so
+/// it can be compared against the pre-lowercased haystack without allocating.
+/// See [`ExpectedErrorKind::WalletNotConfigured`].
+fn is_wallet_not_configured_message(lower: &str) -> bool {
+    lower.contains(crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE)
+}
+
+/// Detect a memory-store **identifier** rejection: the caller's namespace/key
+/// (or episodic `session_id`/`role`) failed a write-boundary check.
+///
+/// Matches the store's own rejection wording, verbatim and subject-scoped:
+///   - `document namespace/key cannot contain secrets`
+///     (`namespace_store::documents`, both upsert paths)
+///   - `document key cannot be empty` (same paths, post-trim)
+///   - `kv key cannot contain secrets` / `kv namespace/key cannot contain
+///     secrets` (`tinycortex::memory::store::kv`)
+///   - `episodic session_id/role cannot contain secrets`
+///     (`namespace_store::fts5`)
+///   - the retired `… cannot contain personal identifiers` wording, so a client
+///     still running a pre-#5164 core (the releases the flood came from) is
+///     demoted too
+///
+/// Requiring the subject prefix (`document` / `kv` / `episodic`) keeps the
+/// demotion inside the memory store: a real defect on the same write path —
+/// SQLite failure, embedding provider error, markdown sidecar IO — carries none
+/// of these bodies and still reaches Sentry as an error. See
+/// [`ExpectedErrorKind::MemoryIdentifierRejected`].
+fn is_memory_identifier_rejection_message(lower: &str) -> bool {
+    let rejects_identifier = lower.contains("cannot contain secrets")
+        || lower.contains("cannot contain personal identifiers")
+        || lower.contains("key cannot be empty");
+    rejects_identifier
+        && (lower.contains("document namespace/key")
+            || lower.contains("document key")
+            || lower.contains("kv key")
+            || lower.contains("kv namespace/key")
+            || lower.contains("episodic session_id/role"))
 }
 
 /// Detect the "a configured provider has no API key" user-config state.
@@ -1190,9 +1295,8 @@ fn is_loopback_unavailable(lower: &str) -> bool {
 /// the local Ollama daemon — pure user-state errors the UI already surfaces
 /// (toast / settings page warning) where Sentry has no remediation path.
 ///
-/// Several canonical wire shapes are covered, all emitted by
-/// `openhuman::embeddings::ollama::OllamaEmbedding::embed` and the embed
-/// service fallback path:
+/// Several canonical wire shapes are covered, all emitted by the TinyAgents
+/// Ollama embedder and the host embed service fallback path:
 ///
 /// - **TAURI-RUST-XS** (~376 events on self-hosted Sentry): user pointed the
 ///   embedder at a chat / vision model id with a temperature suffix (e.g.
@@ -1513,7 +1617,7 @@ fn is_upstream_edge_block_message(lower: &str) -> bool {
 ///
 /// The canonical wire format from
 /// [`crate::openhuman::integrations::client::IntegrationClient::post`] / `get`
-/// and [`crate::openhuman::composio::client::ComposioClient`] is:
+/// and [`crate::openhuman::integrations::composio::client::ComposioClient`] is:
 /// `"Backend returned <status> <reason> for <METHOD> <url>: <detail>"` — e.g.
 /// `"Backend returned 400 Bad Request for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: Composio authorization failed: 400 …"`
 /// (OPENHUMAN-TAURI-BC: user submitted SharePoint authorize without filling in
@@ -1534,7 +1638,7 @@ fn is_upstream_edge_block_message(lower: &str) -> bool {
 /// 5xx is intentionally **not** classified here — server-side failures from
 /// our backend are real bugs that should reach Sentry. The transient
 /// 502/503/504 deduplication is handled by the threshold logic in callers
-/// (see e.g. `openhuman::socket::ws_loop::FAIL_ESCALATE_THRESHOLD`).
+/// (see e.g. `openhuman::platform::socket::ws_loop::FAIL_ESCALATE_THRESHOLD`).
 fn is_backend_user_error_message(lower: &str) -> bool {
     let Some(rest) = lower.split_once("backend returned ").map(|(_, r)| r) else {
         return false;
@@ -1666,7 +1770,7 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     // personal Composio v3 tenant rejected with a 401 because the stored
     // API key is invalid / revoked / has the wrong prefix. The canonical
     // wire shape rendered by
-    // `src/openhuman/composio/tools/impl/network/composio.rs::response_error`
+    // `src/openhuman/integrations/composio/tools/impl/network/composio.rs::response_error`
     // and the various direct-mode op wrappers is:
     //
     //   `[composio-direct] list_connections failed: Composio v3
@@ -1715,7 +1819,9 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     // anchor const (not a copied literal) and coupled to the typed source by
     // `demotes_composio_set_key_invalid_key_rejection` so a reword that drops the
     // phrase fails CI instead of silently re-opening the leak.
-    if lower.contains(crate::openhuman::composio::direct_auth::COMPOSIO_INVALID_API_KEY_ANCHOR) {
+    if lower.contains(
+        crate::openhuman::integrations::composio::direct_auth::COMPOSIO_INVALID_API_KEY_ANCHOR,
+    ) {
         return true;
     }
 
@@ -1970,7 +2076,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
             );
         }
         ExpectedErrorKind::LocalAiBinaryMissing => {
-            // User-state condition: piper / whisper.cpp / Ollama binary
+            // User-state condition: the piper or Ollama binary
             // isn't installed on this host. The error message itself is
             // the user-facing instruction ("Set PIPER_BIN or install
             // piper.") — Sentry has nothing to act on, since we can't
@@ -2015,7 +2121,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
         }
         ExpectedErrorKind::McpServerNeedsAuth => {
             // A remote MCP server rejected the connect handshake with HTTP 401:
-            // it needs OAuth sign-in. `mcp_registry::connections::connect`
+            // it needs OAuth sign-in. `mcp::registry::connections::connect`
             // already stores a `needs_auth` flag and the UI prompts the user to
             // authenticate (#3733 / #3719) — but `mcp_clients_connect` re-raises
             // the stringified error to the RPC dispatcher, where it was being
@@ -2028,6 +2134,55 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 kind = "mcp_server_needs_auth",
                 error = %message,
                 "[observability] {domain}.{operation} skipped expected MCP needs-auth (401) error: {message}"
+            );
+        }
+        ExpectedErrorKind::WalletNotConfigured => {
+            // The user has not set up a wallet. That is the default state of an
+            // optional feature, the UI already prompts for setup, and no
+            // core-side change makes the call succeed — so demote to info: the
+            // breadcrumb survives for correlation, no error event fires.
+            // See `ExpectedErrorKind::WalletNotConfigured` (#5805).
+            //
+            // The raw message is deliberately NOT logged, and that follows from
+            // how this kind is matched. The classifier accepts the sentinel
+            // anywhere in the string so the demotion survives context wrapping —
+            // which means everything *around* the sentinel is arbitrary
+            // caller-supplied text. Today's wrappers are tame (`self_identity
+            // key_status: …`), but nothing constrains a future one, and a
+            // wrapper is exactly where an id, a path or a pasted value ends up.
+            // The permissive matcher is the right trade for correctness; paying
+            // for it with a careful log is the other half of that trade.
+            //
+            // Nothing is lost: the only part of the body this arm can vouch for
+            // is the sentinel itself, and it is a constant. `domain` and
+            // `operation` carry the correlation, which is what a breadcrumb is
+            // for. Same reasoning as the param-validation skip in
+            // `jsonrpc.rs`, which redacts because its messages embed
+            // caller-supplied param names.
+            tracing::info!(
+                domain = domain,
+                operation = operation,
+                kind = "wallet_not_configured",
+                "[observability] {domain}.{operation} skipped expected wallet-not-configured \
+                 error (message withheld: the wrapper around the sentinel is caller-supplied)"
+            );
+        }
+        ExpectedErrorKind::MemoryIdentifierRejected => {
+            // The memory store refused a write whose namespace/key failed a
+            // boundary check (secret-shaped, or empty after trim). Deterministic
+            // in the caller's input: retrying the same call rejects again, so
+            // this repeats at the caller's retry rate rather than carrying new
+            // signal each time (TAURI-RUST-QWW: 3,055 events / 1 user / 1 day,
+            // #5164). The remedy is the calling sync provider passing a stable
+            // opaque identifier — a code change, not a per-attempt signal — so
+            // demote to warn: the breadcrumb survives for triage, no error event
+            // fires.
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "memory_identifier_rejected",
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected memory identifier rejection: {message}"
             );
         }
         ExpectedErrorKind::ProviderConfigRejection => {
@@ -2160,28 +2315,27 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 "[observability] {domain}.{operation} skipped expected disk-full error"
             );
         }
+        ExpectedErrorKind::WindowsFileSystemLimitation => {
+            // Windows `ERROR_FILE_SYSTEM_LIMITATION` (os error 665) —
+            // caused by fragmentation, USN journal overflow, or a
+            // filesystem filter driver bottleneck. The user must restart
+            // their machine, run a defrag, or free disk space — Sentry
+            // has no remediation path. Demote at `warn!` so a sustained
+            // spike shows up in dashboards without flooding Sentry.
+            // Drops TAURI-RUST-QT0 (6,050 events / 1 user).
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "windows_file_system_limitation",
+                "[observability] {domain}.{operation} skipped expected Windows file-system-limitation error (os error 665)"
+            );
+        }
         ExpectedErrorKind::MemoryStoreBreakerOpen => {
             tracing::warn!(
                 domain = domain,
                 operation = operation,
                 kind = "memory_store_breaker_open",
                 "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error"
-            );
-        }
-        ExpectedErrorKind::WhatsAppDataSqliteBusy => {
-            tracing::warn!(
-                domain = domain,
-                operation = operation,
-                kind = "whatsapp_data_sqlite_busy",
-                "[observability] {domain}.{operation} skipped expected whatsapp_data sqlite busy/locked error"
-            );
-        }
-        ExpectedErrorKind::WhatsAppDataSqliteCorrupt => {
-            tracing::warn!(
-                domain = domain,
-                operation = operation,
-                kind = "whatsapp_data_sqlite_corrupt",
-                "[observability] {domain}.{operation} skipped expected whatsapp_data sqlite corrupt error (store quarantines + rebuilds the DB and reports once)"
             );
         }
         ExpectedErrorKind::FilesystemUserPathInvalid => {
@@ -2388,12 +2542,76 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
 /// honest.
 pub const REPORT_ERROR_TRACING_TARGET: &str = "openhuman::observability::report_error";
 
+/// Cooldown period for rate-limiting repeated filesystem-limit errors.
+/// Within this window, the same (domain, operation) pair that carries
+/// `(os error 665)` is suppressed — Sentry never receives a duplicate
+/// Sentry event, and only a `debug!` log line is emitted.
+#[cfg(feature = "crash-reporting")]
+const FS_ERROR_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(300); // 5 min
+
+/// In-process state tracking the last-reported time of `ERROR_FILE_SYSTEM_LIMITATION`
+/// (os error 665) events, keyed by `(domain, operation)`. This prevents
+/// unthrottled retry loops from flooding Sentry (TAURI-RUST-QT0: 6,050 events /
+/// 1 user).
+#[cfg(feature = "crash-reporting")]
+static LAST_FS_LIMIT_REPORT: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<(String, String), std::time::Instant>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Returns `true` when `(domain, operation)` was already reported with
+/// an error-665 message within [`FS_ERROR_COOLDOWN`]. Cleans up stale
+/// entries older than the cooldown on every call.
+#[cfg(feature = "crash-reporting")]
+fn was_recently_reported(domain: &str, operation: &str) -> bool {
+    let mut guard = LAST_FS_LIMIT_REPORT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let now = std::time::Instant::now();
+    // Prune stale entries older than cooldown (single-pass to keep map bounded).
+    guard.retain(|_, last| now.duration_since(*last) < FS_ERROR_COOLDOWN);
+    let key = (domain.to_string(), operation.to_string());
+    if let Some(last) = guard.get(&key) {
+        if now.duration_since(*last) < FS_ERROR_COOLDOWN {
+            return true;
+        }
+    }
+    guard.insert(key, now);
+    false
+}
+
 pub(crate) fn report_error_message(
     message: &str,
     domain: &str,
     operation: &str,
     extra: &[Tag<'_>],
 ) {
+    // Redact secret-looking spans (bearer tokens, API keys, `sk-` keys) before
+    // `message` reaches any log sink or Sentry event. The parallel `tracing`
+    // log line below is emitted in every build — including slim builds with no
+    // `crash-reporting` `before_send` hook — so scrub once, up front.
+    let scrubbed = crate::core::log_redaction::scrub_secrets(message);
+    let message = scrubbed.as_str();
+    // Rate-limit Windows `ERROR_FILE_SYSTEM_LIMITATION` (os error 665)
+    // events: skip the Sentry capture if the same (domain, operation) pair
+    // was already reported within the last 5 minutes. This prevents
+    // unthrottled retry loops from flooding Sentry (TAURI-RUST-QT0:
+    // 6,050 events / 1 user). The `before_send` chain also filters these,
+    // but this early-exit avoids the Sentry scope overhead entirely.
+    #[cfg(feature = "crash-reporting")]
+    if message.contains("os error 665") && was_recently_reported(domain, operation) {
+        tracing::debug!(
+            target: REPORT_ERROR_TRACING_TARGET,
+            domain = domain,
+            operation = operation,
+            "[observability] {domain}.{operation} rate-limited os error 665 (reported within cooldown)"
+        );
+        return;
+    }
+    // Sentry-touching behaviour is gated behind `crash-reporting`. The
+    // diagnostic `tracing::error!` stays compiled in both builds (see the
+    // `#[cfg(not(...))]` companion below) so stderr / file appenders keep the
+    // record even in a sentry-free build.
+    #[cfg(feature = "crash-reporting")]
     sentry::with_scope(
         |scope| {
             scope.set_tag("domain", domain);
@@ -2419,6 +2637,20 @@ pub(crate) fn report_error_message(
             );
         },
     );
+    #[cfg(not(feature = "crash-reporting"))]
+    {
+        // Sentry compiled out: `extra` tags have no scope to attach to, so
+        // discard them explicitly to avoid an unused-variable warning while
+        // still emitting the diagnostic log line.
+        let _ = extra;
+        tracing::error!(
+            target: REPORT_ERROR_TRACING_TARGET,
+            domain = domain,
+            operation = operation,
+            error = %message,
+            "[observability] {domain}.{operation} failed: {message}"
+        );
+    }
 }
 
 /// Capture a message to Sentry at **warning** severity with structured tags.
@@ -2436,12 +2668,24 @@ pub(crate) fn report_error_message(
 /// `sentry::capture_message` rather than the `sentry-tracing` bridge; the
 /// accompanying diagnostic line is tagged with [`REPORT_ERROR_TRACING_TARGET`]
 /// so the production layer ignores it and we never double-report.
+// Its sole caller is the `http-server`-gated RPC handler (unrecognised-method
+// reporting, #3567), so it has no caller in a slim build (#5048). Kept compiled
+// for the crash-reporting carve-out; the allow keeps the disabled build quiet.
+#[cfg_attr(not(feature = "http-server"), allow(dead_code))]
 pub(crate) fn report_warning_message(
     message: &str,
     domain: &str,
     operation: &str,
     extra: &[Tag<'_>],
 ) {
+    // Redact secret-looking spans before `message` reaches any log sink or
+    // Sentry event — see the note in `report_error_message`.
+    let scrubbed = crate::core::log_redaction::scrub_secrets(message);
+    let message = scrubbed.as_str();
+    // Sentry-touching behaviour is gated behind `crash-reporting`; the
+    // diagnostic `tracing::warn!` stays compiled in both builds (see the
+    // `#[cfg(not(...))]` companion below).
+    #[cfg(feature = "crash-reporting")]
     sentry::with_scope(
         |scope| {
             scope.set_tag("domain", domain);
@@ -2461,6 +2705,17 @@ pub(crate) fn report_warning_message(
             );
         },
     );
+    #[cfg(not(feature = "crash-reporting"))]
+    {
+        let _ = extra;
+        tracing::warn!(
+            target: REPORT_ERROR_TRACING_TARGET,
+            domain = domain,
+            operation = operation,
+            message = %message,
+            "[observability] {domain}.{operation} warning: {message}"
+        );
+    }
 }
 
 /// Returns true when a Sentry event is a per-attempt provider HTTP failure
@@ -2480,6 +2735,7 @@ pub(crate) fn report_warning_message(
 ///   for its own reasons doesn't get silently dropped
 /// - tag `failure == "non_2xx"` (the marker set by `ops::api_error`)
 /// - tag `status` parses to one of [`TRANSIENT_PROVIDER_HTTP_STATUSES`]
+#[cfg(feature = "crash-reporting")]
 pub fn is_transient_provider_http_failure(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("llm_provider") {
@@ -2507,6 +2763,7 @@ pub fn is_transient_provider_http_failure(event: &sentry::protocol::Event<'_>) -
 /// single-source [`crate::openhuman::inference::provider::managed_error_skips_sentry`]
 /// (managed-envelope gated, so a BYO payload carrying an `errorCode`-shaped
 /// field is not wrongly dropped) so the layers can't drift.
+#[cfg(feature = "crash-reporting")]
 pub fn is_backend_error_code_event(event: &sentry::protocol::Event<'_>) -> bool {
     let direct = event.message.as_deref();
     let from_logentry = event.logentry.as_ref().map(|log| log.message.as_str());
@@ -2534,6 +2791,7 @@ pub fn is_backend_error_code_event(event: &sentry::protocol::Event<'_>) -> bool 
 /// suppressed. A non-streaming `domain=llm_provider, failure=transport` event
 /// carries a different `operation` tag and must keep paging, so the
 /// observability blind spot stays as narrow as F7 intends.
+#[cfg(feature = "crash-reporting")]
 pub fn is_transient_provider_transport_failure(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("llm_provider") {
@@ -2559,6 +2817,7 @@ pub fn is_transient_provider_transport_failure(event: &sentry::protocol::Event<'
 /// where the aggregate body starts with the reliable-provider exhaustion
 /// prefix and contains transient HTTP/transport wording already classified by
 /// [`is_transient_message_failure`].
+#[cfg(feature = "crash-reporting")]
 pub fn is_all_transient_provider_exhaustion_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("llm_provider") {
@@ -2577,6 +2836,7 @@ pub fn is_all_transient_provider_exhaustion_event(event: &sentry::protocol::Even
         .any(all_provider_attempts_are_transient)
 }
 
+#[cfg(feature = "crash-reporting")]
 fn all_provider_attempts_are_transient(message: &str) -> bool {
     let Some(attempts) = message.strip_prefix("All providers/models failed. Attempts:") else {
         return false;
@@ -2610,6 +2870,7 @@ fn all_provider_attempts_are_transient(message: &str) -> bool {
 /// the last exception's `value` (the shape `sentry-tracing` produces when
 /// stacktraces are attached). Both fields are checked for the canonical
 /// prefix so the filter stays robust to future Sentry plumbing changes.
+#[cfg(feature = "crash-reporting")]
 pub fn is_max_iterations_event(event: &sentry::protocol::Event<'_>) -> bool {
     let direct = event.message.as_deref();
     let from_exception = event.exception.last().and_then(|e| e.value.as_deref());
@@ -2633,6 +2894,7 @@ pub fn is_max_iterations_event(event: &sentry::protocol::Event<'_>) -> bool {
 /// Scope: only the three domains that surface session-expired today
 /// (`llm_provider`, `backend_api`, `rpc`). Composio's OAuth-state 401
 /// is excluded — that's actionable and must reach Sentry.
+#[cfg(feature = "crash-reporting")]
 pub fn is_session_expired_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     let Some(domain) = tags.get("domain").map(String::as_str) else {
@@ -2672,7 +2934,7 @@ pub fn is_session_expired_event(event: &sentry::protocol::Event<'_>) -> bool {
 /// RPC failures whose message body has been collapsed to just the bare
 /// HTTP method + path (`"GET /auth/me"`) with no underlying transport error.
 ///
-/// Pairs with the primary fix at `openhuman::credentials::ops::auth_get_me`,
+/// Pairs with the primary fix at `openhuman::security::credentials::ops::auth_get_me`,
 /// which replaced `e.to_string()` with `format!("{e:#}")` so the full
 /// `anyhow` context chain reaches the rpc dispatcher. Before that
 /// fix, every transient network failure under this RPC — reqwest timeout,
@@ -2695,6 +2957,7 @@ pub fn is_session_expired_event(event: &sentry::protocol::Event<'_>) -> bool {
 /// - `event.message` (or last exception `value`) trims to **exactly**
 ///   `"GET /auth/me"` — strict equality, not `contains`, so a body with
 ///   the chain appended still surfaces.
+#[cfg(feature = "crash-reporting")]
 pub fn is_auth_get_me_opaque_transport_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("rpc") {
@@ -2743,6 +3006,7 @@ pub fn is_updater_transient_message(message: &str) -> bool {
         .any(|phrase| lower.contains(phrase))
 }
 
+#[cfg(feature = "crash-reporting")]
 fn event_has_transient_transport_phrase(event: &sentry::protocol::Event<'_>) -> bool {
     event
         .message
@@ -2760,6 +3024,7 @@ fn event_has_transient_transport_phrase(event: &sentry::protocol::Event<'_>) -> 
         })
 }
 
+#[cfg(feature = "crash-reporting")]
 fn event_has_updater_transient_message(event: &sentry::protocol::Event<'_>) -> bool {
     event
         .message
@@ -2777,6 +3042,7 @@ fn event_has_updater_transient_message(event: &sentry::protocol::Event<'_>) -> b
         })
 }
 
+#[cfg(feature = "crash-reporting")]
 fn event_has_updater_domain(event: &sentry::protocol::Event<'_>) -> bool {
     matches!(
         event.tags.get("domain").map(String::as_str),
@@ -2784,6 +3050,7 @@ fn event_has_updater_domain(event: &sentry::protocol::Event<'_>) -> bool {
     )
 }
 
+#[cfg(feature = "crash-reporting")]
 fn is_transient_domain_failure(event: &sentry::protocol::Event<'_>, domain: &str) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some(domain) {
@@ -2801,6 +3068,7 @@ fn is_transient_domain_failure(event: &sentry::protocol::Event<'_>, domain: &str
 
 /// Transient backend API failures (gateway hiccups, scheduled downtime).
 /// Match by event tags written by report_error at the authed_json call site.
+#[cfg(feature = "crash-reporting")]
 pub fn is_transient_backend_api_failure(event: &sentry::protocol::Event<'_>) -> bool {
     is_transient_domain_failure(event, "backend_api")
 }
@@ -2811,6 +3079,7 @@ pub fn is_transient_backend_api_failure(event: &sentry::protocol::Event<'_>) -> 
 /// path is missing, private, or otherwise unavailable to that user. The install
 /// RPC still returns the error so the UI can surface it, but Sentry should keep
 /// reporting server-side and transport failures only.
+#[cfg(feature = "crash-reporting")]
 pub fn is_skill_install_user_fetch_failure(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("skills") {
@@ -2835,12 +3104,13 @@ pub fn is_skill_install_user_fetch_failure(event: &sentry::protocol::Event<'_>) 
 /// [`crate::openhuman::integrations::IntegrationClient`] HTTP wrapper that
 /// fronts every backend-proxied integration) and `domain="composio"` (errors
 /// reported from the Composio op layer in
-/// [`crate::openhuman::composio::ops`]). Composio routes through the same
+/// [`crate::openhuman::integrations::composio::ops`]). Composio routes through the same
 /// `IntegrationClient`, so the failure shape is identical — but op-level
 /// reporters that wrap and re-emit those errors with their own domain tag
 /// would otherwise escape the integrations-scoped filter (OPENHUMAN-TAURI-35
 /// ~139ev, -2H ~26ev: `[composio] list_connections failed: Backend returned
 /// 502 …` events that landed in Sentry under `domain=composio`).
+#[cfg(feature = "crash-reporting")]
 pub fn is_transient_integrations_failure(event: &sentry::protocol::Event<'_>) -> bool {
     is_transient_domain_failure(event, "integrations")
         || is_transient_domain_failure(event, "composio")
@@ -2858,6 +3128,7 @@ pub fn is_transient_integrations_failure(event: &sentry::protocol::Event<'_>) ->
 /// `domain=skills`, `failure=non_2xx`, and a 4xx `status`. A 5xx is a genuine
 /// remote failure and stays reportable. Drops TAURI-RUST-CGE (~1,446 events /
 /// 72 users on `openhuman@0.57.53`).
+#[cfg(feature = "crash-reporting")]
 pub fn is_skills_install_client_error_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("skills") {
@@ -2879,6 +3150,7 @@ pub fn is_skills_install_client_error_event(event: &sentry::protocol::Event<'_>)
 /// `"failed to check for updates: error sending request for url (...latest.json)"`.
 /// Match both shapes, but never drop an arbitrary update-domain event unless
 /// it also has a transient status/transport marker.
+#[cfg(feature = "crash-reporting")]
 pub fn is_updater_transient_event(event: &sentry::protocol::Event<'_>) -> bool {
     if event_has_updater_transient_message(event) {
         return true;
@@ -2936,7 +3208,7 @@ pub fn is_transient_message_failure(msg: &str) -> bool {
 }
 
 /// Sentinel prefix stamped on a `/teams/me/usage` probe error that the
-/// failure-backoff in `crate::openhuman::team::ops` short-circuited — i.e. an
+/// failure-backoff in `crate::openhuman::hosted::team::ops` short-circuited — i.e. an
 /// already-reported repeat within the backoff window. The FIRST failure of a
 /// streak propagates its real error string and reports normally; only the
 /// suppressed repeats carry this prefix so the JSON-RPC boundary can demote
@@ -2967,6 +3239,7 @@ pub fn is_suppressed_usage_probe_backoff(msg: &str) -> bool {
 /// the emit-site classifier — any non_2xx/400 event that carries the
 /// budget-exhausted phrasing is dropped regardless of which domain produced
 /// it, so a future re-emitter under a different tag still gets filtered.
+#[cfg(feature = "crash-reporting")]
 pub fn is_budget_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("failure").map(String::as_str) != Some("non_2xx") {
@@ -3033,6 +3306,7 @@ pub fn is_insufficient_credits_message(text: &str) -> bool {
 ///   failure (`"402"` or `"payment required"`), AND
 /// - that same text carries an insufficient-credits phrase
 ///   (`provider::body_indicates_insufficient_credits`).
+#[cfg(feature = "crash-reporting")]
 pub fn is_insufficient_credits_event(event: &sentry::protocol::Event<'_>) -> bool {
     if event
         .message
@@ -3073,6 +3347,7 @@ pub fn is_quota_exhausted_message(text: &str) -> bool {
 /// that catches all of them, keyed on the formatted message rather than tags so
 /// it matches regardless of which path emitted it (and regardless of whether
 /// the upstream wrapped the 402 in a 500 envelope).
+#[cfg(feature = "crash-reporting")]
 pub fn is_quota_exhausted_event(event: &sentry::protocol::Event<'_>) -> bool {
     if event
         .message
@@ -3117,6 +3392,7 @@ pub fn is_ollama_cloud_internal_500_message_any(text: &str) -> bool {
 /// net for any other compatible-provider path (`chat_with_system`,
 /// `chat_with_history`, the non-native cascades) that reports the same body,
 /// keyed on the message rather than tags so it matches regardless of emitter.
+#[cfg(feature = "crash-reporting")]
 pub fn is_ollama_cloud_internal_500_event(event: &sentry::protocol::Event<'_>) -> bool {
     if event
         .message
@@ -3133,6 +3409,45 @@ pub fn is_ollama_cloud_internal_500_event(event: &sentry::protocol::Event<'_>) -
     })
 }
 
+/// Defense-in-depth `before_send` filter for Windows `ERROR_FILE_SYSTEM_LIMITATION`
+/// (os error 665) — a host-filesystem condition (fragmentation, USN journal
+/// overflow, filter-driver resource cap) that is persistent, locale-independent
+/// in the `(os error N)` suffix, and unrecoverable by the app.
+///
+/// The primary suppression lives at the emit site via `expected_error_kind` →
+/// `ExpectedErrorKind::WindowsFileSystemLimitation` (called by
+/// `report_error_or_expected`). This filter catches any future call site that
+/// bypasses `report_error_or_expected` and emits the error via `report_error`
+/// or `tracing::error!` directly — keeping TAURI-RUST-QT0 (6,050 events /
+/// 1 user) permanently off Sentry.
+///
+/// Also catches `OS error 665` from the Tauri shell side
+/// (`app/src-tauri/`) which is compiled into a separate crate and therefore
+/// cannot route through the core's `expected_error_kind` classifier.
+#[cfg(feature = "crash-reporting")]
+pub fn is_windows_file_system_limitation_event(event: &sentry::protocol::Event<'_>) -> bool {
+    let check = |text: &str| -> bool {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("(os error 665)")
+    };
+    if event.message.as_deref().is_some_and(check) {
+        return true;
+    }
+    if event
+        .logentry
+        .as_ref()
+        .map(|log| log.message.as_str())
+        .is_some_and(check)
+    {
+        return true;
+    }
+    event
+        .exception
+        .values
+        .iter()
+        .any(|exception| exception.value.as_deref().is_some_and(check))
+}
+
 /// 404 on PATCH/DELETE to a channel-message path is an expected backend state
 /// (user deleted the message provider-side, backend GC'd the relay row). The
 /// primary suppression lives in `authed_json` via `parse_message_path` +
@@ -3145,6 +3460,7 @@ pub fn is_ollama_cloud_internal_500_event(event: &sentry::protocol::Event<'_>) -
 /// - tag `status == "404"`
 /// - tag `method == "PATCH"` or `"DELETE"`
 /// - event message or exception value contains both `"/channels/"` and `"/messages/"`
+#[cfg(feature = "crash-reporting")]
 pub fn is_channel_message_not_found_event(event: &sentry::protocol::Event<'_>) -> bool {
     let tags = &event.tags;
     if tags.get("domain").map(String::as_str) != Some("backend_api") {
@@ -3163,6 +3479,7 @@ pub fn is_channel_message_not_found_event(event: &sentry::protocol::Event<'_>) -
     event_contains_channel_message_path(event)
 }
 
+#[cfg(feature = "crash-reporting")]
 fn event_contains_channel_message_path(event: &sentry::protocol::Event<'_>) -> bool {
     let has_pattern = |s: &str| s.contains("/channels/") && s.contains("/messages/");
     if event.message.as_deref().is_some_and(has_pattern) {
@@ -3175,6 +3492,7 @@ fn event_contains_channel_message_path(event: &sentry::protocol::Event<'_>) -> b
         .any(|exc| exc.value.as_deref().is_some_and(has_pattern))
 }
 
+#[cfg(feature = "crash-reporting")]
 fn event_contains_budget_exhausted_message(event: &sentry::protocol::Event<'_>) -> bool {
     if event
         .message
@@ -3190,6 +3508,208 @@ fn event_contains_budget_exhausted_message(event: &sentry::protocol::Event<'_>) 
             .as_deref()
             .is_some_and(crate::openhuman::inference::provider::is_budget_exhausted_message)
     })
+}
+
+/// Defense-in-depth `before_send` filter for **user-config provider error
+/// patterns** — 4xx client errors, model-not-found, subscription/payment
+/// issues, and other misconfigurations that are not application bugs.
+///
+/// Matches on `event.message` or exception values against known user-config
+/// patterns. The primary suppression lives at the `report_error` / emit sites;
+/// this catches any future call site that bypasses those classifiers.
+///
+/// Returns true (should be dropped) when the event message matches any known
+/// user-config provider pattern. Target: ~22 Sentry issues / ~26k events.
+#[cfg(feature = "crash-reporting")]
+pub fn is_user_config_provider_event(event: &sentry::protocol::Event<'_>) -> bool {
+    // Collect all text sources to check against
+    let texts: Vec<&str> = {
+        let mut v = Vec::with_capacity(2 + event.exception.values.len());
+        if let Some(msg) = event.message.as_deref() {
+            v.push(msg);
+        }
+        if let Some(log) = event.logentry.as_ref().map(|l| l.message.as_str()) {
+            v.push(log);
+        }
+        for exc in &event.exception.values {
+            if let Some(val) = exc.value.as_deref() {
+                v.push(val);
+            }
+        }
+        v
+    };
+    if texts.is_empty() {
+        return false;
+    }
+
+    // Provider 4xx patterns — user config errors like:
+    //   "HTTP 400", "HTTP 401", "HTTP 403", "HTTP 404"
+    // matching against llm_provider domain events
+    let tags = &event.tags;
+    let domain = tags.get("domain").map(String::as_str);
+    if domain == Some("llm_provider") {
+        if let Some(status) = tags.get("status") {
+            // 4xx user config errors. 401/403/404 are unambiguously
+            // auth/permission/config issues and safe to drop blanket.
+            // 400 (Bad Request) may also be a client-side serialization
+            // bug — only drop when the message content confirms it's
+            // a user config error (handled by message patterns below
+            // and the earlier `is_budget_event` / `is_insufficient_credits_event`
+            // filters in the before_send chain).
+            if matches!(status.as_str(), "401" | "403" | "404") {
+                return true;
+            }
+        }
+        // Message-level patterns
+        let lower = texts.join(" ").to_ascii_lowercase();
+        if lower.contains("401 payment required")
+            || lower.contains("subscription")
+            || lower.contains("max monthly spend")
+            || lower.contains("context length exceeded")
+            || lower.contains("context size exceeded")
+        {
+            return true;
+        }
+    }
+
+    // Embedding API 4xx / unauthorized — user's embedding provider config
+    if domain == Some("llm_provider") || domain == Some("local_ai") {
+        let lower = texts.join(" ").to_ascii_lowercase();
+        if (lower.contains("embed") || lower.contains("embedding"))
+            && (lower.contains("401")
+                || lower.contains("404")
+                || lower.contains("unauthorized")
+                || lower.contains("invalid model"))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Defense-in-depth `before_send` filter for **connectivity/network flakiness**
+/// events — transient, self-resolving failures like timeouts, gateways, and
+/// "Failed to fetch" messages from the frontend.
+///
+/// Primary suppression lives at the caller sites. This is the outermost net for
+/// any future call site that bypasses those classifiers. Target: ~8 issues.
+#[cfg(feature = "crash-reporting")]
+pub fn is_connectivity_event(event: &sentry::protocol::Event<'_>) -> bool {
+    let texts: Vec<&str> = {
+        let mut v = Vec::with_capacity(2 + event.exception.values.len());
+        if let Some(msg) = event.message.as_deref() {
+            v.push(msg);
+        }
+        if let Some(log) = event.logentry.as_ref().map(|l| l.message.as_str()) {
+            v.push(log);
+        }
+        for exc in &event.exception.values {
+            if let Some(val) = exc.value.as_deref() {
+                v.push(val);
+            }
+        }
+        v
+    };
+    if texts.is_empty() {
+        return false;
+    }
+
+    let lower = texts.join(" ").to_ascii_lowercase();
+
+    // Core HTTP transport errors
+    if lower.contains("connection refused")
+        || lower.contains("connection reset")
+        || lower.contains("connection closed before")
+        || lower.contains("broken pipe")
+        || lower.contains("tls handshake eof")
+    {
+        return true;
+    }
+
+    // Backend / provider gateway errors
+    if lower.contains("502 bad gateway")
+        || lower.contains("504 gateway timeout")
+        || lower.contains("502 gateway timeout")
+        || lower.contains("timeout: 503")
+        || lower.contains("upstream connect error")
+    {
+        return true;
+    }
+
+    // CoreRpcError / HTTP 401 (from frontend — user session issue, not code defect)
+    // Only match bare HTTP 401 (CoreRpcError / fetch), not llm_provider 401
+    // which is handled by the session-expired classifier
+    let domain = event.tags.get("domain").map(String::as_str);
+    if domain != Some("llm_provider")
+        && domain != Some("backend_api")
+        && (lower.contains("http 401")
+            || lower.contains("status: 401")
+            || lower.contains("401 unauthorized"))
+    {
+        return true;
+    }
+
+    // Timeout patterns — scoped to known transient forms so genuine
+    // non-transport timeouts (database locks, inference hangs) still
+    // reach Sentry for investigation.
+    if lower.contains("connection timed out")
+        || lower.contains("request timed out")
+        || lower.contains("deadline has elapsed")
+        || lower.contains("timeout after")
+    {
+        return true;
+    }
+
+    false
+}
+
+/// Filter out events from **stale releases** — releases older than
+/// `MAX_AGE_MINOR_VERSIONS` minor versions behind the current build.
+///
+/// Ancient-client errors are not actionable against the current codebase.
+/// Target: ~4 issues from releases like v0.54.0 against current v0.58+.
+#[cfg(feature = "crash-reporting")]
+pub fn is_stale_release_event(event: &sentry::protocol::Event<'_>) -> bool {
+    // Maximum number of minor versions behind the current release to accept.
+    // Events from clients on releases older than this are dropped.
+    const MAX_AGE_MINOR_VERSIONS: u32 = 6;
+
+    let Some(release) = event.release.as_ref() else {
+        return false;
+    };
+
+    let current = env!("CARGO_PKG_VERSION");
+    parse_version(current).is_some_and(|(current_major, current_minor)| {
+        parse_release_tag(release).is_some_and(|(event_major, event_minor)| {
+            if event_major != current_major {
+                // Different major version = definitely stale (or from the future)
+                return event_major < current_major;
+            }
+            // Same major: check minor version gap
+            current_minor.saturating_sub(event_minor) > MAX_AGE_MINOR_VERSIONS
+        })
+    })
+}
+
+/// Parse a Sentry release tag like `"openhuman@0.58.0"` or
+/// `"openhuman@0.58.0+abc123def456"` into `(major, minor)`.
+#[cfg(feature = "crash-reporting")]
+fn parse_release_tag(tag: &str) -> Option<(u32, u32)> {
+    // Strip the `openhuman@` prefix
+    let after_at = tag.split('@').nth(1)?;
+    // Get the version part before any `+` suffix
+    let version = after_at.split('+').next()?;
+    parse_version(version)
+}
+
+/// Parse a `"MAJOR.MINOR.PATCH"` version string into `(major, minor)`.
+#[cfg(feature = "crash-reporting")]
+fn parse_version(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.splitn(3, '.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    Some((major, minor))
 }
 
 #[cfg(test)]
@@ -3331,19 +3851,20 @@ mod tests {
     /// preventable user-state (the server needs OAuth sign-in), already handled
     /// by the `needs_auth` UX (#3733 / #3719), so it must classify as
     /// `McpServerNeedsAuth` and stay out of Sentry. The canonical body comes
-    /// straight from the typed `McpUnauthorizedError` `Display` impl (both the
+    /// straight from `tinymcp::Error::Unauthorized`'s `Display` impl (both the
     /// bare and `resource metadata:` variants), plus the
     /// `mcp_clients_connect`-prefixed RPC re-report shape that actually reaches
     /// the dispatcher.
     #[test]
     fn classifies_mcp_connect_401_as_needs_auth() {
-        use crate::openhuman::mcp_client::McpUnauthorizedError;
-
-        let bare = McpUnauthorizedError {
+        // The 401 is a variant of `tinymcp`'s error now rather than a
+        // standalone type. What this test pins is unchanged: the *wording* the
+        // classifier keys on, which is what reaches the dispatcher.
+        let bare = tinymcp::Error::Unauthorized {
             endpoint: "https://youtube.run.tools".to_string(),
             resource_metadata: None,
         };
-        let with_meta = McpUnauthorizedError {
+        let with_meta = tinymcp::Error::Unauthorized {
             endpoint: "https://youtube.run.tools".to_string(),
             resource_metadata: Some(
                 "https://youtube.run.tools/.well-known/oauth-protected-resource".to_string(),
@@ -3369,6 +3890,137 @@ mod tests {
             "openhuman.mcp_clients_connect",
             &[],
         );
+    }
+
+    /// #5805 — an unconfigured wallet is the default state of an optional
+    /// feature, but every path that surfaced it reached Sentry as an error: 55
+    /// events in 72 minutes on one ordinary local session, while a genuine
+    /// turn-killing failure in the same session emitted zero (#5804).
+    ///
+    /// The bare message was already demoted at the RPC boundary by
+    /// `jsonrpc::is_wallet_not_configured_error`, which is exact equality — so
+    /// a single caller adding context defeated it. The observed wrap is
+    /// `self_identity key_status: {e}`, but nothing about the fix is specific
+    /// to that method: the classifier is substring-based, so it must hold for
+    /// any wrapper, at any nesting depth, on every path that reports through
+    /// `report_error_or_expected`. The cases below pin exactly that.
+    #[test]
+    fn classifies_wallet_not_configured_as_expected_however_it_is_wrapped() {
+        let sentinel = crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE;
+        for msg in [
+            // Bare, as the wallet layer produces it.
+            sentinel.to_string(),
+            // The wrap that #5805 actually observed.
+            format!("wallet status: {sentinel}"),
+            // Two layers — a wrapper wrapping a wrapper. Exact equality and a
+            // single-prefix strip both fail here; substring matching does not.
+            format!("wallet transfer failed: wallet status: {sentinel}"),
+            // A different domain entirely, to show the fix is not scoped to the
+            // one call site the issue was found through.
+            format!("wallet balance failed: {sentinel}"),
+        ] {
+            assert_eq!(
+                expected_error_kind(&msg),
+                Some(ExpectedErrorKind::WalletNotConfigured),
+                "must classify an unconfigured wallet as expected, however wrapped: {msg}"
+            );
+        }
+        // Full demotion path (classifier -> report arm) must not panic.
+        report_error_or_expected(
+            &format!("wallet status: {sentinel}"),
+            "rpc",
+            "invoke_method",
+            &[],
+        );
+    }
+
+    /// The demotion must stay narrow: a real wallet fault still has to page.
+    /// The needle is a whole sentence, so merely mentioning a wallet — or
+    /// failing *after* one is configured — must not be swallowed.
+    #[test]
+    fn wallet_demotion_does_not_swallow_real_wallet_failures() {
+        for msg in [
+            "wallet keychain read failed: entry not found",
+            "no wallet account derived for chain 'solana'",
+            "wallet is not responding",
+            "failed to decrypt wallet mnemonic",
+        ] {
+            assert_ne!(
+                expected_error_kind(msg),
+                Some(ExpectedErrorKind::WalletNotConfigured),
+                "must NOT classify as WalletNotConfigured: {msg}"
+            );
+        }
+    }
+
+    /// `is_wallet_not_configured_message` compares the shared constant against
+    /// an already-lowercased haystack without allocating, which is only sound
+    /// while the constant itself is lowercase. If a future reword introduces a
+    /// capital, this fails here rather than silently ending the demotion.
+    #[test]
+    fn wallet_not_configured_sentinel_is_ascii_lowercase() {
+        let sentinel = crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE;
+        assert_eq!(
+            sentinel,
+            sentinel.to_ascii_lowercase(),
+            "WALLET_NOT_CONFIGURED_MESSAGE must stay ASCII-lowercase, or \
+             is_wallet_not_configured_message must lowercase it before comparing"
+        );
+    }
+
+    /// Sentry TAURI-RUST-QWW (#5164): a memory-store identifier rejection is
+    /// deterministic in the caller's own input, so it repeats at the caller's
+    /// retry rate (3,055 events / 1 user / 1 day) without carrying new signal.
+    /// Every rejection wording the store emits must classify as
+    /// `MemoryIdentifierRejected`, including the retired PII wording that
+    /// pre-#5164 cores still send.
+    #[test]
+    fn classifies_memory_identifier_rejections_as_expected() {
+        for msg in [
+            "document namespace/key cannot contain secrets",
+            "document namespace/key cannot contain personal identifiers",
+            "document key cannot be empty",
+            "kv key cannot contain secrets",
+            "kv namespace/key cannot contain secrets",
+            "episodic session_id/role cannot contain secrets",
+            // The stringified RPC re-report shape that reaches the dispatcher.
+            "openhuman.memory_store failed: document namespace/key cannot contain secrets",
+        ] {
+            assert_eq!(
+                expected_error_kind(msg),
+                Some(ExpectedErrorKind::MemoryIdentifierRejected),
+                "must classify as MemoryIdentifierRejected: {msg}"
+            );
+        }
+        // Full demotion path (classifier -> report arm) must not panic.
+        report_error_or_expected(
+            "document namespace/key cannot contain secrets",
+            "rpc",
+            "openhuman.memory_store",
+            &[],
+        );
+    }
+
+    /// Guard against over-suppression: a real failure on the same memory write
+    /// path — SQLite, embeddings, the markdown sidecar — carries none of the
+    /// rejection wording and MUST still reach Sentry (stay `None`). Nor may a
+    /// bare "cannot contain secrets" from an unrelated domain borrow the
+    /// memory-store demotion.
+    #[test]
+    fn does_not_classify_real_memory_write_failures_as_identifier_rejections() {
+        for msg in [
+            "upsert memory_docs: database is locked",
+            "insert vector chunk: disk I/O error",
+            "lookup existing document_id: no such table: memory_docs",
+            "write_markdown_doc: permission denied",
+            "webhook payload cannot contain secrets",
+        ] {
+            assert_ne!(
+                expected_error_kind(msg),
+                Some(ExpectedErrorKind::MemoryIdentifierRejected),
+                "must NOT classify as MemoryIdentifierRejected: {msg}"
+            );
+        }
     }
 
     /// Guard against over-suppression: an MCP transport failure that is NOT the
@@ -4178,7 +4830,7 @@ mod tests {
             // SQLITE_FULL rendering from rusqlite — engine-level disk-full
             // detection during page-bookkeeping (journal/WAL extension) that
             // beats the next syscall to the errno. Production hit at
-            // `memory_store::unified::documents::tx.commit()` during
+            // `memory_store::namespace_store::documents::tx.commit()` during
             // `openhuman.memory_doc_ingest`, in the same burst that emits
             // os-error-112 siblings (Sentry TAURI-RUST-B6N).
             "commit tx: database or disk is full",
@@ -4361,6 +5013,42 @@ mod tests {
         );
     }
 
+    /// A denial caused by the config being owned by a *different uid than the
+    /// process reading it* is an OpenHuman defect, not user-environment state:
+    /// we pick the container runtime uid and we write the file at 0600, and the
+    /// entrypoint historically chowned only the workspace directory — so a
+    /// reused volume denied every config RPC (including the sign-in
+    /// `auth_store_session`) while `/health` stayed green and Sentry saw
+    /// nothing. It must keep paging.
+    #[test]
+    fn does_not_demote_config_read_denial_on_owner_mismatch() {
+        let marker = crate::openhuman::config::schema::CONFIG_OWNER_MISMATCH_MARKER;
+        assert_ne!(
+            expected_error_kind(&format!(
+                "Failed to read config file: /home/openhuman/.openhuman/config.toml {marker} \
+                 (file uid=0 gid=0 mode=0600; process euid=10001 egid=10001): \
+                 Permission denied (os error 13)"
+            )),
+            Some(ExpectedErrorKind::ConfigReadIoFailure),
+        );
+    }
+
+    /// The complement: without the marker the file is ours and readable-in-
+    /// principle, so the denial really is an ACL / antivirus / OneDrive
+    /// condition with no local lever, and stays demoted. Guarding this pins
+    /// that the exclusion above is keyed on the marker, not on "permission".
+    #[test]
+    fn still_demotes_config_read_denial_without_owner_mismatch() {
+        assert_eq!(
+            expected_error_kind(
+                "Failed to read config file: /home/u/.openhuman/users/local/config.toml \
+                 (file uid=501 gid=20 mode=0000; process euid=501 egid=20): \
+                 Permission denied (os error 13)"
+            ),
+            Some(ExpectedErrorKind::ConfigReadIoFailure),
+        );
+    }
+
     #[test]
     fn does_not_demote_config_read_notfound_or_unkeyed_failures() {
         // NotFound AFTER the `exists()` gate is a TOCTOU race / app defect —
@@ -4404,95 +5092,6 @@ mod tests {
     }
 
     #[test]
-    fn classifies_whatsapp_data_sqlite_busy_errors() {
-        for raw in [
-            r#"[whatsapp_data] ingest failed: upsert wa_message chat=120363402402350155@g.us msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
-            r#"rpc.invoke_method failed: [whatsapp_data] ingest failed: upsert wa_message [email] msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
-        ] {
-            assert_eq!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
-                "should classify whatsapp_data sqlite busy/locked: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn classifies_whatsapp_data_sqlite_corrupt_errors() {
-        for raw in [
-            // The observed TAURI-RUST-KNH symptom: corruption on the wa_chat path.
-            r#"[whatsapp_data] ingest failed: upsert wa_chat 207897942335683@lid: database disk image is malformed: Error code 11: The database disk image is malformed"#,
-            // The wa_message path — same on-disk damage class.
-            r#"[whatsapp_data] ingest failed: upsert wa_message chat=120363402402350155@g.us msg=abc: file is not a database: Error code 26: File opened that is not a database file"#,
-            // Wrapped in outer RPC context — classifier runs on the full chain.
-            r#"rpc.invoke_method failed: [whatsapp_data] ingest failed: upsert wa_chat 207897942335683@lid: database disk image is malformed"#,
-        ] {
-            assert_eq!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteCorrupt),
-                "should classify whatsapp_data sqlite corrupt: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn classifies_whatsapp_data_prune_path_sqlite_corrupt_errors() {
-        // The same ingest RPC runs the 90-day auto-prune under the store's
-        // corrupt-DB recovery wrapper. A malformed image surfaced from the prune
-        // step carries a `prune` frame (e.g. `prune old wa_messages`) instead of
-        // an `upsert` frame, and must still be demoted — otherwise a boot-time
-        // prune corruption re-floods Sentry on every scan tick (Finding 3).
-        for raw in [
-            r#"[whatsapp_data] ingest failed: prune old wa_messages: database disk image is malformed: Error code 11: The database disk image is malformed"#,
-            r#"[whatsapp_data] ingest failed: prune old wa_messages: scan affected chats: database disk image is malformed"#,
-            r#"[whatsapp_data] ingest failed: refresh chat stats after prune: chat@c.us: file is not a database: Error code 26"#,
-            r#"rpc.invoke_method failed: [whatsapp_data] ingest failed: prune old wa_messages: database disk image is malformed"#,
-        ] {
-            assert_eq!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteCorrupt),
-                "should classify whatsapp_data prune-path sqlite corrupt: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn does_not_classify_unrelated_prune_errors_as_whatsapp_corrupt() {
-        for raw in [
-            // A `prune` word outside the whatsapp ingest envelope must still page.
-            "memory queue prune failed: database disk image is malformed",
-            // whatsapp prune-path lock contention is the *busy* bucket, not corrupt.
-            "[whatsapp_data] ingest failed: prune old wa_messages: database is locked",
-            // whatsapp prune-path constraint/logic error is a real bug, not on-disk damage.
-            "[whatsapp_data] ingest failed: prune old wa_messages: no such table: wa_messages",
-        ] {
-            assert_ne!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteCorrupt),
-                "must not classify as whatsapp_data sqlite corrupt: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn does_not_classify_unrelated_corrupt_messages_as_whatsapp_corrupt() {
-        for raw in [
-            // Malformed image outside the whatsapp ingest envelope must still page.
-            "memory queue write failed: database disk image is malformed",
-            // Read-path whatsapp failure (no upsert frame) is not the ingest write.
-            "[whatsapp_data] list_messages failed: database disk image is malformed",
-            // whatsapp ingest lock contention is the *busy* bucket, not corrupt.
-            "[whatsapp_data] ingest failed: upsert wa_message chat=x msg=y: database is locked",
-        ] {
-            assert_ne!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteCorrupt),
-                "must not classify as whatsapp_data sqlite corrupt: {raw}"
-            );
-        }
-    }
-
-    #[test]
     fn classifies_subconscious_schema_unavailable_errors() {
         for raw in [
             // SQLITE_IOERR_SHMMAP (4618) — the original escalating issue (#3231).
@@ -4528,21 +5127,6 @@ mod tests {
                 expected_error_kind(raw),
                 Some(ExpectedErrorKind::SubconsciousSchemaUnavailable),
                 "must not classify as subconscious schema unavailable: {raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn does_not_classify_unrelated_sqlite_lock_messages_as_whatsapp_busy() {
-        for raw in [
-            "failed to run subconscious schema DDL: database is locked",
-            "memory queue write failed: database table is locked",
-            "[whatsapp_data] list_messages failed: database is locked",
-        ] {
-            assert_ne!(
-                expected_error_kind(raw),
-                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
-                "must not classify as whatsapp_data sqlite busy: {raw}"
             );
         }
     }
@@ -5465,7 +6049,7 @@ mod tests {
     fn classifies_embedding_endpoint_absent_as_config_rejection() {
         // TAURI-RUST-5JR — custom embeddings provider pointed at a chat-only
         // base URL (DeepSeek) that has no `/embeddings` route. Verbatim shape
-        // produced by `src/openhuman/embeddings/openai.rs` (prefix preserved
+        // produced by `src/openhuman/inference/embeddings/openai.rs` (prefix preserved
         // even after the actionable-hint suffix is appended).
         assert_eq!(
             expected_error_kind(
@@ -5671,7 +6255,7 @@ mod tests {
         // instead of silently re-opening the TAURI-RUST-K27 leak.
         assert_eq!(
             expected_error_kind(
-                crate::openhuman::composio::direct_auth::COMPOSIO_INVALID_API_KEY_USER_MESSAGE
+                crate::openhuman::integrations::composio::direct_auth::COMPOSIO_INVALID_API_KEY_USER_MESSAGE
             ),
             Some(ExpectedErrorKind::ProviderUserState),
             "composio_set_api_key invalid-key rejection must demote to ProviderUserState"
@@ -5684,7 +6268,7 @@ mod tests {
         // `COMPOSIO_INVALID_API_KEY_ANCHOR`; it is only correct if that anchor is a
         // genuine lowercase substring of the message the probe returns. Assert the
         // two consts stay in sync so neither can be reworded independently.
-        use crate::openhuman::composio::direct_auth::{
+        use crate::openhuman::integrations::composio::direct_auth::{
             COMPOSIO_INVALID_API_KEY_ANCHOR, COMPOSIO_INVALID_API_KEY_USER_MESSAGE,
         };
         assert!(
@@ -5935,12 +6519,6 @@ mod tests {
         // identical (install / configure the binary).
         assert_eq!(
             expected_error_kind(
-                "whisper.cpp binary not found. Set WHISPER_BIN or install whisper-cli."
-            ),
-            Some(ExpectedErrorKind::LocalAiBinaryMissing)
-        );
-        assert_eq!(
-            expected_error_kind(
                 "Ollama binary not found at '/usr/local/bin/ollama'. Provide a valid path to the ollama executable."
             ),
             Some(ExpectedErrorKind::LocalAiBinaryMissing)
@@ -5971,7 +6549,7 @@ mod tests {
             None
         );
         assert_eq!(
-            expected_error_kind("whisper.cpp returned empty transcript"),
+            expected_error_kind("piper returned an empty audio file"),
             None
         );
     }
@@ -6111,7 +6689,7 @@ mod tests {
     }
 
     /// TAURI-RUST-4K5 (118 events, escalating on 0.56.0): the embedding
-    /// client at `src/openhuman/embeddings/openai.rs:139` wraps the same
+    /// client at `src/openhuman/inference/embeddings/openai.rs:139` wraps the same
     /// OpenHuman backend `{"success":false,"error":"Invalid token"}` 401
     /// envelope as 4P0, but with the `"Embedding API error"` prefix
     /// instead of `"OpenHuman API error"` (different emit-site format
@@ -6286,6 +6864,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     fn event_with_tags(pairs: &[(&str, &str)]) -> sentry::protocol::Event<'static> {
         let mut event = sentry::protocol::Event::default();
         let mut tags: std::collections::BTreeMap<String, String> =
@@ -6297,6 +6876,7 @@ mod tests {
         event
     }
 
+    #[cfg(feature = "crash-reporting")]
     fn event_with_tags_and_message(
         pairs: &[(&str, &str)],
         message: &str,
@@ -6306,6 +6886,7 @@ mod tests {
         event
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_drops_429_408_502_503_504() {
         for status in ["429", "408", "502", "503", "504"] {
@@ -6321,6 +6902,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn custom_openai_502_event_shape_is_transient_provider_http() {
         let event = event_with_tags_and_message(
@@ -6338,6 +6920,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_keeps_permanent_failures() {
         for status in ["400", "401", "403", "404", "500"] {
@@ -6353,6 +6936,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_keeps_aggregate_all_exhausted() {
         let event = event_with_tags(&[
@@ -6366,6 +6950,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_keeps_events_with_no_status_tag() {
         let event = event_with_tags(&[("domain", "llm_provider"), ("failure", "non_2xx")]);
@@ -6382,6 +6967,7 @@ mod tests {
     // "llm_provider", ..)` so the domain tag is consistent), but the broader
     // point is: any future caller that re-uses the same tag set for a
     // different domain must NOT be silently dropped by this filter.
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_keeps_events_with_no_domain_tag() {
         let event = event_with_tags(&[("failure", "non_2xx"), ("status", "503")]);
@@ -6391,6 +6977,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_filter_keeps_events_from_other_domains() {
         let event = event_with_tags(&[
@@ -6404,6 +6991,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn backend_api_filter_drops_transient_statuses() {
         for status in TRANSIENT_HTTP_STATUSES {
@@ -6419,6 +7007,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn backend_api_filter_drops_transient_transport_phrases() {
         for phrase in TRANSIENT_TRANSPORT_PHRASES {
@@ -6433,6 +7022,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn backend_api_filter_keeps_non_transient_failures() {
         for status in ["404", "500"] {
@@ -6467,6 +7057,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn skills_install_fetch_filter_drops_client_error_statuses() {
         for status in ["400", "401", "403", "404", "410", "499"] {
@@ -6483,6 +7074,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn skills_install_fetch_filter_keeps_server_and_wrong_shape_failures() {
         for status in ["500", "502", "503"] {
@@ -6526,6 +7118,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn integrations_filter_drops_transient_statuses() {
         for status in TRANSIENT_HTTP_STATUSES {
@@ -6541,6 +7134,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn integrations_filter_drops_transient_transport_phrases() {
         for phrase in TRANSIENT_TRANSPORT_PHRASES {
@@ -6555,6 +7149,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn integrations_filter_keeps_non_transient_failures() {
         for status in ["404", "500"] {
@@ -6598,6 +7193,7 @@ mod tests {
     /// `SKILL.md`) is expected user-input state — the before_send net must drop
     /// it, while a genuine 5xx remote failure and unrelated domains stay
     /// reportable.
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn skills_install_client_error_filter_drops_4xx_keeps_5xx() {
         // 4xx (esp. 404/410) = missing skill / wrong URL → dropped.
@@ -6646,6 +7242,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn composio_domain_routes_through_integrations_filter() {
         // OPENHUMAN-TAURI-35 (~139 events) / -2H (~26 events):
@@ -6697,6 +7294,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn composio_list_connections_503_504_wrappers_stay_filtered() {
         for (status, reason) in [("503", "Service Unavailable"), ("504", "Gateway Timeout")] {
@@ -6738,6 +7336,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_transient_403_is_dropped() {
         let event = event_with_tags_and_message(
@@ -6755,6 +7354,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_github_403_message_only_shapes_are_dropped() {
         for event in [
@@ -6768,6 +7368,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_transient_502_is_dropped() {
         let event = event_with_tags_and_message(
@@ -6784,11 +7385,12 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_real_panic_still_reported() {
         let event = event_with_tags_and_message(
             &[("domain", "update"), ("operation", "check_releases")],
-            "thread 'main' panicked at src/openhuman/update/core.rs: index out of bounds",
+            "thread 'main' panicked at src/openhuman/platform/update/core.rs: index out of bounds",
         );
         assert!(
             !is_updater_transient_event(&event),
@@ -6796,6 +7398,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_endpoint_non_success_message_is_dropped() {
         // TAURI-RUST-CD (~151 events / 9 days, Windows): `tauri-plugin-updater`
@@ -6817,6 +7420,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn updater_endpoint_non_success_anchor_does_not_silence_unrelated_errors() {
         // The new anchor is the literal plugin string. Other updater failures
@@ -6887,6 +7491,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn budget_filter_drops_budget_message_on_tagged_400() {
         let event = event_with_tags_and_message(
@@ -6897,6 +7502,7 @@ mod tests {
         assert!(is_budget_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn budget_filter_drops_budget_exception_on_tagged_400() {
         let mut event = event_with_tags(&[("failure", "non_2xx"), ("status", "400")]);
@@ -6908,6 +7514,7 @@ mod tests {
         assert!(is_budget_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn budget_filter_keeps_non_budget_400() {
         let event = event_with_tags_and_message(
@@ -6918,6 +7525,7 @@ mod tests {
         assert!(!is_budget_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn budget_filter_requires_non_2xx_failure_and_400_status() {
         let message = "Budget exceeded — add credits to continue";
@@ -6964,12 +7572,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     fn event_with_message(msg: &str) -> sentry::protocol::Event<'static> {
         let mut event = sentry::protocol::Event::default();
         event.message = Some(msg.to_string());
         event
     }
 
+    #[cfg(feature = "crash-reporting")]
     fn event_with_exception_value(value: &str) -> sentry::protocol::Event<'static> {
         let mut event = sentry::protocol::Event::default();
         event.exception = vec![sentry::protocol::Exception {
@@ -6980,6 +7590,7 @@ mod tests {
         event
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn quota_exhausted_filter_matches_500_wrapped_kiro_event() {
         // TAURI-RUST-C9A: verbatim message as formatted by the provider emit
@@ -6994,6 +7605,7 @@ mod tests {
         assert!(is_quota_exhausted_message(body));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn quota_exhausted_filter_matches_responses_usage_limit_reached_event() {
         // TAURI-RUST-AFE: verbatim message as formatted by the `chat_via_responses`
@@ -7013,6 +7625,7 @@ mod tests {
         assert!(is_quota_exhausted_message(body));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn quota_exhausted_filter_ignores_generic_500_and_rate_limit() {
         // A generic 500 outage and a 429 rate-limit are not plan-quota
@@ -7025,6 +7638,7 @@ mod tests {
         )));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn insufficient_credits_filter_matches_message_path() {
         // Verbatim TAURI-RUST-C62 message as formatted by the provider emit
@@ -7036,6 +7650,7 @@ mod tests {
         assert!(is_insufficient_credits_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn insufficient_credits_filter_matches_exception_path() {
         let event = event_with_exception_value(
@@ -7044,6 +7659,7 @@ mod tests {
         assert!(is_insufficient_credits_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn insufficient_credits_filter_requires_both_402_and_credit_phrase() {
         // A 402 with no credit phrase must NOT be swallowed (could be another
@@ -7058,6 +7674,7 @@ mod tests {
         )));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn insufficient_credits_filter_ignores_402_digits_in_a_non_402_body() {
         // A non-402 error whose body merely contains the digits "402" and a
@@ -7112,6 +7729,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn is_insufficient_credits_event_delegates_to_message_matcher() {
         // Parity: the event-level filter is now a thin wrapper over the
@@ -7141,6 +7759,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn ollama_cloud_internal_500_before_send_matches_raw_and_reraised_shapes() {
         // The outermost net catches BOTH the raw emit body (any compatible
@@ -7170,6 +7789,7 @@ mod tests {
         )));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn session_expired_before_send_matches_core_401_events() {
         let msg = "SESSION_EXPIRED: backend session not active — sign in to resume LLM work";
@@ -7189,6 +7809,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn session_expired_before_send_stays_domain_scoped() {
         let event = event_with_tags_and_message(
@@ -7201,6 +7822,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn max_iterations_filter_matches_message_path() {
         // `report_error_message` calls `sentry::capture_message`, which
@@ -7210,6 +7832,7 @@ mod tests {
         assert!(is_max_iterations_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn max_iterations_filter_matches_exception_path() {
         // sentry-tracing with attach_stacktrace=true populates the
@@ -7221,6 +7844,7 @@ mod tests {
         assert!(is_max_iterations_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn max_iterations_filter_keeps_unrelated_events() {
         assert!(!is_max_iterations_event(&event_with_message(
@@ -7232,6 +7856,7 @@ mod tests {
 
     // ── is_channel_message_not_found_event (TAURI-R7) ────────────────────────
 
+    #[cfg(feature = "crash-reporting")]
     fn channel_message_404_event(method: &str) -> sentry::protocol::Event<'static> {
         let mut event = sentry::protocol::Event::default();
         event.tags.insert("domain".into(), "backend_api".into());
@@ -7245,6 +7870,7 @@ mod tests {
         event
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_matches_patch() {
         // Canonical TAURI-R7 shape: PATCH 404 on a channel-message path.
@@ -7253,6 +7879,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_matches_delete() {
         assert!(is_channel_message_not_found_event(
@@ -7260,6 +7887,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_ignores_get_404() {
         // GET 404 on a channel-message path is NOT an expected state — must keep Sentry signal.
@@ -7268,6 +7896,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_ignores_non_channel_path() {
         let mut event = channel_message_404_event("PATCH");
@@ -7275,6 +7904,7 @@ mod tests {
         assert!(!is_channel_message_not_found_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_ignores_wrong_status() {
         let mut event = channel_message_404_event("PATCH");
@@ -7282,6 +7912,7 @@ mod tests {
         assert!(!is_channel_message_not_found_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_ignores_wrong_domain() {
         let mut event = channel_message_404_event("PATCH");
@@ -7289,6 +7920,7 @@ mod tests {
         assert!(!is_channel_message_not_found_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn channel_message_not_found_filter_matches_exception_path() {
         // sentry-tracing with attach_stacktrace=true populates exception list.
@@ -7709,6 +8341,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn expected_kind_ignores_byo_errors_that_carry_an_error_code_token() {
         // CodeRabbit: a BYO / direct-provider envelope whose body happens to
@@ -7727,6 +8360,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn before_send_filter_drops_backend_owned_error_code_events() {
         for code in [
@@ -7760,6 +8394,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn before_send_filter_keeps_malformed_bad_request_event() {
         let event = event_with_message(
@@ -7772,12 +8407,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn before_send_filter_matches_error_code_in_exception_value() {
         let event = event_with_exception_value(&managed_body("500", "INTERNAL_ERROR"));
         assert!(is_backend_error_code_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_provider_transport_filter_drops_flaky_network_blips() {
         // F7: a streaming transport timeout/reset under
@@ -7806,6 +8443,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_provider_transport_filter_keeps_non_transient_transport() {
         // A genuine, non-transient transport failure (e.g. an unexpected
@@ -7821,6 +8459,7 @@ mod tests {
         assert!(!is_transient_provider_transport_failure(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_provider_transport_filter_scoped_to_streaming_operations() {
         // CodeRabbit: a NON-streaming llm_provider transport failure with the
@@ -7847,6 +8486,7 @@ mod tests {
         assert!(!is_transient_provider_transport_failure(&no_op));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn transient_provider_transport_filter_scoped_to_llm_provider() {
         // Same shape under a different domain must not be claimed by this
@@ -7867,9 +8507,10 @@ mod tests {
     // `operation=invoke_method`, `method=openhuman.auth_get_me`, message
     // body = exactly "GET /auth/me" (no underlying chain). See the
     // function docstring + the `auth_get_me` fix in
-    // `openhuman::credentials::ops::auth_get_me` for the broader
+    // `openhuman::security::credentials::ops::auth_get_me` for the broader
     // context.
 
+    #[cfg(feature = "crash-reporting")]
     fn auth_get_me_tags() -> Vec<(&'static str, &'static str)> {
         vec![
             ("domain", "rpc"),
@@ -7879,6 +8520,7 @@ mod tests {
         ]
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_drops_bare_method_path_message() {
         let event = event_with_tags_and_message(&auth_get_me_tags(), "GET /auth/me");
@@ -7888,6 +8530,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_tolerates_surrounding_whitespace() {
         let event = event_with_tags_and_message(&auth_get_me_tags(), "  GET /auth/me  ");
@@ -7897,6 +8540,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_keeps_full_anyhow_chain_message() {
         // Post-fix shape from `auth_get_me` now using `format!("{e:#}")`.
@@ -7912,6 +8556,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_keeps_other_rpc_methods() {
         // Same opaque shape but for a different RPC must NOT be dropped —
@@ -7937,6 +8582,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_requires_rpc_invoke_method_domain() {
         // Wrong domain → must surface.
@@ -7956,6 +8602,7 @@ mod tests {
         assert!(!is_auth_get_me_opaque_transport_event(&event));
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_matches_exception_value_path() {
         // sentry-tracing path: message empty, exception last value carries
@@ -7971,6 +8618,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "crash-reporting")]
     #[test]
     fn auth_get_me_opaque_filter_ignores_empty_and_unrelated() {
         // No message and no exception → false.

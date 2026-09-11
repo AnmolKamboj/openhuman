@@ -19,10 +19,6 @@ vi.mock('react-router-dom', async importOriginal => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-vi.mock('../components/SettingsHeader', () => ({
-  default: ({ title }: { title: string }) => <h1>{title}</h1>,
-}));
-
 const mockUpsert = vi.mocked(agentProfilesApi.upsert);
 
 function profile(overrides: Partial<AgentProfile> = {}): AgentProfile {
@@ -79,7 +75,30 @@ describe('ProfileEditorPage', () => {
     expect(sent.id).toBe('my-research');
     expect(sent.name).toBe('My Research');
     expect(sent.includeAgentConversations).toBe(true);
-    expect(mockNavigate).toHaveBeenCalledWith('/settings/profiles', expect.anything());
+    expect(mockNavigate).toHaveBeenCalledWith('/settings/profiles');
+  });
+
+  it('create mode: a name written outside ASCII still submits, id left to the core', async () => {
+    // `slugify` keeps ASCII only, so this name resolves to an empty id. The
+    // core derives `profile-<digest>` from the name; blocking submit here made
+    // that path unreachable and left the user with no name they could use.
+    renderAt('/settings/profiles/new');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '研究アシスタント' } });
+    expect((screen.getByLabelText('ID') as HTMLInputElement).value).toBe('');
+
+    fireEvent.click(screen.getByText('Create'));
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
+    const sent = mockUpsert.mock.calls[0][0];
+    expect(sent.id).toBe('');
+    expect(sent.name).toBe('研究アシスタント');
+  });
+
+  it('create mode: a punctuation-only name is still refused', async () => {
+    renderAt('/settings/profiles/new');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '!!!' } });
+    fireEvent.click(screen.getByText('Create'));
+    await waitFor(() => expect(mockUpsert).not.toHaveBeenCalled());
   });
 
   it('disables Create until a non-empty resolved id exists', () => {
@@ -139,5 +158,63 @@ describe('ProfileEditorPage', () => {
     fireEvent.click(screen.getByText('Create'));
     await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
     expect(mockUpsert.mock.calls[0][0].includeAgentConversations).toBe(false);
+  });
+
+  it('defaults the dedicated memory/workspace toggles to off and dispatches them true when flipped', async () => {
+    renderAt('/settings/profiles/new');
+    const dedicatedMemory = screen.getByLabelText('Dedicated memory');
+    const dedicatedWorkspace = screen.getByLabelText('Dedicated workspace');
+    expect(dedicatedMemory).toHaveAttribute('aria-checked', 'false');
+    expect(dedicatedWorkspace).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Isolated' } });
+    fireEvent.click(dedicatedMemory);
+    fireEvent.click(dedicatedWorkspace);
+    expect(screen.getByLabelText('Dedicated memory')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('Dedicated workspace')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByText('Create'));
+
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
+    expect(mockUpsert.mock.calls[0][0].dedicatedMemory).toBe(true);
+    expect(mockUpsert.mock.calls[0][0].dedicatedWorkspace).toBe(true);
+  });
+
+  it('edit mode hydrates the dedicated toggles and shows the resolved read-only paths', () => {
+    renderAt('/settings/profiles/edit/writer', [
+      profile({
+        id: 'writer',
+        name: 'Writer',
+        dedicatedMemory: true,
+        dedicatedWorkspace: true,
+        soulMdFile: '/workspace/personalities/writer/SOUL.md',
+        workspaceDir: '/action/profiles/writer',
+      }),
+    ]);
+    expect(screen.getByLabelText('Dedicated memory')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('Dedicated workspace')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('/workspace/personalities/writer/SOUL.md')).toBeInTheDocument();
+    expect(screen.getByText('/action/profiles/writer')).toBeInTheDocument();
+  });
+
+  it('hides the resolved read-only path rows when the profile has none', () => {
+    renderAt('/settings/profiles/edit/writer', [profile({ id: 'writer' })]);
+    expect(screen.queryByText('SOUL.md file')).not.toBeInTheDocument();
+    expect(screen.queryByText('Workspace directory')).not.toBeInTheDocument();
+    expect(screen.queryByText('Skills directory')).not.toBeInTheDocument();
+  });
+
+  it('shows the resolved skills directory path and hint when present', () => {
+    renderAt('/settings/profiles/edit/writer', [
+      profile({
+        id: 'writer',
+        name: 'Writer',
+        skillsDir: '/workspace/personalities/writer/skills',
+      }),
+    ]);
+    expect(screen.getByText('Skills directory')).toBeInTheDocument();
+    expect(screen.getByText('/workspace/personalities/writer/skills')).toBeInTheDocument();
+    expect(
+      screen.getByText('SKILL.md files placed here are private to this profile.')
+    ).toBeInTheDocument();
   });
 });

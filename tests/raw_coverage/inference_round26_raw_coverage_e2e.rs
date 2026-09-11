@@ -14,12 +14,9 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openhuman_core::openhuman::config::Config;
+use openhuman_core::openhuman::agent::messages::ChatMessage;
 use openhuman_core::openhuman::inference::local::LocalAiService;
-use openhuman_core::openhuman::inference::provider::compatible::{
-    AuthStyle as CompatibleAuthStyle, OpenAiCompatibleProvider,
-};
-use openhuman_core::openhuman::inference::provider::traits::{ChatRequest, ProviderDelta};
-use openhuman_core::openhuman::inference::provider::{ChatMessage, Provider};
+use openhuman_core::openhuman::inference::provider::types::{ChatRequest, ProviderDelta};
 use openhuman_core::openhuman::tools::ToolSpec;
 use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
@@ -84,138 +81,7 @@ fn __shared_env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-#[tokio::test]
-async fn compatible_streaming_covers_tool_deltas_json_fallback_and_tool_errors() {
-    let _env_lock = __shared_env_lock();
-    let (base, state) = serve_mock().await;
-    let provider = OpenAiCompatibleProvider::new(
-        "round26-compatible",
-        &format!("{base}/v1"),
-        Some("sk-round26"),
-        CompatibleAuthStyle::Bearer,
-    );
-
-    let tools = vec![
-        tool_spec("lookup"),
-        tool_spec("lookup"),
-        tool_spec("summarize"),
-    ];
-    let messages = vec![
-        ChatMessage::tool(json!({"tool_call_id":"orphan","content":"drop me"}).to_string()),
-        ChatMessage::assistant(
-            json!({
-                "content": "prior",
-                "reasoning_content": "keep-thinking",
-                "tool_calls": [
-                    {"id":"answered","name":"lookup","arguments":"{\"q\":\"old\"}"},
-                    {"id":"dangling","name":"summarize","arguments":"{}"}
-                ]
-            })
-            .to_string(),
-        ),
-        ChatMessage::tool(json!({"tool_call_id":"answered","content":"old answer"}).to_string()),
-        ChatMessage::user("stream with tools"),
-    ];
-    let (delta_tx, mut delta_rx) = tokio::sync::mpsc::channel::<ProviderDelta>(16);
-    let streamed = provider
-        .chat(
-            ChatRequest {
-                messages: &messages,
-                tools: Some(&tools),
-                stream: Some(&delta_tx),
-                max_tokens: None,
-            },
-            "stream-tools",
-            0.4,
-        )
-        .await
-        .expect("streaming native chat");
-    drop(delta_tx);
-
-    assert_eq!(streamed.text.as_deref(), Some("hello world"));
-    assert_eq!(streamed.reasoning_content.as_deref(), Some("think more"));
-    assert_eq!(streamed.tool_calls.len(), 1);
-    assert_eq!(streamed.tool_calls[0].id, "call_round26");
-    assert_eq!(streamed.tool_calls[0].name, "lookup");
-    assert_eq!(streamed.tool_calls[0].arguments, "{\"q\":\"rust\"}");
-    let mut deltas = Vec::new();
-    while let Some(delta) = delta_rx.recv().await {
-        deltas.push(delta);
-    }
-    assert!(deltas
-        .iter()
-        .any(|delta| matches!(delta, ProviderDelta::TextDelta { delta } if delta == "hello ")));
-    assert!(deltas.iter().any(|delta| matches!(
-        delta,
-        ProviderDelta::ThinkingDelta { delta } if delta == "think "
-    )));
-    assert!(deltas.iter().any(|delta| matches!(
-        delta,
-        ProviderDelta::ToolCallStart { call_id, tool_name }
-            if call_id == "call_round26" && tool_name == "lookup"
-    )));
-    assert!(deltas.iter().any(|delta| matches!(
-        delta,
-        ProviderDelta::ToolCallArgsDelta { call_id, delta }
-            if call_id == "call_round26" && delta.contains("rust")
-    )));
-
-    let (json_tx, _json_rx) = tokio::sync::mpsc::channel::<ProviderDelta>(4);
-    let json_fallback = provider
-        .chat(
-            ChatRequest {
-                messages: &[ChatMessage::user("json stream fallback")],
-                tools: None,
-                stream: Some(&json_tx),
-                max_tokens: None,
-            },
-            "json-stream",
-            0.2,
-        )
-        .await
-        .expect("non-SSE stream falls back to JSON parse");
-    assert_eq!(json_fallback.text.as_deref(), Some("json fallback ok"));
-    assert_eq!(json_fallback.usage.unwrap().cached_input_tokens, 3);
-
-    let (retry_tx, _retry_rx) = tokio::sync::mpsc::channel::<ProviderDelta>(8);
-    let retry_err = provider
-        .chat(
-            ChatRequest {
-                messages: &[ChatMessage::user("retry without tools")],
-                tools: Some(&[tool_spec("lookup")]),
-                stream: Some(&retry_tx),
-                max_tokens: None,
-            },
-            "tool-retry",
-            0.2,
-        )
-        .await
-        .expect_err("tool schema rejection is returned without a speculative retry");
-    drop(retry_tx);
-    assert!(retry_err.to_string().contains("does not support tools"));
-    assert_eq!(*state.tool_retry_attempts.lock().expect("attempts"), 1);
-
-    let seen = state.requests.lock().expect("requests");
-    let stream_body = seen
-        .iter()
-        .find(|req| req.body["model"] == "stream-tools")
-        .expect("stream request body");
-    assert_eq!(stream_body.auth.as_deref(), Some("Bearer sk-round26"));
-    assert_eq!(stream_body.path, "/v1/chat/completions");
-    assert_eq!(stream_body.body["stream"], true);
-    assert_eq!(stream_body.body["stream_options"]["include_usage"], true);
-    assert_eq!(stream_body.body["tools"].as_array().unwrap().len(), 3);
-    let wire_messages = stream_body.body["messages"].as_array().unwrap();
-    assert_eq!(wire_messages[0]["role"], "tool");
-    let assistant = wire_messages
-        .iter()
-        .find(|msg| msg["role"] == "assistant")
-        .expect("assistant message");
-    assert_eq!(assistant["tool_calls"].as_array().unwrap().len(), 2);
-    assert!(assistant.get("reasoning_content").is_none());
-}
-
-#[tokio::test]
+ #[tokio::test]
 async fn local_service_covers_mocked_bootstrap_assets_diagnostics_and_embed() {
     let _env_lock = __shared_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -240,9 +106,7 @@ async fn local_service_covers_mocked_bootstrap_assets_diagnostics_and_embed() {
     config.local_ai.model_id = "gemma3:1b-it-qat".to_string();
     config.local_ai.embedding_model_id = "bge-m3".to_string();
     config.local_ai.preload_embedding_model = true;
-    config.local_ai.preload_stt_model = false;
     config.local_ai.preload_tts_voice = false;
-    config.local_ai.stt_download_url = Some(format!("{base}/asset/stt"));
     config.local_ai.tts_download_url = Some(format!("{base}/asset/tts"));
 
     let service = LocalAiService::new(&config);
@@ -260,7 +124,6 @@ async fn local_service_covers_mocked_bootstrap_assets_diagnostics_and_embed() {
     assert_eq!(assets.chat.state, "ready");
     assert_eq!(assets.embedding.state, "ready");
     assert_eq!(assets.vision.state, "disabled");
-    assert_eq!(assets.stt.state, "ondemand");
     assert!(
         matches!(assets.tts.state.as_str(), "ondemand" | "ready"),
         "tts state should be on-demand or already resolved, got {}",
@@ -274,7 +137,6 @@ async fn local_service_covers_mocked_bootstrap_assets_diagnostics_and_embed() {
         .expect("downloads progress");
     assert_eq!(progress.chat.state, "ready");
     assert_eq!(progress.embedding.state, "ready");
-    assert_eq!(progress.stt.state, "ondemand");
 
     let diagnostics = service.diagnostics(&config).await.expect("diagnostics");
     assert_eq!(diagnostics["ollama_running"], true);
@@ -304,7 +166,7 @@ async fn local_service_covers_mocked_bootstrap_assets_diagnostics_and_embed() {
         .await
         .expect("mocked embed");
     assert_eq!(embedded.model_id, "bge-m3");
-    assert_eq!(embedded.dimensions, 3);
+    assert_eq!(embedded.dimensions, 1024);
     assert_eq!(embedded.vectors.len(), 2);
 
     let seen = state.requests.lock().expect("requests");
@@ -464,7 +326,7 @@ async fn ollama_embed(
     remember(&state, "/api/embed", &headers, body);
     Json(json!({
         "model": "bge-m3",
-        "embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+        "embeddings": [vec![0.1; 1024], vec![0.2; 1024]]
     }))
 }
 

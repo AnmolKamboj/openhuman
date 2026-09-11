@@ -9,7 +9,6 @@ fn make_def(id: &str) -> AgentDefinition {
         omit_identity: true,
         omit_memory_context: true,
         omit_safety_preamble: true,
-        omit_skills_catalog: true,
         omit_profile: true,
         omit_memory_md: true,
         model: ModelSpec::Inherit,
@@ -26,7 +25,8 @@ fn make_def(id: &str) -> AgentDefinition {
         sandbox_mode: SandboxMode::None,
         background: false,
         trigger_memory_agent: Default::default(),
-        tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Auto,
+        tokenjuice_compression:
+            crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression::Auto,
         subagents: vec![],
         delegate_name: None,
         agent_tier: crate::openhuman::agent::harness::definition::AgentTier::Worker,
@@ -358,7 +358,7 @@ fn tier_display_matches_as_str() {
 // audit table this list mirrors.
 #[test]
 fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
-    let defs = crate::openhuman::agent_registry::agents::load_builtins()
+    let defs = crate::openhuman::agent::registry::agents::load_builtins()
         .expect("built-in agent TOML must always parse");
 
     let expected: &[(&str, usize)] = &[
@@ -366,6 +366,12 @@ fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
         ("orchestrator", 15),
         ("code_executor", 50),
         ("context_scout", 50),
+        // #5204: general-purpose read-only flow context/memory retrieval
+        // agent — `iteration_policy = "extended"` so it can loop across
+        // several retrievals in one turn. `#[cfg(feature = "flows")]`-gated
+        // (like the other flow agents), so this audit entry is too.
+        #[cfg(feature = "flows")]
+        ("flow_memory_agent", 50),
         ("integrations_agent", 50),
         // `mcp_agent` is compiled out with the `mcp` feature (#4799).
         // `mcp_setup` is NOT — only its five tools are gated, so the agent
@@ -386,24 +392,18 @@ fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
         // Compiled out with the `skills` gate — see `openhuman::skills::stub`.
         #[cfg(feature = "skills")]
         ("skill_executor", 50),
-        ("tinyplace_agent", 50),
-        ("subconscious", 30),
         // Strict policy, declared `max_iterations` below the old global
         // default (10) -> effective cap lowered.
         ("agent_memory", 6),
-        ("account_admin_agent", 8),
         ("archivist", 3),
         ("critic", 5),
         ("crypto_agent", 8),
-        ("desktop_control_agent", 8),
         ("goals_agent", 5),
         ("help", 6),
         ("image_agent", 8),
-        ("markets_agent", 8),
         ("morning_briefing", 8),
         ("profile_memory_agent", 8),
         ("scheduler_agent", 8),
-        ("screen_awareness_agent", 8),
         ("settings_agent", 8),
         ("summarizer", 1),
         ("tool_maker", 2),
@@ -411,7 +411,8 @@ fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
         ("trigger_triage", 2),
         ("video_agent", 8),
         ("vision_agent", 6),
-        // Unchanged.
+        // Compiled out with the `documents` gate — see `openhuman::agent::registry::agents::loader::builtin_enabled`.
+        #[cfg(feature = "documents")]
         ("presentation_agent", 10),
         // Compiled out with the `skills` gate — see `openhuman::skills::stub`.
         #[cfg(feature = "skills")]
@@ -448,4 +449,31 @@ fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
         "the set of built-in agent ids changed — add/remove the new agent from this audit \
          snapshot's `expected` list with a deliberate effective_max_iterations() entry"
     );
+}
+
+/// A definition written before `omit_skills_catalog` was removed (#5699) must
+/// still load. `AgentDefinition` does not set `#[serde(deny_unknown_fields)]`,
+/// so the retired key is ignored rather than rejected — that is what makes the
+/// removal a non-breaking change for custom TOML definitions already on disk.
+/// This pins it, so a future `deny_unknown_fields` cannot silently break them.
+#[test]
+fn a_definition_carrying_the_retired_skills_catalog_key_still_loads() {
+    let toml_src = r#"
+id = "legacy_agent"
+display_name = "Legacy"
+when_to_use = "A definition written before the flag was retired."
+omit_identity = true
+omit_skills_catalog = true
+omit_safety_preamble = true
+
+[tools]
+named = []
+"#;
+    let def: AgentDefinition =
+        toml::from_str(toml_src).expect("a definition carrying the retired key must still parse");
+    assert_eq!(def.id, "legacy_agent");
+    // The neighbouring flags still land, so the retired key is being skipped
+    // rather than derailing the rest of the parse.
+    assert!(def.omit_identity);
+    assert!(def.omit_safety_preamble);
 }

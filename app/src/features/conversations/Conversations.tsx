@@ -1,6 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import debugFactory from 'debug';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { type ChatSendError, chatSendError } from '../../chat/chatSendError';
@@ -15,37 +15,23 @@ import ComposerTokenStats from '../../components/chat/ComposerTokenStats';
 import { FlowApprovalRequestCard } from '../../components/chat/FlowApprovalRequestCard';
 import IntegrationConnectCard from '../../components/chat/IntegrationConnectCard';
 import QueuedFollowups from '../../components/chat/QueuedFollowups';
-import SuperContextToggle from '../../components/chat/SuperContextToggle';
-import { whenSuperContextWriteSettled } from '../../components/chat/superContextWrite';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
 import { SidebarContent } from '../../components/layout/shell/SidebarSlot';
-import { settingsNavState } from '../../components/settings/modal/settingsOverlay';
-import UpsellBanner from '../../components/upsell/UpsellBanner';
-import { dismissBanner, shouldShowBanner } from '../../components/upsell/upsellDismissState';
+import { AssistantUiChat } from '../../features/conversations/components/AssistantUiChat';
+import { TranscriptOverlays } from '../../features/conversations/components/aui/TranscriptOverlays';
+import { selectBackgroundProcesses } from '../../features/conversations/components/BackgroundProcessesPanel';
 import {
-  AgentMessageBubble,
-  AgentMessageText,
-  BubbleMarkdown,
-} from '../../features/conversations/components/AgentMessageBubble';
-import { AgentProcessSourcePanel } from '../../features/conversations/components/AgentProcessSourcePanel';
-import {
-  BackgroundProcessesPanel,
-  selectBackgroundProcesses,
-} from '../../features/conversations/components/BackgroundProcessesPanel';
-import {
-  CitationChips,
-  type MessageCitation,
-} from '../../features/conversations/components/CitationChips';
+  ChatThreadView,
+  type ChatThreadViewHandle,
+} from '../../features/conversations/components/ChatThreadView';
 import { PlanReviewCard } from '../../features/conversations/components/PlanReviewCard';
-import { SubagentDrawer } from '../../features/conversations/components/SubagentDrawer';
 import {
   ThreadGoalEditorPanel,
   ThreadGoalFooterTrigger,
   useThreadGoal,
 } from '../../features/conversations/components/ThreadGoalChip';
 import { ThreadTodoStrip } from '../../features/conversations/components/ThreadTodoStrip';
-import { ToolTimelineBlock } from '../../features/conversations/components/ToolTimelineBlock';
 import {
   evaluateComposerSend,
   getComposerBlockedSendFeedback,
@@ -53,19 +39,16 @@ import {
 } from '../../features/conversations/composerSendDecision';
 import { useMemorySyncActive } from '../../features/conversations/hooks/useBackgroundActivity';
 import {
-  type AgentBubblePosition,
-  buildAcceptedInlineCompletion,
-  formatRelativeTime,
-  formatResetTime,
-  getInlineCompletionSuffix,
-} from '../../features/conversations/utils/format';
-import {
   GENERAL_TAB_VALUE,
   isThreadVisibleInTab,
 } from '../../features/conversations/utils/threadFilter';
+import {
+  ChatMascotDock,
+  useChatMascotOptional,
+  useChatMascotSendBinding,
+} from '../../features/human/chatMascot';
 import MicComposer from '../../features/human/MicComposer';
 import { useFlowApprovalRequests } from '../../hooks/useFlowApprovalRequests';
-import { useStickToBottom } from '../../hooks/useStickToBottom';
 import { useUsageState } from '../../hooks/useUsageState';
 import {
   type Attachment,
@@ -76,9 +59,9 @@ import {
   parseMessageImages,
   validateAndReadFile,
 } from '../../lib/attachments';
+import { useRegisterAction } from '../../lib/commands/useRegisterAction';
 import { useT } from '../../lib/i18n/I18nContext';
-import { applyOpenRouterFreeModels } from '../../services/api/openrouterFreeModels';
-import { subagentApi } from '../../services/api/subagentApi';
+import type { TurnProcessTrail } from '../../providers/assistantUiMessages';
 import { threadApi } from '../../services/api/threadApi';
 import { fetchThreadTokenUsage } from '../../services/api/threadUsageApi';
 import {
@@ -101,11 +84,10 @@ import {
   clearRuntimeForThread,
   clearThreadSendPending,
   enqueueFollowup,
-  fetchAndHydrateTurnHistory,
   fetchAndHydrateTurnState,
   hydrateThreadUsage,
-  markSubagentCancelled,
   markThreadSendPending,
+  type ProcessingTranscriptItem,
   type QueuedFollowup,
   registerParallelRequest,
   setTaskBoardForThread,
@@ -117,87 +99,34 @@ import { selectSocketStatus } from '../../store/socketSelectors';
 import {
   addInferenceResponse,
   addMessageLocal,
+  clearCreateThreadError,
   clearThreadInferenceActive,
   createNewThread,
   deleteThread,
   loadThreadMessages,
   loadThreads,
   markThreadInferenceActive,
-  persistReaction,
   setSelectedThread,
   THREAD_NOT_FOUND_MESSAGE,
   updateThreadTitle,
 } from '../../store/threadSlice';
 import type { ConfirmationModal as ConfirmationModalType } from '../../types/intelligence';
 import type { ThreadMessage } from '../../types/thread';
-import { splitAgentMessageIntoBubbles } from '../../utils/agentMessageBubbles';
 import { chatThreadPath } from '../../utils/chatRoutes';
 import { CHAT_ATTACHMENTS_ENABLED } from '../../utils/config';
-import { BILLING_DASHBOARD_URL } from '../../utils/links';
-import { openUrl } from '../../utils/openUrl';
 import {
-  isTauri,
   notifyOverlaySttState,
-  openhumanAutocompleteAccept,
-  openhumanAutocompleteCurrent,
   openhumanVoiceStatus,
   openhumanVoiceTranscribeBytes,
   openhumanVoiceTts,
 } from '../../utils/tauriCommands';
-import { formatTimelineEntry } from '../../utils/toolTimelineFormatting';
+import { useChatSurfaceRegistration } from './hooks/useChatSurfaceRegistration';
 import { ThreadList } from './threadList/ThreadList';
-import { buildThreadTimeline } from './timeline/selectors';
 
 const CHAT_MODEL_HINT = 'hint:chat';
-/** Maximum trailing characters rendered in the live-streaming assistant
- *  preview bubble. The full response is revealed via `addInferenceResponse`
- *  on `chat_done` — this is purely a ticker-tape affordance to signal
- *  progress without jumping the scroll position as tokens arrive. */
-const STREAMING_PREVIEW_CHARS = 120;
 type InputMode = 'text' | 'voice';
 type ReplyMode = 'text' | 'voice';
-const AUTOCOMPLETE_POLL_DEBOUNCE_MS = 320;
-const AUTOCOMPLETE_MIN_CONTEXT_CHARS = 3;
 const debug = debugFactory('conversations');
-const SAFE_IMAGE_DATA_URI_RE =
-  /^data:(image\/(?:png|jpe?g|gif|webp|bmp));base64,([a-z0-9+/=\s]+)$/i;
-const EMPTY_IMAGE_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-
-function imageDataUriToObjectUrl(src: string): string | null {
-  const match = SAFE_IMAGE_DATA_URI_RE.exec(src);
-  if (!match) return null;
-  try {
-    const mime = match[1];
-    const binary = atob(match[2].replace(/\s/g, ''));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return URL.createObjectURL(new Blob([bytes], { type: mime }));
-  } catch {
-    return null;
-  }
-}
-
-function AttachmentImage({ dataUri }: { dataUri: string }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const nextUrl = imageDataUriToObjectUrl(dataUri);
-    setObjectUrl(nextUrl);
-    return () => {
-      if (nextUrl) URL.revokeObjectURL(nextUrl);
-    };
-  }, [dataUri]);
-
-  return (
-    <img
-      src={objectUrl ?? EMPTY_IMAGE_SRC}
-      alt=""
-      className="max-w-[200px] max-h-[200px] rounded-2xl object-cover"
-    />
-  );
-}
 
 interface ConversationsProps {
   /**
@@ -215,6 +144,19 @@ interface ConversationsProps {
    * Used by the mascot tab so the only interaction is voice.
    */
   composer?: 'text' | 'mic-cloud';
+  /**
+   * Voice-chat control rendered in the `mic-cloud` composer slot, above the mic
+   * button. Passed in as a node rather than imported here so this component
+   * keeps no dependency on the realtime voice stack (and the ElevenLabs SDK
+   * stays out of every consumer's module graph). Ignored outside `mic-cloud`.
+   */
+  voiceChatControl?: ReactNode;
+  /**
+   * Whether the `mic-cloud` slot renders the push-to-talk mic composer. Default
+   * `true` — set `false` alongside {@link ConversationsProps.voiceChatControl}
+   * to replace tap-and-speak with the realtime control rather than stack them.
+   */
+  showMicComposer?: boolean;
   /**
    * Project the thread list into the root sidebar's dynamic region even in the
    * `sidebar` variant. Page variant always projects it; this lets an embedded
@@ -235,9 +177,12 @@ const EMPTY_ACTIVE_THREADS: Record<string, true> = {};
 // the same identity when the slice field is absent (narrow test stores).
 const EMPTY_QUEUED_FOLLOWUPS: Record<string, QueuedFollowup[]> = {};
 
-// Stable empty reference for the per-thread past-turn timelines map, so the
-// derived value keeps the same identity when the slice field is absent.
-const EMPTY_TURN_TIMELINES: Record<string, ToolTimelineEntry[]> = {};
+// Stable empty live tool-timeline / processing-transcript for the selected
+// thread. A fresh `[]` here took a new identity every render, invalidating the
+// `backgroundProcesses` memo below on each pass and adding avoidable re-render
+// churn to the chat's hot path (#5162).
+const EMPTY_TOOL_TIMELINE: ToolTimelineEntry[] = [];
+const EMPTY_PROCESSING: ProcessingTranscriptItem[] = [];
 
 export function isComposerInteractionBlocked(args: {
   /** Whether the *currently selected* thread has an in-flight inference turn. */
@@ -283,9 +228,35 @@ export function formatThreadLoadError(err: unknown): string {
   return String(err);
 }
 
+/**
+ * What the error strip above the composer renders: this turn's send failure if
+ * there is one, otherwise a thread-create failure recorded by `threadSlice`.
+ *
+ * A create that blew the 30 s RPC budget used to have no surface at all — the
+ * shell's "New chat" / Home actions caught the rejection and dropped it, so the
+ * button just did nothing, and a call site that forgot to catch turned the same
+ * failure into `UnhandledRejection: … threads_create_new timed out after
+ * 30000ms` (#5156). Routing the slice-recorded failure through the existing
+ * banner gives every create path one visible outcome. Exported so the precedence
+ * rule is unit-testable without mounting the page.
+ */
+export function deriveChatErrorBanner(
+  sendError: ChatSendError | null,
+  createThreadError: string | null,
+  createThreadFailedMessage: string
+): ChatSendError | null {
+  if (sendError) return sendError;
+  if (createThreadError) {
+    return chatSendError('create_thread_failed', createThreadFailedMessage);
+  }
+  return null;
+}
+
 const Conversations = ({
   variant = 'page',
   composer: composerProp = 'text',
+  voiceChatControl = null,
+  showMicComposer = true,
   projectThreadList = false,
 }: ConversationsProps = {}) => {
   const [composerOverride, setComposerOverride] = useState<'mic-cloud' | 'text' | null>(null);
@@ -319,19 +290,46 @@ const Conversations = ({
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  // Sub-agent whose full live transcript is open in the drawer, keyed by the
-  // owning timeline row's spawn `taskId`. Null when the drawer is closed.
-  const [openSubagentTaskId, setOpenSubagentTaskId] = useState<string | null>(null);
-  // Detached background sub-agents (spawn_async_subagent) panel visibility.
+  // Imperative handle onto the transcript's own background-processes panel
+  // (its state now lives inside `ChatThreadView`) so the header badge below
+  // can still open it without lifting that state back up.
+  const threadViewRef = useRef<ChatThreadViewHandle>(null);
+  // Disclosure state for the three transcript-local overlays on the
+  // assistant-ui surface. `ChatThreadView` owns an identical trio for the
+  // legacy voice panel, but it is not mounted on `/chat` any more, so the
+  // panels it hosts (background processes, the sub-agent drawer, the Agent
+  // Process Source panel) had no host at all there.
   const [showBackgroundProcesses, setShowBackgroundProcesses] = useState(false);
-  // Whether the consolidated "Agent Process Source" panel is open (the full
-  // agent-run timeline + visited sources for the current thread).
+  const [openSubagentTaskId, setOpenSubagentTaskId] = useState<string | null>(null);
   const [showProcessSource, setShowProcessSource] = useState(false);
-  // When the user clicks a step's "View details →", the Agent Process Source
-  // panel is scoped to that single step. `null` = the whole-run overview
-  // (opened by the bottom "View full agent process Source" link).
-  const [scopedDetailEntryId, setScopedDetailEntryId] = useState<string | null>(null);
+  // One settled turn's process trail, opened from that turn's `TurnFooter`.
+  // Non-null takes over the process-source panel and scopes it to that turn —
+  // the palette command below still opens the whole-thread live view, which is
+  // the only view it ever had.
+  const [turnProcessTrail, setTurnProcessTrail] = useState<TurnProcessTrail | null>(null);
+  // The Agent Process Source panel's only trigger is the "View full agent
+  // process source →" link at the foot of `ToolTimelineBlock` — a legacy-panel
+  // component. assistant-ui renders its tool calls as inline cards and has no
+  // equivalent block, so the whole-run view (and the visited-source list, which
+  // exists nowhere else) is reached from the command palette instead.
+  //
+  // The composer check is not cosmetic: `showProcessSource` only drives
+  // `TranscriptOverlays`, which mounts inside `assistantUiMainPanel` alone, and
+  // the panel choice below is an either/or (`composer === 'mic-cloud' ?
+  // legacyMainPanel : assistantUiMainPanel`). In mic-cloud voice mode the state
+  // this sets has no host, so without the guard the palette would offer a
+  // command that silently does nothing. `enabled` is re-read through a ref on
+  // every render (see `useRegisterAction`), so switching modes updates it
+  // without re-registering.
+  useRegisterAction({
+    id: 'chat.agentProcessSource',
+    label: 'Open agent process source',
+    labelKey: 'conversations.agentTaskInsights.viewProcessSource',
+    group: 'Chat',
+    handler: () => setShowProcessSource(true),
+    enabled: () => selectedThreadId !== null && composer !== 'mic-cloud',
+    keywords: ['agent', 'process', 'source', 'timeline', 'run'],
+  });
   const [inputMode, setInputMode] = useState<InputMode>('text');
   const [replyMode, setReplyMode] = useState<ReplyMode>('text');
   const [isRecording, setIsRecording] = useState(false);
@@ -349,12 +347,29 @@ const Conversations = ({
   // General/Subconscious/Tasks chips were removed. Subconscious reflections and
   // task/worker threads have dedicated surfaces (Intelligence, Tasks board).
   const selectedLabel = GENERAL_TAB_VALUE;
-  const [threadSearch, setThreadSearch] = useState('');
-  const [inlineSuggestionValue, setInlineSuggestionValue] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
+  // Recorded by the slice for *every* create path (#5156) — including the shell's
+  // "New chat" button and the home-nav shortcut, which have no UI of their own —
+  // so a failed create always has somewhere to show up.
+  // Optional-chain + default, same as `activeThreadIds` below: narrow test
+  // stores predate this field.
+  const createThreadError = useAppSelector(state => state.thread.createThreadError ?? null);
   const [attachError, setAttachError] = useState<ChatSendError | null>(null);
   const [sendAdvisory, setSendAdvisory] = useState<string | null>(null);
-  const [openRouterStatus, setOpenRouterStatus] = useState<'idle' | 'saving' | 'error'>('idle');
+  // Refs mirroring error/advisory state for effects that read them without
+  // depending on them, preventing the classic "effect→setState→re-fire" cascade
+  // that contributes to "Maximum update depth exceeded" (TAURI-REACT-2G).
+  const sendErrorRef = useRef(sendError);
+  sendErrorRef.current = sendError;
+  const createThreadErrorRef = useRef(createThreadError);
+  createThreadErrorRef.current = createThreadError;
+  const displayedSendError = deriveChatErrorBanner(
+    sendError,
+    createThreadError,
+    t('chat.createThreadFailed')
+  );
+  const sendAdvisoryRef = useRef(sendAdvisory);
+  sendAdvisoryRef.current = sendAdvisory;
   // Threads whose send is mid-flight (dispatched locally, backend not yet
   // accepted). A Set so concurrent sends to different threads each track their
   // own pending state instead of clobbering a single slot.
@@ -396,7 +411,9 @@ const Conversations = ({
   // behaviour stays intact.
   const uiLocale = useAppSelector(state => state.locale?.current ?? 'en');
   const toolTimelineByThread = useAppSelector(state => state.chatRuntime.toolTimelineByThread);
-  const turnTimelinesByThread = useAppSelector(state => state.chatRuntime.turnTimelinesByThread);
+  const interruptedAssistantByThread = useAppSelector(
+    state => state.chatRuntime.interruptedAssistantByThread
+  );
   const processingByThread = useAppSelector(state => state.chatRuntime.processingByThread);
   const taskBoardByThread = useAppSelector(state => state.chatRuntime.taskBoardByThread);
   const inferenceStatusByThread = useAppSelector(
@@ -427,17 +444,6 @@ const Conversations = ({
   const inferenceHeartbeatByThread = useAppSelector(
     state => state.chatRuntime.inferenceHeartbeatByThread
   );
-  const parallelStreamsByThread = useAppSelector(
-    state => state.chatRuntime.parallelStreamsByThread
-  );
-  const agentMessageViewMode = useAppSelector(
-    state => state.theme?.agentMessageViewMode ?? 'bubbles'
-  );
-  // When ON, the verbose per-agent "Agentic task insights" timeline is hidden
-  // from chat; a compact blinking "Processing" link (and the existing message
-  // bubble loading) stand in for it, with the full run one click away in the
-  // Agent Process Source side panel. See themeSlice.hideAgentInsights.
-  const hideAgentInsights = useAppSelector(state => state.theme?.hideAgentInsights ?? false);
   const inferenceTurnLifecycleByThread = useAppSelector(
     state => state.chatRuntime.inferenceTurnLifecycleByThread
   );
@@ -445,7 +451,6 @@ const Conversations = ({
     state => state.chatRuntime.queuedFollowupsByThread ?? EMPTY_QUEUED_FOLLOWUPS
   );
   const rustChat = useRustChat();
-  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   // Inline thread-title rename in the sidebar thread list — keyed by the
   // thread id being edited (null = none) so any row can rename in place.
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
@@ -454,15 +459,14 @@ const Conversations = ({
   const ignoreNextTitleBlurRef = useRef(false);
 
   const {
-    teamUsage,
     isAtLimit,
-    isNearLimit,
-    isFreeTier,
-    shouldShowBudgetCompletedMessage,
-    usagePct,
     // #3767: gate on the tier for the selected chat mode — Quick runs on the
     // `chat` tier, Reasoning on the `reasoning` tier — so the credits prompt
     // reflects the mode the user actually picked.
+    //
+    // Only `isAtLimit` is read here now: the near-limit and spent-budget
+    // banners this file rendered are notices in `NoticeCenter`, which reads
+    // the same hook once for the whole app.
   } = useUsageState(selectedAgentProfileId === 'reasoning' ? 'reasoning' : 'chat');
   const [deleteModal, setDeleteModal] = useState<ConfirmationModalType>({
     isOpen: false,
@@ -472,6 +476,15 @@ const Conversations = ({
     onCancel: () => {},
   });
   const [resolvedModel, setResolvedModel] = useState<string | null>(null);
+  // A picker choice belongs to this composer session. It overrides the active
+  // profile route for subsequent sends without mutating the shared profile.
+  const [composerModelOverride, setComposerModelOverride] = useState<string | null>(null);
+  // `undefined` means no explicit picker selection, so usage-reported context
+  // remains authoritative. `null` means the selected model did not report a
+  // window, and the meter deliberately shows an unknown limit.
+  const [composerModelContextWindow, setComposerModelContextWindow] = useState<
+    number | null | undefined
+  >(undefined);
   // Whether the resolved model for the active profile accepts image input.
   // Managed tiers do; custom/BYOK models only when the user flagged them. Gates
   // the composer's image-attachment affordance (docs flow regardless). Resolved
@@ -523,6 +536,11 @@ const Conversations = ({
     };
   }, [agentProfiles, selectedAgentProfileId]);
 
+  // Display name for share cards (#5006): the active agent profile, or the
+  // product name when no named profile is selected.
+  const shareAgentName =
+    agentProfiles.find(p => p.id === selectedAgentProfileId)?.name ?? 'OpenHuman';
+
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const composerFooterRef = useRef<HTMLDivElement>(null);
   const isComposingTextRef = useRef(false);
@@ -540,14 +558,19 @@ const Conversations = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const replyAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastSpokenMessageIdRef = useRef<string | null>(null);
-  const autocompleteDebounceRef = useRef<number | null>(null);
-  const autocompleteRequestSeqRef = useRef(0);
   // Per-thread silence timers. Each in-flight turn gets its own 120s safety
   // timer keyed by thread id, so concurrent turns on different threads don't
   // share (and clobber) a single timeout.
   const sendingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Ref so the mount-time dictation event handler can call the latest send fn.
   const handleSendMessageRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  // Refs the assistant-ui chat-surface registration binds through. Both target
+  // functions are re-created every render; the registration must NOT be, or the
+  // registry slot would be rewritten on every keystroke and could be dropped
+  // mid-turn. So the effect below depends only on the thread id and reads the
+  // latest implementation out of these refs at call time.
+  const handleComposerSendRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  const handleStopGenerationRef = useRef<(() => void) | null>(null);
   // Per-thread "turn signature": the last-seen tuple of progress-slice
   // references [inferenceStatus, streamingAssistant, toolTimeline, taskBoard]
   // for each thread that owns a live silence timer. Redux Toolkit (immer)
@@ -572,25 +595,19 @@ const Conversations = ({
     typeof navigator.mediaDevices.getUserMedia === 'function';
 
   const handleCreateNewThread = async () => {
-    const thread = await dispatch(createNewThread()).unwrap();
-    dispatch(setSelectedThread(thread.id));
-    void dispatch(loadThreadMessages(thread.id));
-    if (shouldSyncChatRoute) {
-      debug('[chat][route] created thread thread=%s navigate=true', thread.id);
-      navigate(chatThreadPath(thread.id));
-    } else {
-      debug('[chat][route] created thread thread=%s navigate=false', thread.id);
-    }
-  };
-
-  const handleUseOpenRouterFree = async () => {
-    setOpenRouterStatus('saving');
     try {
-      await applyOpenRouterFreeModels();
-      setOpenRouterStatus('idle');
-    } catch (err) {
-      console.warn('[chat] applyOpenRouterFreeModels failed', err);
-      setOpenRouterStatus('error');
+      const thread = await dispatch(createNewThread()).unwrap();
+      dispatch(setSelectedThread(thread.id));
+      void dispatch(loadThreadMessages(thread.id));
+      if (shouldSyncChatRoute) {
+        debug('[chat][route] created thread thread=%s navigate=true', thread.id);
+        navigate(chatThreadPath(thread.id));
+      } else {
+        debug('[chat][route] created thread thread=%s navigate=false', thread.id);
+      }
+    } catch (error) {
+      debug('[chat] create thread failed: %O', error);
+      setSendError(chatSendError('create_thread_failed', t('chat.createThreadFailed')));
     }
   };
 
@@ -751,8 +768,6 @@ const Conversations = ({
     if (selectedThreadId) {
       void dispatch(loadThreadMessages(selectedThreadId));
       void dispatch(fetchAndHydrateTurnState(selectedThreadId));
-      // Per-turn history: each past answer's own process trail (Phase 5).
-      void dispatch(fetchAndHydrateTurnHistory(selectedThreadId));
       void threadApi
         .getTaskBoard(selectedThreadId)
         .then(board => {
@@ -773,12 +788,6 @@ const Conversations = ({
         debug('agent profiles load failed: %o', error);
       });
   }, [dispatch]);
-
-  const { containerRef: messagesContainerRef, endRef: messagesEndRef } = useStickToBottom(
-    messages,
-    selectedThreadId,
-    location.pathname
-  );
 
   useEffect(() => {
     const onDictationInsert = (event: Event) => {
@@ -813,13 +822,22 @@ const Conversations = ({
   }, []);
 
   useEffect(() => {
-    if (sendError && inputValue.length > 0) {
+    if (sendErrorRef.current && inputValue.length > 0) {
       setSendError(null);
     }
-    if (sendAdvisory && inputValue.length > 0) {
+    // The store-recorded create failure (#5156) dismisses on the same signal:
+    // the user is composing, so they have seen it.
+    if (createThreadErrorRef.current && inputValue.length > 0) {
+      dispatch(clearCreateThreadError());
+    }
+    if (sendAdvisoryRef.current && inputValue.length > 0) {
       setSendAdvisory(null);
     }
-  }, [inputValue, sendAdvisory, sendError]);
+    // Reads sendError/sendAdvisory through refs to avoid re-firing when they
+    // are cleared — which would cascade into extra render cycles and contribute
+    // to "Maximum update depth exceeded" (TAURI-REACT-2G).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputValue]);
 
   const clearSilenceTimer = useCallback((threadId: string) => {
     const existing = sendingTimeoutsRef.current.get(threadId);
@@ -908,45 +926,6 @@ const Conversations = ({
   ]);
 
   useEffect(() => {
-    if (
-      !isTauri() ||
-      !rustChat ||
-      inputMode !== 'text' ||
-      selectedThreadActive ||
-      inputValue.trim().length < AUTOCOMPLETE_MIN_CONTEXT_CHARS
-    ) {
-      setInlineSuggestionValue('');
-      return;
-    }
-
-    if (autocompleteDebounceRef.current !== null) {
-      window.clearTimeout(autocompleteDebounceRef.current);
-    }
-
-    autocompleteDebounceRef.current = window.setTimeout(() => {
-      const requestSeq = autocompleteRequestSeqRef.current + 1;
-      autocompleteRequestSeqRef.current = requestSeq;
-
-      void openhumanAutocompleteCurrent({ context: inputValue })
-        .then(response => {
-          if (autocompleteRequestSeqRef.current !== requestSeq) return;
-          setInlineSuggestionValue(response.result.suggestion?.value ?? '');
-        })
-        .catch(() => {
-          if (autocompleteRequestSeqRef.current !== requestSeq) return;
-          setInlineSuggestionValue('');
-        });
-    }, AUTOCOMPLETE_POLL_DEBOUNCE_MS);
-
-    return () => {
-      if (autocompleteDebounceRef.current !== null) {
-        window.clearTimeout(autocompleteDebounceRef.current);
-        autocompleteDebounceRef.current = null;
-      }
-    };
-  }, [selectedThreadActive, inputValue, inputMode, rustChat]);
-
-  useEffect(() => {
     return () => {
       mediaRecorderRef.current?.stop();
       mediaStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -979,7 +958,8 @@ const Conversations = ({
         if (cancelled) return;
         if (!status.stt_available) {
           setVoiceStatus(
-            'Voice input needs a speech model to work. Go to Settings > Local AI Models to set it up.'
+            status.stt_error ??
+              'Voice input needs a working speech-to-text engine. Pick one in Settings > Voice.'
           );
         } else {
           setVoiceStatus('Ready — tap "Start Talking" to record.');
@@ -1113,15 +1093,11 @@ const Conversations = ({
     if (!sendingThreadId) return;
     pendingSendsRef.current.add(sendingThreadId);
     addPendingSendingThread(sendingThreadId);
-    // If the user just flipped the Super Context toggle, make sure that config
-    // write has landed before the core builds this thread's session (which
-    // reads `context.super_context_enabled`). Done AFTER the duplicate-send
-    // guard above is set so this await can't open a check→add race for rapid
-    // repeat clicks. Resolves instantly when nothing is pending.
-    await whenSuperContextWriteSettled();
     const pendingAttachments = attachments.slice();
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(trimmed, pendingAttachments);
     const userMessage: ThreadMessage = {
       id: `msg_${globalThis.crypto.randomUUID()}`,
@@ -1248,7 +1224,9 @@ const Conversations = ({
 
     const pendingAttachments = attachments.slice();
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(normalized, pendingAttachments);
     const userMessage: ThreadMessage = {
       id: `msg_${globalThis.crypto.randomUUID()}`,
@@ -1308,6 +1286,7 @@ const Conversations = ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSendError(chatSendError('cloud_send_failed', msg));
+      setInputValue(normalized);
     }
   };
 
@@ -1327,7 +1306,9 @@ const Conversations = ({
     if (!normalized && pendingAttachments.length === 0) return;
 
     const modelOverride =
-      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
+      composerModelOverride ??
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
+      CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(normalized, pendingAttachments);
     // Build the full user message exactly like a normal send (content +
     // attachment metadata) so the follow-up persists identically when it is
@@ -1390,6 +1371,10 @@ const Conversations = ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSendError(chatSendError('cloud_send_failed', msg));
+      // assistant-ui clears its composer after `onNew` resolves. This path
+      // handles the transport error locally, so restore the rejected follow-up
+      // explicitly instead of letting the user's draft disappear.
+      setInputValue(normalized);
     }
   };
 
@@ -1412,6 +1397,8 @@ const Conversations = ({
   // while the selected thread is streaming, otherwise to a normal send.
   const handleComposerSend = (text?: string): Promise<void> =>
     selectedThreadActive ? handleSendFollowup(text) : handleSendMessage(text);
+
+  handleComposerSendRef.current = handleComposerSend;
 
   // Cancel the in-flight turn for the selected thread. Shared by the in-composer
   // Stop button (text mode), the ESC-to-interrupt shortcut, and the footer
@@ -1472,6 +1459,24 @@ const Conversations = ({
     });
   }, [selectedThreadId, streamingAssistantByThread, dispatch]);
 
+  handleStopGenerationRef.current = handleStopGeneration;
+
+  // Claim the selected thread's write path for assistant-ui's runtime, so its
+  // `onNew`/`onCancel` forward here instead of reimplementing ~200 lines of
+  // send orchestration (see `providers/chatSurfaceHandlers`).
+  //
+  // `send` routes through `handleComposerSend` — the SAME function the Send
+  // button and plain Enter use — so the streaming-vs-idle decision (queued
+  // follow-up vs. fresh turn) is made in exactly one place, and
+  // `handleSendMessage`'s `evaluateComposerSend` block/allow half runs
+  // unchanged. Re-deriving either here is the drift this seam exists to stop.
+  useChatSurfaceRegistration(
+    selectedThreadId,
+    handleComposerSendRef,
+    handleStopGenerationRef,
+    true
+  );
+
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
     mediaRecorderRef.current = null;
@@ -1487,7 +1492,7 @@ const Conversations = ({
     }
 
     setIsTranscribing(true);
-    setVoiceStatus('Transcribing with Whisper…');
+    setVoiceStatus('Transcribing…');
     try {
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       const audioBytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
@@ -1516,14 +1521,14 @@ const Conversations = ({
       notifyOverlaySttState('error');
       const message = err instanceof Error ? err.message : String(err);
       const isSetupIssue =
-        message.includes('whisper') ||
+        message.includes('no voice provider') ||
         message.includes('binary not found') ||
-        message.includes('STT model');
+        message.includes('sign in first');
       setSendError(
         chatSendError(
           isSetupIssue ? 'stt_not_ready' : 'voice_transcription',
           isSetupIssue
-            ? 'Voice input needs a speech model. Go to Settings to download one.'
+            ? 'Voice input needs a working speech-to-text engine. Set one up in Settings > Voice.'
             : `Voice transcription failed: ${message}`
         )
       );
@@ -1642,6 +1647,37 @@ const Conversations = ({
     };
   }, [messages, replyMode, rustChat]);
 
+  const handleComposerEscape = useCallback(() => {
+    if (!selectedThreadActive) return;
+    const composerEmpty = inputValue.trim().length === 0;
+    debug(
+      '[chat] esc interrupt: thread=%s composerEmpty=%s',
+      selectedThreadId ?? 'none',
+      composerEmpty
+    );
+    handleStopGeneration();
+    if (composerEmpty) {
+      // Restore the last *visible* user prompt (hidden system/injected
+      // messages are excluded here to match how the transcript is rendered).
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find(m => m.sender === 'user' && !m.extraMetadata?.hidden);
+      const restored = lastUserMessage
+        ? parseMessageImages(lastUserMessage.content ?? '').text
+        : '';
+      if (restored.length > 0) {
+        debug('[chat] esc interrupt: restored prompt len=%d', restored.length);
+        setInputValue(restored);
+        window.requestAnimationFrame(() => {
+          const ta = textInputRef.current;
+          if (!ta) return;
+          ta.focus();
+          ta.setSelectionRange(restored.length, restored.length);
+        });
+      }
+    }
+  }, [handleStopGeneration, inputValue, messages, selectedThreadActive, selectedThreadId]);
+
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isComposingTextRef.current || isImeCompositionKeyEvent(e)) return;
 
@@ -1653,73 +1689,7 @@ const Conversations = ({
     // default behaviour (blur / no-op).
     if (e.key === 'Escape' && selectedThreadActive) {
       e.preventDefault();
-      const composerEmpty = inputValue.trim().length === 0;
-      debug(
-        '[chat] esc interrupt: thread=%s composerEmpty=%s',
-        selectedThreadId ?? 'none',
-        composerEmpty
-      );
-      handleStopGeneration();
-      if (composerEmpty) {
-        // Restore the last *visible* user prompt (hidden system/injected
-        // messages are excluded here to match how the transcript is rendered).
-        const lastUserMessage = [...messages]
-          .reverse()
-          .find(m => m.sender === 'user' && !m.extraMetadata?.hidden);
-        const restored = lastUserMessage
-          ? parseMessageImages(lastUserMessage.content ?? '').text
-          : '';
-        if (restored.length > 0) {
-          debug('[chat] esc interrupt: restored prompt len=%d', restored.length);
-          setInputValue(restored);
-          // Drop any stale inline ghost-completion so it doesn't reappear over
-          // the freshly restored prompt.
-          setInlineSuggestionValue('');
-          window.requestAnimationFrame(() => {
-            const ta = textInputRef.current;
-            if (!ta) return;
-            ta.focus();
-            ta.setSelectionRange(restored.length, restored.length);
-          });
-        }
-      }
-      return;
-    }
-
-    const inlineSuffix = getInlineCompletionSuffix(inputValue, inlineSuggestionValue);
-    const textarea = e.currentTarget;
-    const caretAtEnd =
-      textarea.selectionStart === inputValue.length && textarea.selectionEnd === inputValue.length;
-    const tryAcceptInlineSuggestion = () => {
-      const nextValue = buildAcceptedInlineCompletion(inputValue, inlineSuffix);
-      if (!nextValue || nextValue === inputValue) return false;
-      setInputValue(nextValue);
-      setInlineSuggestionValue('');
-      if (isTauri()) {
-        void openhumanAutocompleteAccept({ suggestion: nextValue, skip_apply: true }).catch(() => {
-          // Keep local UX smooth even if accept RPC fails.
-        });
-      }
-      return true;
-    };
-
-    if (
-      e.key === 'Tab' &&
-      !e.shiftKey &&
-      !e.altKey &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      inlineSuffix.length > 0 &&
-      caretAtEnd
-    ) {
-      e.preventDefault();
-      tryAcceptInlineSuggestion();
-      return;
-    }
-
-    if (e.key === 'ArrowRight' && inlineSuffix.length > 0 && caretAtEnd) {
-      e.preventDefault();
-      tryAcceptInlineSuggestion();
+      handleComposerEscape();
       return;
     }
 
@@ -1747,37 +1717,38 @@ const Conversations = ({
     }
   };
 
-  const handleCopyMessage = async (messageId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessageId(messageId);
-      setTimeout(() => setCopiedMessageId(null), 1500);
-    } catch {
-      // Clipboard API not available — silently fail
-    }
-  };
-
+  // NOTE: the transcript-local derivations that used to live here (copy,
+  // sub-agent drawer, past-turn timelines, agent insights, streaming preview,
+  // etc.) moved into `ChatThreadView` (`./components/ChatThreadView.tsx`),
+  // which now owns the message-list rendering keyed by `threadId` instead of
+  // the global `selectedThreadId`. What remains here is what the header badge
+  // and the composer footer still need directly.
   const selectedThreadToolTimeline = selectedThreadId
-    ? (toolTimelineByThread[selectedThreadId] ?? [])
-    : [];
+    ? (toolTimelineByThread[selectedThreadId] ?? EMPTY_TOOL_TIMELINE)
+    : EMPTY_TOOL_TIMELINE;
   const selectedThreadProcessing = selectedThreadId
-    ? (processingByThread[selectedThreadId] ?? [])
-    : [];
+    ? (processingByThread[selectedThreadId] ?? EMPTY_PROCESSING)
+    : EMPTY_PROCESSING;
   // Detached background sub-agents (mode === 'async') spawned in this thread.
+  // Kept here (in addition to ChatThreadView's own copy) because the header's
+  // background-processes badge needs the count/status without reaching into
+  // the transcript component.
   const backgroundProcesses = useMemo(
     () => selectBackgroundProcesses(selectedThreadToolTimeline),
     [selectedThreadToolTimeline]
   );
   const runningBackgroundCount = backgroundProcesses.filter(p => p.status === 'running').length;
+  // `TranscriptOverlays` resolves the open delegation out of this same live
+  // timeline and renders nothing when the id is absent, so an inline card must
+  // not offer "View full processing" for a delegation that would open an empty
+  // sheet -- a delegation replayed from the settled core transcript, say.
+  const canOpenSubagentDrawer = useCallback(
+    (taskId: string) => selectedThreadToolTimeline.some(entry => entry.subagent?.taskId === taskId),
+    [selectedThreadToolTimeline]
+  );
   // Poll-free live signal: lights the badge when memories are syncing even if
   // no sub-agent is running and the panel is closed.
   const memorySyncActive = useMemorySyncActive();
-  // Re-derive the open subagent's live activity (and its row status) from the
-  // timeline on every render so the drawer streams token-by-token as
-  // subagent_text_delta / subagent_thinking_delta events land in Redux.
-  const openSubagentEntry = openSubagentTaskId
-    ? selectedThreadToolTimeline.find(entry => entry.subagent?.taskId === openSubagentTaskId)
-    : undefined;
   const selectedTaskBoard = selectedThreadId ? (taskBoardByThread[selectedThreadId] ?? null) : null;
   const hasTaskBoard = Boolean(selectedTaskBoard?.cards.length);
   // A plan the orchestrator parked for interactive review (request_plan_review
@@ -1795,72 +1766,15 @@ const Conversations = ({
     : null;
   const visibleMessages = messages.filter(msg => !msg.extraMetadata?.hidden);
   const hasVisibleMessages = visibleMessages.length > 0;
-  const latestVisibleMessage = visibleMessages[visibleMessages.length - 1] ?? null;
-  const latestVisibleAgentMessage = [...visibleMessages]
-    .reverse()
-    .find(msg => msg.sender === 'agent');
-  // Message list sourced from the unified timeline projection — the single
-  // source of render order (see `docs/plans/conversations-timeline-refactor.md`
-  // Phase 2). With the streaming/tool inputs omitted the projection yields
-  // exactly the visible messages in order; the tool-timeline block and streaming
-  // previews stay anchored inline below, so the rendered DOM is unchanged. This
-  // routes the live render loop through the projection ahead of the per-turn
-  // grouping in Phase 5.
-  const timelineMessages = useMemo(
-    () =>
-      buildThreadTimeline({
-        threadId: selectedThreadId ?? '',
-        messages: visibleMessages,
-        toolTimeline: [],
-        streaming: null,
-        parallelStreams: [],
-        hideAgentInsights: false,
-      })
-        .map(item => ('message' in item ? item.message : null))
-        .filter((message): message is ThreadMessage => message !== null),
-    [selectedThreadId, visibleMessages]
-  );
-  // Past-turn tool timelines (Phase 5): map the first assistant message of each
-  // older settled turn to that turn's timeline, so each past answer renders its
-  // own collapsed process trail above it. The latest turn is excluded upstream
-  // (it renders as the live "agent insights" anchor), so there is no double
-  // render. Empty for legacy messages without a `requestId`.
-  const selectedThreadTurnTimelines = selectedThreadId
-    ? (turnTimelinesByThread[selectedThreadId] ?? EMPTY_TURN_TIMELINES)
-    : EMPTY_TURN_TIMELINES;
-  const pastTurnAnchors = useMemo(() => {
-    const anchors: Record<string, ToolTimelineEntry[]> = {};
-    const seen = new Set<string>();
-    for (const msg of timelineMessages) {
-      if (msg.sender !== 'agent') continue;
-      const requestId = msg.extraMetadata?.requestId;
-      if (typeof requestId !== 'string' || seen.has(requestId)) continue;
-      const entries = selectedThreadTurnTimelines[requestId];
-      if (entries && entries.length > 0) {
-        anchors[msg.id] = entries;
-        seen.add(requestId);
-      }
-    }
-    return anchors;
-  }, [timelineMessages, selectedThreadTurnTimelines]);
-  const activeSubagentTimelineEntry = selectedThreadToolTimeline.find(
-    entry => entry.status === 'running' && entry.name.startsWith('subagent:')
-  );
-  const activeToolTimelineEntry = [...selectedThreadToolTimeline]
-    .reverse()
-    .find(entry => entry.status === 'running' && !entry.name.startsWith('subagent:'));
-  const selectedInferenceStatus = selectedThreadId
-    ? (inferenceStatusByThread[selectedThreadId] ?? null)
-    : null;
   const selectedStreamingAssistant = selectedThreadId
     ? (streamingAssistantByThread[selectedThreadId] ?? null)
     : null;
-  // Live streams for concurrent parallel (forked) turns on the selected thread,
-  // rendered as separate interleaved branch bubbles.
-  const selectedParallelStreams = selectedThreadId
-    ? Object.values(parallelStreamsByThread[selectedThreadId] ?? {})
-    : [];
-  const inlineCompletionSuffix = getInlineCompletionSuffix(inputValue, inlineSuggestionValue);
+  // The partial reply an interrupted turn left behind (restore-fidelity fix 2):
+  // surfaced as a settled, marked-interrupted bubble on restore so a turn that
+  // crashed mid-answer keeps its visible work instead of rendering blank.
+  const selectedInterruptedAssistant = selectedThreadId
+    ? (interruptedAssistantByThread[selectedThreadId] ?? null)
+    : null;
   // Blocks all composer interaction while a turn is in-flight or Rust chat is unavailable.
   // isSending: the *selected* thread is in-flight (drives selected-thread UI only).
   const composerInteractionBlocked = isComposerInteractionBlocked({
@@ -1909,8 +1823,28 @@ const Conversations = ({
       inferenceTurnLifecycleByThread[selectedThreadId] === 'started' ||
       inferenceTurnLifecycleByThread[selectedThreadId] === 'streaming')
   );
-  const shouldRenderTimelineBeforeLatestAgentMessage =
-    selectedThreadToolTimeline.length > 0 && !isSending && Boolean(latestVisibleAgentMessage);
+
+  // ── Chat mascot ────────────────────────────────────────────────────────────
+  // `null` outside the merged chat surface (embedded sidebars, iOS, the Flows
+  // copilot), where no mascot exists and the dock is simply not rendered.
+  const chatMascot = useChatMascotOptional();
+  // Stable callbacks: the mascot stage subscribes to these, and
+  // `handleSendMessage` is re-created every render, so publishing it directly
+  // would wake the stage on every keystroke. The ref is already maintained for
+  // the dictation handler and always holds the latest send fn.
+  const mascotSubmit = useCallback((text: string) => handleSendMessageRef.current?.(text), []);
+  const mascotError = useCallback((message: string) => {
+    setSendError(chatSendError('voice_transcription', message));
+  }, []);
+  useChatMascotSendBinding(chatMascot, {
+    submit: mascotSubmit,
+    onError: mascotError,
+    // Same guard as the mic-cloud composer below: without `!selectedThreadId` a
+    // transcript spoken before a thread exists hits handleSendMessage's early
+    // return and is silently dropped — the user spoke into the void.
+    disabled: composerInteractionBlocked || isSending || !selectedThreadId,
+  });
+  const mascotDock = chatMascot ? <ChatMascotDock /> : undefined;
 
   // Live agent activity that must stay visible even before the thread's
   // message history has loaded: an in-flight turn, recorded tool steps, a
@@ -1922,125 +1856,10 @@ const Conversations = ({
     isSending ||
     selectedThreadToolTimeline.length > 0 ||
     selectedThreadProcessing.length > 0 ||
-    Boolean(selectedStreamingAssistant);
-
-  // Anchor the "Agentic task insights" panel right after the latest turn's user
-  // message — processing happens *before* the answer, so it reads above the
-  // result (for both the live streaming preview and the settled agent bubbles).
-  // Anchoring on the user message (not the first/last agent message) avoids the
-  // multi-agent-message split from issue #3717.
-  const lastUserMessageId = [...visibleMessages].reverse().find(m => m.sender === 'user')?.id;
-
-  // The insights panel (timeline + "View full agent process Source" opener),
-  // built once and rendered inline above the latest answer. `null` when there
-  // are no recorded steps for the thread.
-  // Open the Agent Process Source panel scoped to one step, or to the whole run.
-  const openScopedDetail = (entry: ToolTimelineEntry) => {
-    setScopedDetailEntryId(entry.id);
-    setShowProcessSource(true);
-  };
-  const openWholeRunSource = () => {
-    setScopedDetailEntryId(null);
-    setShowProcessSource(true);
-  };
-  const scopedDetailEntry =
-    scopedDetailEntryId != null
-      ? selectedThreadToolTimeline.find(e => e.id === scopedDetailEntryId)
-      : undefined;
-
-  const agentInsights =
-    // Render when there are tool steps OR a persisted reasoning/narration
-    // transcript. A tool-less turn (the agent only thinks/narrates, no tool
-    // calls) has an empty timeline but still persists thoughts — without the
-    // transcript guard those thoughts would be unreachable.
-    selectedThreadToolTimeline.length > 0 || selectedThreadProcessing.length > 0 ? (
-      <>
-        {hideAgentInsights ? (
-          // "Hide agent thinking" is ON: suppress the verbose step rows.
-          // While in flight, surface a compact blinking "Processing" link; once
-          // settled the "View full agent process Source" opener below takes
-          // over (so only render this fallback when that opener won't).
-          isSending ? (
-            <button
-              type="button"
-              onClick={openWholeRunSource}
-              data-testid="agent-processing-link"
-              className="flex items-center gap-1.5 px-1 py-1 text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-300">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
-              <span>{t('conversations.agentTaskInsights.processing')} →</span>
-            </button>
-          ) : !shouldRenderTimelineBeforeLatestAgentMessage ? (
-            <button
-              type="button"
-              onClick={openWholeRunSource}
-              data-testid="agent-process-source-fallback"
-              className="px-1 text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-300">
-              {t('conversations.agentTaskInsights.viewProcessSource')} →
-            </button>
-          ) : null
-        ) : selectedThreadToolTimeline.length > 0 ? (
-          <ToolTimelineBlock
-            entries={selectedThreadToolTimeline}
-            onViewDetails={openScopedDetail}
-            onViewWholeRun={openWholeRunSource}
-            // Reuse `isSending` rather than a raw `in` membership check on
-            // `inferenceTurnLifecycleByThread`: that map also carries
-            // `'interrupted'` entries (a turn that crashed mid-flight in a
-            // PRIOR core process, written by `hydrateRuntimeFromSnapshot` on
-            // cold boot) which have no live driver and must NOT read as an
-            // active turn, or stale disclosure state leaks into a later
-            // retry. `isSending` already excludes it (only `'started'` /
-            // `'streaming'`, same as this component's own live-turn checks).
-            turnActive={isSending}
-          />
-        ) : (
-          // Transcript-only turn: reasoning/narration was streamed but no tool
-          // calls were made, so the inline step timeline is empty. The thoughts
-          // are still persisted — surface a standalone opener (matching the
-          // settled insights header) so the full-run panel stays reachable.
-          <button
-            type="button"
-            onClick={openWholeRunSource}
-            data-testid="view-process-source"
-            className="flex items-center gap-1.5 px-1 py-1 text-left">
-            <span className="text-[13px] font-medium text-content-muted">
-              {t('conversations.agentTaskInsights.title')}
-            </span>
-            <span className="text-[13px] font-medium text-primary-600 dark:text-primary-300">
-              →
-            </span>
-          </button>
-        )}
-        {/* "View full agent process Source" — only needed in the hidden-insights
-            settled state; when the timeline is visible the link lives in its
-            header (ToolTimelineBlock onViewWholeRun). */}
-        {shouldRenderTimelineBeforeLatestAgentMessage && hideAgentInsights && (
-          <button
-            type="button"
-            onClick={openWholeRunSource}
-            data-testid="view-process-source"
-            className="px-1 text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-300">
-            {t('conversations.agentTaskInsights.viewProcessSource')} →
-          </button>
-        )}
-      </>
-    ) : null;
-
-  // Standalone fallback slot (rendered once, below all messages) for the
-  // rare thread with no user message at all (e.g. a proactive-only run), so
-  // `agentInsights` is never unreachable. This slot sits at a fixed JSX
-  // position with no per-thread key of its own, so switching directly
-  // between two threads that both hit this fallback (e.g. two proactive-only
-  // threads) would otherwise reuse the same `ToolTimelineBlock` instance
-  // instead of remounting it — leaking its sticky `userOverrideOpen`
-  // disclosure state from the old thread into the new one (flagged in
-  // review on #4942). Keying on thread id forces a clean remount on every
-  // thread switch, matching the `key={msg.id}` pattern used for the in-flow
-  // timeline above.
-  const proactiveInsightsFallback = (() => {
-    if (lastUserMessageId) return null;
-    return <Fragment key={selectedThreadId ?? 'none'}>{agentInsights}</Fragment>;
-  })();
+    Boolean(selectedStreamingAssistant) ||
+    // An interrupted turn's restored partial answer must surface too, even
+    // before the durable message history loads (restore-fidelity fix 2).
+    Boolean(selectedInterruptedAssistant);
 
   const filteredThreads = useMemo(() => {
     return threads.filter(t => isThreadVisibleInTab(t, selectedLabel));
@@ -2051,14 +1870,6 @@ const Conversations = ({
       (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     );
   }, [filteredThreads]);
-
-  // Free-text search over the thread sidebar — filters the visible list by
-  // title (mirrors the settings sidebar search).
-  const visibleThreads = useMemo(() => {
-    const q = threadSearch.trim().toLowerCase();
-    if (!q) return sortedThreads;
-    return sortedThreads.filter(thread => (thread.title ?? '').toLowerCase().includes(q));
-  }, [sortedThreads, threadSearch]);
 
   const isSidebar = variant === 'sidebar';
   // "New window" = the merged Home surface: a page-variant chat whose selected
@@ -2086,7 +1897,13 @@ const Conversations = ({
     if (!el) return;
     const measure = () => {
       const next = Math.round(el.getBoundingClientRect().height);
-      if (next > 0) setComposerFooterHeight(next);
+      if (next <= 0) return;
+      // Skip no-op updates. This observer watches the footer that *contains* the
+      // composer, while `composerFooterHeight` feeds the message list's bottom
+      // padding — so re-rendering on an unchanged measurement lets a sub-pixel
+      // rounding oscillation cascade into React's nested-update limit
+      // ("Maximum update depth exceeded", #5162 / TAURI-REACT-2G).
+      setComposerFooterHeight(prev => (prev === next ? prev : next));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -2124,10 +1941,8 @@ const Conversations = ({
   // mode; the embedded `variant="sidebar"` mode shows no thread list at all.
   const threadSidebar = (
     <ThreadList
-      threads={visibleThreads}
+      threads={sortedThreads}
       selectedThreadId={selectedThreadId ?? null}
-      search={threadSearch}
-      onSearchChange={setThreadSearch}
       onCreateThread={() => void handleCreateNewThread()}
       onSelectThread={id => {
         dispatch(setSelectedThread(id));
@@ -2177,8 +1992,219 @@ const Conversations = ({
     />
   );
 
+  // The two turn-gate cards that must render on BOTH main panels.
+  //
+  // They used to live inline in `legacyMainPanel`, which `/chat` never mounts:
+  // `mainPanel` below is an either/or — assistant-ui for text, legacy for
+  // mic-cloud voice — so a parked plan review and a drafted workflow were
+  // invisible on the surface every user actually sees. The plan gate hung the
+  // turn with nothing to decide, and `propose_workflow`'s only route to
+  // `flows_create` was unreachable. Hoisted to a shared fragment so the
+  // assistant-ui composer header can render the same cards without voice mode
+  // losing them; the two panels are mutually exclusive, so nothing doubles up.
+  const agentGateCards = (
+    <>
+      {/* Plan-mode review: the orchestrator parked the live turn on a
+          thread-scoped plan (request_plan_review gate). Surface it for the
+          user to Approve / Reject / send feedback on before anything executes;
+          the card resolves the parked turn via plan_review_decide. */}
+      {selectedThreadId && pendingPlanReview && (
+        // Key by request id so a re-parked (revised) plan — or a thread switch —
+        // remounts the card and resets its local decision/feedback state,
+        // matching the ApprovalRequestCard pattern above.
+        <PlanReviewCard
+          key={pendingPlanReview.requestId}
+          threadId={selectedThreadId}
+          review={pendingPlanReview}
+        />
+      )}
+
+      {/* Agent-first Workflow authoring (issue B4): the agent drafted a
+          candidate automation via `propose_workflow`. The tool only
+          validates — it never creates the flow — so this card is the ONLY
+          path from proposal to saved automation via "Save & enable"
+          (`flows_create`), or the user can Dismiss it outright. */}
+      {selectedThreadId && pendingWorkflowProposal && (
+        // Keyed by name so a second proposal in the same thread (before the
+        // first is resolved) remounts the card and resets its local
+        // saving/error state, matching the PlanReviewCard pattern above.
+        <WorkflowProposalCard
+          key={pendingWorkflowProposal.name}
+          threadId={selectedThreadId}
+          proposal={pendingWorkflowProposal}
+        />
+      )}
+    </>
+  );
+
+  // ── Composer-adjacent surfaces shared by BOTH chat panels ─────────────────
+  //
+  // Every one of these used to be written inline inside `legacyMainPanel`.
+  // The panel choice at the bottom of this component is an *either/or*
+  // (`composer === 'mic-cloud' ? legacyMainPanel : assistantUiMainPanel`), so
+  // when the text chat moved to the assistant-ui `Thread` they stopped
+  // rendering on `/chat` altogether — the send-error banner most damagingly,
+  // since a user whose send is rejected got no feedback of any kind.
+  //
+  // They are defined once here and rendered by both panels: the legacy voice
+  // footer below, and the assistant-ui `ComposerHeader` / `ComposerExtras`
+  // slots (`assistantComposerHeader` / `assistantComposerFooterExtras`). One
+  // definition is the point — a second copy is how they drifted apart before.
+
+  const sendAdvisoryBanner = sendAdvisory ? (
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-xs text-amber-700" data-chat-send-advisory>
+        {sendAdvisory}
+      </p>
+      <button
+        type="button"
+        data-analytics-id="chat-send-advisory-dismiss"
+        onClick={() => setSendAdvisory(null)}
+        className="text-xs text-content-muted hover:text-content-secondary transition-colors ml-2">
+        {t('common.dismiss')}
+      </button>
+    </div>
+  ) : null;
+
+  const sendErrorBanner = displayedSendError ? (
+    <div className="flex items-center justify-between mb-2">
+      <p
+        className="text-xs text-coral-500"
+        data-testid="chat-send-error"
+        data-chat-send-error-code={displayedSendError.code}>
+        {displayedSendError.message}
+      </p>
+      <div className="flex items-center gap-2 shrink-0 ml-2">
+        {(displayedSendError.code === 'stt_not_ready' ||
+          displayedSendError.code === 'voice_transcription' ||
+          displayedSendError.code === 'tts_not_ready' ||
+          displayedSendError.code === 'voice_synthesis') && (
+          <button
+            type="button"
+            data-analytics-id="chat-send-error-setup"
+            onClick={() => {
+              setSendError(null);
+              // STT/TTS provider settings live on the Voice panel
+              // since PR 2; the legacy local-model route was for
+              // back when speech assets were lumped with Ollama.
+              navigate('/settings/voice');
+            }}
+            className="text-xs text-primary-500 hover:text-primary-600 font-medium transition-colors">
+            {t('chat.setup')}
+          </button>
+        )}
+        <button
+          type="button"
+          data-analytics-id="chat-send-error-dismiss"
+          onClick={() => {
+            setSendError(null);
+            dispatch(clearCreateThreadError());
+          }}
+          className="text-xs text-content-muted hover:text-content-secondary transition-colors">
+          {t('common.dismiss')}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  // Flow-approval surface (chat): actionable banner(s) for paused tinyflows
+  // runs, pushed via the `flow_approval_request` socket event (issue:
+  // flow-approval surfacing). Not gated on the selected thread — see the hook
+  // call above for why — so every pending request renders regardless of which
+  // thread is open.
+  const flowApprovalDeck =
+    flowApprovalRequests.length > 0 ? (
+      <div className="mb-2 flex flex-col gap-2">
+        {flowApprovalRequests.map(request => (
+          <FlowApprovalRequestCard
+            key={request.request_id}
+            request={request}
+            onResolved={dismissFlowApprovalRequest}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  // Surface in-flight + failed artifact cards above the composer (#2779).
+  // Mirrors the approval-card placement so the user sees the spinner / error
+  // without scrolling. `ready` cards are delegated to the header ChatFilesChip
+  // panel (#3024) so the chat scroll area isn't permanently occupied —
+  // restored decks are listable from the chip on demand.
+  //
+  // The failed-card Retry button re-dispatches the producing tool via
+  // `ai_regenerate` (#3162): the core reloads the persisted creation args and
+  // re-runs generation under the original artifact id, so the card swaps back
+  // to a spinner in place and then to ready/failed via the socket events.
+  const artifactDeckThreadId = selectedThreadId ?? firstActiveThreadId;
+  const liveArtifacts = artifactDeckThreadId
+    ? (artifactsByThread[artifactDeckThreadId] ?? []).filter(a => a.status !== 'ready')
+    : [];
+  const liveArtifactDeck =
+    liveArtifacts.length > 0 && artifactDeckThreadId ? (
+      <div className="mb-2 flex flex-col gap-2">
+        {liveArtifacts.map(artifact => (
+          <ArtifactCard
+            key={artifact.artifactId}
+            artifact={artifact}
+            onRetry={id => {
+              void aiRegenerate(id, artifactDeckThreadId).catch(err => {
+                console.warn('[artifact] regenerate failed:', err);
+              });
+            }}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  const chatFilesChip =
+    (selectedThreadId ?? firstActiveThreadId) ? (
+      <ChatFilesChip threadId={(selectedThreadId ?? firstActiveThreadId) as string} />
+    ) : null;
+
+  // The control that opens the background-processes panel, plus its
+  // running-count / memory-sync badge. Takes its opener because each surface
+  // hosts its own panel: the legacy footer reaches into `ChatThreadView`'s
+  // imperative handle, the assistant-ui footer drives the overlay state above.
+  const renderBackgroundProcessesButton = (onOpen: () => void) =>
+    selectedThreadId ? (
+      <button
+        type="button"
+        data-testid="background-processes-toggle"
+        data-analytics-id="chat-header-background-processes"
+        onClick={onOpen}
+        aria-label={t('conversations.backgroundTasks.title')}
+        title={
+          backgroundProcesses.length > 0
+            ? t('conversations.backgroundTasks.titleWithCount').replace(
+                '{count}',
+                String(backgroundProcesses.length)
+              )
+            : t('conversations.backgroundTasks.title')
+        }
+        className="relative flex h-7 w-7 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-surface-hover hover:text-content-secondary">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+          />
+        </svg>
+        {runningBackgroundCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-content-inverted">
+            {runningBackgroundCount}
+          </span>
+        ) : memorySyncActive ? (
+          <span
+            data-testid="background-activity-dot"
+            className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-amber-500"
+          />
+        ) : null}
+      </button>
+    ) : null;
+
   // Main chat area (right pane): header, message list, composer.
-  const mainPanel = (
+  const legacyMainPanel = (
     <div
       className={
         isSidebar
@@ -2188,562 +2214,41 @@ const Conversations = ({
             // the absolutely-positioned floating composer.
             'relative flex-1 flex flex-col min-w-0'
       }>
-      <div
-        ref={messagesContainerRef}
-        data-testid="chat-messages-scroll"
-        // Full-width scroll (scrollbar hugs the window edge); inner content is
-        // centered and width-capped per branch below. `min-h-0` lets this
-        // basis-0 flex child shrink to 0 so the composer footer can take the
-        // space (and scroll) on short windows (#3785).
-        className="flex-1 min-h-0 overflow-y-auto">
-        {isLoadingMessages ? (
-          <div className="mx-auto w-full max-w-[48.75rem] space-y-4 px-5 py-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
-                <div
-                  className={`h-12 rounded-2xl animate-pulse bg-surface-subtle ${
-                    i % 2 === 0 ? 'w-2/3' : 'w-1/2'
-                  }`}
-                />
-              </div>
-            ))}
-          </div>
-        ) : messagesError ? (
-          <div className="flex-1 flex flex-col items-center justify-center h-full">
-            <svg
-              className="w-8 h-8 text-coral-500/70 mb-3"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
-            <p className="text-sm text-content-faint mb-1">{t('chat.failedToLoadMessages')}</p>
-            <p className="text-xs text-content-secondary mb-3 text-center">{messagesError}</p>
-            <button
-              type="button"
-              data-analytics-id="chat-messages-reload"
-              onClick={() => window.location.reload()}
-              className="text-xs text-primary-400 hover:text-primary-300 transition-colors">
-              {t('common.reload')}
-            </button>
-          </div>
-        ) : hasVisibleMessages || hasTaskBoard || hasLiveAgentActivity ? (
-          <div
-            data-testid="chat-message-list"
-            className={`mx-auto w-full max-w-[48.75rem] space-y-3 px-5 pt-4 ${
-              isSidebar ? 'pb-4' : ''
-            }`}
-            // Page variant: reserve room for the absolutely-positioned floating
-            // composer footer so its tail stays visible. Tracks the footer's
-            // measured height (+16px gap) instead of a static `pb-32`, so the
-            // queued-followups panel and other dynamic footer content never
-            // overlap the last message (#4268).
-            style={!isSidebar ? { paddingBottom: composerFooterHeight + 16 } : undefined}>
-            {timelineMessages.map(msg => {
-              const isAgentTextMode = msg.sender === 'agent' && agentMessageViewMode === 'text';
-              // Parsed once per message: for current messages (extraMetadata
-              // present, or agent messages) msg.content already has no markers,
-              // so this is a no-op. For legacy persisted user messages with raw
-              // [IMAGE:...]/[FILE:...] markers and no extraMetadata, this is
-              // what keeps the marker text out of both the rendered bubble and
-              // the copy-to-clipboard action.
-              const parsedContent = parseMessageImages(msg.content ?? '');
-              const pastTurnEntries = pastTurnAnchors[msg.id];
-              return (
-                <Fragment key={msg.id}>
-                  {/* Past-turn process trail (Phase 5): each older settled turn's
-                      tool timeline, collapsed, above the answer it produced. */}
-                  {pastTurnEntries ? (
-                    <div data-testid="past-turn-insights">
-                      <ToolTimelineBlock entries={pastTurnEntries} />
-                    </div>
-                  ) : null}
-                  <div>
-                    <div
-                      className={`group/msg flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`relative ${
-                          isAgentTextMode ? 'w-full max-w-full' : 'w-fit max-w-[75%]'
-                        }`}>
-                        {msg.sender === 'agent' ? (
-                          <div className="space-y-1">
-                            <div className="relative space-y-1">
-                              {agentMessageViewMode === 'text' ? (
-                                <AgentMessageText content={msg.content} />
-                              ) : (
-                                splitAgentMessageIntoBubbles(msg.content).map(
-                                  (segment, index, parts) => {
-                                    const position: AgentBubblePosition =
-                                      parts.length === 1
-                                        ? 'single'
-                                        : index === 0
-                                          ? 'first'
-                                          : index === parts.length - 1
-                                            ? 'last'
-                                            : 'middle';
+      <ChatThreadView
+        ref={threadViewRef}
+        threadId={selectedThreadId ?? null}
+        variant={variant}
+        bottomPadding={!isSidebar ? composerFooterHeight + 16 : undefined}
+        hasFooterContent={hasTaskBoard}
+        isLoading={isLoadingMessages}
+        loadError={messagesError}
+        emptyContent={
+          isNewWindow ? (
+            <ChatNewWindowHero />
+          ) : (
+            <div className="flex-1 flex items-center justify-center h-full">
+              <p className="text-sm text-content-secondary">{t('chat.noMessages')}</p>
+            </div>
+          )
+        }
+        shareAgentName={shareAgentName}
+        scrollResetKey={location.pathname}
+        pendingSendActive={selectedThreadId ? pendingSendingThreadIds.has(selectedThreadId) : false}
+      />
 
-                                    return (
-                                      <AgentMessageBubble
-                                        key={`${msg.id}:${index}`}
-                                        content={segment}
-                                        position={position}
-                                      />
-                                    );
-                                  }
-                                )
-                              )}
-                              {/* Reaction affordance — the closed "+", the open picker,
-                                and the resulting reaction chips all live here, tucked
-                                onto the bubble's bottom-left corner so the control
-                                never jumps to a separate row below the timestamp. */}
-                              {latestVisibleMessage?.id === msg.id &&
-                                (() => {
-                                  const myReactions =
-                                    (msg.extraMetadata?.myReactions as string[] | undefined) ?? [];
-                                  const pickerOpen = reactionPickerMsgId === msg.id;
-                                  return (
-                                    <div className="absolute -bottom-2 left-3 z-10 flex items-center gap-1">
-                                      {myReactions.map(emoji => (
-                                        <button
-                                          key={emoji}
-                                          type="button"
-                                          data-analytics-id="chat-message-reaction-remove"
-                                          onClick={() =>
-                                            selectedThreadId &&
-                                            void dispatch(
-                                              persistReaction({
-                                                threadId: selectedThreadId,
-                                                messageId: msg.id,
-                                                emoji,
-                                              })
-                                            )
-                                          }
-                                          className="flex items-center rounded-full border border-primary-200 bg-primary-100 px-1.5 text-xs leading-[1.5] shadow-sm transition-colors hover:bg-primary-200 dark:border-primary-400/40 dark:bg-primary-500/25"
-                                          title={t('chat.removeReaction').replace(
-                                            '{emoji}',
-                                            emoji
-                                          )}>
-                                          {emoji}
-                                        </button>
-                                      ))}
-                                      {pickerOpen ? (
-                                        <div className="flex items-center gap-0.5 rounded-full bg-surface px-1 py-0.5 shadow-sm ring-1 ring-stone-200 dark:ring-neutral-700">
-                                          {['👍', '❤️', '😂', '🔥', '👀', '🎯'].map(emoji => (
-                                            <button
-                                              key={emoji}
-                                              type="button"
-                                              data-analytics-id="chat-message-reaction-pick"
-                                              onClick={() => {
-                                                if (selectedThreadId) {
-                                                  void dispatch(
-                                                    persistReaction({
-                                                      threadId: selectedThreadId,
-                                                      messageId: msg.id,
-                                                      emoji,
-                                                    })
-                                                  );
-                                                }
-                                                setReactionPickerMsgId(null);
-                                              }}
-                                              className="rounded px-0.5 text-sm transition-transform hover:scale-125"
-                                              title={emoji}>
-                                              {emoji}
-                                            </button>
-                                          ))}
-                                          <button
-                                            type="button"
-                                            data-analytics-id="chat-message-reaction-close"
-                                            onClick={() => setReactionPickerMsgId(null)}
-                                            className="ml-0.5 px-0.5 text-xs text-content-secondary hover:text-content-faint dark:hover:text-content-faint">
-                                            ✕
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          data-analytics-id="chat-message-reaction-open"
-                                          onClick={() => setReactionPickerMsgId(msg.id)}
-                                          className="flex h-[18px] items-center rounded-full bg-surface px-1.5 text-xs leading-none text-content-muted opacity-0 shadow-sm ring-1 ring-stone-200 transition-opacity hover:bg-surface-hover hover:text-content-secondary group-hover/msg:opacity-100 dark:ring-neutral-700"
-                                          title={t('chat.addReaction')}
-                                          aria-label={t('chat.addReaction')}>
-                                          +
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                            </div>
-                            {/* Stopped marker (#4862): the partial reply that was
-                                preserved when the user hit Stop / ESC mid-stream. */}
-                            {msg.extraMetadata?.stopped === true && (
-                              <p
-                                data-testid="stopped-marker"
-                                className="flex items-center gap-1 px-1 text-[10px] font-medium text-content-faint">
-                                <svg
-                                  className="h-2.5 w-2.5"
-                                  fill="currentColor"
-                                  viewBox="0 0 24 24"
-                                  aria-hidden>
-                                  <rect x="6" y="6" width="12" height="12" rx="1.5" />
-                                </svg>
-                                {t('chat.stoppedByUser')}
-                              </p>
-                            )}
-                            {(() => {
-                              const raw = msg.extraMetadata?.citations;
-                              if (!Array.isArray(raw)) return null;
-                              const citations = raw.filter(
-                                (item): item is MessageCitation =>
-                                  typeof item === 'object' &&
-                                  item !== null &&
-                                  typeof (item as MessageCitation).id === 'string' &&
-                                  typeof (item as MessageCitation).key === 'string' &&
-                                  typeof (item as MessageCitation).snippet === 'string' &&
-                                  typeof (item as MessageCitation).timestamp === 'string'
-                              );
-                              if (citations.length === 0) return null;
-                              return <CitationChips citations={citations} />;
-                            })()}
-                            {latestVisibleMessage?.id === msg.id && (
-                              <p className="px-1 text-[10px] text-content-faint">
-                                {formatRelativeTime(msg.createdAt)}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-end gap-1">
-                            {(() => {
-                              const displayText = parsedContent.text;
-                              const dataUris = (
-                                Array.isArray(msg.extraMetadata?.attachmentDataUris)
-                                  ? (msg.extraMetadata.attachmentDataUris as string[])
-                                  : parsedContent.dataUris
-                              ).filter(src => SAFE_IMAGE_DATA_URI_RE.test(src));
-                              const hasImages = dataUris.length > 0;
-                              // Document attachments carry no image data-URI (only
-                              // images do); surface them as filename chips from the
-                              // persisted attachmentKinds/attachmentNames metadata.
-                              const kinds = Array.isArray(msg.extraMetadata?.attachmentKinds)
-                                ? (msg.extraMetadata.attachmentKinds as string[])
-                                : [];
-                              const names = Array.isArray(msg.extraMetadata?.attachmentNames)
-                                ? (msg.extraMetadata.attachmentNames as string[])
-                                : [];
-                              const fileNames = kinds
-                                .map((k, i) => (k === 'file' ? names[i] : null))
-                                .filter((n): n is string => Boolean(n));
-                              const posters = Array.isArray(msg.extraMetadata?.attachmentPosters)
-                                ? (msg.extraMetadata.attachmentPosters as (string | null)[])
-                                : [];
-                              const videoItems = kinds
-                                .map((k, i) =>
-                                  k === 'video'
-                                    ? { name: names[i] ?? '', poster: posters[i] ?? null }
-                                    : null
-                                )
-                                .filter((v): v is { name: string; poster: string | null } =>
-                                  Boolean(v)
-                                );
-                              const showTime = latestVisibleMessage?.id === msg.id;
-                              return (
-                                <>
-                                  {hasImages && (
-                                    <div className="flex flex-wrap gap-1.5 justify-end">
-                                      {dataUris.map((uri, i) => (
-                                        <AttachmentImage key={i} dataUri={uri} />
-                                      ))}
-                                    </div>
-                                  )}
-                                  {videoItems.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 justify-end">
-                                      {videoItems.map((video, i) => (
-                                        <div
-                                          key={i}
-                                          className="relative flex items-center gap-2 rounded-lg border border-line bg-surface-muted px-2.5 py-1.5 text-xs text-content-secondary max-w-[220px]">
-                                          {video.poster ? (
-                                            <div className="relative w-10 h-10 flex-shrink-0">
-                                              <img
-                                                src={video.poster}
-                                                alt=""
-                                                className="w-10 h-10 rounded object-cover"
-                                              />
-                                              <span className="absolute inset-0 flex items-center justify-center">
-                                                <svg
-                                                  className="w-4 h-4 text-white drop-shadow"
-                                                  fill="currentColor"
-                                                  viewBox="0 0 24 24">
-                                                  <path d="M8 5v14l11-7z" />
-                                                </svg>
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            <svg
-                                              className="w-4 h-4 flex-shrink-0 text-content-muted"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24">
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={1.8}
-                                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 6h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"
-                                              />
-                                            </svg>
-                                          )}
-                                          <span className="truncate font-medium">{video.name}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {fileNames.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 justify-end">
-                                      {fileNames.map((name, i) => (
-                                        <div
-                                          key={i}
-                                          className="flex items-center gap-2 rounded-lg border border-line bg-surface-muted px-2.5 py-1.5 text-xs text-content-secondary max-w-[220px]">
-                                          <svg
-                                            className="w-4 h-4 flex-shrink-0 text-content-muted"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24">
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              strokeWidth={1.8}
-                                              d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
-                                            />
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              strokeWidth={1.8}
-                                              d="M14 2v6h6"
-                                            />
-                                          </svg>
-                                          <span className="truncate font-medium">{name}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {(displayText || showTime) && (
-                                    <div className="rounded-2xl px-4 py-2.5 bg-primary-500 text-content-inverted rounded-br-md break-words overflow-hidden">
-                                      {displayText && (
-                                        <BubbleMarkdown content={displayText} tone="user" />
-                                      )}
-                                      {showTime && (
-                                        <p
-                                          className={`${displayText ? 'mt-1' : ''} text-[10px] text-white/60`}>
-                                          {formatRelativeTime(msg.createdAt)}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          data-analytics-id="chat-message-copy"
-                          onClick={() => handleCopyMessage(msg.id, parsedContent.text)}
-                          className={`absolute -top-1 ${
-                            isAgentTextMode
-                              ? 'right-0'
-                              : msg.sender === 'user'
-                                ? '-left-8'
-                                : '-right-8'
-                          } p-1 rounded-md opacity-0 group-hover/msg:opacity-100 hover:bg-surface-hover dark:bg-surface-muted dark:hover:bg-surface-muted text-content-faint hover:text-content-secondary transition-all`}
-                          title={t('chat.copyResponse')}>
-                          {copiedMessageId === msg.id ? (
-                            <svg
-                              className="w-3.5 h-3.5 text-sage-500"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {msg.id === lastUserMessageId ? agentInsights : null}
-                </Fragment>
-              );
-            })}
-            {isSending &&
-              // Suppress the legacy 3-dot placeholder once streaming
-              // output (visible text or thinking) has started — the
-              // streaming preview bubble below takes over as the
-              // activity indicator.
-              !(
-                (selectedStreamingAssistant?.content.length ?? 0) > 0 ||
-                (selectedStreamingAssistant?.thinking.length ?? 0) > 0
-              ) && (
-                <div className="flex justify-start">
-                  <div className="bg-surface-strong/80 dark:bg-surface-muted rounded-2xl rounded-bl-md px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-surface-muted dark:bg-surface-muted/600 animate-bounce [animation-delay:0ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-surface-muted dark:bg-surface-muted/600 animate-bounce [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-surface-muted dark:bg-surface-muted/600 animate-bounce [animation-delay:300ms]" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            {/* Streaming assistant preview — compact trailing tail of the
-                  in-flight response. Rendered as plain text (not Markdown) to
-                  avoid jitter from partially-parsed fences. The final bubble
-                  replaces this via addInferenceResponse on chat_done. */}
-            {selectedStreamingAssistant &&
-              (selectedStreamingAssistant.thinking.length > 0 ||
-                selectedStreamingAssistant.content.length > 0) && (
-                <div className="flex justify-start">
-                  <div className="relative w-fit max-w-[75%]">
-                    {selectedStreamingAssistant.thinking.length > 0 && (
-                      <details className="mb-1.5 bg-surface-subtle rounded-lg px-3 py-1.5 text-xs text-content-secondary open:bg-stone-100 dark:bg-surface-muted dark:open:bg-neutral-800">
-                        <summary className="cursor-pointer select-none flex items-center gap-1.5">
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
-                          <span>{t('chat.thinking')}</span>
-                        </summary>
-                        <pre className="whitespace-pre-wrap break-words mt-1.5 font-sans text-[11px] text-content-muted">
-                          {selectedStreamingAssistant.thinking.slice(-STREAMING_PREVIEW_CHARS)}
-                        </pre>
-                      </details>
-                    )}
-                    {selectedStreamingAssistant.content.length > 0 && (
-                      <div className="rounded-2xl rounded-bl-md px-3 py-1.5 bg-surface-strong/80 dark:bg-surface-muted text-content">
-                        <p className="text-xs text-content-secondary font-mono whitespace-pre-wrap break-words leading-snug">
-                          {selectedStreamingAssistant.content.length > STREAMING_PREVIEW_CHARS && (
-                            <span className="text-content-faint">…</span>
-                          )}
-                          {selectedStreamingAssistant.content.slice(-STREAMING_PREVIEW_CHARS)}
-                          <span className="inline-block w-1 h-3 ml-0.5 align-middle bg-primary-400 animate-pulse" />
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            {/* Parallel (forked) branch streams — concurrent turns on this
-                  thread, each its own labeled bubble so they don't collide with
-                  the primary stream above. */}
-            {selectedParallelStreams.map(
-              branch =>
-                (branch.content.length > 0 || branch.thinking.length > 0) && (
-                  <div key={branch.requestId} className="flex justify-start">
-                    <div className="relative w-fit max-w-[75%]">
-                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-500 dark:text-primary-400">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
-                        <span>{t('chat.parallelBranchLabel')}</span>
-                      </div>
-                      {branch.content.length > 0 && (
-                        <div className="rounded-2xl rounded-bl-md px-3 py-1.5 bg-surface-strong/80 dark:bg-surface-muted text-content border-l-2 border-primary-400/60">
-                          <p className="text-xs text-content-secondary font-mono whitespace-pre-wrap break-words leading-snug">
-                            {branch.content.length > STREAMING_PREVIEW_CHARS && (
-                              <span className="text-content-faint">…</span>
-                            )}
-                            {branch.content.slice(-STREAMING_PREVIEW_CHARS)}
-                            <span className="inline-block w-1 h-3 ml-0.5 align-middle bg-primary-400 animate-pulse" />
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-            )}
-            {/* Inference status indicator.
-                  For the tool_use / subagent phases this line just restates the
-                  active row already shown in the agentic-task-insights timeline,
-                  so suppress it once that timeline is on screen — keep it only
-                  for the `thinking` phase (which has no timeline row yet) or when
-                  there is no timeline to fall back on. */}
-            {selectedInferenceStatus &&
-              (selectedInferenceStatus.phase === 'thinking' ||
-                selectedThreadToolTimeline.length === 0) && (
-                <div className="flex items-center gap-2 px-1 py-1.5 text-xs text-content-muted">
-                  <span className="inline-block w-2 h-2 rounded-full bg-primary-400 animate-pulse" />
-                  <span>
-                    {selectedInferenceStatus.phase === 'thinking' &&
-                      (selectedInferenceStatus.iteration > 0
-                        ? t('chat.thinkingIteration').replace(
-                            '{n}',
-                            String(selectedInferenceStatus.iteration)
-                          )
-                        : t('chat.thinkingDots'))}
-                    {selectedInferenceStatus.phase === 'tool_use' &&
-                      `${
-                        formatTimelineEntry(
-                          activeToolTimelineEntry ?? {
-                            id: 'active-tool',
-                            name: selectedInferenceStatus.activeTool ?? 'tool',
-                            round: selectedInferenceStatus.iteration,
-                            seq: 0,
-                            status: 'running',
-                          }
-                        ).title
-                      }...`}
-                    {selectedInferenceStatus.phase === 'subagent' &&
-                      `${
-                        formatTimelineEntry(
-                          activeSubagentTimelineEntry ?? {
-                            id: 'active-subagent',
-                            name: `subagent:${selectedInferenceStatus.activeSubagent ?? ''}`,
-                            round: selectedInferenceStatus.iteration,
-                            seq: 0,
-                            status: 'running',
-                          }
-                        ).title
-                      }...`}
-                  </span>
-                </div>
-              )}
-            {/* The "Agentic task insights" panel is rendered inline *above* the
-                latest answer (right after the latest turn's user message) so
-                processing reads before the result. `proactiveInsightsFallback`
-                (defined above, near `agentInsights`) covers the rare thread
-                with no user message at all — see its doc comment for the
-                per-thread keying that fix keeps this remount-safe. */}
-            {proactiveInsightsFallback}
-            <div ref={messagesEndRef} />
-          </div>
-        ) : isNewWindow ? (
-          <ChatNewWindowHero />
-        ) : (
-          <div className="flex-1 flex items-center justify-center h-full">
-            <p className="text-sm text-content-secondary">{t('chat.noMessages')}</p>
-          </div>
-        )}
-      </div>
+      {/* Full-width fade so messages dissolve into the page behind the floating
+          composer. Page variant only.
 
-      {/* Full-width fade so messages dissolve into the background (black/white
-          per theme) behind the floating composer. Page variant only. */}
+          Fades to `surface` — the token the content card actually paints — not
+          a hardcoded white/black pair. Those matched only while the page was a
+          transparent window onto the app canvas (`--surface-canvas`, pure black
+          in dark); on the inset card (`--surface`, neutral-900) they fade to a
+          colour the card never reaches and leave a visible band. The token also
+          keeps this correct for custom themes, which the literals never were. */}
       {!isSidebar && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-black dark:via-black/90"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-linear-to-t from-surface via-surface/90 to-transparent"
         />
       )}
 
@@ -2760,107 +2265,19 @@ const Conversations = ({
         // (e.g. the voice "Setup" link) + the composer (#3785). Rather than a
         // percentage `max-height` (which does not reliably resolve inside a
         // stretched flex item in Chromium), let the footer SHRINK: dropping
-        // `flex-shrink-0` and adding `min-h-0 overflow-y-auto` makes the flex
+        // `shrink-0` and adding `min-h-0 overflow-y-auto` makes the flex
         // algorithm cap it to the available height (the basis-0 message list
         // gives up its space first) and scroll internally instead of being
         // clipped by the `overflow-hidden` mainPanel. On a tall window there is
         // free space, so the footer keeps its natural height (composer pinned).
         className={
           isSidebar
-            ? 'mx-auto w-full max-w-[48.75rem] min-h-0 overflow-y-auto px-4 py-3'
-            : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[48.75rem] px-4 pb-4 pt-6'
+            ? 'mx-auto w-full max-w-195 min-h-0 overflow-y-auto px-4 py-3'
+            : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-195 px-4 pb-4 pt-6'
         }>
-        <>
-          {isNearLimit &&
-            !isAtLimit &&
-            isFreeTier &&
-            shouldShowBanner('conversations-warning', 24 * 60 * 60 * 1000) && (
-              <div className="mb-3">
-                <UpsellBanner
-                  variant="warning"
-                  title={t('chat.approachingLimit')}
-                  message={t('chat.approachingLimitMsg').replace(
-                    '{pct}',
-                    String(Math.round(usagePct * 100))
-                  )}
-                  ctaLabel={t('chat.upgrade')}
-                  onCtaClick={() => {
-                    void openUrl(BILLING_DASHBOARD_URL);
-                  }}
-                  dismissible
-                  onDismiss={() => dismissBanner('conversations-warning')}
-                />
-              </div>
-            )}
-          {teamUsage && shouldShowBudgetCompletedMessage && (
-            <div className="mb-3 p-3 rounded-xl bg-coral-50 border border-coral-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <svg
-                  className="w-4 h-4 text-coral-400 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-xs text-coral-600">
-                  {teamUsage.cycleBudgetUsd > 0
-                    ? `${t('chat.weeklyLimitHit')}${teamUsage.cycleEndsAt ? ` ${t('chat.resets')} ${formatResetTime(teamUsage.cycleEndsAt)}.` : ''} ${t('chat.topUpToContinue')}`
-                    : t('chat.budgetComplete')}
-                </p>
-              </div>
-              <div className="flex flex-shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  data-analytics-id="chat-budget-openrouter-free"
-                  disabled={openRouterStatus === 'saving'}
-                  onClick={() => {
-                    void handleUseOpenRouterFree();
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-coral-300 bg-surface text-coral-700 hover:bg-coral-100 disabled:cursor-wait disabled:opacity-70 text-xs font-medium transition-colors">
-                  {openRouterStatus === 'saving'
-                    ? t('openrouterFree.saving')
-                    : t('openrouterFree.cta')}
-                </button>
-                <button
-                  type="button"
-                  data-analytics-id="chat-budget-top-up"
-                  onClick={() => {
-                    void openUrl(BILLING_DASHBOARD_URL);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-400 text-content-inverted text-xs font-medium transition-colors">
-                  {t('chat.topUp')}
-                </button>
-              </div>
-            </div>
-          )}
-          {openRouterStatus === 'error' && (
-            <div className="mb-3 rounded-lg border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700">
-              {t('openrouterFree.error')}
-            </div>
-          )}
+        <>{/* Cycle usage pill moved into ChatComposer toolbar */}</>
 
-          {/* Cycle usage pill moved into ChatComposer toolbar */}
-        </>
-
-        {sendAdvisory && (
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-amber-700" data-chat-send-advisory>
-              {sendAdvisory}
-            </p>
-            <button
-              type="button"
-              data-analytics-id="chat-send-advisory-dismiss"
-              onClick={() => setSendAdvisory(null)}
-              className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors ml-2">
-              {t('common.dismiss')}
-            </button>
-          </div>
-        )}
+        {sendAdvisoryBanner}
 
         {attachError && (
           <div className="flex items-center justify-between mb-2">
@@ -2877,40 +2294,7 @@ const Conversations = ({
           </div>
         )}
 
-        {sendError && (
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-coral-500" data-chat-send-error-code={sendError.code}>
-              {sendError.message}
-            </p>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              {(sendError.code === 'stt_not_ready' ||
-                sendError.code === 'voice_transcription' ||
-                sendError.code === 'tts_not_ready' ||
-                sendError.code === 'voice_synthesis') && (
-                <button
-                  type="button"
-                  data-analytics-id="chat-send-error-setup"
-                  onClick={() => {
-                    setSendError(null);
-                    // STT/TTS provider settings live on the Voice panel
-                    // since PR 2; the legacy local-model route was for
-                    // back when speech assets were lumped with Ollama.
-                    navigate('/settings/voice', settingsNavState(location));
-                  }}
-                  className="text-xs text-primary-500 hover:text-primary-600 font-medium transition-colors">
-                  {t('chat.setup')}
-                </button>
-              )}
-              <button
-                type="button"
-                data-analytics-id="chat-send-error-dismiss"
-                onClick={() => setSendError(null)}
-                className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors">
-                {t('common.dismiss')}
-              </button>
-            </div>
-          </div>
-        )}
+        {sendErrorBanner}
 
         {(() => {
           // Surface a parked ApprovalGate request for the shown thread just
@@ -2946,96 +2330,16 @@ const Conversations = ({
           );
         })()}
 
-        {/* Flow-approval surface (chat): actionable banner(s) for paused
-            tinyflows runs, pushed via the `flow_approval_request` socket
-            event (issue: flow-approval surfacing). Not gated on the selected
-            thread — see the hook call above for why — so every pending
-            request renders regardless of which thread is open. */}
-        {flowApprovalRequests.length > 0 && (
-          <div className="mb-2 flex flex-col gap-2">
-            {flowApprovalRequests.map(request => (
-              <FlowApprovalRequestCard
-                key={request.request_id}
-                request={request}
-                onResolved={dismissFlowApprovalRequest}
-              />
-            ))}
-          </div>
-        )}
+        {flowApprovalDeck}
 
-        {(() => {
-          // Surface in-flight + failed artifact cards above the composer
-          // (#2779). Mirrors the approval-card placement so the user sees
-          // the spinner / error without scrolling. `ready` cards are
-          // delegated to the header ChatFilesChip panel (#3024) so the
-          // chat scroll area isn't permanently occupied — restored decks
-          // are listable from the chip on demand.
-          //
-          // The failed-card Retry button re-dispatches the producing tool
-          // via `ai_regenerate` (#3162): the core reloads the persisted
-          // creation args and re-runs generation under the original
-          // artifact id, so the card swaps back to a spinner in place and
-          // then to ready/failed via the socket events.
-          const artifactThreadId = selectedThreadId ?? firstActiveThreadId;
-          const all = artifactThreadId ? (artifactsByThread[artifactThreadId] ?? []) : [];
-          const live = all.filter(a => a.status !== 'ready');
-          if (live.length === 0) return null;
-          return (
-            <div className="mb-2 flex flex-col gap-2">
-              {live.map(artifact => (
-                <ArtifactCard
-                  key={artifact.artifactId}
-                  artifact={artifact}
-                  onRetry={
-                    artifactThreadId
-                      ? id => {
-                          void aiRegenerate(id, artifactThreadId).catch(err => {
-                            console.warn('[artifact] regenerate failed:', err);
-                          });
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          );
-        })()}
+        {liveArtifactDeck}
+
+        {agentGateCards}
 
         {/* Thread-scoped todo list the agent maintains as it works — read-only,
             pinned above the composer. Distinct from the Intelligence-tab kanban
             (global `user-tasks`). Renders nothing when the thread has no active
             cards. */}
-        {/* Plan-mode review: the orchestrator parked the live turn on a
-            thread-scoped plan (request_plan_review gate). Surface it for the
-            user to Approve / Reject / send feedback on before anything executes;
-            the card resolves the parked turn via plan_review_decide. */}
-        {selectedThreadId && pendingPlanReview && (
-          // Key by request id so a re-parked (revised) plan — or a thread switch —
-          // remounts the card and resets its local decision/feedback state,
-          // matching the ApprovalRequestCard pattern above.
-          <PlanReviewCard
-            key={pendingPlanReview.requestId}
-            threadId={selectedThreadId}
-            review={pendingPlanReview}
-          />
-        )}
-
-        {/* Agent-first Workflow authoring (issue B4): the agent drafted a
-            candidate automation via `propose_workflow`. The tool only
-            validates — it never creates the flow — so this card is the ONLY
-            path from proposal to saved automation via "Save & enable"
-            (`flows_create`), or the user can Dismiss it outright. */}
-        {selectedThreadId && pendingWorkflowProposal && (
-          // Keyed by name so a second proposal in the same thread (before the
-          // first is resolved) remounts the card and resets its local
-          // saving/error state, matching the PlanReviewCard pattern above.
-          <WorkflowProposalCard
-            key={pendingWorkflowProposal.name}
-            threadId={selectedThreadId}
-            proposal={pendingWorkflowProposal}
-          />
-        )}
-
         {selectedThreadId && (
           <ThreadTodoStrip
             board={selectedTaskBoard}
@@ -3072,17 +2376,23 @@ const Conversations = ({
         )}
 
         {composer === 'mic-cloud' ? (
-          <div className="flex flex-col items-center gap-3 py-1">
-            <MicComposer
-              // Without `!selectedThreadId`, a mic submit before a thread is
-              // ready hits `handleSendMessage`'s early return and the
-              // transcript is silently dropped — the user spoke into the void.
-              disabled={composerInteractionBlocked || isSending || !selectedThreadId}
-              onSubmit={text => handleSendMessage(text)}
-              onError={message => setSendError(chatSendError('voice_transcription', message))}
-              showDeviceSelector
-              onSwitchToText={() => setComposerOverride('text')}
-            />
+          // `relative` so the mascot dock (absolute, `bottom-full`) anchors here
+          // — this branch renders no ChatComposer to hang it off.
+          <div className="relative flex flex-col items-center gap-3 py-1">
+            {mascotDock}
+            {voiceChatControl}
+            {showMicComposer && (
+              <MicComposer
+                // Without `!selectedThreadId`, a mic submit before a thread is
+                // ready hits `handleSendMessage`'s early return and the
+                // transcript is silently dropped — the user spoke into the void.
+                disabled={composerInteractionBlocked || isSending || !selectedThreadId}
+                onSubmit={text => handleSendMessage(text)}
+                onError={message => setSendError(chatSendError('voice_transcription', message))}
+                showDeviceSelector
+                onSwitchToText={() => setComposerOverride('text')}
+              />
+            )}
           </div>
         ) : inputMode === 'text' ? (
           <>
@@ -3091,6 +2401,10 @@ const Conversations = ({
               setInputValue={setInputValue}
               onSend={handleComposerSend}
               onStopGeneration={rustChat ? handleStopGeneration : undefined}
+              // Idle-composer shortcut to the full-bleed mascot stage. Chat and
+              // Human share one mascot (mascotSlice), so this is a change of
+              // venue for the same conversation partner, not a second one.
+              onOpenHumanMode={() => navigate('/human')}
               textInputRef={textInputRef}
               fileInputRef={fileInputRef}
               composerInteractionBlocked={composerInteractionBlocked}
@@ -3102,7 +2416,7 @@ const Conversations = ({
               attachError={attachError}
               onSwitchToMicCloud={() => setComposerOverride('mic-cloud')}
               handleInputKeyDown={handleInputKeyDown}
-              inlineCompletionSuffix={inlineCompletionSuffix}
+              inlineCompletionSuffix=""
               isComposingTextRef={isComposingTextRef}
               maxAttachments={ATTACHMENT_MAX_IMAGES + ATTACHMENT_MAX_FILES}
               // Empty → no native `accept` filter (it greys valid files on
@@ -3123,6 +2437,12 @@ const Conversations = ({
                 ) : null,
                 <ThreadGoalEditorPanel key="thread-goal" ctl={threadGoal} />,
               ]}
+              mascotDock={mascotDock}
+              modelOverride={composerModelOverride ?? resolvedModel}
+              onModelOverrideChange={(value, contextWindow) => {
+                setComposerModelOverride(value);
+                setComposerModelContextWindow(contextWindow ?? null);
+              }}
             />
           </>
         ) : (
@@ -3132,7 +2452,7 @@ const Conversations = ({
               data-analytics-id="chat-voice-switch-to-text"
               onClick={() => setInputMode('text')}
               disabled={isRecording || isTranscribing}
-              className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 hover:border-line-strong dark:hover:border-line-strong transition-colors disabled:opacity-40"
+              className="w-10 h-10 flex items-center justify-center rounded-full border border-line bg-surface text-content-muted hover:text-content-secondary hover:border-line-strong transition-colors disabled:opacity-40"
               title={t('chat.switchToText')}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -3181,7 +2501,7 @@ const Conversations = ({
               void dispatch(loadThreadMessages(selectedThreadParent.id));
               navigate(chatThreadPath(selectedThreadParent.id));
             }}
-            className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary-300"
             data-testid="worker-thread-back-to-parent">
             <span aria-hidden="true">←</span>
             <span className="max-w-[16rem] truncate">
@@ -3203,7 +2523,7 @@ const Conversations = ({
             <ThreadGoalFooterTrigger ctl={threadGoal} />
           </div>
           {!isSidebar && (
-            <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <div
                 className="flex h-7 items-center rounded-full border border-line bg-surface-subtle p-0.5"
                 role="radiogroup"
@@ -3216,7 +2536,7 @@ const Conversations = ({
                   onClick={() => void handleSelectAgentProfile('default')}
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
                     selectedAgentProfileId === 'default'
-                      ? 'bg-surface text-content shadow-sm'
+                      ? 'bg-surface text-content shadow-xs'
                       : 'text-content-muted hover:text-content-secondary'
                   }`}>
                   {t('chat.agentProfile.quick')}
@@ -3229,59 +2549,16 @@ const Conversations = ({
                   onClick={() => void handleSelectAgentProfile('reasoning')}
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
                     selectedAgentProfileId === 'reasoning'
-                      ? 'bg-surface text-content shadow-sm'
+                      ? 'bg-surface text-content shadow-xs'
                       : 'text-content-muted hover:text-content-secondary'
                   }`}>
                   {t('chat.agentProfile.reasoning')}
                 </button>
               </div>
-              {/* Super context is read at thread construction, so it only
-                  affects NEW threads. Hide the toggle once the thread has ANY
-                  activity — use the raw `messages` (not `hasVisibleMessages`,
-                  which ignores hidden transcript entries) so an already-started
-                  thread never looks "fresh" here. */}
-              {/* Key by thread so switching to another empty chat remounts the
-                  toggle and re-runs its off-by-default reset (PR #4874 review). */}
-              {messages.length === 0 && <SuperContextToggle key={selectedThreadId ?? 'new-chat'} />}
-              {selectedThreadId && (
-                <button
-                  type="button"
-                  data-testid="background-processes-toggle"
-                  data-analytics-id="chat-header-background-processes"
-                  onClick={() => setShowBackgroundProcesses(true)}
-                  aria-label={t('conversations.backgroundTasks.title')}
-                  title={
-                    backgroundProcesses.length > 0
-                      ? t('conversations.backgroundTasks.titleWithCount').replace(
-                          '{count}',
-                          String(backgroundProcesses.length)
-                        )
-                      : t('conversations.backgroundTasks.title')
-                  }
-                  className="relative flex h-7 w-7 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-surface-hover hover:text-content-secondary">
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-                    />
-                  </svg>
-                  {runningBackgroundCount > 0 ? (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-content-inverted">
-                      {runningBackgroundCount}
-                    </span>
-                  ) : memorySyncActive ? (
-                    <span
-                      data-testid="background-activity-dot"
-                      className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-amber-500"
-                    />
-                  ) : null}
-                </button>
+              {renderBackgroundProcessesButton(() =>
+                threadViewRef.current?.openBackgroundProcesses()
               )}
-              {(selectedThreadId ?? firstActiveThreadId) && (
-                <ChatFilesChip threadId={(selectedThreadId ?? firstActiveThreadId) as string} />
-              )}
+              {chatFilesChip}
             </div>
           )}
         </div>
@@ -3289,12 +2566,162 @@ const Conversations = ({
     </div>
   );
 
+  const assistantComposerHeader = (
+    <>
+      {/* Turn gates first: a parked plan review and a drafted workflow both
+          block progress until the user decides, so they sit above the transient
+          attach error and the queued-followup strip. `ComposerHeader` is the
+          only host slot assistant-ui threads arbitrary React through
+          (`thread.tsx:385`), and it renders directly above the input — the same
+          place `legacyMainPanel` put these cards. */}
+      {agentGateCards}
+      {/* Paused tinyflows runs block the same way a plan gate does — the
+          banner carries the only Approve/Reject affordance — so they belong
+          with the gates, above the transient banners. */}
+      {flowApprovalDeck}
+      {attachError && (
+        <div className="rounded-lg border border-coral-200 bg-coral-50 px-3 py-2">
+          <p className="text-xs text-coral-500" data-chat-send-error-code={attachError.code}>
+            {attachError.message}
+          </p>
+        </div>
+      )}
+      {/* A rejected send is the one failure the user cannot diagnose from the
+          transcript: nothing is added to it. Without this the composer simply
+          swallowed the message. */}
+      {sendErrorBanner}
+      {sendAdvisoryBanner}
+      {liveArtifactDeck}
+      {/* The thread todo board. Its only other mount is inside
+          `legacyMainPanel`, which the text surface never renders, so
+          `taskBoardByThread` reached Redux and stopped there: a long
+          multi-step turn lost its whole plan/progress strip. This is the same
+          position relative to the composer that the legacy panel gave it, and
+          the strip renders nothing when the board is empty, so it is inert on
+          an ordinary turn. */}
+      {selectedThreadId && (
+        <ThreadTodoStrip
+          board={selectedTaskBoard}
+          onViewSession={card => {
+            if (!card.sessionThreadId) return;
+            // Navigation only - do NOT mark the thread active. activeThreadId
+            // tracks a true in-flight turn; forcing a completed session active
+            // would wedge the composer.
+            dispatch(setSelectedThread(card.sessionThreadId));
+            void dispatch(loadThreadMessages(card.sessionThreadId));
+            if (shouldSyncChatRoute) {
+              navigate(chatThreadPath(card.sessionThreadId));
+            }
+          }}
+        />
+      )}
+      {selectedThreadId && (queuedFollowupsByThread[selectedThreadId]?.length ?? 0) > 0 ? (
+        <QueuedFollowups
+          items={queuedFollowupsByThread[selectedThreadId] ?? []}
+          onClear={() => void handleClearQueuedFollowups()}
+        />
+      ) : null}
+    </>
+  );
+
+  // Left-hand controls in the assistant-ui composer toolbar, alongside the
+  // model pill and the thread-goal trigger — the assistant-ui equivalent of
+  // `legacyMainPanel`'s footer row.
+  const assistantComposerFooterExtras = (
+    <>
+      {renderBackgroundProcessesButton(() => setShowBackgroundProcesses(true))}
+      {chatFilesChip}
+    </>
+  );
+
+  const assistantUiMainPanel = (
+    <div
+      className={
+        isSidebar
+          ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-l border-line bg-surface'
+          : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+      }>
+      <AssistantUiChat
+        threadGoal={threadGoal}
+        model={composerModelOverride ?? resolvedModel ?? CHAT_MODEL_HINT}
+        modelContextWindow={composerModelContextWindow}
+        composerHeader={assistantComposerHeader}
+        composerFooterExtras={assistantComposerFooterExtras}
+        inputValue={inputValue}
+        onInputValueChange={setInputValue}
+        onEscape={handleComposerEscape}
+        attachments={attachments}
+        onAttachFiles={handleAttachFiles}
+        onRemoveAttachment={id => setAttachments(previous => previous.filter(a => a.id !== id))}
+        maxAttachments={ATTACHMENT_MAX_IMAGES + ATTACHMENT_MAX_FILES}
+        attachmentsEnabled={CHAT_ATTACHMENTS_ENABLED}
+        attachmentInteractionBlocked={composerInteractionBlocked || isSending}
+        onAttachmentOnlySend={() => void handleComposerSend()}
+        // Idle-composer shortcut to the full-bleed mascot stage. Chat and Human
+        // share one mascot (mascotSlice), so this is a change of venue for the
+        // same conversation partner, not a second one.
+        onOpenHumanMode={() => navigate('/human')}
+        onSwitchToMicCloud={() => setComposerOverride('mic-cloud')}
+        // Lets a delegation card inside the transcript open the drawer below.
+        // `setOpenSubagentTaskId` is a stable setter, and `canOpenSubagent` is
+        // memoised on the timeline, so the context value only churns when the
+        // set of resolvable delegations actually changes.
+        onOpenSubagent={setOpenSubagentTaskId}
+        canOpenSubagent={canOpenSubagentDrawer}
+        // The settled turn's one-line footer opens the process rail on THAT
+        // turn's trail, which the footer carries with the click.
+        onOpenTurnProcess={setTurnProcessTrail}
+        onModelChange={(value, contextWindow) => {
+          setComposerModelOverride(value);
+          setComposerModelContextWindow(contextWindow ?? null);
+        }}
+      />
+      {/* The three transcript-local modals. `ChatThreadView` hosts an identical
+          trio, but it is the legacy panel's transcript and is not mounted here,
+          so on `/chat` the background-processes button had nothing to open and
+          the sub-agent drawer / process-source panel could not be reached at
+          all. Mounted beside the Thread (not inside it) because each is its own
+          overlay, positioned against the viewport. */}
+      <TranscriptOverlays
+        threadId={selectedThreadId ?? null}
+        /* A turn footer's trail wins over the thread-wide live slices: those
+           hold only the newest turn (`chatRuntimeSlice` rehydrates
+           `processingByThread` from the single latest `TurnState` snapshot), so
+           they are the wrong answer for any older turn the user clicks. */
+        entries={turnProcessTrail ? [...turnProcessTrail.timeline] : selectedThreadToolTimeline}
+        transcript={turnProcessTrail ? [...turnProcessTrail.transcript] : selectedThreadProcessing}
+        backgroundProcesses={backgroundProcesses}
+        showBackgroundProcesses={showBackgroundProcesses}
+        onCloseBackgroundProcesses={() => setShowBackgroundProcesses(false)}
+        openSubagentTaskId={openSubagentTaskId}
+        onOpenSubagent={setOpenSubagentTaskId}
+        showProcessSource={showProcessSource || turnProcessTrail !== null}
+        onCloseProcessSource={() => {
+          setShowProcessSource(false);
+          setTurnProcessTrail(null);
+        }}
+      />
+    </div>
+  );
+  // The realtime/mic-only embed still owns a voice-specific footer. The normal
+  // text chat is fully assistant-ui; voice keeps its established surface until
+  // assistant-ui exposes the equivalent recording controls.
+  const mainPanel = composer === 'mic-cloud' ? legacyMainPanel : assistantUiMainPanel;
+
   return (
     <div
       className={
         isSidebar
           ? 'h-full relative z-10 flex overflow-hidden'
-          : 'h-full relative z-10 flex justify-center overflow-hidden bg-surface/70 dark:bg-black/40'
+          : // No background of its own.
+            // The old bg-surface/70 with a dark-mode black/40 override was a
+            // translucent tint over the app canvas, which composed to pure
+            // black in dark — the colour the composer fade below hardcoded. On
+            // the opaque content card it instead composes to an un-tokened
+            // ~#0e0e0e that nothing else in the app can name or match, so the
+            // fade could never line up. The page now simply *is* the card's
+            // surface, and the fade matches by construction.
+            'h-full relative z-10 flex justify-center overflow-hidden'
       }>
       {isSidebar ? (
         <>
@@ -3323,50 +2750,6 @@ const Conversations = ({
       <ConfirmationModal
         modal={deleteModal}
         onClose={() => setDeleteModal(prev => ({ ...prev, isOpen: false }))}
-      />
-      <BackgroundProcessesPanel
-        open={showBackgroundProcesses}
-        processes={backgroundProcesses}
-        onClose={() => setShowBackgroundProcesses(false)}
-        onOpenProcess={taskId => {
-          setShowBackgroundProcesses(false);
-          setOpenSubagentTaskId(taskId);
-        }}
-      />
-      <SubagentDrawer
-        key={openSubagentTaskId ?? 'none'}
-        subagent={openSubagentEntry?.subagent ?? null}
-        status={openSubagentEntry?.status}
-        onCancel={
-          openSubagentEntry?.subagent && selectedThreadId
-            ? async () => {
-                const taskId = openSubagentEntry.subagent!.taskId;
-                const result = await subagentApi.cancel(taskId);
-                // Only flip the row when something was actually aborted — a
-                // cancelled=false result means the run already finished/unknown,
-                // and overwriting its real terminal state would hide it. No
-                // terminal socket event arrives for an aborted run, so the
-                // optimistic mark is what surfaces the cancellation (the notice
-                // itself reaches chat via the idle-gated delivery path).
-                if (result.cancelled) {
-                  dispatch(
-                    markSubagentCancelled({ threadId: selectedThreadId, taskId: result.taskId })
-                  );
-                }
-              }
-            : undefined
-        }
-        onClose={() => setOpenSubagentTaskId(null)}
-      />
-      <AgentProcessSourcePanel
-        open={showProcessSource}
-        entries={selectedThreadToolTimeline}
-        transcript={selectedThreadProcessing}
-        scopedEntry={scopedDetailEntry}
-        onClose={() => {
-          setShowProcessSource(false);
-          setScopedDetailEntryId(null);
-        }}
       />
     </div>
   );

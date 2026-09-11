@@ -63,6 +63,15 @@ export interface PersistedSubagentToolCall {
   displayName?: string;
   /** Server-computed contextual detail (path / recipient / query). */
   detail?: string;
+  /** Size-capped arguments the child invoked the tool with, so a rehydrated
+   *  row shows what the sub-agent did and not just which tool it reached for
+   *  (#5987). Mirrors the live `subagent_tool_call` event's `args`; an
+   *  oversized payload arrives as a truncated string. Absent when the child's
+   *  arguments were never materialised and on snapshots written before this
+   *  field. Deliberately not repeated on {@link PersistedSubagentTranscriptItem}
+   *  — like `output` and `failure` it is grafted onto the transcript item by
+   *  `callId` in `subagentActivityFromPersisted`. */
+  args?: unknown;
   /** Plain-language failure explanation for a FAILED child call (#4459).
    *  Mirrors the parent {@link PersistedToolTimelineEntry.failure}; absent on
    *  successful rows and on snapshots written before this field. */
@@ -156,6 +165,11 @@ export interface PersistedToolTimelineEntry {
   /** Size-capped tool result text. Absent while running and on snapshots
    *  written before this field. */
   output?: string;
+  /** Per-turn monotonic ordering key stamped when the row is first created, so
+   *  a rehydrated timeline orders rows identically to the live stream (shares
+   *  the per-turn ordering space with {@link PersistedTranscriptItem.seq}).
+   *  Absent on snapshots written before this field. */
+  seq?: number;
 }
 
 export interface PersistedTurnState {

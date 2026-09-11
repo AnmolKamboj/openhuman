@@ -11,11 +11,6 @@ import {
   openhumanUpdateAgentSettings,
   openhumanUpdateAutonomySettings,
 } from '../../../../utils/tauriCommands';
-import {
-  type CoreCronJob,
-  openhumanCronList,
-  openhumanCronUpdate,
-} from '../../../../utils/tauriCommands/cron';
 import AgentAccessPanel from '../AgentAccessPanel';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -35,6 +30,7 @@ const autonomy = (overrides: Partial<AutonomySettings> = {}): AutonomySettings =
   allow_tool_install: true,
   max_actions_per_hour: 0,
   auto_approve: [],
+  auto_approve_all: false,
   ...overrides,
 });
 
@@ -71,36 +67,10 @@ vi.mock('../../../../utils/tauriCommands', async () => {
   };
 });
 
-vi.mock('../../../../utils/tauriCommands/cron', () => ({
-  openhumanCronList: vi.fn(),
-  openhumanCronUpdate: vi.fn(),
-}));
-
 const mockGet = vi.mocked(openhumanGetAutonomySettings);
 const mockUpdate = vi.mocked(openhumanUpdateAutonomySettings);
 const mockGetAgent = vi.mocked(openhumanGetAgentSettings);
 const mockUpdateAgent = vi.mocked(openhumanUpdateAgentSettings);
-const mockCronList = vi.mocked(openhumanCronList);
-const mockCronUpdate = vi.mocked(openhumanCronUpdate);
-
-// Minimal CoreCronJob for the seeded, disabled tinyplace_autopilot job.
-const autopilotJob = (overrides: Partial<CoreCronJob> = {}): CoreCronJob =>
-  ({
-    id: 'tp-1',
-    name: 'tinyplace_autopilot',
-    enabled: false,
-    expression: '',
-    schedule: { kind: 'every', every_ms: 3600000 } as never,
-    command: '',
-    job_type: 'agent',
-    session_target: 'isolated',
-    delivery: { mode: 'proactive', best_effort: true },
-    delete_after_run: false,
-    created_at: '',
-    next_run: '',
-    ...overrides,
-  }) as CoreCronJob;
-
 describe('AgentAccessPanel (advanced)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,8 +79,6 @@ describe('AgentAccessPanel (advanced)', () => {
     mockUpdate.mockResolvedValue({ result: {} as never, logs: [] });
     mockGetAgent.mockResolvedValue({ result: agentSettings(), logs: [] });
     mockUpdateAgent.mockResolvedValue({ result: {} as never, logs: [] });
-    mockCronList.mockResolvedValue({ result: [autopilotJob()], logs: [] });
-    mockCronUpdate.mockResolvedValue({ result: autopilotJob({ enabled: true }), logs: [] });
   });
 
   it('loads settings on mount and renders the advanced controls', async () => {
@@ -145,38 +113,6 @@ describe('AgentAccessPanel (advanced)', () => {
         expect.objectContaining({ require_task_plan_approval: false })
       )
     );
-  });
-
-  it('renders the autopilot toggle when the seeded job is present', async () => {
-    renderWithProviders(<AgentAccessPanel />);
-    await waitFor(() => expect(mockCronList).toHaveBeenCalledTimes(1));
-    const sw = await screen.findByRole('switch', { name: /run automatically/i });
-    expect(sw).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('enabling the autopilot flips its cron job enabled flag', async () => {
-    renderWithProviders(<AgentAccessPanel />);
-    const sw = await screen.findByRole('switch', { name: /run automatically/i });
-    fireEvent.click(sw);
-    await waitFor(() => expect(mockCronUpdate).toHaveBeenCalledWith('tp-1', { enabled: true }));
-  });
-
-  it('reverts the autopilot toggle when the cron update fails', async () => {
-    mockCronUpdate.mockRejectedValueOnce(new Error('boom'));
-    renderWithProviders(<AgentAccessPanel />);
-    const sw = await screen.findByRole('switch', { name: /run automatically/i });
-    fireEvent.click(sw);
-    // The update RPC must actually be attempted (and fail)…
-    await waitFor(() => expect(mockCronUpdate).toHaveBeenCalledWith('tp-1', { enabled: true }));
-    // …then the optimistic flip reverts to off after the failure settles.
-    await waitFor(() => expect(sw).toHaveAttribute('aria-checked', 'false'));
-  });
-
-  it('hides the autopilot toggle when no seeded job exists', async () => {
-    mockCronList.mockResolvedValue({ result: [], logs: [] });
-    renderWithProviders(<AgentAccessPanel />);
-    await screen.findByText('Confine to workspace');
-    expect(screen.queryByRole('switch', { name: /run automatically/i })).not.toBeInTheDocument();
   });
 
   it('adding then removing a granted folder persists the updated list', async () => {
@@ -270,7 +206,7 @@ describe('AgentAccessPanel (advanced)', () => {
     expect(input.value).toBe('300');
   });
 
-  it('persists a changed action timeout on blur', async () => {
+  it('persists a changed action timeout on blur-sm', async () => {
     renderWithProviders(<AgentAccessPanel />);
     const input = await screen.findByLabelText('Action timeout');
     fireEvent.change(input, { target: { value: '300' } });
@@ -307,5 +243,67 @@ describe('AgentAccessPanel (advanced)', () => {
     renderWithProviders(<AgentAccessPanel />);
     await screen.findByText('Approval history');
     expect(screen.getByTestId('agent-access-approval-history-link')).toBeInTheDocument();
+  });
+
+  // ── auto-approve-all bypass (security-sensitive) ────────────────────────
+
+  it('renders the auto-approve-all toggle OFF by default', async () => {
+    renderWithProviders(<AgentAccessPanel />);
+    const sw = await screen.findByRole('switch', { name: /auto-approve all actions/i });
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('toggling auto-approve-all ON persists auto_approve_all: true', async () => {
+    renderWithProviders(<AgentAccessPanel />);
+    const sw = await screen.findByRole('switch', { name: /auto-approve all actions/i });
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ auto_approve_all: true }))
+    );
+  });
+
+  it('shows the warning description regardless of toggle state', async () => {
+    renderWithProviders(<AgentAccessPanel />);
+    const sw = await screen.findByRole('switch', { name: /auto-approve all actions/i });
+
+    // Off state: warning is already visible.
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('auto-approve-all-warning')).toBeInTheDocument();
+    expect(screen.getByTestId('auto-approve-all-warning')).toHaveTextContent(
+      /credential and system directories/i
+    );
+
+    // On state: toggling it on keeps the same warning mounted, still visible.
+    fireEvent.click(sw);
+    await waitFor(() => expect(sw).toHaveAttribute('aria-checked', 'true'));
+    expect(screen.getByTestId('auto-approve-all-warning')).toBeInTheDocument();
+  });
+
+  it('reverts the auto-approve-all toggle when the save fails', async () => {
+    mockUpdate.mockRejectedValueOnce(new Error('boom'));
+    renderWithProviders(<AgentAccessPanel />);
+    const sw = await screen.findByRole('switch', { name: /auto-approve all actions/i });
+    fireEvent.click(sw);
+    // The RPC must actually be attempted (and fail)…
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ auto_approve_all: true }))
+    );
+    // …then the optimistic flip reverts to off, so the switch never shows a
+    // falsely-safe "off" or falsely-enabled "on" state the server disagrees with.
+    await waitFor(() => expect(sw).toHaveAttribute('aria-checked', 'false'));
+  });
+
+  it('does not resend auto_approve_all when an unrelated field is saved', async () => {
+    // auto_approve_all starts true; toggling an unrelated switch (workspace
+    // confinement) must omit auto_approve_all from the patch entirely so a
+    // stale/loaded panel value can never clobber it back down.
+    mockGet.mockResolvedValue({ result: autonomy({ auto_approve_all: true }), logs: [] });
+    renderWithProviders(<AgentAccessPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /confine to workspace/i }));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ workspace_only: true }))
+    );
+    const [[payload]] = mockUpdate.mock.calls;
+    expect(payload).not.toHaveProperty('auto_approve_all');
   });
 });

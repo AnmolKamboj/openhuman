@@ -13,6 +13,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::openhuman::agent::harness::definition::{AgentDefinition, PromptSource};
+use crate::openhuman::skills::{Workflow, WorkflowScope};
 
 /// One declared input — a parameter the skill needs, with a human description.
 /// `required` inputs must be supplied at run time; `kind` is an optional type
@@ -73,7 +74,7 @@ pub struct WorkflowDefinition {
     /// Optional GitHub preflight gate. When `Some(..)` with
     /// `required = true`, the preflight runs before the orchestrator
     /// boots — see
-    /// [`crate::openhuman::skill_runtime::spawn_workflow_run_background`].
+    /// [`crate::openhuman::skills::runtime::spawn_workflow_run_background`].
     #[serde(default)]
     pub github: Option<WorkflowGithubConfig>,
 }
@@ -153,13 +154,45 @@ pub fn prune_legacy_default_workflows(workspace_dir: &Path) {
 /// Without `skill.toml`, a synthesized SKILL.md-only definition means a bare workflow is
 /// still runnable. A bad `skill.toml` falls back to the SKILL.md-only form.
 pub fn load_workflows(workspace_dir: &Path) -> Vec<WorkflowDefinition> {
+    load_workflows_with_profile(workspace_dir, None)
+}
+
+/// Like [`load_workflows`], but additionally resolves the active profile's
+/// private skills (`<workspace>/personalities/<id>/skills/`) when
+/// `profile_skills_root` is supplied.
+///
+/// The profile root is threaded straight into
+/// [`super::ops_discover::discover_workflows_with_profile`], so profile-local
+/// skills become runnable/describable for their owner and win same-name
+/// collisions against global skills (via [`WorkflowScope::Profile`] precedence).
+/// `None` reproduces [`load_workflows`] byte-for-byte — other profiles and the
+/// profile-less session never see these skills. No global registry state is
+/// mutated, so concurrent sessions under different profiles stay isolated.
+pub fn load_workflows_with_profile(
+    workspace_dir: &Path,
+    profile_skills_root: Option<&Path>,
+) -> Vec<WorkflowDefinition> {
+    load_workflows_and_discovered(workspace_dir, profile_skills_root).0
+}
+
+/// [`load_workflows_with_profile`] plus the discovered bundles the definitions
+/// were built from.
+///
+/// Discovery re-reads and re-parses every bundle under every root, so a caller
+/// that needs both the runnable definitions and the discovered metadata (scope
+/// and frontmatter `name`, which `WorkflowDefinition` does not carry) takes
+/// them from this one pass instead of running discovery a second time (#6166).
+fn load_workflows_and_discovered(
+    workspace_dir: &Path,
+    profile_skills_root: Option<&Path>,
+) -> (Vec<WorkflowDefinition>, Vec<Workflow>) {
     // Prune any legacy bundled skills an older build left behind so discover's
     // legacy scan no longer surfaces them (idempotent).
     prune_legacy_default_workflows(workspace_dir);
 
     let mut workflows: Vec<WorkflowDefinition> = Vec::new();
 
-    if let Ok(builtins) = crate::openhuman::agent_registry::agents::load_builtins() {
+    if let Ok(builtins) = crate::openhuman::agent::registry::agents::load_builtins() {
         for definition in builtins {
             workflows.push(WorkflowDefinition {
                 definition,
@@ -173,8 +206,13 @@ pub fn load_workflows(workspace_dir: &Path) -> Vec<WorkflowDefinition> {
     // discovery the create/list path uses, then load each one's definition.
     let home = dirs::home_dir();
     let trusted = super::ops_discover::is_workspace_trusted(workspace_dir);
-    for wf in super::ops_discover::discover_workflows(home.as_deref(), Some(workspace_dir), trusted)
-    {
+    let discovered = super::ops_discover::discover_workflows_with_profile(
+        home.as_deref(),
+        Some(workspace_dir),
+        profile_skills_root,
+        trusted,
+    );
+    for wf in &discovered {
         let Some(skill_md) = wf.location.as_ref() else {
             continue;
         };
@@ -199,7 +237,7 @@ pub fn load_workflows(workspace_dir: &Path) -> Vec<WorkflowDefinition> {
             workflows.push(def);
         }
     }
-    workflows
+    (workflows, discovered)
 }
 
 /// Build a runnable [`WorkflowDefinition`] from a single workflow directory.
@@ -251,223 +289,52 @@ fn load_workflow_definition(
 
 /// Look up one skill by id across the registry.
 pub fn get_workflow(workspace_dir: &Path, id: &str) -> Option<WorkflowDefinition> {
-    load_workflows(workspace_dir)
+    get_workflow_with_profile(workspace_dir, id, None)
+}
+
+/// Like [`get_workflow`], but resolves the active profile's private skills too
+/// (`<workspace>/personalities/<id>/skills/`) when `profile_skills_root` is
+/// supplied. This is the resolution seam behind `describe_workflow` /
+/// `run_workflow`: a profile-local skill is runnable/describable for its owner
+/// and wins same-name collisions; `None` is byte-identical to [`get_workflow`].
+pub fn get_workflow_with_profile(
+    workspace_dir: &Path,
+    id: &str,
+    profile_skills_root: Option<&Path>,
+) -> Option<WorkflowDefinition> {
+    let (workflows, discovered) = load_workflows_and_discovered(workspace_dir, profile_skills_root);
+    // Built-ins are prepended and discovered workflows follow them. Search in
+    // reverse so the scope-resolved discovered entry (profile wins over global)
+    // also wins over a built-in with the same runnable id.
+    if let Some(exact) = workflows.iter().rev().find(|s| s.definition.id == id) {
+        return Some(exact.clone());
+    }
+
+    // Profile lists advertise the frontmatter display name as well as the
+    // directory slug. Resolve that name back to the canonical runnable slug so
+    // a private workflow admitted by the profile-local allow set can actually
+    // be described and run. Keep the legacy profile-less lookup id-only: global
+    // display names have never been runnable ids and may collide with builtins.
+    //
+    // Answered from the discovery pass already in hand — this used to re-run a
+    // full on-disk discovery and re-parse every bundle a second time (#6166).
+    let slug = discovered
         .into_iter()
-        .find(|s| s.definition.id == id)
+        .find(|workflow| workflow.scope == WorkflowScope::Profile && workflow.name == id)
+        .map(|workflow| {
+            if workflow.dir_name.is_empty() {
+                workflow.name
+            } else {
+                workflow.dir_name
+            }
+        })?;
+
+    workflows
+        .into_iter()
+        .rev()
+        .find(|workflow| workflow.definition.id == slug)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn defs() -> Vec<WorkflowInput> {
-        vec![
-            WorkflowInput {
-                name: "repo".into(),
-                description: "owner/name".into(),
-                required: true,
-                kind: None,
-            },
-            WorkflowInput {
-                name: "issue".into(),
-                description: "issue #".into(),
-                required: true,
-                kind: Some("integer".into()),
-            },
-            WorkflowInput {
-                name: "pr_base".into(),
-                description: "base branch".into(),
-                required: false,
-                kind: None,
-            },
-        ]
-    }
-
-    #[test]
-    fn missing_required_is_detected() {
-        assert_eq!(
-            missing_required_inputs(&defs(), &json!({"repo": "acme/web"})),
-            vec!["issue".to_string()]
-        );
-        assert!(
-            missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": 42})).is_empty()
-        );
-        // null counts as missing
-        assert_eq!(
-            missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": null})),
-            vec!["issue".to_string()]
-        );
-    }
-
-    #[test]
-    fn renders_inputs_block_with_values_and_gaps() {
-        let b = render_inputs_block(&defs(), &json!({"repo": "acme/web", "issue": 42}));
-        assert!(b.starts_with("## Inputs"));
-        assert!(b.contains("**repo**: acme/web"));
-        assert!(b.contains("**issue**: 42"));
-        assert!(b.contains("**pr_base**: (not provided)"));
-        assert!(render_inputs_block(&[], &json!({})).is_empty());
-    }
-
-    #[test]
-    fn skill_input_parses_type_alias() {
-        let i: WorkflowInput = serde_json::from_value(json!({
-            "name": "issue", "description": "issue #", "required": true, "type": "integer"
-        }))
-        .unwrap();
-        assert_eq!(i.kind.as_deref(), Some("integer"));
-        assert!(i.required);
-    }
-
-    #[test]
-    fn load_skills_reads_runtime_skill_prompt_and_inputs() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let sd = tmp.path().join("skills").join("issue-crusher");
-        std::fs::create_dir_all(&sd).unwrap();
-        std::fs::write(
-            sd.join("skill.toml"),
-            "id = \"issue-crusher\"\nwhen_to_use = \"fix a github issue\"\n\
-             [[inputs]]\nname = \"repo\"\ndescription = \"owner/name\"\nrequired = true\n\
-             [[inputs]]\nname = \"issue\"\ndescription = \"issue #\"\nrequired = true\ntype = \"integer\"\n",
-        )
-        .unwrap();
-        std::fs::write(sd.join("SKILL.md"), "# Issue Crusher\nFix it.").unwrap();
-
-        let skills = load_workflows(tmp.path());
-        let s = skills
-            .iter()
-            .find(|s| s.definition.id == "issue-crusher")
-            .expect("runtime skill loaded");
-        assert_eq!(s.inputs.len(), 2);
-        assert_eq!(s.inputs[1].kind.as_deref(), Some("integer"));
-        match &s.definition.system_prompt {
-            PromptSource::Inline(p) => assert!(p.contains("Fix it.")),
-            other => panic!("expected inline prompt, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn skill_md_only_install_resolves_by_dir_slug_not_frontmatter_name() {
-        // Regression (#3987 codex review): a SKILL.md-only install whose
-        // frontmatter `name` differs from its install slug must resolve via the
-        // dir slug — the id surfaced in the list summary / orchestrator prompt /
-        // uninstall — not the frontmatter name. Before the fix, `definition.id`
-        // was built from `wf.name` ("My Cool Workflow"), so `get_workflow`
-        // (keyed on the slug) returned None → "unknown skill".
-        let tmp = tempfile::TempDir::new().unwrap();
-        let dir = tmp.path().join("skills").join("my-cool-workflow");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("SKILL.md"),
-            "---\nname: My Cool Workflow\ndescription: does cool things\n---\n\n# Body\n",
-        )
-        .unwrap();
-
-        let resolved = get_workflow(tmp.path(), "my-cool-workflow")
-            .expect("SKILL.md-only install must resolve by its dir slug");
-        assert_eq!(resolved.definition.id, "my-cool-workflow");
-        // And NOT by the frontmatter name.
-        assert!(
-            get_workflow(tmp.path(), "My Cool Workflow").is_none(),
-            "frontmatter name must not be the runnable id"
-        );
-    }
-
-    #[test]
-    fn prune_removes_legacy_bundled_only() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let skills = tmp.path().join("skills");
-        // A legacy bundled id + a user-authored workflow that must survive.
-        for id in ["github-issue-crusher", "my-workflow"] {
-            std::fs::create_dir_all(skills.join(id)).unwrap();
-            std::fs::write(skills.join(id).join("SKILL.md"), "# x").unwrap();
-        }
-        prune_legacy_default_workflows(tmp.path());
-        assert!(
-            !skills.join("github-issue-crusher").exists(),
-            "legacy bundled id should be pruned"
-        );
-        assert!(
-            skills.join("my-workflow").exists(),
-            "user-authored workflow must be left untouched"
-        );
-    }
-
-    #[test]
-    fn skill_github_config_defaults_when_absent() {
-        // No [github] block in skill.toml → `github` deserialises to None,
-        // which the preflight reads as "gate disabled, skip silently".
-        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n";
-        let parsed: WorkflowDefinition = toml::from_str(toml).expect("parse");
-        assert!(parsed.github.is_none(), "no [github] block ⇒ None");
-    }
-
-    #[test]
-    fn skill_github_config_parses_full_block() {
-        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
-                    [github]\nrequired = true\nidentity_match = \"strict\"\n";
-        let parsed: WorkflowDefinition = toml::from_str(toml).expect("parse");
-        let gh = parsed.github.expect("github block present");
-        assert!(gh.required);
-        assert_eq!(gh.identity_match, IdentityMatch::Strict);
-    }
-
-    #[test]
-    fn skill_github_config_required_defaults_to_false() {
-        // Block present but required not set ⇒ required = false (default).
-        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
-                    [github]\nidentity_match = \"any\"\n";
-        let parsed: WorkflowDefinition = toml::from_str(toml).expect("parse");
-        let gh = parsed.github.expect("github block present");
-        assert!(!gh.required, "required defaults to false");
-        assert_eq!(gh.identity_match, IdentityMatch::Any);
-    }
-
-    #[test]
-    fn skill_github_config_identity_match_defaults_to_strict() {
-        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
-                    [github]\nrequired = true\n";
-        let parsed: WorkflowDefinition = toml::from_str(toml).expect("parse");
-        let gh = parsed.github.expect("github block present");
-        assert_eq!(
-            gh.identity_match,
-            IdentityMatch::Strict,
-            "default is Strict"
-        );
-    }
-
-    #[test]
-    fn skill_github_config_accepts_all_identity_match_variants() {
-        for (variant, expected) in [
-            ("strict", IdentityMatch::Strict),
-            ("any", IdentityMatch::Any),
-            ("none", IdentityMatch::None),
-        ] {
-            let toml = format!(
-                "id = \"x\"\nwhen_to_use = \"y\"\n\
-                 [github]\nrequired = true\nidentity_match = \"{variant}\"\n"
-            );
-            let parsed: WorkflowDefinition = toml::from_str(&toml).expect("parse");
-            assert_eq!(
-                parsed.github.expect("github block present").identity_match,
-                expected,
-                "variant {variant} → {expected:?}",
-            );
-        }
-    }
-
-    #[test]
-    fn skill_github_config_serializes_lowercase() {
-        let gh = WorkflowGithubConfig {
-            required: true,
-            identity_match: IdentityMatch::Strict,
-        };
-        let s = toml::to_string(&gh).expect("serialize");
-        assert!(s.contains("required = true"));
-        assert!(
-            s.contains("identity_match = \"strict\""),
-            "lowercase serialization: got {s}"
-        );
-    }
-}
+#[path = "registry_tests.rs"]
+mod tests;

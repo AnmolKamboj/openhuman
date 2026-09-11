@@ -11,7 +11,7 @@ import {
   type TrustedAccess,
   type TrustedRoot,
 } from '../../../utils/tauriCommands';
-import { openhumanCronList, openhumanCronUpdate } from '../../../utils/tauriCommands/cron';
+import { Alert, AlertDescription } from '../../ui';
 import Button from '../../ui/Button';
 import {
   SettingsBadge,
@@ -46,6 +46,11 @@ const AgentAccessPanel = () => {
   const [level, setLevel] = useState<AutonomyLevel>('supervised');
   const [workspaceOnly, setWorkspaceOnly] = useState(false);
   const [requireTaskPlanApproval, setRequireTaskPlanApproval] = useState(true);
+  // Blanket "auto-approve everything" bypass — off by default. Hard security
+  // blocks (credential dirs, workspace-internal paths) and the
+  // subconscious-tainted / unlabelled-origin denials in the approval gate
+  // are unaffected by this setting; see `settings.agentAccess.autoApproveAll.desc`.
+  const [autoApproveAll, setAutoApproveAll] = useState(false);
   const [trustedRoots, setTrustedRoots] = useState<TrustedRoot[]>([]);
   // "Always allow" allowlist — populated by the in-chat "Always allow" button;
   // shown here read-only with a Remove action (the re-protect path).
@@ -53,16 +58,6 @@ const AgentAccessPanel = () => {
 
   const [newRootPath, setNewRootPath] = useState('');
   const [newRootAccess, setNewRootAccess] = useState<TrustedAccess>('read');
-
-  // Autonomous tiny.place agent ("autopilot") — a seeded, *disabled* cron job
-  // the user opts into here. It's not an autonomy field: we resolve its id by
-  // name from the cron list and flip its `enabled` flag via cron_update. The
-  // section only renders once the job is found (id known).
-  const [autopilotJobId, setAutopilotJobId] = useState<string | null>(null);
-  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
-  // Monotonic guard so rapid toggles can't resolve out-of-order and leave the
-  // UI showing a stale enabled state (last write wins).
-  const autopilotSeqRef = useRef(0);
 
   // Action timeout (the tool/action wall-clock limit, issue #3100). Held as the
   // raw input string so the field can be edited freely; validated on save.
@@ -97,25 +92,12 @@ const AgentAccessPanel = () => {
         setLevel(autonomyResp.result.level);
         setWorkspaceOnly(autonomyResp.result.workspace_only);
         setRequireTaskPlanApproval(autonomyResp.result.require_task_plan_approval ?? true);
+        setAutoApproveAll(autonomyResp.result.auto_approve_all ?? false);
         setTrustedRoots(autonomyResp.result.trusted_roots ?? []);
         setAutoApprove(autonomyResp.result.auto_approve ?? []);
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : t('settings.agentAccess.loadError'));
-      }
-      try {
-        // Resolve the seeded tinyplace_autopilot cron job by name so the toggle
-        // below can flip its enabled flag. Non-fatal: the section just stays
-        // hidden if the job isn't present or the list call fails.
-        const cronResp = await openhumanCronList();
-        if (cancelled) return;
-        const autopilot = cronResp.result.find(j => j.name === 'tinyplace_autopilot');
-        if (autopilot) {
-          setAutopilotJobId(autopilot.id);
-          setAutopilotEnabled(autopilot.enabled);
-        }
-      } catch {
-        // Non-fatal — bounty-worker toggle stays hidden.
       }
       try {
         const agentResp = await openhumanGetAgentSettings();
@@ -143,16 +125,30 @@ const AgentAccessPanel = () => {
   // `allow_tool_install` is fixed; workspace_only, trusted_roots vary.
   // `level` is carried through from state (its UI lives in PermissionsPanel).
   // Pass explicit `next` values (setState is async).
-  const persist = async (next: {
-    workspaceOnly: boolean;
-    requireTaskPlanApproval: boolean;
-    trustedRoots: TrustedRoot[];
-    // Only sent when the allowlist itself is being changed. Omitting it leaves
-    // the server's `auto_approve` untouched (partial patch) — important so a
-    // tier/folder change can't clobber a tool the user just added via the
-    // in-chat "Always allow" button.
-    autoApprove?: string[];
-  }) => {
+  //
+  // `onError` lets a caller revert its own optimistic `setState` if the RPC
+  // fails — otherwise a
+  // failed save leaves the switch showing the new value locally while the
+  // server-side field silently kept its old one.
+  const persist = async (
+    next: {
+      workspaceOnly: boolean;
+      requireTaskPlanApproval: boolean;
+      trustedRoots: TrustedRoot[];
+      // Only sent when the allowlist itself is being changed. Omitting it leaves
+      // the server's `auto_approve` untouched (partial patch) — important so a
+      // tier/folder change can't clobber a tool the user just added via the
+      // in-chat "Always allow" button.
+      autoApprove?: string[];
+      // Same partial-patch reasoning as `autoApprove` above: only
+      // `toggleAutoApproveAll` sets this. Every other caller must omit it so
+      // an unrelated autosave (folders, task-plan-approval, workspace
+      // confinement) can never rewrite `auto_approve_all` back to this
+      // panel's possibly-stale local value.
+      autoApproveAll?: boolean;
+    },
+    onError?: () => void
+  ) => {
     const seq = ++persistSeqRef.current;
     if (!isTauri()) return;
     setError(null);
@@ -166,6 +162,7 @@ const AgentAccessPanel = () => {
         allow_tool_install: ALLOW_TOOL_INSTALL,
         require_task_plan_approval: next.requireTaskPlanApproval,
         ...(next.autoApprove !== undefined ? { auto_approve: next.autoApprove } : {}),
+        ...(next.autoApproveAll !== undefined ? { auto_approve_all: next.autoApproveAll } : {}),
       });
       // Only the most recent persist may write UI state back.
       if (persistSeqRef.current === seq) {
@@ -174,6 +171,7 @@ const AgentAccessPanel = () => {
     } catch (e) {
       if (persistSeqRef.current === seq) {
         setError(e instanceof Error ? e.message : t('settings.agentAccess.saveError'));
+        onError?.();
       }
     } finally {
       if (persistSeqRef.current === seq) {
@@ -183,36 +181,28 @@ const AgentAccessPanel = () => {
   };
 
   const toggleWorkspaceOnly = (next: boolean) => {
+    const prev = workspaceOnly;
     setWorkspaceOnly(next);
-    void persist({ workspaceOnly: next, requireTaskPlanApproval, trustedRoots });
+    void persist({ workspaceOnly: next, requireTaskPlanApproval, trustedRoots }, () =>
+      setWorkspaceOnly(prev)
+    );
   };
 
   const toggleTaskPlanApproval = (next: boolean) => {
+    const prev = requireTaskPlanApproval;
     setRequireTaskPlanApproval(next);
-    void persist({ workspaceOnly, requireTaskPlanApproval: next, trustedRoots });
+    void persist({ workspaceOnly, requireTaskPlanApproval: next, trustedRoots }, () =>
+      setRequireTaskPlanApproval(prev)
+    );
   };
 
-  // The autopilot is a cron job, not an autonomy field — flip its `enabled`
-  // flag directly via cron_update. Optimistic, with revert on failure, and a
-  // sequence guard so only the most recent toggle writes UI state back.
-  const toggleAutopilot = async (next: boolean) => {
-    if (!autopilotJobId || !isTauri()) return;
-    const seq = ++autopilotSeqRef.current;
-    const prev = autopilotEnabled;
-    setAutopilotEnabled(next);
-    setError(null);
-    setSavedNote(null);
-    try {
-      await openhumanCronUpdate(autopilotJobId, { enabled: next });
-      if (autopilotSeqRef.current === seq) {
-        setSavedNote(t('settings.agentAccess.saved'));
-      }
-    } catch (e) {
-      if (autopilotSeqRef.current === seq) {
-        setAutopilotEnabled(prev);
-        setError(e instanceof Error ? e.message : t('settings.agentAccess.saveError'));
-      }
-    }
+  const toggleAutoApproveAll = (next: boolean) => {
+    const prev = autoApproveAll;
+    setAutoApproveAll(next);
+    void persist(
+      { workspaceOnly, requireTaskPlanApproval, trustedRoots, autoApproveAll: next },
+      () => setAutoApproveAll(prev)
+    );
   };
 
   const addRoot = () => {
@@ -226,18 +216,23 @@ const AgentAccessPanel = () => {
     setTrustedRoots(nextRoots);
     setNewRootPath('');
     setNewRootAccess('read');
+    // `autoApproveAll` intentionally omitted: this save is about the folder
+    // grant, not the auto-approve-all toggle, and the partial-patch RPC
+    // leaves omitted fields untouched server-side (see `persist` above).
     void persist({ workspaceOnly, requireTaskPlanApproval, trustedRoots: nextRoots });
   };
 
   const removeRoot = (path: string) => {
     const nextRoots = trustedRoots.filter(r => r.path !== path);
     setTrustedRoots(nextRoots);
+    // `autoApproveAll` intentionally omitted — see `addRoot` above.
     void persist({ workspaceOnly, requireTaskPlanApproval, trustedRoots: nextRoots });
   };
 
   const removeAutoApprove = (tool: string) => {
     const nextList = autoApprove.filter(name => name !== tool);
     setAutoApprove(nextList);
+    // `autoApproveAll` intentionally omitted — see `addRoot` above.
     void persist({ workspaceOnly, requireTaskPlanApproval, trustedRoots, autoApprove: nextList });
   };
 
@@ -294,6 +289,37 @@ const AgentAccessPanel = () => {
         <p className="text-sm text-content-muted">{t('settings.agentAccess.loading')}</p>
       ) : (
         <>
+          {/* Auto-approve everything — blanket bypass of the approval
+              prompt. Security-sensitive: kept at the very top of the panel
+              with a persistent warning, visible regardless of toggle state,
+              so the user reads it before flipping the switch. */}
+          <SettingsSection>
+            <SettingsRow
+              htmlFor="switch-auto-approve-all"
+              label={t('settings.agentAccess.autoApproveAll.label')}
+              control={
+                <SettingsSwitch
+                  id="switch-auto-approve-all"
+                  checked={autoApproveAll}
+                  onCheckedChange={toggleAutoApproveAll}
+                  aria-label={t('settings.agentAccess.autoApproveAll.label')}
+                />
+              }
+            />
+            <div className="px-4 pb-3 -mt-1">
+              {/* Persistent, visible regardless of toggle state — not a
+                  response to a user action, so it must not interrupt with an
+                  assertive announcement on every visit. */}
+              <Alert
+                variant="warning"
+                density="compact"
+                role={undefined}
+                data-testid="auto-approve-all-warning">
+                <AlertDescription>{t('settings.agentAccess.autoApproveAll.desc')}</AlertDescription>
+              </Alert>
+            </div>
+          </SettingsSection>
+
           {/* Workspace confinement + task plan approval */}
           <SettingsSection>
             <SettingsRow
@@ -324,27 +350,6 @@ const AgentAccessPanel = () => {
             />
           </SettingsSection>
 
-          {/* Autonomous tiny.place agent (opt-in). Only shown once the seeded
-                cron job is found, so users without it never see a dead toggle. */}
-          {autopilotJobId && (
-            <SettingsSection
-              title={t('settings.agentAccess.tinyplaceAutopilot.title')}
-              description={t('settings.agentAccess.tinyplaceAutopilot.desc')}>
-              <SettingsRow
-                htmlFor="switch-tinyplace-autopilot"
-                label={t('settings.agentAccess.tinyplaceAutopilot.label')}
-                control={
-                  <SettingsSwitch
-                    id="switch-tinyplace-autopilot"
-                    checked={autopilotEnabled}
-                    onCheckedChange={next => void toggleAutopilot(next)}
-                    aria-label={t('settings.agentAccess.tinyplaceAutopilot.label')}
-                  />
-                }
-              />
-            </SettingsSection>
-          )}
-
           {/* Action timeout */}
           <SettingsSection
             title={t('settings.agentAccess.timeout.label')}
@@ -366,9 +371,14 @@ const AgentAccessPanel = () => {
                     aria-label={t('settings.agentAccess.timeout.label')}
                   />
                   {timeoutEnvOverride && (
-                    <p className="rounded border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
-                      {t('settings.agentAccess.timeout.envOverride')}
-                    </p>
+                    // Reflects a resolved config value, not a user action —
+                    // opt out of the assertive default for the same reason
+                    // as the auto-approve-all warning above.
+                    <Alert variant="warning" density="compact" role={undefined}>
+                      <AlertDescription>
+                        {t('settings.agentAccess.timeout.envOverride')}
+                      </AlertDescription>
+                    </Alert>
                   )}
                   <SettingsStatusLine
                     saving={false}

@@ -115,6 +115,12 @@ function destinationForElement(element: HTMLElement): string {
 function controlState(element: HTMLElement): string {
   if (element instanceof HTMLInputElement) {
     if (element.type === 'checkbox' || element.type === 'radio') {
+      // `element` is an `HTMLInputElement` reached from a live `change` event, so
+      // reading `checked` is always safe: the getter works on disconnected and
+      // never-mounted nodes alike and cannot throw. (An earlier try/catch here
+      // blamed #5161 on a disconnected DOM node — that was a misdiagnosis; the
+      // real fault was reading `event.currentTarget` inside a deferred setState
+      // updater in the Telegram/Discord config panels.)
       return element.checked ? 'checked' : 'unchecked';
     }
     if (element.type === 'range') return 'changed';

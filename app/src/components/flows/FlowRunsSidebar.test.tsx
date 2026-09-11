@@ -9,7 +9,7 @@
  * seed is the fix (see `FlowCanvasPage.tsx`'s `locationKey`-based copilot
  * panel remount, which reacts to exactly this navigation).
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,10 +19,22 @@ import { store } from '../../store';
 import FlowRunsSidebar from './FlowRunsSidebar';
 
 const listFlowRuns = vi.hoisted(() => vi.fn());
-vi.mock('../../services/api/flowsApi', () => ({ listFlowRuns }));
+vi.mock('../../services/api/flowsApi', () => ({ listFlowRuns, listAllFlowRuns: vi.fn() }));
 
 const fetchPendingApprovals = vi.hoisted(() => vi.fn());
 vi.mock('../../services/api/approvalApi', () => ({ fetchPendingApprovals }));
+
+// Stub the run-started hook (issue B35) so tests can trigger its `onStart`
+// callback directly, without standing up a real socket subscription — its own
+// match/filter/teardown behavior is covered by useFlowRunStarted.test.ts.
+const flowRunStartedCalls = vi.hoisted(
+  () => [] as Array<{ onStart: () => void; flowId?: string | null }>
+);
+vi.mock('../../hooks/useFlowRunStarted', () => ({
+  useFlowRunStarted: (onStart: () => void, flowId?: string | null) => {
+    flowRunStartedCalls.push({ onStart, flowId });
+  },
+}));
 
 // Capture the props handed to the drawer so "Fix with agent" can be invoked
 // directly without standing up the drawer's own run-polling machinery
@@ -31,30 +43,6 @@ const inspectorDrawerProps = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
 }));
 vi.mock('./FlowRunInspectorDrawer', () => ({
-  FLOW_RUN_STATUS_ACCENT: {
-    running: '',
-    completed: '',
-    completed_with_warnings: '',
-    pending_approval: '',
-    failed: '',
-    cancelled: '',
-  },
-  FLOW_RUN_STATUS_DOT: {
-    running: '',
-    completed: '',
-    completed_with_warnings: '',
-    pending_approval: '',
-    failed: '',
-    cancelled: '',
-  },
-  FLOW_RUN_STATUS_KEY: {
-    running: 'flowRuns.status.running',
-    completed: 'flowRuns.status.completed',
-    completed_with_warnings: 'flowRuns.status.completed_with_warnings',
-    pending_approval: 'flowRuns.status.pending_approval',
-    failed: 'flowRuns.status.failed',
-    cancelled: 'flowRuns.status.cancelled',
-  },
   FlowRunInspectorDrawer: (props: Record<string, unknown>) => {
     inspectorDrawerProps.current = props;
     return props.runId ? (
@@ -100,6 +88,7 @@ describe('FlowRunsSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     inspectorDrawerProps.current = null;
+    flowRunStartedCalls.length = 0;
     fetchPendingApprovals.mockResolvedValue([]);
   });
 
@@ -113,6 +102,33 @@ describe('FlowRunsSidebar', () => {
     fireEvent.click(row);
 
     expect(screen.getByTestId('flow-run-inspector-drawer-stub')).toHaveTextContent('run-1');
+  });
+
+  it('paints the status exactly once per row: a coloured dot plus plain text', async () => {
+    listFlowRuns.mockResolvedValue([makeRun()]);
+    renderSidebar();
+
+    const row = await screen.findByTestId('flow-runs-sidebar-run-run-1');
+
+    // This row used to render the status TWICE — a coloured dot AND the same
+    // word again as an accented badge — which put three visual weights in a
+    // row whose job is "which run, how long ago". The dot is the only thing
+    // carrying the accent now; the label beside it is plain text. Replaces an
+    // assertion on that badge's padding override, which pinned the styling of
+    // an element that should not have been there.
+    expect(row.querySelectorAll('[aria-hidden="true"]')).toHaveLength(1);
+    expect(row.querySelector('[aria-hidden="true"]')).toHaveClass('bg-coral-500');
+    expect(within(row).getByText('Failed')).not.toHaveClass('bg-coral-50');
+    expect(row).toHaveTextContent('Failed');
+  });
+
+  it('falls back to a humanized label instead of "undefined" for an unrecognized status (F-m8)', async () => {
+    listFlowRuns.mockResolvedValue([makeRun({ status: 'archived' as FlowRun['status'] })]);
+    renderSidebar();
+
+    const row = await screen.findByTestId('flow-runs-sidebar-run-run-1');
+    expect(row).toHaveTextContent('archived');
+    expect(row).not.toHaveTextContent('undefined');
   });
 
   it('passes onFixWithAgent through to the run inspector drawer', async () => {
@@ -202,6 +218,13 @@ describe('FlowRunsSidebar', () => {
 
     const runRow = await screen.findByTestId('flow-runs-sidebar-run-run-1');
     await waitFor(() => expect(runRow).toHaveTextContent('Awaiting approval'));
+    expect(runRow.querySelector('[aria-hidden="true"]')).toHaveClass(
+      'bg-amber-500',
+      'animate-pulse'
+    );
+    // The accent rides on the dot alone — see the "exactly once per row" spec
+    // above for why the duplicate accented badge is gone.
+    expect(screen.getByText('Awaiting approval')).not.toHaveClass('bg-amber-50');
   });
 
   it('leaves a running run without a matching approval labeled "Running"', async () => {
@@ -211,5 +234,40 @@ describe('FlowRunsSidebar', () => {
 
     const runRow = await screen.findByTestId('flow-runs-sidebar-run-run-1');
     await waitFor(() => expect(runRow).toHaveTextContent('Running'));
+  });
+
+  it('registers useFlowRunStarted scoped to this flow and refetches when it fires (B35)', async () => {
+    listFlowRuns.mockResolvedValue([]);
+    renderSidebar('flow-1');
+
+    await screen.findByTestId('flow-runs-sidebar-empty');
+    // The hook is called (with the same args) on every render — assert the
+    // most recent registration is scoped to this flow.
+    const latestCall = flowRunStartedCalls.at(-1);
+    expect(latestCall?.flowId).toBe('flow-1');
+    expect(listFlowRuns).toHaveBeenCalledTimes(1);
+
+    listFlowRuns.mockResolvedValue([makeRun({ status: 'running' })]);
+    act(() => {
+      latestCall?.onStart();
+    });
+
+    await waitFor(() => expect(listFlowRuns.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByTestId('flow-runs-sidebar-run-run-1')).toHaveTextContent('Running');
+    expect(screen.queryByTestId('flow-runs-sidebar-empty')).not.toBeInTheDocument();
+  });
+
+  it('shows runs once a run starts even though the list began empty (B35)', async () => {
+    listFlowRuns.mockResolvedValue([]);
+    renderSidebar();
+
+    expect(await screen.findByTestId('flow-runs-sidebar-empty')).toBeInTheDocument();
+
+    listFlowRuns.mockResolvedValue([makeRun({ status: 'running' })]);
+    act(() => {
+      flowRunStartedCalls.at(-1)?.onStart();
+    });
+
+    expect(await screen.findByTestId('flow-runs-sidebar-run-run-1')).toBeInTheDocument();
   });
 });

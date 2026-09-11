@@ -19,7 +19,7 @@
  */
 import type { Viewport } from '@xyflow/react';
 import createDebug from 'debug';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import type {
@@ -27,6 +27,7 @@ import type {
   EditorSaveMeta,
 } from '../components/flows/canvas/EditableFlowCanvas';
 import FlowCanvas from '../components/flows/canvas/FlowCanvas';
+import { FlowPreauthorizationOverlay } from '../components/flows/FlowPreauthorizationCard';
 import FlowRunsSidebar from '../components/flows/FlowRunsSidebar';
 import WorkflowCopilotPanel, {
   type RepairPromptContext,
@@ -36,15 +37,35 @@ import {
   setCopilotThreadId as setCopilotThreadIdCache,
 } from '../components/flows/workflowCopilotThreads';
 import { ToastContainer } from '../components/intelligence/Toast';
-import PanelPage from '../components/layout/PanelPage';
-import Button from '../components/ui/Button';
-import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
+import { SidebarContent } from '../components/layout/shell/SidebarSlot';
+import SettingsTabbedPage from '../components/settings/layout/SettingsTabbedPage';
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  CenteredLoadingState,
+  ConfirmDialog,
+  ErrorBanner,
+  ToggleGroupItem,
+  ToggleGroupRoot,
+} from '../components/ui';
+import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { asFlowCanvasDraftState } from '../lib/flows/canvasDraft';
-import { workflowGraphToXyflow } from '../lib/flows/graphAdapter';
+import {
+  normalizeWorkflowGraphForDirtyCheck,
+  workflowGraphToXyflow,
+} from '../lib/flows/graphAdapter';
 import { buildPreviewGraph, diffGraphs } from '../lib/flows/graphDiff';
 import type { WorkflowGraph } from '../lib/flows/types';
 import { useT } from '../lib/i18n/I18nContext';
-import { createFlow, type Flow, getFlow, runFlow, updateFlow } from '../services/api/flowsApi';
+import {
+  createFlow,
+  type Flow,
+  getFlow,
+  runFlowDetached,
+  updateFlow,
+} from '../services/api/flowsApi';
 import type { WorkflowProposal } from '../store/chatRuntimeSlice';
 import type { ToastNotification } from '../types/intelligence';
 
@@ -53,7 +74,7 @@ import type { ToastNotification } from '../types/intelligence';
  * agent" action (Phase 5c). Rides in `location.state` (ephemeral). The graph is
  * supplied by the editor itself, so only the run context travels here.
  */
-export interface CopilotRepairSeed {
+interface CopilotRepairSeed {
   runId: string;
   error?: string | null;
   failingNodeIds?: string[];
@@ -65,7 +86,7 @@ export interface CopilotRepairSeed {
  * open already building the described workflow. Rides in `location.state`
  * (ephemeral — lost on hard reload, which just leaves a blank flow to edit).
  */
-export interface CopilotBuildSeed {
+interface CopilotBuildSeed {
   /** The user's free-text workflow description from the prompt bar. */
   description: string;
   /**
@@ -98,7 +119,7 @@ export function asCopilotBuildSeed(state: unknown): CopilotBuildSeed | null {
  * pressing Send themselves. Rides in `location.state` (ephemeral — lost on
  * hard reload, which just leaves a blank flow with an empty copilot input).
  */
-export interface CopilotPrefillSeed {
+interface CopilotPrefillSeed {
   /** The text to populate the copilot's composer with, unsent. */
   text: string;
   /**
@@ -128,7 +149,7 @@ export function asCopilotPrefillSeed(state: unknown): CopilotPrefillSeed | null 
 }
 
 /** Narrow an opaque `location.state` to a {@link CopilotRepairSeed}. */
-export function asCopilotRepairSeed(state: unknown): CopilotRepairSeed | null {
+function asCopilotRepairSeed(state: unknown): CopilotRepairSeed | null {
   if (!state || typeof state !== 'object') return null;
   const record = state as Record<string, unknown>;
   const seed = record.copilotRepair;
@@ -200,7 +221,7 @@ export function isPlaceholderTitle(title: string, placeholder: string): boolean 
 function BackIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="h-5 w-5"
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -236,19 +257,55 @@ function SaveIcon() {
   );
 }
 
-function DiscardIcon() {
+/**
+ * The canvas header's Back control. One component rather than the three
+ * byte-identical copies this file used to carry (the editor, the load-state
+ * page and the draft page each declared their own `backButton`), which is how
+ * the three drifted apart in the first place.
+ */
+function CanvasBackButton({ onBack }: { onBack: () => void }) {
+  const { t } = useT();
   return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      viewBox="0 0 24 24"
-      aria-hidden="true">
-      <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
+    <Button
+      type="button"
+      variant="tertiary"
+      size="sm"
+      iconOnly
+      data-testid="flow-canvas-back"
+      aria-label={t('flows.canvas.backToList')}
+      // The header row is `items-start`, so a control shorter than the heading
+      // sits high against it rather than centred. `text-2xl`'s line box is
+      // exactly 2rem, so an `h-8` button fills it and lands on the title's
+      // optical centre; `w-8` keeps it square. The default `size="sm"` metrics
+      // (30px) miss by 2px, which is enough to read as misaligned next to a
+      // 24px heading.
+      className="h-8 w-8"
+      onClick={onBack}>
+      <BackIcon />
+    </Button>
+  );
+}
+
+/**
+ * The chrome the canvas shows when there is no graph to edit — loading, load
+ * error, not found, or a draft whose ephemeral `location.state` is gone. All
+ * four rendered their own `PanelPage` with the same title/leading/body classes;
+ * the only thing that differed was the message in the middle. They share the
+ * standard page shell now, so a canvas that failed to load reads as the same
+ * page as one that loaded.
+ */
+function CanvasStatePage({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+  const { t } = useT();
+  return (
+    <div className="h-full p-4" data-testid="flow-canvas-page">
+      <SettingsTabbedPage
+        title={t('flows.canvas.title')}
+        description={t('flows.canvas.description')}
+        leading={<CanvasBackButton onBack={onBack} />}
+        scrollable={false}>
+        {children}
+      </SettingsTabbedPage>
+    </div>
   );
 }
 
@@ -325,9 +382,9 @@ function FlowEditor({
     saving: false,
   });
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  // Which header action (run/save/discard) is awaiting confirmation, if any —
+  // Which header action (run/save) is awaiting confirmation, if any —
   // every icon click opens a confirm popup before it fires.
-  const [confirmAction, setConfirmAction] = useState<'run' | 'save' | 'discard' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'run' | 'save' | null>(null);
   // Active run id (== thread_id) driving the canvas's live per-node overlay
   // (Phase 3e). Set when the user runs the flow; the canvas subscribes to the
   // `flow:run_progress` feed for it via `useFlowRunProgress`.
@@ -396,11 +453,6 @@ function FlowEditor({
   // it); the user can switch to the Legend or collapse the rail entirely.
   const [sidePanel, setSidePanel] = useState<SidePanel>('copilot');
   const copilotOpen = sidePanel === 'copilot';
-  // Toggle a panel: selecting the active one again closes the side panel.
-  const toggleSidePanel = useCallback(
-    (panel: Exclude<SidePanel, null>) => setSidePanel(cur => (cur === panel ? null : panel)),
-    []
-  );
   // Issue B22: a repair seed can also arrive WITHOUT a `FlowEditor` remount —
   // "Fix with agent" clicked from `FlowRunsSidebar` stays on this same
   // `/flows/:id` route (only `location.state`/`location.key` change), so the
@@ -441,7 +493,19 @@ function FlowEditor({
   // nodes — "graph appears later". `graphRevealed` latches true the first time
   // a proposal preview arrives or the draft gains a node beyond the lone
   // trigger, and never flips back (so rejecting a proposal can't re-hide it).
-  const chatFirst = initialBuildSeed?.chatFirst === true;
+  //
+  // F-m2 fix: `chatFirst` itself must ALSO latch at mount, not re-derive from
+  // the live `initialBuildSeed` prop every render. `onBuildSeedConsumed`
+  // (`clearBuildSeed` in the parent) strips `copilotBuild` from
+  // `location.state` once the copilot has dispatched the seeded build turn —
+  // deliberately, so a later remount doesn't re-fire it. But if that turn's
+  // FIRST reply was a clarifying question (no proposal yet, so `graphRevealed`
+  // is still false), re-deriving `chatFirst` from the now-cleared prop flipped
+  // it to `false` mid-conversation, which un-hid the blank trigger-only canvas
+  // while the user was still answering the agent's question. Reading
+  // `initialBuildSeed` only inside a `useState` initializer freezes the value
+  // as of first mount, immune to the prop later going away.
+  const [chatFirst] = useState(() => initialBuildSeed?.chatFirst === true);
   const [graphRevealed, setGraphRevealed] = useState(!chatFirst);
   if (!graphRevealed && (preview !== null || draftGraph.nodes.length > 1)) {
     setGraphRevealed(true);
@@ -480,12 +544,30 @@ function FlowEditor({
   //
   // Declared ahead of `handleAcceptProposal` (below), which calls it directly
   // to persist an accepted proposal immediately.
+  //
+  // Returns `flowId`/`flowEnabled` alongside `remounted` so a caller wanting a
+  // "Save & enable" follow-up (`handleAcceptProposal`'s `opts.enable`) knows
+  // exactly which flow id to arm and whether the persisted flow already came
+  // back enabled — without having to re-derive it from component state, which
+  // is especially important for the draft-create path: `flowId` (the prop)
+  // is still `null` in THIS closure even after `createFlow` resolves, since
+  // the draft only becomes a real flow id via the `navigate(...)` below, not
+  // a state update this same render can observe.
   const handleSave = useCallback(
     async (
       next: WorkflowGraph,
       overrideName?: string,
-      overrideRequireApproval?: boolean
-    ): Promise<{ remounted: boolean }> => {
+      overrideRequireApproval?: boolean,
+      // When true, a draft-create does NOT navigate to `/flows/:id` itself —
+      // the caller owns navigation timing. `handleAcceptProposal`'s
+      // "Save & enable" needs this: it must run `setFlowEnabled` on the
+      // just-created flow BEFORE the route change unmounts this page, else the
+      // enable RPC resolves against an unmounted component (its loading/error
+      // state is lost and the new page shows the flow still disabled). The
+      // `wasDraft` flag in the return tells the caller navigation is now its
+      // responsibility.
+      deferDraftNavigation?: boolean
+    ): Promise<{ remounted: boolean; flowId: string; flowEnabled: boolean; wasDraft: boolean }> => {
       // `overrideName` covers the copilot-Accept call site: it calls
       // `setName(proposal.name)` and `handleSave(...)` in the same handler,
       // but `name` in THIS closure is still the pre-update value — React
@@ -510,11 +592,24 @@ function FlowEditor({
           effectiveRequireApproval
         );
         const created = await createFlow(effectiveName, next, effectiveRequireApproval);
-        log('save: draft persisted as flow id=%s', created.id);
-        navigate(`/flows/${created.id}`, { replace: true });
+        log('save: draft persisted as flow id=%s enabled=%s', created.id, created.enabled);
+        if (!deferDraftNavigation) {
+          navigate(`/flows/${created.id}`, { replace: true });
+        }
         // Navigating replaces this whole page (new `flowId` route param), so
         // "remounted" is moot for a draft-create — no caller branches on it.
-        return { remounted: false };
+        // `flowId`/`flowEnabled` DO matter — a "Save & enable" caller reads
+        // them to arm the just-created flow (B29 Rule 1 always persists an
+        // automatic-trigger draft disabled, regardless of the caller's
+        // intent), and this RPC response is the only place that id/enabled
+        // pair is available before the route change lands. `wasDraft` lets a
+        // `deferDraftNavigation` caller know it now owns the navigation.
+        return {
+          remounted: false,
+          flowId: created.id,
+          flowEnabled: created.enabled,
+          wasDraft: true,
+        };
       }
       // Only include `name` / `requireApproval` in the update payload when
       // they actually diverge from what's already persisted (a manual
@@ -565,26 +660,82 @@ function FlowEditor({
         setCanvasVersion(v => v + 1);
       }
       log(
-        'save: flow id=%s persisted — canvas re-synced from response nodes=%d edges=%d graphChanged=%s',
+        'save: flow id=%s persisted — canvas re-synced from response nodes=%d edges=%d graphChanged=%s enabled=%s',
         flowId,
         persisted.nodes.length,
         persisted.edges.length,
-        graphChanged
+        graphChanged,
+        updated.enabled
       );
-      return { remounted: graphChanged };
+      return { remounted: graphChanged, flowId, flowEnabled: updated.enabled, wasDraft: false };
     },
     [isDraft, flowId, name, requireApproval, navigate]
   );
+
+  // Deferred draft navigation while the pre-authorization card is open — the
+  // `/flows/:id` route change would unmount the card mid-decision, so a
+  // draft-save that surfaces the card parks its navigation here and fires it
+  // from the hook's `onSettled` once the user decided either way.
+  const preauthNavRef = useRef<string | null>(null);
+  const preauth = useFlowPreauthorization({
+    onSettled: useCallback(
+      (outcome: 'no-card' | 'approved' | 'denied', settledFlowId: string) => {
+        if (preauthNavRef.current === settledFlowId) {
+          preauthNavRef.current = null;
+          log(
+            'preauth settled outcome=%s id=%s — firing deferred draft navigation',
+            outcome,
+            settledFlowId
+          );
+          navigate(`/flows/${settledFlowId}`, { replace: true });
+        } else {
+          log('preauth settled outcome=%s id=%s — no deferred navigation', outcome, settledFlowId);
+        }
+      },
+      [navigate]
+    ),
+  });
 
   // Adapter for the canvas's own `onSave` prop, whose type (`void |
   // Promise<void>`) is shared with the read-only viewer and every other
   // consumer — `handleSave`'s richer `{ remounted }` return (needed by
   // `handleAcceptProposal` below) isn't part of that contract.
+  //
+  // After a successful persist this also runs the save+enable
+  // pre-authorization check: a flow that is (or came back) enabled with
+  // missing permission grants surfaces the consolidated Approve-all/Deny
+  // card. For a draft-create the navigation to `/flows/:id` is deferred
+  // until the card settles (see `preauthNavRef`).
   const onCanvasSave = useCallback(
     async (next: WorkflowGraph) => {
-      await handleSave(next);
+      const result = await handleSave(next, undefined, undefined, true);
+      if (result.wasDraft) {
+        let cardShown = false;
+        try {
+          cardShown = await preauth.checkAfterSave(result.flowId, result.flowEnabled);
+        } catch (err) {
+          // The flow is already persisted — on failure we must still
+          // navigate, or `isDraft` stays true and a Save retry would call
+          // `createFlow` again, duplicating the flow (same guard as
+          // `handleAcceptProposal`'s enable arm).
+          log('save: pre-authorization check failed id=%s err=%o', result.flowId, err);
+        }
+        if (cardShown) {
+          log('save: preauth card shown id=%s — deferring draft navigation', result.flowId);
+          preauthNavRef.current = result.flowId;
+        } else {
+          log('save: no preauth card id=%s — navigating to flow route', result.flowId);
+          navigate(`/flows/${result.flowId}`, { replace: true });
+        }
+      } else {
+        preauth
+          .checkAfterSave(result.flowId, result.flowEnabled)
+          .catch(err =>
+            log('save: pre-authorization check failed id=%s err=%o', result.flowId, err)
+          );
+      }
     },
-    [handleSave]
+    [handleSave, preauth, navigate]
   );
 
   const handleGraphChange = useCallback(
@@ -624,9 +775,20 @@ function FlowEditor({
   // right after Accept would have done. A failed save is non-fatal: the
   // proposal stays applied to the (now dirty) draft and the header Save
   // button remains the manual retry — we never crash or revert the draft.
+  //
+  // `opts.enable` (PR1 — "Save & enable") mirrors `WorkflowProposalCard.save()`
+  // in the main chat surface: after a successful save, explicitly arm the
+  // flow via `setFlowEnabled`. This is needed because `createFlow` with an
+  // automatic trigger (schedule/app_event/webhook) ALWAYS persists disabled
+  // (B29 Rule 1, `flowsApi.ts`) regardless of what the caller passed — Rule 1
+  // exists to stop a copilot autosave from silently arming an unattended
+  // automation, but "Save & enable" is the user's own explicit arming click,
+  // not a silent autosave, so it must follow up. Plain "Accept & save" (no
+  // `opts`) must NOT enable and must NOT force-disable an already-enabled
+  // existing flow — it's simply omitted from the call.
   const handleAcceptProposal = useCallback(
-    async (proposal: WorkflowProposal) => {
-      log('copilot proposal accepted');
+    async (proposal: WorkflowProposal, opts?: { enable?: boolean }) => {
+      log('copilot proposal accepted: enable=%s', Boolean(opts?.enable));
       const proposedGraph = proposal.graph as WorkflowGraph;
       setDraftGraph(proposedGraph);
       setPreview(null);
@@ -670,10 +832,18 @@ function FlowEditor({
       // `canvasVersion` bump above) so the ref's imperative handle is stale;
       // call `handleSave` directly with the known-good proposed graph.
       try {
-        const { remounted } = await handleSave(
+        const {
+          remounted,
+          flowId: savedFlowId,
+          flowEnabled,
+          wasDraft,
+        } = await handleSave(
           proposedGraph,
           overrideName,
-          proposal.requireApproval
+          proposal.requireApproval,
+          // Defer a draft-create's navigation so a "Save & enable" arms the
+          // flow BEFORE this page unmounts — see `deferDraftNavigation`.
+          true
         );
         // The canvas remounted once already (this handler's own bump above)
         // with `forcedDirty` seeded `true` — correct pre-persist, but that
@@ -688,19 +858,75 @@ function FlowEditor({
         if (!remounted) {
           canvasRef.current?.clearForcedDirty();
         }
-        log('copilot proposal accepted: persisted remounted=%s', remounted);
+        log(
+          'copilot proposal accepted: persisted remounted=%s flowId=%s flowEnabled=%s',
+          remounted,
+          savedFlowId,
+          flowEnabled
+        );
+
+        // "Save & enable": follow up with an explicit arm, same as
+        // `WorkflowProposalCard.save()`. Fires unconditionally when
+        // requested (idempotent if the flow already came back enabled) —
+        // simpler than special-casing an already-enabled flow, and this is
+        // still inside the same try/catch so a failure here also leaves the
+        // proposal visible for retry rather than silently vanishing.
+        let preauthCardShown = false;
+        if (opts?.enable) {
+          log('copilot proposal accepted: enabling flow id=%s', savedFlowId);
+          try {
+            // Routes through the pre-authorization check: enables directly
+            // when no grants are missing, otherwise surfaces the consolidated
+            // Approve-all/Deny card and defers the enable to "Approve all".
+            const enabledNow = await preauth.beginEnable(savedFlowId);
+            preauthCardShown = !enabledNow;
+            log(
+              'copilot proposal accepted: enable settled id=%s cardShown=%s',
+              savedFlowId,
+              preauthCardShown
+            );
+          } catch (enableErr) {
+            // The flow IS saved at this point. On a DRAFT we must still
+            // navigate to the created flow (below) or a retry would create a
+            // duplicate — so we can't keep the proposal for an in-place retry;
+            // swallow here and let the user arm it from the flow page (matches
+            // the "Saved, but could not enable" guidance). On an EXISTING flow
+            // there's no navigation, so rethrow to keep the proposal visible
+            // for retry, preserving the pre-existing behavior.
+            if (!wasDraft) throw enableErr;
+            log(
+              'copilot proposal accepted: enable failed on draft; flow saved-but-disabled id=%s err=%o',
+              savedFlowId,
+              enableErr
+            );
+          }
+        }
+
+        // Draft navigation was deferred so the "Save & enable" arm could run
+        // first; now that persist + enable have settled, move to the real flow
+        // route. A non-draft accept stays on its existing `/flows/:id` page.
+        // When the pre-authorization card is open, navigation is parked until
+        // the user decides (the route change would unmount the card).
+        if (wasDraft) {
+          if (preauthCardShown) {
+            preauthNavRef.current = savedFlowId;
+          } else {
+            navigate(`/flows/${savedFlowId}`, { replace: true });
+          }
+        }
       } catch (err) {
-        log('copilot proposal accepted: save failed err=%o', err);
+        log('copilot proposal accepted: save/enable failed err=%o', err);
         // Rethrow: the draft above is already applied unconditionally, so no
         // data is lost by rethrowing. This lets the caller — the copilot
-        // panel's own `accept` handler — see the failure and skip
-        // `clearProposal()`, keeping the proposal card visible for retry
-        // instead of silently vanishing while nothing was actually saved.
-        // `acceptSaving` there still resets via its own `finally`.
+        // panel's own `accept`/`acceptAndEnable` handler — see the failure
+        // and skip `clearProposal()`, keeping the proposal card visible for
+        // retry instead of silently vanishing while nothing was actually
+        // saved (or saved-but-not-enabled). `acceptSaving`/`acceptState`
+        // there still resets via its own `finally`.
         throw err;
       }
     },
-    [titleDraft, renaming, t, isDraft, handleSave]
+    [titleDraft, renaming, t, isDraft, handleSave, preauth, navigate]
   );
 
   const handleRejectProposal = useCallback(() => {
@@ -731,11 +957,26 @@ function FlowEditor({
   // `name` without yet persisting it (`persistedNameRef` only advances on a
   // real Save/rename) — a name-only proposal (same graph, new name) must
   // still enable Save, or the adopted title can never be persisted.
+  //
+  // F-m3 fix: normalize BOTH sides through the same `workflowGraphToXyflow` /
+  // `xyflowToWorkflowGraph` round-trip the canvas itself performs (see
+  // `normalizeWorkflowGraphForDirtyCheck`'s doc comment) before comparing,
+  // rather than diffing `editorGraph` against the raw, possibly
+  // position-less `persistedGraphRef.current` directly. A graph saved
+  // without per-node `position` (e.g. agent-authored) otherwise reads as
+  // dirty the instant a REMOUNTED canvas instance (e.g. after a copilot
+  // Reject) reports its now-positioned `editorGraph` back — even with zero
+  // real edits — because `persistedGraphRef.current` was never updated to
+  // match. Normalizing here (rather than pre-normalizing the ref at seed
+  // time) keeps this correct on the very FIRST mount too, where `editorGraph`
+  // is still raw and `persistedGraphRef.current` must compare equal to it
+  // before any canvas effect has run.
   const initialDirty = useMemo(
     () =>
-      JSON.stringify(editorGraph) !== JSON.stringify(persistedGraphRef.current) ||
+      JSON.stringify(normalizeWorkflowGraphForDirtyCheck(editorGraph, meta)) !==
+        JSON.stringify(normalizeWorkflowGraphForDirtyCheck(persistedGraphRef.current, meta)) ||
       name !== persistedNameRef.current,
-    [editorGraph, name]
+    [editorGraph, name, meta]
   );
 
   // Repair seed for the copilot: bind the run context to the CURRENT draft.
@@ -766,19 +1007,28 @@ function FlowEditor({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // Run the *persisted* flow and hand its thread_id to the canvas so it can
+  // Run the *persisted* flow and hand its run id to the canvas so it can
   // overlay live per-node status (Phase 3e). Runs the saved version — not the
   // (possibly dirty) draft — matching the "Save is explicit, running is live"
   // model. The durable run row + poller remain the source of truth.
+  //
+  // F-M1 fix: uses `runFlowDetached` (`openhuman.flows_run_detached`), which
+  // registers the run and returns its id immediately, INSTEAD of the old
+  // `runFlow` (`openhuman.flows_run`), which blocked until the run reached a
+  // terminal status — by the time that resolved, every `flow:run_progress`
+  // event for the run had already fired and been dropped, because
+  // `useFlowRunProgress` only subscribes once `activeRunId` is set (see its
+  // doc comment). `setActiveRunId` below now runs BEFORE the engine has
+  // executed a single node, so the subscription is live for the whole run.
   const handleRun = useCallback(async () => {
     if (flowId === null) return; // drafts aren't runnable until saved
     setRunning(true);
     setRunError(null);
     try {
-      log('run: starting flow id=%s', flowId);
-      const result = await runFlow(flowId);
-      log('run: started flow id=%s thread_id=%s', flowId, result.thread_id);
-      setActiveRunId(result.thread_id);
+      log('run: starting (detached) flow id=%s', flowId);
+      const result = await runFlowDetached(flowId);
+      log('run: started (detached) flow id=%s run_id=%s', flowId, result.run_id);
+      setActiveRunId(result.run_id);
     } catch (err) {
       const message = errorMessage(err);
       log('run: failed id=%s err=%o', flowId, err);
@@ -822,18 +1072,7 @@ function FlowEditor({
     goBack();
   }, [dirty, goBack]);
 
-  const backButton = (
-    <Button
-      type="button"
-      variant="tertiary"
-      size="xs"
-      iconOnly
-      data-testid="flow-canvas-back"
-      aria-label={t('flows.canvas.backToList')}
-      onClick={handleBack}>
-      <BackIcon />
-    </Button>
-  );
+  const backButton = <CanvasBackButton onBack={handleBack} />;
 
   // A draft has nothing persisted to run yet — the canvas's Save (which creates
   // the flow) is the only gate, so no Run affordance until it's saved.
@@ -841,7 +1080,7 @@ function FlowEditor({
     <Button
       type="button"
       variant="primary"
-      size="xs"
+      size="sm"
       analyticsId="flow-canvas-run"
       iconOnly
       data-testid="flow-canvas-run"
@@ -857,68 +1096,47 @@ function FlowEditor({
   // segment again collapses the rail (full-width graph). Replaces the old
   // single copilot on/off button.
   const sidePanelToggle = (
-    <div
-      role="group"
+    <ToggleGroupRoot
+      type="single"
+      variant="secondary"
+      size="sm"
+      value={sidePanel ?? ''}
+      onValueChange={next => setSidePanel(next === 'copilot' || next === 'legend' ? next : null)}
       aria-label={t('flows.canvas.sidePanelToggle')}
-      className="inline-flex items-center rounded-lg border border-line bg-surface p-0.5">
-      {(
-        [
-          { key: 'copilot', label: t('flows.copilot.open'), testId: 'flow-canvas-copilot-toggle' },
-          {
-            key: 'legend',
-            label: t('flows.canvas.legendTab'),
-            testId: 'flow-canvas-legend-toggle',
-          },
-        ] as const
-      ).map(tab => {
-        const active = sidePanel === tab.key;
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            aria-pressed={active}
-            data-testid={tab.testId}
-            onClick={() => toggleSidePanel(tab.key)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              active
-                ? 'bg-primary-500 text-content-inverted shadow-sm'
-                : 'text-content-secondary hover:bg-surface-hover'
-            }`}>
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
+      className="rounded-lg border border-line bg-surface p-0.5">
+      <ToggleGroupItem
+        value="copilot"
+        data-testid="flow-canvas-copilot-toggle"
+        className="border-0">
+        {t('flows.copilot.open')}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="legend" data-testid="flow-canvas-legend-toggle" className="border-0">
+        {t('flows.canvas.legendTab')}
+      </ToggleGroupItem>
+    </ToggleGroupRoot>
   );
 
-  // Save / Discard moved out of the canvas into the header (the canvas keeps
-  // only undo/redo), as icon buttons. Each opens a confirm popup before firing;
-  // they drive the editable canvas through `canvasRef`.
+  // Save lives in the header (the canvas keeps only undo/redo), as an icon
+  // button behind a confirm popup, driving the editable canvas through
+  // `canvasRef`.
+  //
+  // Discard was beside it and is gone. Its ✕ glyph read as "close" next to a
+  // back button that also leaves, so it competed with navigation while
+  // actually meaning "revert to the last saved graph". Dropping edits now goes
+  // through Back, whose dirty guard already offers exactly that choice.
+  // `EditableFlowCanvasHandle.discard()` stays — it is the canvas's own API and
+  // its specs still cover it; nothing in this page calls it any more.
   const saveActions = (
     <div className="flex items-center gap-1.5">
       {saveMeta.dirty && (
-        <span
-          className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-          data-testid="flow-editor-dirty">
+        <Badge variant="warning" className="rounded-full" data-testid="flow-editor-dirty">
           {t('flows.editor.unsaved')}
-        </span>
+        </Badge>
       )}
       <Button
         type="button"
-        variant="tertiary"
-        size="xs"
-        iconOnly
-        data-testid="flow-editor-discard"
-        aria-label={t('flows.editor.discard')}
-        title={t('flows.editor.discard')}
-        disabled={!saveMeta.dirty || saveMeta.saving}
-        onClick={() => setConfirmAction('discard')}>
-        <DiscardIcon />
-      </Button>
-      <Button
-        type="button"
         variant="primary"
-        size="xs"
+        size="sm"
         iconOnly
         data-testid="flow-editor-save"
         aria-label={saveMeta.saving ? t('flows.editor.saving') : t('flows.editor.save')}
@@ -941,8 +1159,17 @@ function FlowEditor({
     </div>
   );
 
-  // Editable title: an unstyled input that reads as the page heading until
-  // focused, so renaming is discoverable without a separate edit affordance.
+  // Editable title: the page's `h1` IS this input, so renaming is discoverable
+  // without a separate edit affordance.
+  //
+  // Deliberately a raw `<input>` rather than the `ui/Input` primitive. That
+  // component joins its class list with `[...].join(' ')` — no `cn`, no
+  // tailwind-merge — so `inputSize="sm"`'s `h-8 px-2.5 text-sm` stays in the
+  // attribute alongside anything a caller passes, and which one applies is
+  // decided by Tailwind's stylesheet order rather than by the caller. That is
+  // how this rendered as a small, inset control instead of a page heading. A
+  // control that has to inherit its host's typography has no business going
+  // through a sized primitive at all.
   const titleNode = (
     <input
       type="text"
@@ -961,196 +1188,205 @@ function FlowEditor({
           e.currentTarget.blur();
         }
       }}
-      className="w-full max-w-md truncate rounded-md border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold text-content hover:border-line focus:border-primary-400 focus:outline-none disabled:opacity-60"
+      // `[font:inherit]` + `text-inherit` take the whole type ramp from the
+      // enclosing `h1` — family, size, weight, line-height, colour — so this
+      // cannot drift from `SettingsTabbedPage`'s heading the way a restated
+      // `text-2xl font-semibold` would the next time that heading changes.
+      // `p-0` puts the text on the same left edge a static title would sit on;
+      // `-mx-1 px-1` gives the hover/focus highlight some room back without
+      // moving the text, since a padding-only affordance would inset it.
+      className="-mx-1 w-full max-w-lg truncate rounded-md border-0 bg-transparent p-0 px-1 text-inherit [font:inherit] hover:bg-surface-hover focus:bg-surface-hover focus:outline-hidden focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
     />
   );
 
   return (
-    <PanelPage
-      testId="flow-canvas-page"
-      title={titleNode}
-      leading={backButton}
-      action={headerActions}
-      contentClassName="h-full p-0">
-      <div className="flex h-full w-full">
-        {/* Run history + "Fix with agent" as an inline left rail (persisted flows
-            only). The app sidebar is hidden on this route (chromeless), so this
-            can't use the shell `SidebarContent` slot — render it in-page. */}
-        {!isDraft && flowId && (
-          <div className="hidden h-full w-60 flex-shrink-0 border-r border-line lg:flex">
+    // The standard page shell, with `scrollable={false}` so the canvas owns its
+    // own viewport instead of living inside a scroller. This was a `PanelPage`
+    // with a `text-base` title and a hairline; every other page in the app
+    // opens with `SettingsTabbedPage`'s 2xl heading over a full-bleed divider,
+    // and there was no reason for the builder to be the exception once it was
+    // back in the shell.
+    <div className="h-full p-4" data-testid="flow-canvas-page">
+      {/* Run history + "Fix with agent" go through the shell's dynamic sidebar
+          region, like every other page's rail. This used to be an in-page
+          `hidden lg:flex w-60 border-r` column because the route was chromeless
+          and had no slot to project into — so the builder drew a second sidebar
+          in the space the real one would have occupied, and it only existed at
+          `lg` and up. Drafts have no runs yet, so they project nothing and the
+          region stays empty. */}
+      {!isDraft && flowId && (
+        <SidebarContent>
+          <div className="h-full overflow-hidden">
             <FlowRunsSidebar flowId={flowId} />
           </div>
-        )}
-        <div className={`relative h-full flex-1 ${hideGraph ? 'hidden' : ''}`}>
-          <FlowCanvas
-            key={`canvas-${canvasVersion}`}
-            ref={canvasRef}
-            editable
-            nodes={nodes}
-            edges={edges}
-            meta={meta}
-            onSave={onCanvasSave}
-            onDirtyChange={setDirty}
-            onSaveMetaChange={setSaveMeta}
-            activeRunId={activeRunId}
-            onGraphChange={handleGraphChange}
-            addedNodeIds={preview?.addedNodeIds}
-            removedNodeIds={preview?.removedNodeIds}
-            saveDisabled={preview !== null}
-            initialDirty={initialDirty}
-            showPalette={sidePanel === 'legend'}
-            savedViewport={viewportRef.current}
-            onViewportChange={handleViewportChange}
-          />
+        </SidebarContent>
+      )}
+      <SettingsTabbedPage
+        title={titleNode}
+        description={t('flows.canvas.description')}
+        leading={backButton}
+        headerAction={headerActions}
+        scrollable={false}
+        // The canvas is a single full-bleed surface, so it runs to the content
+        // card's edges instead of floating as an inset rectangle inside it.
+        // The header keeps the gutter, so the title still lines up with every
+        // other page's.
+        bodyFullBleed>
+        <div className="flex h-full w-full">
+          <div className={`relative h-full flex-1 ${hideGraph ? 'hidden' : ''}`}>
+            <FlowCanvas
+              key={`canvas-${canvasVersion}`}
+              ref={canvasRef}
+              editable
+              nodes={nodes}
+              edges={edges}
+              meta={meta}
+              onSave={onCanvasSave}
+              onDirtyChange={setDirty}
+              onSaveMetaChange={setSaveMeta}
+              activeRunId={activeRunId}
+              onGraphChange={handleGraphChange}
+              addedNodeIds={preview?.addedNodeIds}
+              removedNodeIds={preview?.removedNodeIds}
+              saveDisabled={preview !== null}
+              initialDirty={initialDirty}
+              showPalette={sidePanel === 'legend'}
+              savedViewport={viewportRef.current}
+              onViewportChange={handleViewportChange}
+            />
 
-          {runError && (
-            // top-14 (not top-3) so this never overlaps the canvas's own
-            // top-right undo/redo controls, which sit at top-3; max-w-md
-            // caps how wide a long nested error can grow. When the legend
-            // palette is open it also docks at top-14/right-3 (w-48), so we
-            // pull the banner's right edge in past it (right-56) rather than
-            // centering across the full width, which would let a long
-            // message reach under the palette and swallow its clicks.
-            <div
-              className={`pointer-events-none absolute left-3 top-14 z-20 flex justify-center ${
-                sidePanel === 'legend' ? 'right-56' : 'right-3'
-              }`}>
+            {runError && (
+              // top-14 (not top-3) so this never overlaps the canvas's own
+              // top-right undo/redo controls, which sit at top-3; max-w-md
+              // caps how wide a long nested error can grow. When the legend
+              // palette is open it also docks at top-14/right-3 (w-48), so we
+              // pull the banner's right edge in past it (right-56) rather than
+              // centering across the full width, which would let a long
+              // message reach under the palette and swallow its clicks.
               <div
-                role="alert"
-                data-testid="flow-canvas-run-error"
-                className="pointer-events-auto flex w-full max-w-md items-start gap-2 rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-                <span className="flex-1">
-                  {t('flows.editor.runFailed')}: {formatRunError(runError)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setRunError(null)}
-                  aria-label={t('common.dismiss')}
-                  title={t('common.dismiss')}
-                  data-testid="flow-canvas-run-error-dismiss"
-                  className="flex-shrink-0 text-coral-500 hover:text-coral-700 dark:text-coral-300 dark:hover:text-coral-100">
-                  <svg
-                    className="h-3.5 w-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                className={`pointer-events-none absolute left-3 top-14 z-20 flex justify-center ${
+                  sidePanel === 'legend' ? 'right-56' : 'right-3'
+                }`}>
+                <Alert
+                  variant="destructive"
+                  density="compact"
+                  data-testid="flow-canvas-run-error"
+                  className="pointer-events-auto w-full max-w-md items-start gap-2">
+                  <AlertDescription className="flex-1">
+                    {t('flows.editor.runFailed')}: {formatRunError(runError)}
+                  </AlertDescription>
+                  <Button
+                    type="button"
+                    variant="tertiary"
+                    size="xs"
+                    iconOnly
+                    onClick={() => setRunError(null)}
+                    aria-label={t('common.dismiss')}
+                    title={t('common.dismiss')}
+                    data-testid="flow-canvas-run-error-dismiss"
+                    className="shrink-0 text-coral-500 hover:bg-transparent hover:text-coral-700 dark:text-coral-300 dark:hover:text-coral-100">
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </Button>
+                </Alert>
               </div>
-            </div>
+            )}
+          </div>
+
+          {copilotOpen && (
+            <WorkflowCopilotPanel
+              // Stable ('copilot') across manual open/close and build-seed
+              // navigations (unaffected — those always land on a fresh
+              // `FlowEditor` mount already, see `locationKey`'s doc comment).
+              // Repair seeds fold in `locationKey` so a same-route "Fix with
+              // agent" click (no `FlowEditor` remount) still forces a fresh
+              // panel mount, resetting the once-per-mount `repairSentRef` guard
+              // so the repair turn actually (re)fires (issue B22).
+              key={initialCopilotSeed ? `copilot-repair-${locationKey}` : 'copilot'}
+              graph={preview?.base ?? draftGraph}
+              flowId={flowId}
+              onProposal={handleProposal}
+              onAccept={handleAcceptProposal}
+              onReject={handleRejectProposal}
+              repairSeed={copilotRepairSeed}
+              buildSeed={initialBuildSeed}
+              onBuildSeedConsumed={onBuildSeedConsumed}
+              prefillSeed={initialPrefillSeed}
+              onPrefillSeedConsumed={onPrefillSeedConsumed}
+              seedThreadId={copilotThreadId}
+              onThreadIdChange={handleCopilotThreadId}
+              fullWidth={hideGraph}
+            />
           )}
 
+          {/* Both confirms are `ConfirmDialog` now. They were two hand-rolled
+            overlays — an `absolute`/`fixed inset-0` scrim over a `max-w-sm`
+            card — that between them reimplemented the shell twice and had no
+            focus trap, no scroll lock and no focus restore. `ConfirmDialog`'s
+            own spec already reserved these exact test ids for the migration. */}
           {leaveConfirm && (
-            <div
-              className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4"
-              data-testid="flow-leave-confirm">
-              <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-4 shadow-xl">
-                <h2 className="text-sm font-semibold text-content">
-                  {t('flows.editor.leaveTitle')}
-                </h2>
-                <p className="mt-1 text-xs text-content-muted">{t('flows.editor.leaveBody')}</p>
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="flow-leave-stay"
-                    onClick={() => setLeaveConfirm(false)}>
-                    {t('flows.editor.leaveStay')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    tone="danger"
-                    size="sm"
-                    data-testid="flow-leave-discard"
-                    onClick={() => {
-                      log('back: confirmed leave — discarding unsaved edits');
-                      goBack();
-                    }}>
-                    {t('flows.editor.leaveDiscard')}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <ConfirmDialog
+              testId="flow-leave-confirm"
+              titleId="flow-leave-confirm-title"
+              title={t('flows.editor.leaveTitle')}
+              body={t('flows.editor.leaveBody')}
+              destructive
+              cancelLabel={t('flows.editor.leaveStay')}
+              cancelTestId="flow-leave-stay"
+              confirmLabel={t('flows.editor.leaveDiscard')}
+              confirmTestId="flow-leave-discard"
+              onCancel={() => setLeaveConfirm(false)}
+              onConfirm={() => {
+                log('back: confirmed leave — discarding unsaved edits');
+                goBack();
+              }}
+            />
+          )}
+
+          {/* Confirm popup for the header's Run / Save icon buttons. */}
+          {confirmAction && (
+            <ConfirmDialog
+              testId="flow-action-confirm"
+              titleId="flow-action-confirm-title"
+              title={t(`flows.editor.confirm.${confirmAction}Title`)}
+              body={t(`flows.editor.confirm.${confirmAction}Body`)}
+              cancelLabel={t('flows.editor.confirm.cancel')}
+              cancelTestId="flow-action-cancel"
+              confirmLabel={t('flows.editor.confirm.confirm')}
+              confirmTestId="flow-action-confirm-accept"
+              onCancel={() => setConfirmAction(null)}
+              onConfirm={() => {
+                const action = confirmAction;
+                setConfirmAction(null);
+                if (action === 'run') void handleRun();
+                else if (action === 'save') canvasRef.current?.save();
+              }}
+            />
+          )}
+
+          {/* Consolidated save+enable pre-authorization card (Approve all / Deny). */}
+          {preauth.pending && (
+            <FlowPreauthorizationOverlay
+              entries={preauth.pending.manifest.entries}
+              busy={preauth.busy}
+              errorMsg={preauth.errorKey ? t('flows.enableApproval.error') : null}
+              onApproveAll={() => void preauth.approveAll()}
+              onDeny={() => void preauth.deny()}
+            />
           )}
         </div>
-
-        {copilotOpen && (
-          <WorkflowCopilotPanel
-            // Stable ('copilot') across manual open/close and build-seed
-            // navigations (unaffected — those always land on a fresh
-            // `FlowEditor` mount already, see `locationKey`'s doc comment).
-            // Repair seeds fold in `locationKey` so a same-route "Fix with
-            // agent" click (no `FlowEditor` remount) still forces a fresh
-            // panel mount, resetting the once-per-mount `repairSentRef` guard
-            // so the repair turn actually (re)fires (issue B22).
-            key={initialCopilotSeed ? `copilot-repair-${locationKey}` : 'copilot'}
-            graph={preview?.base ?? draftGraph}
-            flowId={flowId}
-            onProposal={handleProposal}
-            onAccept={handleAcceptProposal}
-            onReject={handleRejectProposal}
-            onClose={() => setSidePanel(null)}
-            repairSeed={copilotRepairSeed}
-            buildSeed={initialBuildSeed}
-            onBuildSeedConsumed={onBuildSeedConsumed}
-            prefillSeed={initialPrefillSeed}
-            onPrefillSeedConsumed={onPrefillSeedConsumed}
-            seedThreadId={copilotThreadId}
-            onThreadIdChange={handleCopilotThreadId}
-            fullWidth={hideGraph}
-          />
-        )}
-
-        {/* Confirm popup for the header's Run / Save / Discard icon buttons. */}
-        {confirmAction && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-            data-testid="flow-action-confirm">
-            <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-4 shadow-xl">
-              <h2 className="text-sm font-semibold text-content">
-                {t(`flows.editor.confirm.${confirmAction}Title`)}
-              </h2>
-              <p className="mt-1 text-xs text-content-muted">
-                {t(`flows.editor.confirm.${confirmAction}Body`)}
-              </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  data-testid="flow-action-cancel"
-                  onClick={() => setConfirmAction(null)}>
-                  {t('flows.editor.confirm.cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  tone={confirmAction === 'discard' ? 'danger' : undefined}
-                  size="sm"
-                  data-testid="flow-action-confirm-accept"
-                  onClick={() => {
-                    const action = confirmAction;
-                    setConfirmAction(null);
-                    if (action === 'run') void handleRun();
-                    else if (action === 'save') canvasRef.current?.save();
-                    else if (action === 'discard') canvasRef.current?.discard();
-                  }}>
-                  {t('flows.editor.confirm.confirm')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </PanelPage>
+      </SettingsTabbedPage>
+    </div>
   );
 }
 
@@ -1279,25 +1515,8 @@ export default function FlowCanvasPage() {
     );
   }
 
-  const backButton = (
-    <Button
-      type="button"
-      variant="tertiary"
-      size="xs"
-      iconOnly
-      data-testid="flow-canvas-back"
-      aria-label={t('flows.canvas.backToList')}
-      onClick={() => navigate('/flows')}>
-      <BackIcon />
-    </Button>
-  );
-
   return (
-    <PanelPage
-      testId="flow-canvas-page"
-      title={t('flows.canvas.title')}
-      leading={backButton}
-      contentClassName="h-full p-0">
+    <CanvasStatePage onBack={() => navigate('/flows')}>
       {state.status === 'loading' && (
         <div className="flex h-full items-center justify-center">
           <CenteredLoadingState label={t('flows.canvas.loading')} />
@@ -1317,7 +1536,7 @@ export default function FlowCanvasPage() {
           </p>
         </div>
       )}
-    </PanelPage>
+    </CanvasStatePage>
   );
 }
 
@@ -1370,30 +1589,13 @@ export function FlowCanvasDraftPage() {
     );
   }
 
-  const backButton = (
-    <Button
-      type="button"
-      variant="tertiary"
-      size="xs"
-      iconOnly
-      data-testid="flow-canvas-back"
-      aria-label={t('flows.canvas.backToList')}
-      onClick={() => navigate('/flows')}>
-      <BackIcon />
-    </Button>
-  );
-
   return (
-    <PanelPage
-      testId="flow-canvas-page"
-      title={t('flows.canvas.title')}
-      leading={backButton}
-      contentClassName="h-full p-0">
+    <CanvasStatePage onBack={() => navigate('/flows')}>
       <div className="flex h-full items-center justify-center p-4">
         <p className="text-sm text-content-muted" data-testid="flow-canvas-draft-missing">
           {t('flows.canvas.draftMissing')}
         </p>
       </div>
-    </PanelPage>
+    </CanvasStatePage>
   );
 }

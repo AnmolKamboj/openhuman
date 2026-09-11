@@ -1,4 +1,5 @@
 import { useT } from '../../../../lib/i18n/I18nContext';
+import type { AgentProfile } from '../../../../types/agentProfile';
 import type { CoreCronJob, CoreCronRun } from '../../../../utils/tauriCommands';
 import Button from '../../../ui/Button';
 
@@ -13,6 +14,8 @@ interface CoreJobListProps {
   onRemoveCoreJob: (jobId: string) => void;
   /** Optional: when provided, an Edit button is rendered per row. */
   onEditCoreJob?: (job: CoreCronJob) => void;
+  /** Agent profiles, used to resolve a job's attributed profile name. */
+  profiles?: AgentProfile[];
 }
 
 const CoreJobList = ({
@@ -25,8 +28,14 @@ const CoreJobList = ({
   onLoadCoreRuns,
   onRemoveCoreJob,
   onEditCoreJob,
+  profiles = [],
 }: CoreJobListProps) => {
   const { t } = useT();
+
+  // Resolve a job's attributed profile to a display name, falling back to the
+  // raw id when the profile has since been deleted.
+  const profileLabel = (profileId: string): string =>
+    profiles.find(p => p.id === profileId)?.name || profileId;
 
   const toggleButtonLabel = (job: CoreCronJob) => {
     if (coreBusyKey === `core-toggle:${job.id}`) {
@@ -49,28 +58,25 @@ const CoreJobList = ({
     coreBusyKey === `core-remove:${jobId}` ? t('settings.cron.jobs.removing') : t('common.remove');
 
   return (
-    <section className="rounded-xl border border-line bg-surface">
-      <div className="p-4 border-b border-line">
-        <h3 className="text-sm font-semibold text-content">{t('settings.cron.jobs.title')}</h3>
-        <p className="text-xs text-content-muted mt-1">{t('settings.cron.jobs.desc')}</p>
-      </div>
-
+    // A plain divided list, not a card: the only host (`CronJobsPanel`) already
+    // renders this inside a titled `SettingsSection`, so the frame and heading
+    // this used to draw were a titled card nested in a titled card. The rows
+    // are `py-3` because that host's `px-4` supplies the horizontal gutter —
+    // a `p-4` here would inset them 32px, past the buttons above them.
+    <div className="divide-y divide-line-subtle">
       {loading && (
-        <div className="p-4 text-sm text-content-faint">{t('settings.cron.jobs.loading')}</div>
+        <div className="py-3 text-sm text-content-faint">{t('settings.cron.jobs.loading')}</div>
       )}
 
       {!loading && coreJobs.length === 0 && (
-        <div className="p-4 text-sm text-content-faint">{t('settings.cron.jobs.empty')}</div>
+        <div className="py-3 text-sm text-content-faint">{t('settings.cron.jobs.empty')}</div>
       )}
 
       {!loading &&
-        coreJobs.map((job, index) => {
+        coreJobs.map(job => {
           const runs = coreRunsByJob[job.id] ?? [];
           return (
-            <div
-              key={job.id}
-              data-testid={`cron-job-row-${job.id}`}
-              className={`p-4 ${index === 0 ? '' : 'border-t border-line'} space-y-3`}>
+            <div key={job.id} data-testid={`cron-job-row-${job.id}`} className="space-y-3 py-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-content">{job.name || job.id}</div>
@@ -93,8 +99,11 @@ const CoreJobList = ({
                     {job.schedule.kind === 'cron'
                       ? job.schedule.expr
                       : job.schedule.kind === 'every'
-                        ? `every ${job.schedule.every_ms}ms`
-                        : `at ${job.schedule.at}`}
+                        ? t('settings.cron.jobs.scheduleEvery').replace(
+                            '{ms}',
+                            String(job.schedule.every_ms)
+                          )
+                        : t('settings.cron.jobs.scheduleAt').replace('{time}', job.schedule.at)}
                   </span>
                 </div>
                 <div>
@@ -103,6 +112,14 @@ const CoreJobList = ({
                     {new Date(job.next_run).toLocaleString()}
                   </span>
                 </div>
+                {job.profile_id && (
+                  <div data-testid={`cron-job-profile-${job.id}`}>
+                    {t('settings.cron.jobs.profile')}{' '}
+                    <span className="font-medium text-content-secondary">
+                      {profileLabel(job.profile_id)}
+                    </span>
+                  </div>
+                )}
                 {job.last_status && (
                   <div>
                     {t('settings.cron.jobs.lastStatus')}{' '}
@@ -173,18 +190,38 @@ const CoreJobList = ({
                   <div className="text-[11px] uppercase tracking-wide text-content-faint">
                     {t('settings.cron.jobs.recentRuns')}
                   </div>
-                  {runs.map(run => (
-                    <div key={run.id} className="text-xs text-content-secondary">
-                      <span className="font-medium text-content-secondary">{run.status}</span> at{' '}
-                      {new Date(run.finished_at).toLocaleString()}
-                    </div>
-                  ))}
+                  {runs.map(run => {
+                    const finishedAt = new Date(run.finished_at).toLocaleString();
+                    // Split on the placeholders (rather than assuming
+                    // "{status} at {time}" order) so a locale that reorders
+                    // the phrase still renders correctly.
+                    const parts = t('settings.cron.jobs.runFinishedAt').split(
+                      /(\{status\}|\{time\})/g
+                    );
+                    return (
+                      <div key={run.id} className="text-xs text-content-secondary">
+                        {parts.map((part, index) => {
+                          if (part === '{status}') {
+                            return (
+                              <span key={index} className="font-medium text-content-secondary">
+                                {run.status}
+                              </span>
+                            );
+                          }
+                          if (part === '{time}') {
+                            return <span key={index}>{finishedAt}</span>;
+                          }
+                          return part;
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
-    </section>
+    </div>
   );
 };
 

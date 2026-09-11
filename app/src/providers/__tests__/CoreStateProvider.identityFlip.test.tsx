@@ -44,12 +44,7 @@ function makeSnapshot(overrides: {
     chatOnboardingCompleted: false,
     analyticsEnabled: false,
     localState: {},
-    runtime: {
-      screenIntelligence: null as never,
-      localAi: null as never,
-      autocomplete: null as never,
-      service: null as never,
-    },
+    runtime: { localAi: null as never, service: null as never },
   };
 }
 
@@ -74,7 +69,6 @@ function resetCoreStateStore() {
       onboardingCompleted: false,
       chatOnboardingCompleted: false,
       analyticsEnabled: false,
-      meetAutoOrchestratorHandoff: false,
       localState: { encryptionKey: null, onboardingTasks: null, keyringConsent: null },
       keyringStatus: {
         available: true,
@@ -82,7 +76,7 @@ function resetCoreStateStore() {
         activeMode: 'os_keyring',
         backendName: 'os',
       },
-      runtime: { screenIntelligence: null, localAi: null, autocomplete: null, service: null },
+      runtime: { localAi: null, service: null },
     },
     teams: [],
     teamMembersById: {},

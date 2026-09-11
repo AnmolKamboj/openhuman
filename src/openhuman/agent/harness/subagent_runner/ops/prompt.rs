@@ -3,6 +3,9 @@
 //! Includes the role-contract suffix, its injector, and the tool-spec
 //! deduplication helper used before sending specs to the provider.
 
+use crate::openhuman::agent::harness::artifact_offload::{
+    render_artifact_offload_contract, should_render_offload_contract, ARTIFACT_OFFLOAD_HEADING,
+};
 use crate::openhuman::tools::ToolSpec;
 use std::collections::HashSet;
 
@@ -77,6 +80,56 @@ pub(crate) fn append_subagent_role_contract(base_prompt: String, agent_id: &str)
     prompt
 }
 
+/// Append the filesystem-offload contract (#3883), but only for a sub-agent
+/// that actually holds a file-write tool.
+///
+/// Kept separate from [`append_subagent_role_contract`] because it is **not**
+/// universal. A sub-agent's system prompt may only name tools it can really
+/// call — `researcher` is search + fetch only, and a skill-filtered specialist
+/// sees just its own toolkit. Telling either to write a file yields
+/// hallucinated calls that fail, and two guards enforce it
+/// (`researcher::prompt::tests::build_returns_nonempty_body`,
+/// `ops_tests::typed_mode_filters_tools_by_skill_filter`).
+///
+/// Agents skipped here are still covered: `offload_oversized_result` runs on
+/// every sub-agent outcome and needs no cooperation from the model.
+///
+/// The contract text is rendered from the artifact module so the directory
+/// names the model is told about can never drift from the ones
+/// `resolve_artifact_path` will actually accept. The heading check makes it
+/// idempotent, and lets an archetype prompt spell the convention out itself.
+pub(crate) fn append_artifact_offload_contract(
+    base_prompt: String,
+    agent_id: &str,
+    visible_tool_names: &HashSet<String>,
+) -> String {
+    if !should_render_offload_contract(visible_tool_names) {
+        tracing::debug!(
+            agent_id = %agent_id,
+            "[artifact] sub-agent holds no file-write tool — skipping offload contract (harness-side offload still applies)"
+        );
+        return base_prompt;
+    }
+    if base_prompt.contains(ARTIFACT_OFFLOAD_HEADING) {
+        return base_prompt;
+    }
+
+    let mut prompt = base_prompt;
+    if !prompt.ends_with('\n') {
+        prompt.push('\n');
+    }
+    prompt.push('\n');
+    prompt.push_str(&render_artifact_offload_contract());
+
+    tracing::debug!(
+        agent_id = %agent_id,
+        final_chars = prompt.chars().count(),
+        "[artifact] appended offload contract to sub-agent system prompt"
+    );
+
+    prompt
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool-spec deduplication
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,23 +173,5 @@ pub(super) fn dedup_tool_specs_by_name(agent_id: &str, specs: Vec<ToolSpec>) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn context_scout_skips_role_contract_suffix() {
-        // The scout owns its own [context_bundle] output contract; the generic
-        // result contract must not be appended (it conflicts).
-        let base = "scout prompt body".to_string();
-        let out = append_subagent_role_contract(base.clone(), "context_scout");
-        assert_eq!(out, base);
-        assert!(!out.contains("Sub-agent Result Contract"));
-    }
-
-    #[test]
-    fn other_agents_get_role_contract_suffix() {
-        let out = append_subagent_role_contract("body".to_string(), "researcher");
-        assert!(out.contains("Sub-agent Result Contract"));
-        assert!(out.contains("Recommended next step"));
-    }
-}
+#[path = "prompt_tests.rs"]
+mod tests;

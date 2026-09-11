@@ -1,9 +1,7 @@
-use serde_json::json;
-use std::collections::HashSet;
-
+use crate::openhuman::agent::profiles::{AgentProfile, DEFAULT_PROFILE_ID};
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::Config;
-use crate::openhuman::profiles::{AgentProfile, DEFAULT_PROFILE_ID};
+use serde_json::json;
 
 use super::types::SessionCacheFingerprint;
 
@@ -38,7 +36,7 @@ pub(crate) fn provider_role_for_model_override(model_override: Option<&str>) -> 
         Some("hint:agentic") | Some("agentic-v1") => "agentic",
         Some("hint:coding") | Some("coding-v1") => "coding",
         Some("hint:summarization") | Some("summarization-v1") => "summarization",
-        Some("hint:reasoning") => "reasoning",
+        Some("hint:reasoning") | Some("reasoning-v1") => "reasoning",
         _ => "chat",
     }
 }
@@ -71,19 +69,6 @@ pub(super) fn build_session_agent(
         thread_id
     );
 
-    let reflection_chunks = load_reflection_chunks_for_thread(&effective.workspace_dir, thread_id);
-
-    if let Some(chunks) = reflection_chunks
-        .as_ref()
-        .filter(|chunks| !chunks.is_empty())
-    {
-        log::info!(
-            "[web-channel] thread={} spawned from reflection — injecting {} memory chunks into system prompt",
-            thread_id,
-            chunks.len()
-        );
-    }
-
     let locale_directive = locale.and_then(locale_reply_directive);
     let composed_suffix = compose_system_prompt_suffix(
         locale_directive.as_deref(),
@@ -102,26 +87,12 @@ pub(super) fn build_session_agent(
     let agent_result = Agent::from_config_for_agent_with_profile(
         &effective,
         target_agent_id,
-        reflection_chunks,
         composed_suffix,
         Some(profile),
     );
 
     agent_result
         .map(|mut agent| {
-            if let Some(allowed_tools) = profile
-                .allowed_tools
-                .as_ref()
-                .filter(|tools| !tools.is_empty())
-            {
-                agent.set_visible_tool_names(
-                    allowed_tools
-                        .iter()
-                        .map(|tool| tool.trim().to_string())
-                        .filter(|tool| !tool.is_empty())
-                        .collect::<HashSet<_>>(),
-                );
-            }
             agent.set_event_context(
                 json!({"client_id": client_id, "thread_id": thread_id}).to_string(),
                 "web_channel",
@@ -135,15 +106,6 @@ pub(super) fn build_session_agent(
             agent
         })
         .map_err(|e| e.to_string())
-}
-
-fn load_reflection_chunks_for_thread(
-    _workspace_dir: &std::path::Path,
-    _thread_id: &str,
-) -> Option<Vec<crate::openhuman::subconscious::SourceChunk>> {
-    // Reflection store has been removed. Existing threads spawned from
-    // reflections no longer receive memory-context injection.
-    None
 }
 
 pub(crate) fn locale_reply_directive(locale: &str) -> Option<String> {
@@ -197,8 +159,11 @@ pub(super) fn build_session_fingerprint(
         target_agent_id,
         autonomy_signature: autonomy_signature(config),
         model_registry_signature: model_registry_signature(config),
-        // Any change to the resolved profile (id, allowlists, soul, …) changes
-        // this string and forces a session-agent rebuild — see the field doc.
-        profile_signature: crate::openhuman::profiles::profile_signature(profile),
+        // Any change to the resolved profile record or its canonical on-disk
+        // SOUL/MEMORY files forces a session-agent rebuild — see the field doc.
+        profile_signature: crate::openhuman::agent::profiles::profile_session_signature(
+            &config.workspace_dir,
+            profile,
+        ),
     }
 }

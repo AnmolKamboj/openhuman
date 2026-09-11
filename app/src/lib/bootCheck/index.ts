@@ -157,7 +157,7 @@ type VersionCheckResult = 'match' | 'outdated' | 'noVersionMethod' | 'unreachabl
 async function checkVersion(callRpc: BootCheckTransport['callRpc']): Promise<VersionCheckResult> {
   try {
     // `openhuman.update_version` is wrapped by RpcOutcome::single_log
-    // (see src/openhuman/update/ops.rs + src/rpc/mod.rs::into_cli_compatible_json):
+    // (see src/openhuman/platform/update/ops.rs + src/rpc/mod.rs::into_cli_compatible_json):
     // when logs are present the response shape is `{ result: VersionInfo, logs }`,
     // and VersionInfo is `{ version, target_triple, asset_prefix }`. Earlier
     // attempts read `result.version_info.version` (no such field) and then
@@ -304,6 +304,44 @@ export async function runBootCheck(
     }
     log('[boot-check] local mode — version outdated');
     return { kind: 'outdatedLocal' };
+  }
+
+  // ------------------------------------------------------------------
+  // Gateway mode
+  // ------------------------------------------------------------------
+  //
+  // A gateway is provisioned and health-checked by the Tauri shell before it
+  // ever becomes the active one (`gateway::registry::activate`), and the shell
+  // answers `core_rpc_url` / `core_rpc_token` from it — so by the time the boot
+  // gate runs, the reachability question this function exists to ask has
+  // already been asked and answered somewhere better placed to ask it.
+  //
+  // What *does* have to happen here is re-activation. A provisioned gateway
+  // lives only as long as the process holding its tunnel, so a relaunch starts
+  // with nothing held open and the shell answering `core_rpc_url` from the
+  // embedded core. Without this the user's chosen gateway would silently not be
+  // the one in use — the worst possible failure for this feature, because
+  // everything keeps working against the wrong core.
+  //
+  // The version check is deliberately not repeated: a gateway's core is
+  // whatever image or binary the user pointed at, so "older than this UI" is a
+  // possibility they chose, not a broken install to block on. The
+  // unknown-method classification in `coreRpcClient` handles the consequences
+  // per call, which is where a mismatch actually shows up.
+  if (mode.kind === 'gateway') {
+    log('[boot-check] gateway mode — re-activating id=%s', mode.gatewayId);
+    try {
+      await invokeCmd<unknown>('gateway_activate', { id: mode.gatewayId });
+      log('[boot-check] gateway mode — active');
+      return { kind: 'match' };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logError('[boot-check] gateway mode — activation failed: %s', reason);
+      // Reported rather than silently falling back to the local core: the two
+      // hold different data, and quietly swapping one for the other is how a
+      // user ends up wondering where their conversations went.
+      return { kind: 'unreachable', reason };
+    }
   }
 
   // ------------------------------------------------------------------

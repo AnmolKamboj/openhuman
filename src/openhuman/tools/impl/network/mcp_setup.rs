@@ -1,9 +1,9 @@
-//! Agent-facing tool wrappers around `mcp_registry::setup_ops`.
+//! Agent-facing tool wrappers around `mcp::registry::setup_ops`.
 //!
 //! Six thin tools the `mcp_setup` sub-agent uses to walk the user
 //! through installing an MCP server. They are intentionally simple —
 //! the real logic lives in
-//! [`crate::openhuman::mcp_registry::setup_ops`]; these structs only
+//! [`crate::openhuman::mcp::registry::setup_ops`]; these structs only
 //! marshall args ↔ `serde_json::Value` and turn `RpcOutcome` into a
 //! `ToolResult`.
 //!
@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::mcp_registry::setup_ops;
+use crate::openhuman::mcp::registry::setup_ops;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory, ToolResult};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -171,17 +171,13 @@ impl Tool for McpSetupGetTool {
 
 // ── mcp_setup_request_secret ─────────────────────────────────────────────────
 
-pub struct McpSetupRequestSecretTool;
-
-impl McpSetupRequestSecretTool {
-    pub fn new() -> Self {
-        Self
-    }
+pub struct McpSetupRequestSecretTool {
+    config: Arc<Config>,
 }
 
-impl Default for McpSetupRequestSecretTool {
-    fn default() -> Self {
-        Self::new()
+impl McpSetupRequestSecretTool {
+    pub fn new(config: Arc<Config>) -> Self {
+        Self { config }
     }
 }
 
@@ -232,7 +228,7 @@ impl Tool for McpSetupRequestSecretTool {
             Ok(v) => v,
             Err(e) => return Ok(ToolResult::error(e)),
         };
-        outcome_to_result(setup_ops::mcp_setup_request_secret(key_name, prompt).await)
+        outcome_to_result(setup_ops::mcp_setup_request_secret(&self.config, key_name, prompt).await)
     }
 }
 
@@ -360,34 +356,5 @@ impl Tool for McpSetupInstallAndConnectTool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn names_are_stable() {
-        let cfg = Arc::new(Config::default());
-        assert_eq!(
-            McpSetupSearchTool::new(cfg.clone()).name(),
-            "mcp_setup_search"
-        );
-        assert_eq!(McpSetupGetTool::new(cfg.clone()).name(), "mcp_setup_get");
-        assert_eq!(
-            McpSetupRequestSecretTool::new().name(),
-            "mcp_setup_request_secret"
-        );
-        assert_eq!(
-            McpSetupTestConnectionTool::new(cfg.clone()).name(),
-            "mcp_setup_test_connection"
-        );
-        assert_eq!(
-            McpSetupInstallAndConnectTool::new(cfg).name(),
-            "mcp_setup_install_and_connect"
-        );
-    }
-
-    #[test]
-    fn read_str_map_rejects_non_string_values() {
-        let args = json!({ "env_refs": { "K": 42 } });
-        assert!(read_str_map(&args, "env_refs").is_err());
-    }
-}
+#[path = "mcp_setup_tests.rs"]
+mod tests;

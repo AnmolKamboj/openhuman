@@ -51,6 +51,12 @@ pub enum WorkflowScope {
     Project,
     /// Workflow discovered under the legacy `<workspace>/skills/` layout.
     Legacy,
+    /// Workflow private to the active agent profile, discovered under
+    /// `<workspace>/personalities/<id>/skills/` and surfaced ONLY for turns
+    /// running under that profile. Highest collision precedence — a
+    /// profile-local skill shadows a same-named global one for its owner. See
+    /// `ops_discover::discover_workflows_with_profile`.
+    Profile,
 }
 
 /// Parsed frontmatter of a `SKILL.md` file.
@@ -125,7 +131,6 @@ pub(crate) fn extract_version(fm: &WorkflowFrontmatter, warnings: &mut Vec<Strin
         return v;
     }
     if let Some(v) = fm.extra.get("version").and_then(|v| v.as_str()) {
-        log::warn!("[skills] top-level 'version' is deprecated; move under 'metadata.version'");
         warnings
             .push("top-level 'version' is deprecated; move under 'metadata.version'".to_string());
         return v.to_string();
@@ -141,7 +146,6 @@ pub(crate) fn extract_author(
         return Some(v);
     }
     if let Some(v) = fm.extra.get("author").and_then(|v| v.as_str()) {
-        log::warn!("[skills] top-level 'author' is deprecated; move under 'metadata.author'");
         warnings.push("top-level 'author' is deprecated; move under 'metadata.author'".to_string());
         return Some(v.to_string());
     }
@@ -162,7 +166,6 @@ pub(crate) fn extract_tags(fm: &WorkflowFrontmatter, warnings: &mut Vec<String>)
         tags.extend(metadata_string_seq(hermes_tags));
     }
     if let Some(v) = fm.extra.get("tags") {
-        log::warn!("[skills] top-level 'tags' is deprecated; move under 'metadata.tags'");
         warnings.push("top-level 'tags' is deprecated; move under 'metadata.tags'".to_string());
         tags.extend(metadata_string_seq(v));
     }

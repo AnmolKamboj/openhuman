@@ -1,7 +1,6 @@
 /**
  * pttService — push-to-talk session state machine.
  *
- * See spec: `docs/superpowers/specs/2026-06-02-global-ptt-design.md` (§ 2, § 3).
  *
  * Dependency-injected so vitest can exercise the state machine with fake
  * audio capture / fake STT / fake sendMessage. Real wiring (subscribing to
@@ -49,7 +48,7 @@ export interface PttDeps {
   };
 }
 
-export interface PttService {
+interface PttService {
   onStart(sessionId: number): Promise<void>;
   onStop(sessionId: number): Promise<void>;
   cancel(reason: 'preempted' | 'mic_failure' | 'user_cancel'): Promise<void>;

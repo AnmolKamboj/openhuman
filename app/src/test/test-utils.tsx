@@ -13,19 +13,17 @@ import { SidebarSlotOutlet, SidebarSlotProvider } from '../components/layout/she
 import { getCoreStateSnapshot } from '../lib/coreState/store';
 import { CoreStateContext } from '../providers/coreStateContext';
 import accountsReducer from '../store/accountsSlice';
-import backendMeetReducer from '../store/backendMeetSlice';
 import channelConnectionsReducer from '../store/channelConnectionsSlice';
 import chatRuntimeReducer from '../store/chatRuntimeSlice';
-import companionReducer from '../store/companionSlice';
 import connectivityReducer from '../store/connectivitySlice';
 import coreModeReducer from '../store/coreModeSlice';
+import githubStarReducer from '../store/githubStarSlice';
 import layoutReducer from '../store/layoutSlice';
 import localeReducer from '../store/localeSlice';
 import mascotReducer from '../store/mascotSlice';
 import notificationReducer from '../store/notificationSlice';
 import personaReducer from '../store/personaSlice';
 import { pttReducer } from '../store/pttSlice';
-import safetyReducer from '../store/safetySlice';
 import socketReducer from '../store/socketSlice';
 import themeReducer from '../store/themeSlice';
 import threadReducer from '../store/threadSlice';
@@ -38,24 +36,21 @@ import threadReducer from '../store/threadSlice';
  * VoicePanel reads + dispatches against this slice, and useSelector
  * would throw on a missing reducer without a stub here. `persona` is wired
  * in for the same reason (issue #2345): PersonaPanel reads + dispatches
- * against it. `backendMeet` is wired in for MeetingBotsCard which reads
- * meeting status from this slice.
+ * against it.
  */
 const testRootReducer = combineReducers({
   accounts: accountsReducer,
-  backendMeet: backendMeetReducer,
   channelConnections: channelConnectionsReducer,
   chatRuntime: chatRuntimeReducer,
-  companion: companionReducer,
   connectivity: connectivityReducer,
   coreMode: coreModeReducer,
+  githubStar: githubStarReducer,
   layout: layoutReducer,
   locale: localeReducer,
   mascot: mascotReducer,
   notifications: notificationReducer,
   persona: personaReducer,
   ptt: pttReducer,
-  safety: safetyReducer,
   socket: socketReducer,
   theme: themeReducer,
   thread: threadReducer,

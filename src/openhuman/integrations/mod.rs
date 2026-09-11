@@ -7,6 +7,9 @@
 //! trusted because requests leave the local core process.
 
 pub mod client;
+pub mod composio;
+pub mod file_storage;
+pub mod task_sources;
 pub mod tools;
 pub mod types;
 

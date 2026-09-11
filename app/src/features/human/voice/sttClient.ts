@@ -11,7 +11,7 @@ const sttLog = debug('human:stt');
  * is untranslated developer/log copy, and the UI is responsible for rendering
  * translated copy via `useT()` (see `MicComposer`'s `mic.voiceNotCompiled`).
  */
-export const VOICE_NOT_COMPILED_CODE = 'voice_not_compiled';
+const VOICE_NOT_COMPILED_CODE = 'voice_not_compiled';
 
 /**
  * Thrown when the core answers `unknown method` for a `voice_*` RPC — i.e. the
@@ -50,7 +50,7 @@ export function isVoiceNotCompiledError(err: unknown): err is VoiceNotCompiledEr
   );
 }
 
-export interface CloudTranscribeOptions {
+interface CloudTranscribeOptions {
   /** Override the backend STT model id. Default is whatever the backend
    *  resolves `whisper-v1` to today. */
   model?: string;
@@ -61,7 +61,7 @@ export interface CloudTranscribeOptions {
   fileName?: string;
 }
 
-export interface CloudTranscribeResult {
+interface CloudTranscribeResult {
   text: string;
 }
 
@@ -129,22 +129,23 @@ export async function transcribeCloud(
   return text;
 }
 
-export interface FactoryTranscribeOptions {
+interface FactoryTranscribeOptions {
   /** BCP-47 language hint, e.g. `'en'`. */
   language?: string;
-  /** Override the server-side provider resolution (`'cloud'` | `'whisper'`).
-   *  When unset the core reads `config.local_ai.stt_provider`. */
-  provider?: 'cloud' | 'whisper';
-  /** Whisper model id (whisper branch only). */
+  /** Override the server-side provider resolution: `'cloud'` for the backend
+   *  proxy, or a `voice_providers` slug. When unset the core resolves
+   *  `voice_server.stt_engine`. */
+  provider?: string;
+  /** Model id for the selected engine (e.g. `'whisper-1'`, `'scribe_v1'`). */
   model?: string;
   /** Defaults derived from the recorded blob. */
   mimeType?: string;
   fileName?: string;
 }
 
-export interface FactoryTranscribeResult {
+interface FactoryTranscribeResult {
   text: string;
-  /** Provider that actually ran ('cloud' or 'whisper'). */
+  /** Provider that actually ran ('cloud' or the third-party slug). */
   provider: string;
 }
 

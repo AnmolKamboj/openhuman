@@ -32,17 +32,30 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::openhuman::artifacts::{
+use crate::openhuman::agent::artifacts::{
     create_artifact, fail_artifact, finalize_artifact, ArtifactKind,
 };
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 mod engine;
+/// The document wire contract, shared with the `tinydocs` module.
+///
+/// This was 1,873 lines of this repository — `format/error/`, `format/spec/` —
+/// and every line of it also existed in `crates/tinydocs-bus/src/` upstream,
+/// differing only in the paths inside doc links. Two definitions of a contract
+/// is the drift risk the contract exists to remove: the specs here are what an
+/// LLM is shown as a JSON tool schema and what the module validates against,
+/// so a limit that moved on one side would become a tool description promising
+/// something the module does not enforce.
+///
+/// Aliased rather than re-exported item by item so the ~30 existing
+/// `…::document::format::…` paths keep resolving unchanged.
+pub(crate) use tinydocs_bus as format;
 mod types;
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "document_tests.rs"]
 mod tests;
 
 use self::types::{validate_input, GenerateDocumentInput, GenerateDocumentOutput};
@@ -201,7 +214,7 @@ impl Tool for DocumentTool {
         // Retry can re-dispatch this exact spec (#3162). Best-effort: a
         // write failure only forfeits regeneration, never aborts an
         // otherwise-successful generation.
-        if let Err(err) = crate::openhuman::artifacts::store::save_artifact_args(
+        if let Err(err) = crate::openhuman::agent::artifacts::store::save_artifact_args(
             &self.workspace_dir,
             &meta.id,
             &args,

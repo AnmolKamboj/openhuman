@@ -1,4 +1,4 @@
-//! End-to-end tests for `openhuman::cwd_jail`.
+//! End-to-end tests for `openhuman::sandbox::cwd_jail`.
 //!
 //! Each test goes through the public surface only — `Jail`, `spawn`,
 //! `JailRegistry`, `default_backend` — and (where the platform allows it)
@@ -19,8 +19,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use openhuman_core::openhuman::cwd_jail::{
-    default_backend, spawn, spawn_with, Jail, JailRegistry, NoopBackend,
+#[cfg(any(
+    all(target_os = "linux", feature = "sandbox-landlock"),
+    target_os = "macos",
+    target_os = "windows"
+))]
+use openhuman_core::openhuman::sandbox::cwd_jail::spawn;
+use openhuman_core::openhuman::sandbox::cwd_jail::{
+    default_backend, spawn_with, Jail, JailRegistry, NoopBackend,
 };
 
 fn unique_tempdir(tag: &str) -> PathBuf {

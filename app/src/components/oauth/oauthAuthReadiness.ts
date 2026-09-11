@@ -3,12 +3,12 @@ import debug from 'debug';
 import { getCoreStateSnapshot } from '../../lib/coreState/store';
 import { bootCheckTransport } from '../../services/bootCheckService';
 import { getCoreRpcUrl, testCoreRpcConnection } from '../../services/coreRpcClient';
-import { isTauri } from '../../services/webviewAccountService';
 import {
   getStoredCoreMode,
   getStoredCoreToken,
   storeCoreMode,
 } from '../../utils/configPersistence';
+import { isTauri } from '../../utils/tauriCommands/common';
 
 const logPrefix = '[oauth-auth-readiness]';
 const log = debug('oauth:auth-readiness');
@@ -17,9 +17,9 @@ const warnLog = debug('oauth:auth-readiness:warn');
 const DEFAULT_MAX_WAIT_MS = 30_000;
 const POLL_MS = 200;
 
-export type OAuthAuthReadinessFailure = 'core_mode_unset' | 'core_unreachable';
+type OAuthAuthReadinessFailure = 'core_mode_unset' | 'core_unreachable';
 
-export type OAuthAuthReadinessResult =
+type OAuthAuthReadinessResult =
   | { ready: true }
   | { ready: false; reason: OAuthAuthReadinessFailure };
 
