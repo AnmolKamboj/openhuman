@@ -129,17 +129,18 @@ async function waitForTurnToSettle(repliesBefore, { timeoutMs = 300_000 } = {}) 
 console.log(`[multi-turn] core=${coreUrl} thread_id=${threadId}`);
 
 for (const [index, message] of TURNS.entries()) {
-  const before = capturedCount();
+  const requestsBefore = capturedCount();
+  const repliesBefore = persistedReplies();
   const started = Date.now();
   await rpc('openhuman.channel_web_chat', {
     client_id: `prefix-audit-${threadId}`,
     thread_id: threadId,
     message,
   });
-  const after = await waitForTurnToSettle(before);
+  await waitForTurnToSettle(repliesBefore);
   console.log(
-    `[multi-turn] turn ${index + 1}/${TURNS.length} settled in ${Date.now() - started}ms — ` +
-      `${after - before} inference request(s)`
+    `[multi-turn] turn ${index + 1}/${TURNS.length} completed in ${Date.now() - started}ms — ` +
+      `${capturedCount() - requestsBefore} inference request(s)`
   );
 }
 
