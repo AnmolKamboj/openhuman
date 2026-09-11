@@ -1,3 +1,4 @@
+impl ToolPolicyMiddleware {
     /// The channel-permission gate the engine ran before the builder policy: a
     /// session-level deny, then a per-call permission-level ceiling check. Returns
     /// the blocking message when the call must not execute.
