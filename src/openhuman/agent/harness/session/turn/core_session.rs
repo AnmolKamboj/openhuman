@@ -791,7 +791,10 @@ impl Agent {
                 matches!(entry, ConversationMessage::Chat(chat) if chat.role == "system")
             })
             .collect();
-        let _ = cached;
-        self.history = tail;
+        self.history = cached
+            .into_iter()
+            .map(ConversationMessage::Chat)
+            .chain(tail)
+            .collect();
     }
 }
