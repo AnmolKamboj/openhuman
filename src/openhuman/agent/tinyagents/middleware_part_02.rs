@@ -237,7 +237,6 @@ impl Middleware<()> for ToolOutputMiddleware {
 
         Ok(())
     }
-}
 
 /// `wrap_tool`: route OpenHuman's human-in-the-loop **approval gate** through a
 /// named tinyagents tool middleware (issue #4249, Phase 1). A tool with an
