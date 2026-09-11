@@ -740,7 +740,6 @@ impl Agent {
         let Some(cached) = self.cached_transcript_messages.take() else {
             return;
         };
-        {
         // A resumed session's replayed prefix is **absorbed into
         // `self.history`**, not merely prepended to this one request.
         //
