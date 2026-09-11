@@ -19,7 +19,7 @@ Architecture: [overview](gitbooks/developing/architecture.md),
 | `src/main.rs` | `openhuman-core` CLI |
 | `tests/` | Rust integration and JSON-RPC tests |
 | `gitbooks/` | Public product and contributor documentation |
-| `docs/` | Maintainer notes that still need to live with the repository |
+| `docs/` | Internal maintainer documentation |
 | `vendor/` | Recursive git submodules |
 
 Run commands from the repository root. The root package is a private pnpm
@@ -202,7 +202,7 @@ Additional rules:
 
 - Wire controllers through the registry in `src/core/all.rs`. Do not add
   namespace branches to `cli.rs` or `jsonrpc.rs`.
--+- RPC namespace strings are wire contracts and do not follow directory
+- RPC namespace strings are wire contracts and do not follow directory
   renames.
 - Domain tools live with their domain and are re-exported through
   `src/openhuman/tools/mod.rs`. Keep only cross-cutting tools in
@@ -211,7 +211,35 @@ Additional rules:
   are deduplication keys.
 - Update `src/openhuman/platform/about_app/` when user-visible capabilities
   change.
- 
+
+## Tool, harness, and runtime boundaries
+
+`tinyagents` owns tool-call dialects, parsing, catalog rendering, transcript
+replay, and the agent loop. `tinytools` owns the shared `Tool` trait and tool
+types. OpenHuman owns execution policy, approvals, sandboxing, timeouts, and
+progress events.
+
+- Use the `tinytools` copy vendored through `vendor/tinyagents/`; a second path
+  creates incompatible Rust types.
+- Keep conversions mechanical. Policy decisions belong in OpenHuman.
+- `openhuman_core::Harness` is the public prompt-to-reply API. Calls go through
+  `CoreRuntime::invoke`, not directly to domain operations.
+- Set `config_path` with `workspace_dir`, and set a turn origin with its access
+  tier. `Access::full()` configures both access fields.
+- Use one `Harness` per process. Copy skills into its workspace because skill
+  discovery rejects symlinked bundles.
+
+`CoreBuilder` controls background services with `ServiceSet`, runtime domains
+with `DomainSet`, and tool visibility with `ToolGroups`. These controls only
+narrow capabilities.
+
+Cargo default features define the contributor build;
+`scripts/ci/product-features.txt` defines the shipped product. The Tauri shell
+disables default features, so product gates must be forwarded explicitly in
+`app/src-tauri/Cargo.toml` and checked by
+`scripts/ci/check-feature-forwarding.mjs`. Test both enabled and disabled
+builds after changing a gate. Use `scripts/assert-shed.sh` or
+`scripts/dep-sim.py` before claiming a dependency reduction.
 ## Loadable modules and bus contracts
 
 Each loadable module has a small `*-bus` contract crate for interface names,
