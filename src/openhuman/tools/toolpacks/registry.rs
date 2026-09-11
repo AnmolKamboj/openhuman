@@ -267,9 +267,16 @@ pub const PACKS: &[ToolPack] = &[
         owners: &["scheduler_agent"],
     },
     ToolPack {
-        id: "preferences",
-        summary: "Record a durable user preference (tone, defaults, working style) so later turns honour it without being told again.",
-        tools: &["save_preference", "remember_preference"],
+        id: "profile",
+        summary: "What OpenHuman durably knows about the user: record a preference (tone, defaults, working style), and edit the profile, persona or people-graph behind it.",
+        // The delegate and the two raw tools belong together because they are
+        // one question from the model's side — "remember this about the user" —
+        // split only by how much editing it needs.
+        tools: &[
+            "save_preference",
+            "remember_preference",
+            "manage_profile_memory",
+        ],
         owners: &["profile_memory_agent"],
     },
     ToolPack {

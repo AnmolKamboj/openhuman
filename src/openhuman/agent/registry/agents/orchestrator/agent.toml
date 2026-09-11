@@ -73,12 +73,23 @@ omit_memory_md = false
 # If you are here to propose the mega-tool again, it is a routing-quality change
 # needing an eval, not a token change.
 #
+# Two agents are deliberately ABSENT from this list, and absence is the point:
+# dropping an entry removes its synthesised `delegate_*` schema from every turn
+# without removing the agent. `spawn_async_subagent` builds its `agent_id` enum
+# from the whole registry, so `tools_agent` and `archivist` are still reachable
+# by id — they just no longer cost a named tool each.
+#
+#   * `tools_agent` — the generalist shell/HTTP/web-search worker. The
+#     orchestrator now carries `shell`, `web_search_tool`, `web_fetch` and
+#     `run_code` itself, so the delegate was a second door onto work it can
+#     already do directly.
+#   * `archivist` — memory archiving runs on its own post-turn hook, so the
+#     model rarely needs to ask for it, and asking is not how it usually happens.
 [subagents]
 allowlist = [
     "researcher",
     "planner",
     "code_executor",
-    "tools_agent",
     # Task-board/source/workflow specialist. Route any request to create,
     # edit, approve/reject, fetch, clear, remove, or summarize agent tasks,
     # proactive task sources, workflow bundles, task evidence, or artifacts
@@ -112,7 +123,6 @@ allowlist = [
     "video_agent",
     "skill_creator",
     "critic",
-    "archivist",
     # Product docs/help specialist. Route OpenHuman docs, settings,
     # setup, and feature questions here before guessing from priors.
     "help",

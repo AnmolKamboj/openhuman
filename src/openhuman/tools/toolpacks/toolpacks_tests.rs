@@ -587,7 +587,14 @@ fn every_pack_declares_the_tools_it_is_named_for() {
                 "cron_runs",
             ],
         ),
-        ("preferences", &["save_preference", "remember_preference"]),
+        (
+            "profile",
+            &[
+                "save_preference",
+                "remember_preference",
+                "manage_profile_memory",
+            ],
+        ),
         (
             "media",
             &[
