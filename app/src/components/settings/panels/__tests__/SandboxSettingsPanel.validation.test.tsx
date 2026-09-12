@@ -67,6 +67,7 @@ async function renderLoaded(overrides: Partial<SandboxSettings> = {}) {
   mockGet.mockResolvedValue({ result: sandboxSettings(overrides), logs: [] });
   renderWithProviders(<SandboxSettingsPanel />);
   await waitFor(() => expect(mockGet).toHaveBeenCalled());
+  await screen.findByDisplayValue('alpine:3.20');
 }
 
 /**
