@@ -99,7 +99,8 @@ async function flush() {
   });
 }
 
-const preset = (name: RegExp) => screen.getByText(name).closest('button') as HTMLElement;
+const preset = async (name: RegExp) =>
+  (await screen.findByText(name)).closest('button') as HTMLElement;
 
 describe('PermissionsPanel — load-shape defaults', () => {
   beforeEach(() => {
@@ -122,7 +123,7 @@ describe('PermissionsPanel — load-shape defaults', () => {
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
-    fireEvent.click(preset(/Full control/i));
+    fireEvent.click(await preset(/Full control/i));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
     const sent = mockUpdate.mock.calls[0][0];
@@ -140,7 +141,7 @@ describe('PermissionsPanel — load-shape defaults', () => {
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
-    fireEvent.click(preset(/Full control/i));
+    fireEvent.click(await preset(/Full control/i));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
     expect(mockUpdate.mock.calls[0][0].require_task_plan_approval).toBe(false);
@@ -173,7 +174,7 @@ describe('PermissionsPanel — persist sequence guard', () => {
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
-    fireEvent.click(preset(/Full control/i));
+    fireEvent.click(await preset(/Full control/i));
 
     expect(await screen.findByText(/autonomy save refused/)).toBeInTheDocument();
   });
@@ -189,8 +190,8 @@ describe('PermissionsPanel — persist sequence guard', () => {
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
-    fireEvent.click(preset(/Full control/i));
-    fireEvent.click(preset(/Look, don't touch/i));
+    fireEvent.click(await preset(/Full control/i));
+    fireEvent.click(await preset(/Look, don't touch/i));
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
 
     // Now let the FIRST call fail, after the second has already finished.
@@ -207,8 +208,8 @@ describe('PermissionsPanel — persist sequence guard', () => {
     renderWithProviders(<PermissionsPanel />);
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
 
-    fireEvent.click(preset(/Full control/i));
-    fireEvent.click(preset(/Look, don't touch/i));
+    fireEvent.click(await preset(/Full control/i));
+    fireEvent.click(await preset(/Look, don't touch/i));
 
     expect(await screen.findByText(/newer save refused/)).toBeInTheDocument();
 
@@ -306,7 +307,7 @@ describe('PermissionsPanel — off-Tauri', () => {
   it('does not persist a tier change in the browser', async () => {
     renderWithProviders(<PermissionsPanel />);
 
-    fireEvent.click(preset(/Full control/i));
+    fireEvent.click(await preset(/Full control/i));
 
     await waitFor(() => expect(screen.getByText(/desktop app/i)).toBeInTheDocument());
     expect(mockUpdate).not.toHaveBeenCalled();
